@@ -15,7 +15,7 @@ services:
 
   toadyWebApi:
     container_name: toadyWebApi
-    image: ${DOCKER_USERNAME}/toady-web-api:latest
+    image: dukkeoba/toady-web-api:latest
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
@@ -29,7 +29,7 @@ services:
 
   toadyScheduler:
     container_name: toadyScheduler
-    image: ${DOCKER_USERNAME}/toady-scheduler:latest
+    image: dukkeoba/toady-scheduler:latest
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
@@ -41,7 +41,7 @@ services:
 
   toadyReactWeb:
     container_name: toadyReactWeb
-    image: ${DOCKER_USERNAME}/toady-react-web:latest
+    image: dukkeoba/toady-react-web:latest
     environment:
       - TZ=Asia/Seoul
     restart: always
