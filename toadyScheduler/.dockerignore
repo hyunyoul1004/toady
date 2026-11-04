@@ -3,6 +3,7 @@
 build/
 out/
 bin/
+src/test/
 
 # Version control & docs
 .git/
@@ -19,8 +20,6 @@ LOG_FILE_PATH_IS_UNDEFINED/
 # Environment and secrets
 .env
 .env.*
-!.env.example
-!.env.prod.example
 
 # IDE and Editor files
 .idea/

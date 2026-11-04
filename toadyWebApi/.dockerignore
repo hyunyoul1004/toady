@@ -3,6 +3,7 @@
 build/
 out/
 bin/
+src/test/
 
 # Version control & docs
 .git/
@@ -19,7 +20,6 @@ LOG_FILE_PATH_IS_UNDEFINED/
 # Environment and secrets
 .env
 .env.*
-!.env.example
 src/main/resources/config/application-local.yml
 
 # IDE and Editor files
