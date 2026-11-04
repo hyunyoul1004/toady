@@ -1,0 +1,35 @@
+# Gradle caches and build outputs
+.gradle/
+build/
+out/
+bin/
+
+# Version control & docs
+.git/
+.gitignore
+.dockerignore
+README.md
+HELP.md
+
+# Logs
+logs/
+LOG_FILE_PATH_IS_UNDEFINED/
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# IDE and Editor files
+.idea/
+.vscode/
+.run/
+*.iml
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db

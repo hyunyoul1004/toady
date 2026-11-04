@@ -1,14 +1,38 @@
-node_modules
-dist
-build
-.git
+# Node.js dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build and coverage outputs
+dist/
+build/
+coverage/
+
+# Version control & docs
+.git/
 .gitignore
 .dockerignore
 README.md
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.env*
-.idea
-.vscode
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml
+
+# OS generated files
 .DS_Store
+Thumbs.db

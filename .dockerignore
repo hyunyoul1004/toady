@@ -1,0 +1,42 @@
+# Monorepo root .dockerignore
+.git/
+.gitignore
+.dockerignore
+
+# Dependencies and caches
+**/node_modules/
+**/.gradle/
+
+# Build and test outputs
+**/build/
+**/dist/
+**/out/
+**/bin/
+**/coverage/
+
+# Logs
+**/logs/
+**/*.log
+**/LOG_FILE_PATH_IS_UNDEFINED/
+
+# Environment and secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.prod.example
+
+# IDE and Editor files
+**/.idea/
+**/.vscode/
+**/.run/
+**/*.iml
+**/*.swp
+**/*.swo
+
+# OS generated files
+**/.DS_Store
+**/Thumbs.db
+
+# Documentation
+**/README.md
+**/HELP.md
