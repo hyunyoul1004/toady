@@ -12,7 +12,7 @@ import {
   SubscriptDetail4,
   SubscriptDetail5
 } from '@/views/main/subscriptDetail';
-import { TuiCalendar } from '@/views/main/calendar';
+import { SubscriptionCalendar } from '@/views/main/calendar';
 import { SubscriptComment } from '@/views/main/subscriptComment';
 import SubscriptRate from '@/views/main/subscriptRate';
 import Kakaomap from '@/components/kakao/Kakaomap';
@@ -1065,7 +1065,7 @@ export const Main = () => {
 
         {/* 캘린더 단독 표시 */}
         <Box sx={{ mt: 0.5 }}>
-          <TuiCalendar
+          <SubscriptionCalendar
             paramInfo={paramInfo}
             setParamInfo={setParamInfo}
             fn_subscriptList={refetchAnnouncements}

@@ -16,7 +16,7 @@
   resolved "https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.7.tgz"
   integrity sha512-locTkQyKvwIEgBzVrn8693ebc97F2U8ZHjbXwDXJ5Fn2TCpNwTlKcaKLkdHop5c/icOFE7qt7Q9JC5hnKNa6Gg==
 
-"@babel/core@^7.28.0":
+"@babel/core@^7.0.0", "@babel/core@^7.0.0-0", "@babel/core@^7.28.0":
   version "7.29.7"
   resolved "https://registry.npmjs.org/@babel/core/-/core-7.29.7.tgz"
   integrity sha512-RgHBCvtjbOK2gXSNBNIkNoEc9qoVEtau3hj8gEqKQuL3HZAibKarWFEI3Lfm6EYKkLalOh8eSrj9b+ch9H/VBA==
@@ -217,7 +217,7 @@
   resolved "https://registry.npmjs.org/@emotion/memoize/-/memoize-0.9.0.tgz"
   integrity sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ==
 
-"@emotion/react@^11.13.3":
+"@emotion/react@^11.0.0-rc.0", "@emotion/react@^11.13.3", "@emotion/react@^11.4.1", "@emotion/react@^11.5.0":
   version "11.14.0"
   resolved "https://registry.npmjs.org/@emotion/react/-/react-11.14.0.tgz"
   integrity sha512-O000MLDBDdk/EohJPFUqvnp4qnHeYkVP5B0xEG0D/L7cOKP9kefu2DXn8dj74cQfsEzUqh+sr1RzFqiL1o+PpA==
@@ -247,7 +247,7 @@
   resolved "https://registry.npmjs.org/@emotion/sheet/-/sheet-1.4.0.tgz"
   integrity sha512-fTBW9/8r2w3dXWYM4HCB1Rdp8NLibOw2+XELH5m5+AkWiL/KqYX6dc0kKYlaYyKjrQ6ds33MCdMPEwgs2z1rqg==
 
-"@emotion/styled@^11.13.0":
+"@emotion/styled@^11.13.0", "@emotion/styled@^11.3.0":
   version "11.14.1"
   resolved "https://registry.npmjs.org/@emotion/styled/-/styled-11.14.1.tgz"
   integrity sha512-qEEJt42DuToa3gurlH4Qqc1kVpNq8wO8cJtDzU46TjlzWjDlsVyevtYCRijVq3SrHsROS+gVQ8Fnea108GnKzw==
@@ -311,7 +311,7 @@
   resolved "https://registry.npmjs.org/@floating-ui/utils/-/utils-0.2.12.tgz"
   integrity sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==
 
-"@fullcalendar/core@6.1.22":
+"@fullcalendar/core@~6.1.22", "@fullcalendar/core@6.1.22":
   version "6.1.22"
   resolved "https://registry.npmjs.org/@fullcalendar/core/-/core-6.1.22.tgz"
   integrity sha512-ju5PJUE++zr8XXCGtlXlrodF6doUy9BDfzx+VmE0B+XDBM2A5cUi/aU3M1ANfw/StmKhwqew7Ps7bXMiv/JREg==
@@ -438,7 +438,7 @@
     clsx "^2.1.0"
     prop-types "^15.8.1"
 
-"@mui/material@^5.16.7":
+"@mui/material@^5.0.0", "@mui/material@^5.16.7", "@mui/material@>=5.15.0":
   version "5.18.0"
   resolved "https://registry.npmjs.org/@mui/material/-/material-5.18.0.tgz"
   integrity sha512-bbH/HaJZpFtXGvWg3TsBWG4eyt3gah3E7nCNU8GLyRjVoWcA91Vm/T+sjHfUcwgJSw9iLtucfHBoq+qW/T30aA==
@@ -507,7 +507,7 @@
     prop-types "^15.8.1"
     react-is "^19.0.0"
 
-"@popperjs/core@^2.11.8":
+"@popperjs/core@^2.0.0", "@popperjs/core@^2.11.8":
   version "2.11.8"
   resolved "https://registry.npmjs.org/@popperjs/core/-/core-2.11.8.tgz"
   integrity sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==
@@ -661,19 +661,12 @@
   dependencies:
     "@tanstack/query-devtools" "5.105.0"
 
-"@tanstack/react-query@^5.60.0":
+"@tanstack/react-query@^5.105.0", "@tanstack/react-query@^5.60.0":
   version "5.105.0"
   resolved "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.105.0.tgz"
   integrity sha512-y+hMuDERvgg6ay1da0V1a6ZC0ZONt7dELxSFkqRZuwm7p1TTZs0MoXrPlBRflIpRoYjvzQVYxycnLImpFLhWrw==
   dependencies:
     "@tanstack/query-core" "5.105.0"
-
-"@toast-ui/react-calendar@^1.0.6":
-  version "1.0.6"
-  resolved "https://registry.npmjs.org/@toast-ui/react-calendar/-/react-calendar-1.0.6.tgz"
-  integrity sha512-QVSc42wNU5ocgXKaqOGdXT80vUuLY9KYeFcvLdq04cCgSiDmEVPvbHw7UkmpfKdLdfdyniuGyEB54mpJkTbUKg==
-  dependencies:
-    tui-calendar "^1.15.2"
 
 "@types/babel__core@^7.20.5":
   version "7.20.5"
@@ -728,6 +721,13 @@
   resolved "https://registry.npmjs.org/@types/react-transition-group/-/react-transition-group-4.4.12.tgz"
   integrity sha512-8TV6R3h2j7a91c+1DXdJi3Syo69zzIZbz7Lg5tORM5LEJG7X/E6a1V3drRyBRZq7/utz7A+c4OgYLiLcYGHG6w==
 
+"@types/react@*", "@types/react@^17.0.0 || ^18.0.0 || ^19.0.0", "@types/react@^18 || ^19", "@types/react@>=18.0.0":
+  version "19.3.0"
+  resolved "https://registry.npmjs.org/@types/react/-/react-19.3.0.tgz"
+  integrity sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==
+  dependencies:
+    csstype "^3.2.2"
+
 "@vitejs/plugin-react@^4.3.3":
   version "4.7.0"
   resolved "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-4.7.0.tgz"
@@ -754,7 +754,7 @@ baseline-browser-mapping@^2.11.33:
   resolved "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.34.tgz"
   integrity sha512-Aqr8mA1kIvyJ3UY5YAY7ib8LSo1DmDMbMnVqGPtsKW1LxaFQFwn9Eb3yvq2fUKJsRvaXjnAV7R5osqETapzNiA==
 
-browserslist@^4.24.0:
+browserslist@^4.24.0, "browserslist@>= 4.21.0":
   version "4.29.5"
   resolved "https://registry.npmjs.org/browserslist/-/browserslist-4.29.5.tgz"
   integrity sha512-khTmKu5NGYTotqcYo8Bew2k4RAE9PuXRSFRXG2lQBrCEQHyeQ/vX6gKMxfokwywBsLiXZMnHsmWMG1pnO8J7uQ==
@@ -818,17 +818,7 @@ cosmiconfig@^7.0.0:
     path-type "^4.0.0"
     yaml "^1.10.0"
 
-csstype@^3.0.2:
-  version "3.2.3"
-  resolved "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz"
-  integrity sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==
-
-csstype@^3.1.0:
-  version "3.2.3"
-  resolved "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz"
-  integrity sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==
-
-csstype@^3.1.3:
+csstype@^3.0.10, csstype@^3.0.2, csstype@^3.1.0, csstype@^3.1.3, csstype@^3.2.2:
   version "3.2.3"
   resolved "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz"
   integrity sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==
@@ -864,11 +854,6 @@ dom-helpers@^5.0.1:
   dependencies:
     "@babel/runtime" "^7.8.7"
     csstype "^3.0.2"
-
-dompurify@^2.3.1:
-  version "2.3.8"
-  resolved "https://registry.npmjs.org/dompurify/-/dompurify-2.3.8.tgz"
-  integrity sha512-eVhaWoVibIzqdGYjwsBWodIQIaXFSB+cKDf4cfxLMsK0xiud6SE+/WCVx/Xw/UwQsa4cS3T2eITcdtmTg2UKcw==
 
 electron-to-chromium@^1.5.464:
   version "1.5.468"
@@ -1121,7 +1106,7 @@ react-datepicker@^4.25.0:
     react-onclickoutside "^6.13.0"
     react-popper "^2.3.0"
 
-react-dom@^18.3.1:
+"react-dom@^15.5.x || ^16.x || ^17.x || ^18.x", "react-dom@^16.7.0 || ^17 || ^18 || ^19", "react-dom@^16.8.0 || ^17 || ^18", "react-dom@^16.9.0 || ^17 || ^18", "react-dom@^17.0.0 || ^18.0.0 || ^19.0.0", react-dom@^18.3.1, react-dom@>=16.6.0, react-dom@>=16.8, react-dom@>=16.8.0:
   version "18.3.1"
   resolved "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz"
   integrity sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==
@@ -1192,7 +1177,7 @@ react-transition-group@^4.4.5:
     loose-envify "^1.4.0"
     prop-types "^15.6.2"
 
-react@^18.3.1:
+"react@^15.5.x || ^16.x || ^17.x || ^18.x", "react@^16.7.0 || ^17 || ^18 || ^19", "react@^16.8.0 || ^17 || ^18", "react@^16.9.0 || ^17 || ^18", "react@^17.0.0 || ^18.0.0 || ^19.0.0", "react@^18 || ^19", react@^18.3.1, react@>=16.6.0, react@>=16.8, react@>=16.8.0, react@>=18.0.0:
   version "18.3.1"
   resolved "https://registry.npmjs.org/react/-/react-18.3.1.tgz"
   integrity sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==
@@ -1275,7 +1260,7 @@ seroval-plugins@~1.6.8:
   resolved "https://registry.npmjs.org/seroval-plugins/-/seroval-plugins-1.6.12.tgz"
   integrity sha512-+reiwp/lYxiyctSrdvX7OQ1YLrcbWYgBiZrhSFL+V43b0/DGRLNVSDyZINbQe+tWplPOI2fw2dPrdv6hcc09kQ==
 
-seroval@~1.6.11:
+seroval@^1.0, seroval@~1.6.11:
   version "1.6.12"
   resolved "https://registry.npmjs.org/seroval/-/seroval-1.6.12.tgz"
   integrity sha512-CqbIVfk/7GL3ITwZI55lcPbpQbjHZ2DD5cUj4iH7E9YsCfHNJV1mx7yNp86Z84w5IpmkZZS/2s5vPOWmVWSdQg==
@@ -1295,7 +1280,7 @@ simplebar-react@^3.2.6:
   dependencies:
     simplebar-core "^1.3.2"
 
-solid-js@^1.9.15:
+solid-js@^1.6.12, solid-js@^1.8, solid-js@^1.8.8, solid-js@^1.9.15, solid-js@^1.9.8:
   version "1.9.18"
   resolved "https://registry.npmjs.org/solid-js/-/solid-js-1.9.18.tgz"
   integrity sha512-CHGO5YFk6Y9m/1YSxVtKnXfrW7JD3Tmof8HmR4z6TmCPsS8efo8LnzIR8CQh3cUvffqYm6DWyBFfk8dQw1CNQQ==
@@ -1358,33 +1343,6 @@ tslib@^2.8.0:
   resolved "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz"
   integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
 
-tui-calendar@^1.15.2, tui-calendar@^1.15.3:
-  version "1.15.3"
-  resolved "https://registry.npmjs.org/tui-calendar/-/tui-calendar-1.15.3.tgz"
-  integrity sha512-S+QxtSPunLUNIX/eHoHcBB9XlPVT15Wh6ItR62n5K/Gq3WeSQdyhdbsuZJYV9z75bgJbFzp6x32v2yEPm6iWrg==
-  dependencies:
-    dompurify "^2.3.1"
-    tui-code-snippet "^1.5.0"
-    tui-date-picker "^4.3.0"
-    tui-time-picker "^2.1.4"
-
-tui-code-snippet@^1.5.0:
-  version "1.5.2"
-  resolved "https://registry.npmjs.org/tui-code-snippet/-/tui-code-snippet-1.5.2.tgz"
-  integrity sha512-6UqTlQaaC1KLcmC0HAoq5dtl1G4Fib+R+NC7pmaV7kiIlZ7JqKhUmnOoGRcreAyzd81UTK/vCvhrw9QJskpCFQ==
-
-tui-date-picker@^4.3.0, tui-date-picker@^4.3.3:
-  version "4.3.3"
-  resolved "https://registry.npmjs.org/tui-date-picker/-/tui-date-picker-4.3.3.tgz"
-  integrity sha512-/2YoLnj5c1e+Ag1ZZYOgzEs2o0v7Ol7c5UAnBj438zGlkwkMxyH0HwP2pVqqIYX05WE7K0+6nTWVMybS8otBgw==
-  dependencies:
-    tui-time-picker "^2.1.6"
-
-tui-time-picker@^2.1.4, tui-time-picker@^2.1.6:
-  version "2.1.6"
-  resolved "https://registry.npmjs.org/tui-time-picker/-/tui-time-picker-2.1.6.tgz"
-  integrity sha512-4Jmo3wjGS+Ii4/qQgt5DaFEohHpB3U6BzWeTODVVFHD9sx3NOsbomY9K0xMobSLODi+tQEH7wfOtNU0IJmcQ6Q==
-
 update-browserslist-db@^1.3.4:
   version "1.3.4"
   resolved "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.3.4.tgz"
@@ -1393,7 +1351,7 @@ update-browserslist-db@^1.3.4:
     escalade "^3.2.0"
     picocolors "^1.1.1"
 
-vite@^5.4.11:
+"vite@^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0", vite@^5.4.11:
   version "5.4.21"
   resolved "https://registry.npmjs.org/vite/-/vite-5.4.21.tgz"
   integrity sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==
