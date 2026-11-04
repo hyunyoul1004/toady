@@ -1,0 +1,59 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: com.toady.web.config.PhysicalNamingStrategyImpl
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+decorator:
+  datasource:
+    enabled: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+toady:
+  security:
+    secret-key: ${JWT_SECRET}
+    authorities-key: auth
+    token-created-at-key: tca
+    token-expire-ms: ${JWT_TOKEN_EXPIRE_MS:5400000}
+  web:
+    domain: ${TOADY_WEB_DOMAIN:https://www.toady.co.kr}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+config:
+  logging:
+    path: ${LOG_PATH:./logs}
+    name: toadyWebLog
+    pattern: log
+    level:
+      root: ${LOG_LEVEL_ROOT:INFO}
+      src: ${LOG_LEVEL_SRC:INFO}
+      jdbc: ${LOG_LEVEL_JDBC:OFF}
+      jdbc-bind: ${LOG_LEVEL_JDBC_BIND:OFF}
+      p6spy: ${LOG_LEVEL_P6SPY:OFF}
+      hibernate-sql: ${LOG_LEVEL_HIBERNATE_SQL:DEBUG}

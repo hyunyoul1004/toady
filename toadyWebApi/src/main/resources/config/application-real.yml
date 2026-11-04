@@ -1,0 +1,12 @@
+spring:
+  devtools:
+    restart:
+      enabled: false
+    livereload:
+      enabled: false
+
+config:
+  logging:
+    path: ${LOG_PATH:/usr/local/logs}
+    level:
+      src: ${LOG_LEVEL_SRC:INFO}
