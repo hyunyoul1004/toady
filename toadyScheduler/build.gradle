@@ -1,0 +1,56 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.16'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.toady'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+configurations {
+	mockitoAgent
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	mockitoAgent('org.mockito:mockito-core') {
+		transitive = false
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	systemProperty 'applyhome.integration.enabled', System.getProperty('applyhome.integration.enabled', 'false')
+	systemProperty 'applyhome.competition.integration.enabled',
+			System.getProperty('applyhome.competition.integration.enabled', 'false')
+	systemProperty 'applyhome.competition.test.start-date',
+			System.getProperty('applyhome.competition.test.start-date', '2017-01-01')
+	systemProperty 'applyhome.competition.test.end-date',
+			System.getProperty('applyhome.competition.test.end-date', '')
+	systemProperty 'applyhome.test.start-date', System.getProperty('applyhome.test.start-date', '')
+	systemProperty 'applyhome.test.end-date', System.getProperty('applyhome.test.end-date', '')
+	jvmArgs '-Xshare:off', "-javaagent:${configurations.mockitoAgent.asPath}"
+	testLogging {
+		events 'passed', 'skipped', 'failed'
+		showStandardStreams = true
+		exceptionFormat = 'full'
+	}
+}

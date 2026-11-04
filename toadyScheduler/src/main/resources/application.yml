@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 500
+        order_inserts: true
+
+logging:
+  level:
+    com.toady.web: INFO
+
+applyhome:
+  api:
+    base-url: https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1
+    service-key: ${APPLYHOME_API_KEY:}
+    per-page: 1000
+  competition:
+    api:
+      base-url: https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1
+      per-page: 1000
+    scheduler:
+      polling-cron: "${APPLYHOME_COMPETITION_POLL_CRON:0 */10 17-19 * * *}"
+      final-cron: "${APPLYHOME_COMPETITION_FINAL_CRON:0 0 20 * * *}"
+  scheduler:
+    cron: ${APPLYHOME_SYNC_CRON:0 15 3 * * *}
