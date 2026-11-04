@@ -19,6 +19,7 @@ services:
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,https://toady.co.kr,https://www.toady.co.kr,http://toady.co.kr,http://www.toady.co.kr
     volumes:
       - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
     ports:
