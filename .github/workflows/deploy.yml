@@ -51,6 +51,6 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
           cd ~/toady
-          sudo docker-compose pull
-          sudo docker-compose up -d
-          sudo docker image prune -f
+          DOCKER_USERNAME=dukkeoba docker-compose pull
+          DOCKER_USERNAME=dukkeoba docker-compose -p toady up -d
+          DOCKER_USERNAME=dukkeoba docker image prune -f
