@@ -1,0 +1,45 @@
+/*  https://medium.com/@stanislavgurin/how-to-save-you-days-of-bug-fixing-with-custom-scroll-css-and-js-b6e526aaac2 */
+.modalBax::-webkit-scrollbar {
+    width: 2em;
+  }
+  .modalBax::-webkit-scrollbar-track {
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+  }
+  .modalBax::-webkit-scrollbar-thumb {
+    background: linear-gradient(45deg, orange, darksalmon);
+  }
+  
+
+  .modalBax {
+    background: whitesmoke;
+    overflow-y: scroll;
+    margin: 0 auto;
+    padding: 0em;
+    font: 100%/1.4 serif;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+  }
+  
+  .calendarBox::-webkit-scrollbar {
+    width: 2em;
+  }
+  .calendarBox::-webkit-scrollbar-track {
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+  }
+  .calendarBox::-webkit-scrollbar-thumb {
+    background: linear-gradient(45deg, orange, darksalmon);
+  }
+  
+
+  .calendarBox {
+    background: whitesmoke;
+    overflow-y: scroll;
+    margin: 0 auto;
+    padding: 0em;
+    font: 100%/1.4 serif;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+  }
+  
+  
+  * {
+    box-sizing: border-box;
+  }

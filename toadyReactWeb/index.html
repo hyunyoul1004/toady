@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <!-- 검색엔진 크롤링 최적화 -->
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="Yeti" content="index, follow" />
+    <meta name="Daumoa" content="index, follow" />
+
+    <meta id="meta-description" name="description" content="전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률, 당첨가점 및 실시간 청약 커뮤니티 플랫폼 TOADY(두껍아)" />
+    <meta id="meta-keywords" name="keywords" content="청약, 아파트청약, 청약일정, 무순위, 줍줍, 분양가, 청약경쟁률, 당첨가점, 부동산커뮤니티, 두껍아, TOADY" />
+    <meta name="author" content="TOADY" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="theme-color" content="#2563eb" />
+
+    <!-- Open Graph (카카오톡, 페이스북, 네이버 블로그/카페 공유용) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TOADY 두껍아" />
+    <meta id="og-title" property="og:title" content="TOADY 두껍아 - 청약 정보 & 커뮤니티 플랫폼" />
+    <meta id="og-description" property="og:description" content="전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률 및 실시간 청약 커뮤니티" />
+    <meta id="og-image" property="og:image" content="https://www.toady.co.kr/cont/images/logo/logo.png" />
+    <meta id="og-url" property="og:url" content="https://toady.co.kr/" />
+    <meta property="og:locale" content="ko_KR" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta id="twitter-title" name="twitter:title" content="TOADY 두껍아 - 청약 정보 & 커뮤니티 플랫폼" />
+    <meta id="twitter-description" name="twitter:description" content="전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률 및 실시간 청약 커뮤니티" />
+    <meta id="twitter-image" name="twitter:image" content="https://www.toady.co.kr/cont/images/logo/logo.png" />
+
+    <link rel="shortcut icon" type="image/x-icon" href="https://www.toady.co.kr/cont/images/logo/favicon.ico" />
+    <link rel="icon" href="https://www.toady.co.kr/cont/images/logo/favicon.ico" />
+    <link id="canonical-url" rel="canonical" href="https://toady.co.kr/" />
+    <link rel="apple-touch-icon" href="https://www.toady.co.kr/cont/images/logo/logo.png" />
+
+    <!-- 구조화 데이터 (JSON-LD: 구글/네이버 리치 검색 결과 표준 규격) -->
+    <script id="structured-data-script" type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "TOADY 두껍아",
+      "url": "https://toady.co.kr/",
+      "description": "전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률 및 실시간 청약 커뮤니티",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://toady.co.kr/?search={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <!-- 카카오맵 SDK -->
+    <script id="kakao-maps-sdk" type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=2568c0ef0032e3518fc1394b4f9f6ed8&libraries=services&autoload=false"></script>
+    <title>TOADY 두껍아 - 청약 일정, 분양 정보 및 부동산 커뮤니티</title>
+    <style>
+      /* 달력의 청약일정 상세 모달을 띄우고 닫을때 body의 overflow가 hidden발생하는것을 방지 */
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: unset !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
