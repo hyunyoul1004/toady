@@ -8,6 +8,9 @@ WORKDIR /app
 # 의존성 캐시 활용을 위해 패키지 정의 파일 먼저 복사
 COPY package.json package-lock.json ./
 
+# 패키지 명세서와 잠금 파일을 모두 복사하도록 와일드카드(*) 사용
+COPY package*.json ./ 
+
 # 의존성 설치
 RUN npm ci
 
