@@ -1073,19 +1073,6 @@ export const Main = () => {
                         />
                       )}
                     />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        display: 'block',
-                        mt: 0.5,
-                        px: 0.5,
-                        fontSize: '0.72rem',
-                        color: '#94a3b8',
-                        letterSpacing: '-0.2px'
-                      }}
-                    >
-                      ※ 2020년 02월 이후 청약 공고 데이터만 조회 가능합니다.
-                    </Typography>
                   </Box>
                 </Box>
 
