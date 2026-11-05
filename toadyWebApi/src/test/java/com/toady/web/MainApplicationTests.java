@@ -225,6 +225,63 @@ class MainApplicationTests {
                 .andExpect(jsonPath("$.data[0].subscrptResultNm").value("접수"));
     }
 
+    @Test
+    void suggestsAnnouncementsAcrossAllTypesAndMatchesAddresses() throws Exception {
+        jdbcTemplate.update("""
+                insert into TB_APT_LTTOT_PBLANC_DETAIL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, HOUSE_SECD_NM, SUBSCRPT_AREA_CODE_NM,
+                     HSSPLY_ADRES, RCEPT_BGNDE, RCEPT_ENDDE)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
+                """, "SUGGEST-APT", "SUGGEST-APT", "Suggestion 아파트", "민영", "서울",
+                "ADDRESSMATCH 서울특별시", "2026-10-04", "2026-10-06");
+        jdbcTemplate.update("""
+                insert into TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, SUBSCRPT_RCEPT_BGNDE, SUBSCRPT_RCEPT_ENDDE)
+                values (?, ?, ?, ?, ?)
+                """, "SUGGEST-URBAN", "SUGGEST-URBAN", "Suggestion 오피스텔", "2026-10-05", "2026-10-05");
+        jdbcTemplate.update("""
+                insert into TB_REMNDR_LTTOT_PBLANC_DETAIL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, SUBSCRPT_RCEPT_BGNDE, SUBSCRPT_RCEPT_ENDDE)
+                values (?, ?, ?, ?, ?)
+                """, "SUGGEST-REMAINING", "SUGGEST-REMAINING", "Suggestion 잔여세대", "2026-10-03", "2026-10-03");
+        jdbcTemplate.update("""
+                insert into TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, SUBSCRPT_RCEPT_BGNDE, SUBSCRPT_RCEPT_ENDDE)
+                values (?, ?, ?, ?, ?)
+                """, "SUGGEST-RENTAL", "SUGGEST-RENTAL", "Suggestion 민간임대", "2026-10-04", "2026-10-04");
+        jdbcTemplate.update("""
+                insert into TB_OPT_LTTOT_PBLANC_DETAIL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, SUBSCRPT_RCEPT_BGNDE, SUBSCRPT_RCEPT_ENDDE)
+                values (?, ?, ?, ?, ?)
+                """, "SUGGEST-OPTIONAL", "SUGGEST-OPTIONAL", "Suggestion 임의공급", "20261002", "20261002");
+
+        mockMvc.perform(get("/api/v1/announcements/suggestions")
+                        .queryParam("keyword", "suggest")
+                        .queryParam("limit", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[0].type").value("urban"))
+                .andExpect(jsonPath("$.data[1].type").value("apt"))
+                .andExpect(jsonPath("$.data[1].houseManageNo").value("SUGGEST-APT"))
+                .andExpect(jsonPath("$.data[1].houseSecdNm").value("민영"))
+                .andExpect(jsonPath("$.data[1].subscrptAreaCodeNm").value("서울"))
+                .andExpect(jsonPath("$.data[1].rceptBgnde").value("2026-10-04"))
+                .andExpect(jsonPath("$.data[2].type").value("public-rental"))
+                .andExpect(jsonPath("$.data[3].type").value("remaining"))
+                .andExpect(jsonPath("$.data[4].type").value("optional"));
+
+        mockMvc.perform(get("/api/v1/announcements/suggestions")
+                        .queryParam("keyword", "ADDRESSMATCH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].hssplyAdres").value("ADDRESSMATCH 서울특별시"));
+
+        mockMvc.perform(get("/api/v1/announcements/suggestions")
+                        .queryParam("keyword", "   "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
     private void assertCompetitionRate(String type, String announcementId, String rate) throws Exception {
         var result = mockMvc.perform(get(
                         "/api/v1/" + type + "/announcements/" + announcementId + "/" + announcementId

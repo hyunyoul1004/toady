@@ -139,6 +139,13 @@ export function SubscriptionCalendar(props) {
     [props.setParamInfo]
   );
 
+  // 외부(Main)에서 전달된 특정 날짜로 캘린더 화면 및 월 강제 이동
+  React.useEffect(() => {
+    if (props.jumpToDate) {
+      changeMonth(props.jumpToDate);
+    }
+  }, [props.jumpToDate, changeMonth]);
+
   // 2. FullCalendar 날짜 범위 변경 시 부모 컴포넌트(Main)에 조회 파라미터 전달
   const handleDatesSet = useCallback(
     (dateInfo) => {

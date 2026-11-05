@@ -6,6 +6,7 @@ import com.toady.web.app.announcement.dto.AnnouncementCommentRequest;
 import com.toady.web.app.announcement.dto.AnnouncementCommentResponse;
 import com.toady.web.app.announcement.dto.AnnouncementCommentUpdateRequest;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
+import com.toady.web.app.announcement.dto.AnnouncementSuggestionResponse;
 import com.toady.web.app.announcement.service.AnnouncementCommentService;
 import com.toady.web.app.announcement.service.AnnouncementService;
 import com.toady.web.core.constants.ResultCode;
@@ -62,6 +63,24 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(pageData(
                 announcementService.searchAll(search, types)
         ), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
+    }
+
+    @GetMapping("/announcements/suggestions")
+    @Operation(
+            summary = "전체 기간 공고 자동완성 검색",
+            description = "전체 기간의 5개 공고 유형에서 주택명 또는 주소에 키워드가 포함된 결과를 청약접수 시작일 최신순으로 반환합니다."
+    )
+    public ResponseEntity<ResData<List<AnnouncementSuggestionResponse>>> suggestions(
+            @Parameter(description = "검색 키워드 (공백이면 빈 목록 반환)", example = "자이")
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "최대 반환 건수 (1~20)", example = "10")
+            @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
+    ) {
+        return ResponseEntity.ok(ResData.of(
+                announcementService.suggestions(keyword, limit),
+                ResultCode.SUCCESS.getCode(),
+                ResultCode.SUCCESS.getMessage()
+        ));
     }
 
     /** 검색 조건을 적용해 지정된 공고 유형의 페이지 목록을 반환합니다. */

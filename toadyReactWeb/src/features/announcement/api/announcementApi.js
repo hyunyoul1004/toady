@@ -514,6 +514,27 @@ export const announcementApi = {
   },
 
   /**
+   * 전체 기간 공고 자동완성 빠른 검색
+   * GET /api/v1/announcements/suggestions
+   * @param {{ keyword: string, limit?: number }} params
+   */
+  async getAnnouncementSuggestions(params = {}) {
+    if (!params.keyword || !params.keyword.trim()) {
+      return { resultCode: 'SUCCESS', resultMessage: '성공', data: [] };
+    }
+    const res = await apiClient.get('/api/v1/announcements/suggestions', {
+      keyword: params.keyword.trim(),
+      limit: params.limit || 10
+    });
+    const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+    return {
+      resultCode: res.data?.resultCode || 'SUCCESS',
+      resultMessage: res.data?.resultMessage || '성공',
+      data: list
+    };
+  },
+
+  /**
    * APT 특별공급 신청현황 조회
    * GET /api/v1/apt/announcements/{houseManageNo}/{pblancNo}/special-supply-status
    */

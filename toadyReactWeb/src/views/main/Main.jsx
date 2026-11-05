@@ -21,6 +21,7 @@ import { fn_rceptSeColor, fn_rceptSeBgColor } from './rceptSeColorUtil';
 import { formatDate } from '@/utils/date.util';
 import { updateAnnouncementSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { useAnnouncementsQuery, useAnnouncementDetailQuery } from '@/features/announcement/hooks/useAnnouncements';
+import announcementApi from '@/features/announcement/api/announcementApi';
 
 import { styled, createTheme, ThemeProvider } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
@@ -198,6 +199,33 @@ export const Main = () => {
     citys: []
   });
 
+  // 캘린더 특정 날짜로 강제 이동 상태 (전체 기간 아파트 선택 시 사용)
+  const [jumpToDate, setJumpToDate] = useState(null);
+
+  // 검색창 입력 텍스트 및 전체 기간 공고 자동완성 목록
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [globalSuggestions, setGlobalSuggestions] = useState([]);
+
+  // 검색창 입력 시 300ms 디바운스로 백엔드 전체 기간 공고 검색 API 호출
+  useEffect(() => {
+    const keyword = searchInputValue.trim();
+    if (!keyword || keyword.length < 2) {
+      setGlobalSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await announcementApi.getAnnouncementSuggestions({ keyword, limit: 10 });
+        setGlobalSuggestions(res.data || []);
+      } catch (err) {
+        console.error('[GlobalSearch] 자동완성 검색 실패:', err);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchInputValue]);
+
   // 1. TanStack Query로 공고 목록 페칭
   const {
     data: announcementsRes,
@@ -209,15 +237,38 @@ export const Main = () => {
     return announcementsRes?.data?.resultList || [];
   }, [announcementsRes]);
 
-  // 시/도, 구/군 행정구역 옵션 + 현재 조회된 공고들의 아파트 단지명(houseNm) 옵션 동적 통합
+  // 시/도, 구/군 행정구역 옵션 + 현재 조회된 공고들의 아파트 단지명 + 백엔드 전체 기간 검색 결과 동적 통합
   const allSearchOptions = useMemo(() => {
-    const aptMap = new Map();
+    // 1. 백엔드 전체 기간 검색 결과 (다른 년/월 아파트 포함)
+    const globalOptions = (globalSuggestions || []).map((item) => {
+      const type = item.type || 'apt';
+      const houseManageNo = item.houseManageNo;
+      const pblancNo = item.pblancNo || item.houseManageNo;
+      const subscriptSeq = `${type}/${houseManageNo}/${pblancNo}`;
+      const rceptYearMonth = item.rceptBgnde ? item.rceptBgnde.substring(0, 7) : '';
+      const rceptLabel = rceptYearMonth ? `[${rceptYearMonth} 청약]` : '';
+      const addressLabel = item.hssplyAdres || item.subscrptAreaCodeNm || '';
 
+      return {
+        key: `global_${subscriptSeq}_${item.houseNm}`,
+        type: 'global_announcement',
+        label: item.houseNm,
+        subText: `${rceptLabel} ${addressLabel}`,
+        houseNm: item.houseNm,
+        subscriptSeq,
+        rceptBgnde: item.rceptBgnde,
+        item,
+        searchText: `${item.houseNm} ${addressLabel} ${rceptYearMonth}`
+      };
+    });
+
+    // 2. 현재 월에 조회된 공고들의 아파트 단지명
+    const currentMonthApts = new Map();
     rawSubscriptList.forEach((item) => {
       const houseNm = item.houseNm ? item.houseNm.trim() : '';
-      if (houseNm && !aptMap.has(houseNm)) {
+      if (houseNm && !currentMonthApts.has(houseNm)) {
         const subAddress = item.hssplyAdres || item.supplyLocation || '';
-        aptMap.set(houseNm, {
+        currentMonthApts.set(houseNm, {
           key: `apt_${houseNm}`,
           type: 'apartment',
           label: houseNm,
@@ -230,8 +281,15 @@ export const Main = () => {
       }
     });
 
-    return [...FLAT_CITY_OPTIONS, ...Array.from(aptMap.values())];
-  }, [rawSubscriptList]);
+    // 1순위: 지역 (시/도, 구/군)
+    // 2순위: 현재 월에 표시되는 아파트
+    // 3순위: 과거 및 전체 기간 공고 (해당 월로 이동)
+    return [
+      ...FLAT_CITY_OPTIONS,
+      ...Array.from(currentMonthApts.values()),
+      ...globalOptions
+    ];
+  }, [rawSubscriptList, globalSuggestions]);
 
   // 검색어/지역 + 체크박스(특별공급/1순위/2순위 등) + 공급지역 체크박스 필터 적용된 목록
   const subscriptList = useMemo(() => {
@@ -819,6 +877,10 @@ export const Main = () => {
                       size="small"
                       id="tags-outlined"
                       options={allSearchOptions}
+                      inputValue={searchInputValue}
+                      onInputChange={(_, newInputValue) => {
+                        setSearchInputValue(newInputValue);
+                      }}
                       getOptionLabel={(option) => {
                         if (typeof option === 'string') return option;
                         return option.label || option.cityName || option.houseNm || '';
@@ -838,7 +900,50 @@ export const Main = () => {
                         });
                       }}
                       filterSelectedOptions
-                      onChange={(_, newCitys) => setParamInfo((prev) => ({ ...prev, citys: newCitys }))}
+                      onChange={(_, newSelected) => {
+                        const lastItem = newSelected[newSelected.length - 1];
+
+                        // 백엔드 전체 기간 검색 결과 항목을 클릭한 경우
+                        if (lastItem && typeof lastItem === 'object' && lastItem.type === 'global_announcement') {
+                          const targetDate = lastItem.rceptBgnde;
+                          const houseNm = lastItem.houseNm;
+                          const subscriptSeq = lastItem.subscriptSeq;
+
+                          // 1. 해당 아파트 청약 접수일이 있는 년/월로 캘린더 이동
+                          if (targetDate) {
+                            setJumpToDate(targetDate);
+                            const ym = targetDate.substring(0, 7);
+                            setSnackbar({
+                              open: true,
+                              message: `'${houseNm}' 공고가 있는 ${ym} 캘린더로 이동했습니다.`,
+                              severity: 'info'
+                            });
+                          }
+
+                          // 2. 해당 공고의 상세 정보 패널(Drawer) 오픈
+                          if (subscriptSeq) {
+                            handleOpenDetail(subscriptSeq);
+                          }
+
+                          // 3. 선택 칩 목록에는 일반 apartment 객체로 변환하여 등록
+                          const convertedItem = {
+                            key: `apt_${houseNm}`,
+                            type: 'apartment',
+                            label: houseNm,
+                            houseNm,
+                            cityName: '',
+                            districtName: ''
+                          };
+
+                          const updated = newSelected.map((item) =>
+                            item === lastItem ? convertedItem : item
+                          );
+                          setParamInfo((prev) => ({ ...prev, citys: updated }));
+                          return;
+                        }
+
+                        setParamInfo((prev) => ({ ...prev, citys: newSelected }));
+                      }}
                       renderOption={(props, option) => {
                         if (typeof option === 'string') {
                           return (
@@ -866,12 +971,14 @@ export const Main = () => {
                           );
                         }
 
+                        const isGlobal = option.type === 'global_announcement';
                         const isApt = option.type === 'apartment';
                         const isCity = option.type === 'city';
-                        const chipLabel = isApt ? '단지명' : isCity ? '시/도' : '구/군';
-                        const chipBg = isApt ? '#fef3c7' : isCity ? '#eff6ff' : '#f8fafc';
-                        const chipColor = isApt ? '#d97706' : isCity ? '#2563eb' : '#64748b';
-                        const chipBorder = isApt ? '1px solid #fde68a' : isCity ? '1px solid #bfdbfe' : '1px solid #e2e8f0';
+
+                        const chipLabel = isGlobal ? '과거/전체' : isApt ? '단지명' : isCity ? '시/도' : '구/군';
+                        const chipBg = isGlobal ? '#f3e8ff' : isApt ? '#fef3c7' : isCity ? '#eff6ff' : '#f8fafc';
+                        const chipColor = isGlobal ? '#7e22ce' : isApt ? '#d97706' : isCity ? '#2563eb' : '#64748b';
+                        const chipBorder = isGlobal ? '1px solid #d8b4fe' : isApt ? '1px solid #fde68a' : isCity ? '1px solid #bfdbfe' : '1px solid #e2e8f0';
 
                         return (
                           <li {...props} key={option.key || option.label}>
@@ -893,7 +1000,7 @@ export const Main = () => {
                               <Typography
                                 sx={{
                                   fontSize: '0.85rem',
-                                  fontWeight: isCity ? 800 : 600,
+                                  fontWeight: isCity || isGlobal ? 800 : 600,
                                   color: '#0f172a',
                                   whiteSpace: 'nowrap',
                                   mr: 1
@@ -906,13 +1013,29 @@ export const Main = () => {
                                   variant="caption"
                                   sx={{
                                     fontSize: '0.75rem',
-                                    color: '#94a3b8',
+                                    color: isGlobal ? '#6b21a8' : '#94a3b8',
+                                    fontWeight: isGlobal ? 600 : 400,
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap'
                                   }}
                                 >
                                   {option.subText}
+                                </Typography>
+                              )}
+                              {isGlobal && (
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    ml: 'auto',
+                                    pl: 1,
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    color: '#7e22ce',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  이동 ↗
                                 </Typography>
                               )}
                             </Box>
@@ -950,6 +1073,19 @@ export const Main = () => {
                         />
                       )}
                     />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: 'block',
+                        mt: 0.5,
+                        px: 0.5,
+                        fontSize: '0.72rem',
+                        color: '#94a3b8',
+                        letterSpacing: '-0.2px'
+                      }}
+                    >
+                      ※ 2020년 02월 이후 청약 공고 데이터만 조회 가능합니다.
+                    </Typography>
                   </Box>
                 </Box>
 
@@ -1154,6 +1290,7 @@ export const Main = () => {
         {/* 캘린더 단독 표시 */}
         <Box sx={{ mt: 0.5 }}>
           <SubscriptionCalendar
+            jumpToDate={jumpToDate}
             paramInfo={paramInfo}
             setParamInfo={setParamInfo}
             fn_subscriptList={refetchAnnouncements}

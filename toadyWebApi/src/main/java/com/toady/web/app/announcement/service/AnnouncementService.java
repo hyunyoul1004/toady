@@ -4,6 +4,7 @@ import com.toady.web.app.announcement.AnnouncementType;
 import com.toady.web.app.announcement.CompetitionDataType;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
+import com.toady.web.app.announcement.dto.AnnouncementSuggestionResponse;
 import com.toady.web.app.announcement.entity.*;
 import com.toady.web.app.announcement.entity.id.AnnouncementId;
 import com.toady.web.app.announcement.repository.*;
@@ -14,6 +15,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +25,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.function.Function;
 
 /** 공고 유형별 조회와 통합 검색을 처리합니다. */
 @Service
@@ -65,6 +69,106 @@ public class AnnouncementService {
             case PUBLIC_RENTAL -> publicRentalRepository.findAll(searchSpecification(search), pageable);
             case OPTIONAL -> optionalRepository.findAll(searchSpecification(search), pageable);
         };
+    }
+
+    /** 전체 공고 유형에서 주택명 또는 주소가 일치하는 자동완성 후보를 접수일 최신순으로 조회합니다. */
+    public List<AnnouncementSuggestionResponse> suggestions(String keyword, int limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+
+        String normalizedKeyword = keyword.trim().toLowerCase(Locale.ROOT);
+        List<AnnouncementSuggestionResponse> suggestions = new ArrayList<>();
+        suggestions.addAll(findSuggestions(
+                aptRepository, "rceptBgnde", "hssplyAdres",
+                normalizedKeyword, limit,
+                item -> new AnnouncementSuggestionResponse(
+                        AnnouncementType.APT.getPath(), item.getHouseManageNo(), item.getPblancNo(),
+                        item.getHouseNm(), item.getHouseSecdNm(), item.getSubscrptAreaCodeNm(),
+                        item.getHssplyAdres(), item.getRceptBgnde(), item.getRceptEndde()
+                )
+        ));
+        suggestions.addAll(findSuggestions(
+                urbanRepository, "subscrptRceptBgnde", "hssplyHshldco",
+                normalizedKeyword, limit,
+                item -> new AnnouncementSuggestionResponse(
+                        AnnouncementType.URBAN.getPath(), item.getHouseManageNo(), item.getPblancNo(),
+                        item.getHouseNm(), item.getHouseSecdNm(), item.getSubscrptAreaCodeNm(),
+                        item.getHssplyHshldco(), item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde()
+                )
+        ));
+        suggestions.addAll(findSuggestions(
+                remainingRepository, "subscrptRceptBgnde", "hssplyAdres",
+                normalizedKeyword, limit,
+                item -> new AnnouncementSuggestionResponse(
+                        AnnouncementType.REMAINING.getPath(), item.getHouseManageNo(), item.getPblancNo(),
+                        item.getHouseNm(), item.getHouseSecdNm(), item.getSubscrptAreaCodeNm(),
+                        item.getHssplyAdres(), item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde()
+                )
+        ));
+        suggestions.addAll(findSuggestions(
+                publicRentalRepository, "subscrptRceptBgnde", "hssplyAdres",
+                normalizedKeyword, limit,
+                item -> new AnnouncementSuggestionResponse(
+                        AnnouncementType.PUBLIC_RENTAL.getPath(), item.getHouseManageNo(), item.getPblancNo(),
+                        item.getHouseNm(), item.getHouseSecdNm(), item.getSubscrptAreaCodeNm(),
+                        item.getHssplyAdres(), item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde()
+                )
+        ));
+        suggestions.addAll(findSuggestions(
+                optionalRepository, "subscrptRceptBgnde", "hssplyAdres",
+                normalizedKeyword, limit,
+                item -> new AnnouncementSuggestionResponse(
+                        AnnouncementType.OPTIONAL.getPath(), item.getHouseManageNo(), item.getPblancNo(),
+                        item.getHouseNm(), item.getHouseSecdNm(), item.getSubscrptAreaCodeNm(),
+                        item.getHssplyAdres(), item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde()
+                )
+        ));
+
+        return suggestions.stream()
+                .sorted(Comparator
+                        .comparing(
+                                (AnnouncementSuggestionResponse item) -> normalizedDate(item.rceptBgnde()),
+                                Comparator.nullsLast(Comparator.reverseOrder())
+                        )
+                        .thenComparing(AnnouncementSuggestionResponse::type)
+                        .thenComparing(AnnouncementSuggestionResponse::houseManageNo)
+                        .thenComparing(AnnouncementSuggestionResponse::pblancNo))
+                .limit(limit)
+                .toList();
+    }
+
+    private static <T> List<AnnouncementSuggestionResponse> findSuggestions(
+            JpaSpecificationExecutor<T> repository,
+            String receptionStartDateProperty,
+            String addressProperty,
+            String keyword,
+            int limit,
+            Function<T, AnnouncementSuggestionResponse> mapper
+    ) {
+        String pattern = "%" + keyword.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_") + "%";
+        Specification<T> specification = (root, query, builder) -> {
+            var nameMatches = builder.like(
+                    builder.lower(root.get("houseNm")), pattern, '\\'
+            );
+            var addressMatches = builder.like(
+                    builder.lower(root.get(addressProperty)), pattern, '\\'
+            );
+            query.orderBy(builder.desc(builder.function(
+                    "replace",
+                    String.class,
+                    root.get(receptionStartDateProperty),
+                    builder.literal("-"),
+                    builder.literal("")
+            )));
+            return builder.or(nameMatches, addressMatches);
+        };
+        return repository.findBy(specification, query -> query.limit(limit).all())
+                .stream()
+                .map(mapper)
+                .toList();
     }
 
     /** 선택한 유형의 공고를 접수 시작일 기준으로 통합 페이징합니다. */
