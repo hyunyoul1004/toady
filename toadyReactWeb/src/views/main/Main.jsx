@@ -209,6 +209,30 @@ export const Main = () => {
     return announcementsRes?.data?.resultList || [];
   }, [announcementsRes]);
 
+  // 시/도, 구/군 행정구역 옵션 + 현재 조회된 공고들의 아파트 단지명(houseNm) 옵션 동적 통합
+  const allSearchOptions = useMemo(() => {
+    const aptMap = new Map();
+
+    rawSubscriptList.forEach((item) => {
+      const houseNm = item.houseNm ? item.houseNm.trim() : '';
+      if (houseNm && !aptMap.has(houseNm)) {
+        const subAddress = item.hssplyAdres || item.supplyLocation || '';
+        aptMap.set(houseNm, {
+          key: `apt_${houseNm}`,
+          type: 'apartment',
+          label: houseNm,
+          subText: subAddress ? `(${subAddress})` : '',
+          houseNm,
+          cityName: '',
+          districtName: '',
+          searchText: `${houseNm} ${subAddress}`
+        });
+      }
+    });
+
+    return [...FLAT_CITY_OPTIONS, ...Array.from(aptMap.values())];
+  }, [rawSubscriptList]);
+
   // 검색어/지역 + 체크박스(특별공급/1순위/2순위 등) + 공급지역 체크박스 필터 적용된 목록
   const subscriptList = useMemo(() => {
     if (!rawSubscriptList || rawSubscriptList.length === 0) return [];
@@ -242,7 +266,24 @@ export const Main = () => {
           const houseNm = item.houseNm || '';
           const hssplyAdres = item.hssplyAdres || '';
 
-          // 구/군 검색인 경우 (예: '파주시' 또는 '경기도 파주시')
+          // A. freeSolo로 직접 텍스트를 입력/엔터한 경우 (문자열)
+          if (typeof target === 'string') {
+            const query = target.trim().toLowerCase();
+            if (!query) return true;
+            return (
+              houseNm.toLowerCase().includes(query) ||
+              supplyLoc.toLowerCase().includes(query) ||
+              hssplyAdres.toLowerCase().includes(query)
+            );
+          }
+
+          // B. 아파트 단지명(apartment) 옵션을 선택한 경우
+          if (target.type === 'apartment') {
+            const targetApt = (target.houseNm || target.label || '').trim();
+            return houseNm.includes(targetApt);
+          }
+
+          // C. 구/군 검색인 경우 (예: '파주시' 또는 '경기도 파주시')
           if (target.districtName) {
             return (
               supplyLoc.includes(target.districtName) ||
@@ -252,7 +293,7 @@ export const Main = () => {
             );
           }
 
-          // 시/도 전체 검색인 경우 (예: '서울특별시', '경기도')
+          // D. 시/도 전체 검색인 경우 (예: '서울특별시', '경기도')
           const query = target.cityName || target.label;
           return supplyLoc.includes(query) || hssplyAdres.includes(query) || houseNm.includes(query);
         })
@@ -774,63 +815,110 @@ export const Main = () => {
                   <Box sx={{ width: { xs: '100%', sm: 380, md: 440 }, flexShrink: 0 }}>
                     <Autocomplete
                       multiple
+                      freeSolo
                       size="small"
                       id="tags-outlined"
-                      options={FLAT_CITY_OPTIONS}
-                      getOptionLabel={(option) => option.label || option.cityName || ''}
-                      isOptionEqualToValue={(option, value) => option.key === value.key}
+                      options={allSearchOptions}
+                      getOptionLabel={(option) => {
+                        if (typeof option === 'string') return option;
+                        return option.label || option.cityName || option.houseNm || '';
+                      }}
+                      isOptionEqualToValue={(option, value) => {
+                        if (typeof option === 'string' || typeof value === 'string') {
+                          return option === value;
+                        }
+                        return option.key === value.key;
+                      }}
                       filterOptions={(options, { inputValue }) => {
                         const query = inputValue.trim().toLowerCase();
                         if (!query) return options.slice(0, 50); // 기본 50개 노출
-                        return options.filter((opt) => opt.searchText.toLowerCase().includes(query));
+                        return options.filter((opt) => {
+                          if (typeof opt === 'string') return opt.toLowerCase().includes(query);
+                          return opt.searchText?.toLowerCase().includes(query);
+                        });
                       }}
                       filterSelectedOptions
                       onChange={(_, newCitys) => setParamInfo((prev) => ({ ...prev, citys: newCitys }))}
-                      renderOption={(props, option) => (
-                        <li {...props} key={option.key}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 0.4, overflow: 'hidden' }}>
-                            <Chip
-                              label={option.type === 'city' ? '시/도' : '구/군'}
-                              size="small"
-                              sx={{
-                                height: 20,
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                mr: 1,
-                                flexShrink: 0,
-                                bgcolor: option.type === 'city' ? '#eff6ff' : '#f8fafc',
-                                color: option.type === 'city' ? '#2563eb' : '#64748b',
-                                border: option.type === 'city' ? '1px solid #bfdbfe' : '1px solid #e2e8f0'
-                              }}
-                            />
-                            <Typography
-                              sx={{
-                                fontSize: '0.85rem',
-                                fontWeight: option.type === 'city' ? 800 : 600,
-                                color: '#0f172a',
-                                whiteSpace: 'nowrap',
-                                mr: 1
-                              }}
-                            >
-                              {option.label}
-                            </Typography>
-                            {option.subText && (
-                              <Typography
-                                variant="caption"
+                      renderOption={(props, option) => {
+                        if (typeof option === 'string') {
+                          return (
+                            <li {...props} key={`custom_${option}`}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 0.4 }}>
+                                <Chip
+                                  label="직접입력"
+                                  size="small"
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    mr: 1,
+                                    flexShrink: 0,
+                                    bgcolor: '#f1f5f9',
+                                    color: '#475569',
+                                    border: '1px solid #cbd5e1'
+                                  }}
+                                />
+                                <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>
+                                  "{option}" 검색
+                                </Typography>
+                              </Box>
+                            </li>
+                          );
+                        }
+
+                        const isApt = option.type === 'apartment';
+                        const isCity = option.type === 'city';
+                        const chipLabel = isApt ? '단지명' : isCity ? '시/도' : '구/군';
+                        const chipBg = isApt ? '#fef3c7' : isCity ? '#eff6ff' : '#f8fafc';
+                        const chipColor = isApt ? '#d97706' : isCity ? '#2563eb' : '#64748b';
+                        const chipBorder = isApt ? '1px solid #fde68a' : isCity ? '1px solid #bfdbfe' : '1px solid #e2e8f0';
+
+                        return (
+                          <li {...props} key={option.key || option.label}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 0.4, overflow: 'hidden' }}>
+                              <Chip
+                                label={chipLabel}
+                                size="small"
                                 sx={{
-                                  fontSize: '0.75rem',
-                                  color: '#94a3b8',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
+                                  height: 20,
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  mr: 1,
+                                  flexShrink: 0,
+                                  bgcolor: chipBg,
+                                  color: chipColor,
+                                  border: chipBorder
+                                }}
+                              />
+                              <Typography
+                                sx={{
+                                  fontSize: '0.85rem',
+                                  fontWeight: isCity ? 800 : 600,
+                                  color: '#0f172a',
+                                  whiteSpace: 'nowrap',
+                                  mr: 1
                                 }}
                               >
-                                {option.subText}
+                                {option.label}
                               </Typography>
-                            )}
-                          </Box>
-                        </li>
-                      )}
+                              {option.subText && (
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontSize: '0.75rem',
+                                    color: '#94a3b8',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {option.subText}
+                                </Typography>
+                              )}
+                            </Box>
+                          </li>
+                        );
+                      }}
                       renderInput={(params) => (
                         <TextField
                           {...params}
