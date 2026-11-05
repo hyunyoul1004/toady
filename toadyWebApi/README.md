@@ -1,75 +1,156 @@
-# TOADY API
+# TOADY Web API
 
-부동산·분양 정보와 커뮤니티를 제공하는 Spring 기반 API 서버입니다.
+Spring Boot 기반의 분양 공고 통합 조회 및 커뮤니티 백엔드입니다. 아파트·도시형·잔여세대 등 서로 다른 공고 유형을 공통 API로 검색하고, 공고 상세 정보와 댓글 기능을 제공합니다.
 
-## 프로젝트 개요
+## 주요 기능
 
-청약·분양 정보와 공급 위치, 주변 시세 및 커뮤니티를 한 곳에서 제공하는 부동산 플랫폼 프로젝트입니다.
-
-- API 도메인: https://api.toady.co.kr
-- 웹사이트: https://www.toady.co.kr
-
-### 기존 화면
-
-![TOADY 화면 1](/uploads/bd94f337d704f0b9f5bb975e92166c60/KakaoTalk_Photo_2022-07-14-13-13-29.jpeg)
-![TOADY 화면 2](/uploads/f1d323192eb5baa69ca9d4c6ce8124ea/KakaoTalk_Photo_2022-07-14-13-09-18_003.jpeg)
-![TOADY 화면 3](/uploads/31accd5e7c899de2a49062eb8c049283/KakaoTalk_Photo_2022-07-14-13-09-18_002.jpeg)
-![TOADY 화면 4](/uploads/1e63c19b94510c759714171c048b00f0/KakaoTalk_Photo_2022-07-14-13-09-18_001.jpeg)
+- 5개 공고 유형(APT, URBAN, REMAINING, PUBLIC_RENTAL, OPTIONAL)의 통합 검색 및 페이지 조회
+- 공고 유형별 상세 정보, 경쟁률, APT 당첨 가점 및 특별공급 현황 조회
+- 전체 기간 공고 자동완성 검색: 주택명 또는 주소 키워드로 검색하고 접수 시작일 최신순으로 제한된 결과 반환
+- JWT 로그인 및 회원가입·이메일 인증·비밀번호 재설정
+- 공고 댓글 목록 조회, 작성, 수정, 삭제
+- Swagger UI를 통한 API 명세 확인
 
 ## 기술 스택
 
-- Java 21
-- Spring Boot 3.5.16 / Spring Security 6 / Spring Data JPA
-- Gradle Wrapper 8.14.4
-- MariaDB, Hibernate 6
-- Springdoc OpenAPI 2.8.17, JJWT 0.12.6
+| 구분 | 기술 |
+| --- | --- |
+| 언어 및 프레임워크 | Java 21, Spring Boot 3.5 |
+| 데이터 접근 | Spring Data JPA, Hibernate |
+| 데이터베이스 | MariaDB |
+| 인증 | Spring Security, JJWT 기반 JWT |
+| API 문서 | Springdoc OpenAPI / Swagger UI |
+| 테스트 | JUnit 5, Spring Boot Test, H2 |
+| 컨테이너 | Docker, Eclipse Temurin 21 |
 
-기존 계정·이메일 인증·게시판 API는 유지합니다. 예전 청약 일정 조회 API와 엔티티는 제거했습니다. 분양 공고 및 주택형 테이블은 읽기 전용으로 사용하며, Hibernate DDL 자동 변경은 꺼져 있습니다.
+## 주요 설계
 
-## 로컬 설정과 실행
+### 공고 유형 통합 검색
 
-1. JDK 21을 IntelliJ에 Project SDK로 등록합니다. 로컬 JDK 경로는 `/Users/youn/dev/dev_tool/jdk/jdk-21.0.2.jdk/Contents/Home`입니다.
-2. 처음 실행한다면 `.env.example`을 `.env`로 복사해 공통 환경변수를 설정합니다. 로컬 프로필은 선택적으로 `.env.local`도 읽으며, 이 파일의 값이 `.env`보다 우선합니다. JWT 키는 `openssl rand -base64 64`로 생성합니다. `.env`와 `.env.local`은 Git에서 제외되며, 비밀값을 코드나 커밋에 넣지 마세요.
-3. 터미널에서 다음 명령으로 JDK 21을 선택하고 실행합니다.
+공고 유형별로 테이블과 접수일 필드가 다르므로 각 JPA Repository에서 공통 검색 조건을 적용하고, 결과를 `AnnouncementListItem`으로 변환해 합칩니다. 요청 페이지에 필요한 만큼 유형별 후보를 조회한 뒤 접수 시작일 기준으로 전역 정렬하고 페이지를 구성합니다.
 
-```bash
-export JAVA_HOME="/Users/youn/dev/dev_tool/jdk/jdk-21.0.2.jdk/Contents/Home"
-export PATH="$JAVA_HOME/bin:$PATH"
-export SPRING_PROFILES_ACTIVE=local
-java -version
-./gradlew test
-./gradlew bootRun
+검색 조건은 공고 유형, 지역 코드, 주택명 키워드, 접수 시작일 범위이며, 유형을 지정하지 않으면 5개 유형을 모두 조회합니다. 접수일 컬럼과 데이터 형식은 유형별로 다르기 때문에 조회와 정렬 시 해당 차이를 반영합니다.
+
+```mermaid
+flowchart TD
+    Request["통합 공고 조회"] --> Service["AnnouncementService.searchAll()"]
+    Service --> APT["APT Repository"]
+    Service --> URBAN["URBAN Repository"]
+    Service --> REM["REMAINING Repository"]
+    Service --> RENT["PUBLIC_RENTAL Repository"]
+    Service --> OPT["OPTIONAL Repository"]
+    APT --> DTO["공통 AnnouncementListItem 변환"]
+    URBAN --> DTO
+    REM --> DTO
+    RENT --> DTO
+    OPT --> DTO
+    DTO --> Sort["전체 후보 접수 시작일 기준 정렬"]
+    Sort --> Page["요청 페이지 구간 반환"]
 ```
 
-`application.yml`에 공통 설정을 모으고 `application-local.yml`, `application-dev.yml`, `application-real.yml`에는 서버별 차이만 둡니다. DB·메일·JWT 비밀값은 YML이 아니라 `.env` 또는 서버 환경변수에서 읽습니다. IntelliJ의 Gradle JVM은 `21`로 맞추고, 공유 실행 구성 **Toady Web API**를 사용합니다. 이 구성은 `local` 프로필과 지정된 JDK 21을 사용합니다. 로컬 프로필 기본 포트는 `8081`, 개발·운영 프로필은 `8080`입니다.
+### 전체 기간 자동완성
 
-로컬 프로필은 Gmail SMTP(`smtp.gmail.com:587`, `dukkeoba@gmail.com`)를 사용합니다. Gmail 앱 비밀번호는 `.env.local`에 `MAIL_PASSWORD=새로운앱비밀번호`로 설정하세요. 메일 발송이 실패하면 회원가입 API는 `502 Bad Gateway`와 실패 응답을 반환하며, 해당 가입과 인증 레코드는 저장되지 않습니다. 개발·운영 환경은 `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`를 별도로 설정해야 합니다.
+`GET /api/v1/announcements/suggestions`는 특정 월에 한정하지 않고 5개 공고 유형에서 키워드를 검색합니다. 각 유형에서 제한된 수의 후보를 가져와 접수 시작일 최신순으로 합친 뒤 요청한 최대 건수만 반환합니다. 빈 키워드는 빈 목록을 반환하며, 기본 limit은 10이고 허용 범위는 1~20입니다.
 
-로컬 프로필은 P6Spy를 통해 바인딩 값이 적용된 SQL을 콘솔에 출력합니다. 따라서 SQL의 `?`가 실제 값으로 표시됩니다. 이 로그에는 사용자 입력이나 개인정보가 포함될 수 있으므로 로컬 개발용으로만 사용하고, 운영 환경은 P6Spy를 사용하지 않으며 `LOG_LEVEL_P6SPY=OFF`를 유지하세요. 출력 레벨은 `LOG_LEVEL_P6SPY`로 조정할 수 있습니다.
+### 복합키 매핑
 
-## API
+공고 상세 엔티티는 `houseManageNo`와 `pblancNo`를 `@IdClass`로 매핑합니다. 주택형·경쟁률 등 관련 엔티티는 각각 필요한 식별자 클래스를 사용해 복합 식별자를 표현합니다.
 
-공통 응답은 `{ "data": ..., "resultCode": "SUCCESS", "resultMessage": "성공" }` 형식입니다. 목록은 `page`(0부터 시작), `size`(기본 20, 최대 100), `regionCode`, `keyword`, 모집공고일 범위(`startDate`, `endDate`; `yyyy-MM-dd`)를 지원합니다.
+### 인증 및 인가
 
-| 유형 경로 | 공고 테이블 |
-|---|---|
-| `/api/v1/apt/announcements` | APT 분양 |
-| `/api/v1/urban/announcements` | 오피스텔·도시형·민간임대 |
-| `/api/v1/remaining/announcements` | APT 잔여세대 |
-| `/api/v1/public-rental/announcements` | 공공지원 민간임대 |
-| `/api/v1/optional/announcements` | 임의공급 |
+JWT 기반 무상태 인증을 사용합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다.
 
-각 유형 경로에 `GET /{houseManageNo}/{pblancNo}`를 붙이면 공고 상세와 주택형 목록을 조회합니다.
+## API 요약
 
-경쟁률은 각 공고 유형 경로에 `/{houseManageNo}/{pblancNo}/competition-rates`를 붙여 조회합니다. APT 당첨가점은 `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/scores`, 특별공급 신청현황은 `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/special-supply-status`에서 조회합니다. 스케줄러가 적재한 해당 테이블의 레코드를 반환합니다.
+| Method | Endpoint | 설명 | 접근 |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/announcements` | 5개 유형 공고 통합 검색 및 페이지 조회 | 공개 |
+| `GET` | `/api/v1/announcements/suggestions` | 전체 기간 공고 자동완성 검색 | 공개 |
+| `GET` | `/api/v1/{type}/announcements` | 공고 유형별 검색 | 공개 |
+| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}` | 공고 상세 조회 | 공개 |
+| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/competition-rates` | 경쟁률 조회 | 공개 |
+| `GET` | `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/scores` | APT 당첨 가점 조회 | 공개 |
+| `GET` | `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/special-supply-status` | APT 특별공급 신청현황 조회 | 공개 |
+| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments` | 댓글 목록 조회 | 공개 |
+| `POST` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments` | 댓글 작성 | 로그인 필요 |
+| `PATCH` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 수정 | 로그인 필요 |
+| `DELETE` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 삭제 | 로그인 필요 |
 
-댓글은 유형 경로 아래에서 조회·등록·수정·삭제합니다.
+`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 로컬 프로파일은 기본 포트 `8081`을 사용합니다.
 
-- `GET /{type}/announcements/{houseManageNo}/{pblancNo}/comments?page=0&size=20`
-- `POST /{type}/announcements/{houseManageNo}/{pblancNo}/comments` — 로그인 필요
-- `PATCH /{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` — 작성자 로그인 필요
-- `DELETE /{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` — 작성자 로그인 필요
+### 자동완성 요청 예시
 
-`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 댓글은 기존 댓글 테이블을 재사용하지 않고 `TB_LTTOT_PBLANC_COMMENT`에 저장합니다. 기존 `T_SUBSCRIPT_COMMENT` 데이터는 보존되지만 새 API에서 노출하지 않습니다. 새 분양 API를 사용하기 전에 `src/main/resources/db/schema/TB_LTTOT_PBLANC_COMMENT.sql`을 DB에 한 번 적용해야 합니다.
+```http
+GET /api/v1/announcements/suggestions?keyword=자이&limit=10
+```
 
-회원가입·로그인·이메일 인증 경로는 기존 `/webApi/user/**`, `/webApi/certify/**`를, 게시판 조회는 `/webApi/boards/board-list`를 사용합니다. OpenAPI UI는 `/swagger-ui/index.html`에서 확인할 수 있습니다.
+응답은 공통 `ResData` 형식이며, `data`는 자동완성 결과 배열입니다.
+
+```json
+{
+  "data": [
+    {
+      "type": "apt",
+      "houseManageNo": "2026000123",
+      "pblancNo": "2026000123",
+      "houseNm": "메이플자이",
+      "houseSecdNm": "민영",
+      "subscrptAreaCodeNm": "서울",
+      "hssplyAdres": "서울특별시 서초구",
+      "rceptBgnde": "2026-08-12",
+      "rceptEndde": "2026-08-14"
+    }
+  ],
+  "resultCode": "SUCCESS",
+  "resultMessage": "성공"
+}
+```
+
+## 로컬 실행
+
+필요 환경: Java 21, MariaDB, Gradle Wrapper.
+
+기본 프로파일은 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` 환경변수가 필요합니다. 로컬 프로파일은 `.env.local` 파일을 읽으며 기본 서버 포트는 `8081`입니다. 프로젝트 루트에 아래 형식으로 `.env.local`을 준비하고 실제 접속 정보와 Base64 인코딩 JWT 서명 키를 설정합니다.
+
+```properties
+DB_URL=jdbc:mariadb://localhost:3306/toady
+DB_USERNAME=your-db-user
+DB_PASSWORD=your-db-password
+JWT_SECRET=your-base64-encoded-secret
+MAIL_USERNAME=
+MAIL_PASSWORD=
+```
+
+`JWT_SECRET`은 운영용 비밀값을 저장소에 커밋하지 말고 안전한 방법으로 관리하세요. 회원가입 및 비밀번호 재설정 이메일 기능을 사용하려면 SMTP 설정도 필요합니다.
+
+```bash
+# 테스트
+./gradlew test
+
+# 로컬 프로파일로 실행
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 댓글 테이블 DDL은 `src/main/resources/db/schema/TB_LTTOT_PBLANC_COMMENT.sql`에 있습니다.
+
+## 테스트 및 Docker
+
+테스트는 H2 데이터베이스를 사용해 애플리케이션 컨텍스트, 주요 API 흐름, 통합 공고 검색 및 자동완성 동작을 확인합니다.
+
+```bash
+./gradlew clean test
+```
+
+Docker 이미지 빌드는 프로젝트 루트에서 실행합니다. 컨테이너 실행 시 데이터베이스 접속 정보와 JWT 키를 환경변수로 전달해야 하며, 컨테이너에서 접근 가능한 MariaDB가 준비되어 있어야 합니다.
+
+```bash
+docker build -t toady-web-api .
+docker run --rm -p 8080:8080 \
+  -e DB_URL='jdbc:mariadb://host.docker.internal:3306/toady' \
+  -e DB_USERNAME='your-db-user' \
+  -e DB_PASSWORD='your-db-password' \
+  -e JWT_SECRET='your-base64-encoded-secret' \
+  toady-web-api
+```
+
+`host.docker.internal`은 로컬 Docker 컨테이너에서 호스트 머신의 데이터베이스에 접근할 때 사용하는 예시입니다. 배포 환경에 맞는 DB 주소와 환경변수를 설정하세요.

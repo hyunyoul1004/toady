@@ -32,5 +32,4 @@ yarn-error.log*
 *.swp
 *.swo
 
-# portfolio exclude
-README.md
+
