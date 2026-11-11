@@ -93,4 +93,22 @@ class ApplyhomeCompetitionSyncServiceTest {
                 eq(java.util.Map.of("cond[HOUSE_MANAGE_NO::EQ]", "REMAINING", "cond[PBLANC_NO::EQ]", "REMAINING")));
     }
 
+    @Test
+    void scoreOnlyBackfillCallsOnlyAptDiscoveryAndScoreEndpoint() throws Exception {
+        var mapper = new ObjectMapper();
+        var announcement = mapper.readTree("{\"HOUSE_MANAGE_NO\":\"2020000001\",\"PBLANC_NO\":\"2020000001\"}");
+        var score = mapper.readTree("{\"HOUSE_MANAGE_NO\":\"2020000001\",\"PBLANC_NO\":\"2020000001\",\"MODEL_NO\":\"01\",\"RESIDE_SECD\":\"01\",\"AVRG_SCORE\":\"65.0\"}");
+        when(announcementApiClient.getPage(eq("getAPTLttotPblancDetail"), eq(1), anyMap()))
+                .thenReturn(new ApplyhomeApiPage(List.of(announcement), 1, 1));
+        when(competitionApiClient.getPage(eq("getAptLttotPblancScore"), eq(1), anyMap()))
+                .thenReturn(new ApplyhomeApiPage(List.of(score), 1, 1));
+        doAnswer(invocation -> { ((Runnable) invocation.getArgument(0)).run(); return null; })
+                .when(syncLock).execute(any(Runnable.class));
+        var service = new ApplyhomeCompetitionSyncService(announcementApiClient, competitionApiClient, persistenceService, syncLock);
+        assertThat(service.synchronizeScores(java.time.LocalDate.of(2020, 1, 1), java.time.LocalDate.of(2020, 12, 31))).isEqualTo(1);
+        verify(competitionApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());
+        verify(announcementApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());
+        verify(persistenceService).upsert(eq("TB_APT_LTTOT_PBLANC_SCORE"), any(), any(), eq(List.of(score)));
+    }
+
 }

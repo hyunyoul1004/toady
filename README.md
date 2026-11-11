@@ -44,6 +44,7 @@ flowchart LR
 | --- | --- |
 | Frontend | React 18, Vite 5, TanStack Query v5, Zustand, MUI, FullCalendar |
 | Backend | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT |
+| 수집 관리자 | Thymeleaf, 세션 인증, 기간별 백필, DB 기반 자동 스케줄·실행 이력 |
 | Data | MariaDB, 청약홈 Open API, Spring `@Scheduled` |
 | Validation | JUnit 5, Spring Boot Test, Mockito, H2 |
 | Delivery | Docker, Docker Compose, Nginx, Certbot, GitHub Actions |
@@ -87,6 +88,12 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 메인 화면의 검색·필터, 필터 UI, 공고 원문 표시를 훅과 컴포넌트로 분리했습니다. 서버 상태는 TanStack Query로 관리하며 댓글 변경 후 관련 쿼리를 무효화합니다. API의 공고 조회 진입점은 유지하고 검색·상세·경쟁률 서비스를 나눴습니다.
 
 구현: [메인 화면](toadyReactWeb/src/views/main/Main.jsx) · [공고 Query 훅](toadyReactWeb/src/features/announcement/hooks/useAnnouncements.js) · [조회 진입점](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementService.java)
+
+## 수집 관리자
+
+`toadyScheduler`에 Thymeleaf 관리자 화면을 제공합니다. 공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 관리자 화면에서 모집공고일을 지정해 복원할 수 있습니다.
+
+기본값은 비활성화이며 관리자 테이블 두 개와 계정을 준비한 뒤 활성화합니다. [테이블 생성 SQL](db/migration/V3__create_scheduler_admin_tables.sql)과 [관리자 활성화·접속 안내](toadyScheduler/README.md#thymeleaf-수집-관리자)를 참고하세요. 현재 실행 상태는 5초마다 갱신되며 중지 요청·같은 기간 재실행도 지원합니다.
 
 ## 검증과 배포
 

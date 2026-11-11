@@ -19,7 +19,22 @@ logging:
   level:
     com.toady.web: INFO
 
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${SCHEDULER_ADMIN_SECURE_COOKIE:false}
+
 applyhome:
+  admin:
+    # 테이블·관리자 계정을 준비하기 전에는 기존 정적 스케줄만 실행하도록 기본 비활성화한다.
+    enabled: ${SCHEDULER_ADMIN_ENABLED:false}
+    username: ${SCHEDULER_ADMIN_USERNAME:admin}
+    password: ${SCHEDULER_ADMIN_PASSWORD:}
   api:
     base-url: https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1
     service-key: ${APPLYHOME_API_KEY:}

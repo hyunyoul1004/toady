@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -16,6 +17,8 @@ import java.time.ZoneId;
 
 /** 일 단위 갱신 문서에 맞춘 수집. 시각은 API 공개 보장 시간이 아닌 운영 정책이다. */
 @Component
+// 관리자 기능을 켜면 DB 기반 타이머가 수집을 맡으므로 기존 정적 스케줄은 등록하지 않는다.
+@ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "false", matchIfMissing = true)
 public class ApplyhomeSyncScheduler {
     private static final Logger log = LoggerFactory.getLogger(ApplyhomeSyncScheduler.class);
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");

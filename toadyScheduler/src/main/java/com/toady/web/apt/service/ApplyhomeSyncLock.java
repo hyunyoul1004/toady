@@ -25,7 +25,7 @@ public class ApplyhomeSyncLock {
 	public void execute(Runnable action) {
 		try (Connection connection = dataSource.getConnection()) {
 			if (!acquire(connection)) {
-				throw new IllegalStateException("Another Applyhome synchronization is already running");
+				throw new ApplyhomeSyncBusyException();
 			}
 			try {
 				action.run();

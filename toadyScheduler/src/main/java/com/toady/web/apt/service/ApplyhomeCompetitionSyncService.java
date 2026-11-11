@@ -100,6 +100,18 @@ public class ApplyhomeCompetitionSyncService {
 		syncLock.execute(() -> synchronizeLocked(startDate, endDate));
 	}
 
+	/** 과거 가점만 재수집할 때 불필요한 경쟁률 API 호출을 피한다. 기간은 모집공고일 기준이다. */
+	// 반환값은 조회해 upsert한 응답 행 수다. 같은 키를 갱신한 행도 포함한다.
+	public long synchronizeScores(LocalDate startDate, LocalDate endDate) {
+		if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
+			throw new IllegalArgumentException("A valid start and end date range is required");
+		}
+		var count = new java.util.concurrent.atomic.AtomicLong();
+		syncLock.execute(() -> count.set(syncForAnnouncements(APT_SCORE,
+				discover("getAPTLttotPblancDetail", startDate, endDate, false))));
+		return count.get();
+	}
+
 	private void synchronizeLocked(LocalDate startDate, LocalDate endDate) {
 		List<AnnouncementKey> aptAnnouncements = discover("getAPTLttotPblancDetail", startDate, endDate, false);
 		List<AnnouncementKey> urbanAnnouncements = discover(
@@ -148,7 +160,7 @@ public class ApplyhomeCompetitionSyncService {
 		return List.copyOf(keys);
 	}
 
-	private void syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements) {
+	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements) {
 		long totalRows = 0;
 		for (AnnouncementKey key : announcements) {
 			Map<String, String> filters = Map.of(
@@ -160,6 +172,7 @@ public class ApplyhomeCompetitionSyncService {
 		}
 		log.info("Synchronized Applyhome endpoint={} announcements={} rows={}",
 				table.endpoint(), announcements.size(), totalRows);
+		return totalRows;
 	}
 
 	private List<JsonNode> fetchAllPages(ApplyhomeApiClient client, String endpoint, Map<String, String> filters) {

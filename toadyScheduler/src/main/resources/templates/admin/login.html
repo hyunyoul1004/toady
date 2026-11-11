@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TOADY 수집 관리자 로그인</title><link rel="stylesheet" th:href="@{/admin/style.css}"></head>
+<body class="login-page"><main class="login-card">
+    <a class="brand" th:href="@{/admin}"><span class="brand-mark">T</span> TOADY <span class="muted">/ 관리자</span></a>
+    <p class="eyebrow">DATA OPERATIONS</p><h1>수집 관리에 로그인</h1><p class="muted">청약 데이터의 수집 일정과 실행 내역을 관리합니다.</p>
+    <div class="alert error" th:if="${param.error}">아이디 또는 비밀번호를 확인하세요.</div>
+    <div class="alert notice" th:if="${param.logout}">로그아웃했습니다.</div>
+    <!-- 사용자명·비밀번호와 함께 CSRF 토큰이 전달된다. 실제 비밀번호는 템플릿에 포함하지 않는다. -->
+    <form th:action="@{/admin/login}" method="post" class="login-form">
+        <label>관리자 아이디<input name="username" autocomplete="username" autofocus required></label>
+        <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">로그인 <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="login-foot">TOADY · 청약 데이터 수집 관리</p>
+</main></body></html>
