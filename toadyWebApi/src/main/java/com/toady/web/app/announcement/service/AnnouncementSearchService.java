@@ -155,8 +155,9 @@ public class AnnouncementSearchService {
         Set<AnnouncementType> types = selectedTypes(requestedTypes);
 
         long requiredCount = ((long) search.page() + 1) * search.size();
-        if (requiredCount > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException("요청한 페이지 범위가 너무 큽니다.");
+        // 유형별 선행 조회가 무제한으로 커지지 않도록 통합 탐색 범위를 제한한다.
+        if (requiredCount > 10_000) {
+            throw new IllegalArgumentException("통합 검색은 (page + 1) × size가 10000 이하인 범위에서 조회할 수 있습니다.");
         }
 
         List<AnnouncementListItem> candidates = new ArrayList<>();

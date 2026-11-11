@@ -130,3 +130,26 @@ test('stale unauthorized response does not clear a newer session', async () => {
   await assert.rejects(h.client.handleResponse(new Response('{}', { status: 401 }), old));
   assert.equal(h.store.getState().accessToken, current);
 });
+
+
+test('comments collect older parents and report the server total', async () => {
+  const pages = [];
+  const h = await harness(async url => {
+    const page = Number(new URL(url, 'http://localhost').searchParams.get('page'));
+    pages.push(page);
+    return response({ data: { content: page ? [{ commentSeq: 1, parentCommentSeq: null }] : Array.from({ length: 100 }, (_, i) => ({ commentSeq: i + 2, parentCommentSeq: 1 })), totalPages: 2, totalElements: 101 } });
+  });
+  const result = await h.api.getComments({ type: 'apt', houseManageNo: '1', pblancNo: '1' });
+  assert.deepEqual(pages, [0, 1]);
+  assert.equal(result.data.subscriptCommentList.length, 101);
+  assert.equal(result.data.totalElements, 101);
+});
+
+test('comments reject partial results when an older page fails', async () => {
+  let calls = 0;
+  const h = await harness(async () => {
+    if (++calls > 1) throw new Error('comments unavailable');
+    return response({ data: { content: [], totalPages: 2 } });
+  });
+  await assert.rejects(h.api.getComments({ type: 'apt', houseManageNo: '1', pblancNo: '1' }), /comments unavailable/);
+});

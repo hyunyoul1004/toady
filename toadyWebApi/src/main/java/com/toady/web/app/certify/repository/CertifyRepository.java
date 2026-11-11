@@ -23,6 +23,7 @@ public interface CertifyRepository extends JpaRepository<CertifyEntity, Long> {
      * @param certifyCode
      * @param userSeq
      */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     public CertifyEntity findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(String CertifyType, String CertifySendType, String certifyCode, Long userSeq);
 
 

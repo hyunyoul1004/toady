@@ -22,6 +22,26 @@ public class ApplyhomeCompetitionPersistenceService {
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
+    /** 완전하게 조회한 공고별 스냅샷을 교체한다. 검증 실패 시 기존 데이터는 유지한다. */
+    @Transactional
+    public void replace(String table, List<String> columns, List<String> keyColumns,
+            String houseManageNo, String pblancNo, List<JsonNode> rows) {
+        for (JsonNode row : rows) {
+            for (String key : keyColumns) {
+                if (field(row, key) == null || field(row, key).isNull()) {
+                    throw new IllegalStateException("Missing snapshot key: " + key);
+                }
+            }
+            if (!houseManageNo.equals(field(row, "HOUSE_MANAGE_NO").asText())
+                    || !pblancNo.equals(field(row, "PBLANC_NO").asText())) {
+                throw new IllegalStateException("Snapshot contains another announcement");
+            }
+        }
+        jdbcTemplate.update("DELETE FROM " + table + " WHERE HOUSE_MANAGE_NO = ? AND PBLANC_NO = ?",
+                houseManageNo, pblancNo);
+        upsert(table, columns, keyColumns, rows);
+    }
+
 	@Transactional
 	public void upsert(String table, List<String> columns, List<String> keyColumns, List<JsonNode> rows) {
 		if (rows.isEmpty()) {

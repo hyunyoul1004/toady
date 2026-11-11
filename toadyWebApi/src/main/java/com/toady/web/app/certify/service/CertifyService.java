@@ -140,6 +140,7 @@ public class CertifyService {
 
 
     /** 가입 인증 코드를 확인하고 이메일 인증 상태를 갱신합니다. */
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> certifyCheck(CertifyDTO.CheckParam param){
 
         try {
@@ -158,6 +159,10 @@ public class CertifyService {
             if("Y".equals(certifyEntity.getCertifyYn())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_CERTIFY_ERROR.getCode(), ResultCode.ALREADY_CERTIFY_ERROR.getMessage()));
             }
+            // 가입 링크는 발급 후 24시간까지만 허용한다.
+            if (!certifyEntity.getCreateDt().plusHours(24).isAfter(LocalDateTime.now())) {
+                return ResponseEntity.ok().body(ResData.of(ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getCode(), ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getMessage()));
+            }
             certifyEntity.setCertifyYn("Y");
             certifyEntity.setUpdateUserSeq(userEntity.getUserSeq());
             certifyEntity.setUpdateDt(LocalDateTime.now());
@@ -172,8 +177,8 @@ public class CertifyService {
 
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.ok().body(ResData.of(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage()));
+            // 예외를 전파해 회원 정보와 인증 코드 소비를 함께 롤백한다.
+            throw new IllegalStateException("인증 처리에 실패했습니다.", e);
         }
 
 
@@ -277,6 +282,7 @@ public class CertifyService {
 
 
     /** 10분 이내의 비밀번호 재설정 코드를 확인하고 새 비밀번호를 저장합니다. */
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> certifyConfrimAndPasswordChange(CertifyDTO.PasswordChange param){
 
 
@@ -298,9 +304,7 @@ public class CertifyService {
             }
 
             LocalDateTime currentTime = LocalDateTime.now();
-            long time = ChronoUnit.MINUTES.between(certifyEntity.getCreateDt(), currentTime);
-
-            if((int)time > 10){
+            if (!certifyEntity.getCreateDt().plusMinutes(10).isAfter(currentTime)) {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getCode(), ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getMessage()));
             }
 
@@ -326,8 +330,8 @@ public class CertifyService {
             certifyRepository.save(certifyEntity);
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.ok().body(ResData.of(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage()));
+            // 예외를 전파해 회원 정보와 인증 코드 소비를 함께 롤백한다.
+            throw new IllegalStateException("인증 처리에 실패했습니다.", e);
         }
 
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 비밀번호가 변경 되었습니다."));

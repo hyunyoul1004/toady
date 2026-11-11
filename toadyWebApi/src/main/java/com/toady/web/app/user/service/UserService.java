@@ -138,6 +138,6 @@ public class UserService {
             return ResponseEntity.ok().body(ResData.of(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage()));
         }
 
-        return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/> 인증 후 로그인 가능하며, <br/>24시간동안 인증이 완료 되지 않으면 회원 가입이 취소됩니다."));
+        return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/> 인증 후 로그인 가능하며, <br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
     }
 }

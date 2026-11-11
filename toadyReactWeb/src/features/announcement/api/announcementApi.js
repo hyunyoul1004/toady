@@ -392,7 +392,15 @@ export const announcementApi = {
     const size = params.size != null ? params.size : 100;
 
     const res = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page, size });
-    const content = res.data?.content || (Array.isArray(res.data) ? res.data : []);
+    const content = [...(res.data?.content || (Array.isArray(res.data) ? res.data : []))];
+    // 부모와 답글을 같은 목록에서 조립하므로 기본 조회는 전체 페이지를 모은다.
+    // 명시적으로 page를 지정한 호출은 서버의 페이지 계약을 유지한다.
+    if (params.page == null) {
+      for (let nextPage = 1; nextPage < (res.data?.totalPages || 1); nextPage += 1) {
+        const next = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page: nextPage, size });
+        content.push(...(next.data?.content || []));
+      }
+    }
 
     const subscriptCommentList = content.map((c) => ({
       ...c,

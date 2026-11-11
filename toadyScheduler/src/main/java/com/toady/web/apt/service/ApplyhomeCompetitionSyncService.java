@@ -167,7 +167,8 @@ public class ApplyhomeCompetitionSyncService {
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
 					"cond[PBLANC_NO::EQ]", key.pblancNo());
 			List<JsonNode> rows = fetchAllPages(competitionApiClient, table.endpoint(), filters);
-			persistenceService.upsert(table.table(), table.columns(), table.keys(), rows);
+			persistenceService.replace(table.table(), table.columns(), table.keys(),
+                    key.houseManageNo(), key.pblancNo(), rows);
 			totalRows += rows.size();
 		}
 		log.info("Synchronized Applyhome endpoint={} announcements={} rows={}",

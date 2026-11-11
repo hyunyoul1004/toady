@@ -43,4 +43,21 @@ class ApplyhomeCompetitionPersistenceServiceTest {
                 List.of("HOUSE_MANAGE_NO", "CMPET_RATE"), List.of("HOUSE_MANAGE_NO"), List.of(row)));
         verifyNoInteractions(jdbc);
     }
+
+    @Test void emptySnapshotRemovesOldAnnouncementRows() {
+        var jdbc = mock(JdbcTemplate.class);
+        new ApplyhomeCompetitionPersistenceService(jdbc).replace("TEST_TABLE",
+                List.of("HOUSE_MANAGE_NO", "PBLANC_NO"), List.of("HOUSE_MANAGE_NO", "PBLANC_NO"),
+                "house", "notice", List.of());
+        verify(jdbc).update("DELETE FROM TEST_TABLE WHERE HOUSE_MANAGE_NO = ? AND PBLANC_NO = ?", "house", "notice");
+    }
+
+    @Test void anotherAnnouncementsSnapshotCannotDeleteExistingRows() throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        JsonNode row = new ObjectMapper().readTree("{\"HOUSE_MANAGE_NO\":\"other\",\"PBLANC_NO\":\"notice\"}");
+        assertThrows(IllegalStateException.class, () -> new ApplyhomeCompetitionPersistenceService(jdbc)
+                .replace("TEST_TABLE", List.of("HOUSE_MANAGE_NO", "PBLANC_NO"),
+                        List.of("HOUSE_MANAGE_NO", "PBLANC_NO"), "house", "notice", List.of(row)));
+        verifyNoInteractions(jdbc);
+    }
 }

@@ -23,7 +23,7 @@ public class AnnouncementSearch {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate endDate;
 
-    @Schema(description = "조회할 페이지(0부터 시작)", minimum = "0", example = "0")
+    @Schema(description = "조회할 페이지(0부터 시작, 통합 목록은 (page+1)×size 최대 10000)", minimum = "0", example = "0")
     @Min(0)
     private int page;
 

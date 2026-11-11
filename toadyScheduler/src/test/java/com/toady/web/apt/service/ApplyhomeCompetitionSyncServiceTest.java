@@ -108,7 +108,8 @@ class ApplyhomeCompetitionSyncServiceTest {
         assertThat(service.synchronizeScores(java.time.LocalDate.of(2020, 1, 1), java.time.LocalDate.of(2020, 12, 31))).isEqualTo(1);
         verify(competitionApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());
         verify(announcementApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());
-        verify(persistenceService).upsert(eq("TB_APT_LTTOT_PBLANC_SCORE"), any(), any(), eq(List.of(score)));
+        verify(persistenceService).replace(eq("TB_APT_LTTOT_PBLANC_SCORE"), any(), any(),
+                anyString(), anyString(), eq(List.of(score)));
     }
 
 }

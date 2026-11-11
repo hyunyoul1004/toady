@@ -96,7 +96,7 @@ export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
     return rootItems;
   }, [commentsRes]);
 
-  const totalCommentCount = commentsRes?.data?.subscriptCommentList?.length || 0;
+  const totalCommentCount = commentsRes?.data?.totalElements ?? commentsRes?.data?.subscriptCommentList?.length ?? 0;
 
   // 루트 댓글 등록
   const handleSaveRootComment = async (e) => {
@@ -503,7 +503,7 @@ export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
         )}
 
         {/* 자식 답글 스레드 렌더링 */}
-        {!isChild && row.items?.length > 0 && (
+        {row.items?.length > 0 && (
           <Box
             sx={{
               ml: { xs: 2.5, sm: 5.8 },
