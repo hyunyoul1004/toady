@@ -213,9 +213,15 @@ export const announcementApi = {
     queryParams.size = params.size != null ? params.size : 100;
 
     const res = await apiClient.get('/api/v1/announcements', queryParams);
-    console.log('[subscriptList] 요청 params:', queryParams);
-    console.log('[subscriptList] 응답 원본:', res);
-    const content = res.data?.content || [];
+    const content = [...(res.data?.content || [])];
+    if (params.page == null) {
+      // Calendar data must include every page in the selected date range.
+      const totalPages = res.data?.totalPages || 1;
+      for (let page = 1; page < totalPages; page += 1) {
+        const next = await apiClient.get('/api/v1/announcements', { ...queryParams, page });
+        content.push(...(next.data?.content || []));
+      }
+    }
 
     // UI 컴포넌트 호환 매핑
     // - APT: 한 공고(row)의 특별공급/1순위/2순위 컬럼을 각각의 일정으로 펼침

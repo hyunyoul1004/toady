@@ -39,6 +39,7 @@ jobs:
         working-directory: toadyReactWeb
         run: |
           npm ci
+          npm test
           npm run build
       - name: Upload test reports
         if: always()
@@ -49,8 +50,47 @@ jobs:
             toadyWebApi/build/reports/tests/
             toadyScheduler/build/reports/tests/
 
+  verify-mariadb:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4.9
+        env:
+          MARIADB_ROOT_PASSWORD: ci-test-password
+          MARIADB_DATABASE: toady_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare isolated schema fixture
+        env:
+          DB_CONTAINER: ${{ job.services.mariadb.id }}
+        run: >-
+          docker exec "$DB_CONTAINER" mariadb -uroot -pci-test-password toady_test
+          -e 'CREATE TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_MDL (ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, HOUSE_MANAGE_NO VARCHAR(40), PBLANC_NO VARCHAR(40), MODEL_NO VARCHAR(4), TP VARCHAR(10), SUPLY_AMOUNT VARCHAR(20)) ENGINE=InnoDB'
+      - name: Verify MariaDB SQL and transactions on temporary tables
+        working-directory: toadyWebApi
+        env:
+          TOADY_TEST_DB_URL: jdbc:mariadb://127.0.0.1:3306/toady_test
+          TOADY_TEST_DB_USERNAME: root
+          TOADY_TEST_DB_PASSWORD: ci-test-password
+        run: bash ./gradlew --no-daemon mariadbTest -Dtoady.mariadb.temporary.enabled=true
+      - name: Upload MariaDB test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mariadb-test-reports
+          path: toadyWebApi/build/reports/tests/mariadbTest/
+
   build-and-deploy:
-    needs: verify
+    needs: [verify, verify-mariadb]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:

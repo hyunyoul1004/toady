@@ -58,7 +58,7 @@ flowchart TD
 
 ### 인증 및 인가
 
-JWT 기반 무상태 인증을 사용합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다.
+JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 연결된 토큰 검증값을 확인합니다. 잠금·탈퇴·비밀번호 변경 후에는 기존 토큰을 거부합니다. 검증값은 서버 키로 계산하며 비밀번호 해시 자체를 JWT에 넣지 않습니다. 이 검증값이 없는 기존 토큰은 재로그인이 필요합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다.
 
 ## 코드 구성
 
@@ -139,6 +139,22 @@ bash ./gradlew bootRun
 애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 신규 공유 스키마 변경은 루트 `db/migration`에서 관리합니다. 기존 댓글 DDL은 참고 자료로 남기며, 도입 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
 
 ## 테스트 및 Docker
+
+빠른 회귀 검증은 H2로, 실제 PK·MariaDB SQL 및 DML 권한 검증은 별도 작업으로 나눕니다.
+
+```bash
+# 개발 DB 검증: .env.local 또는 TOADY_TEST_DB_URL / USERNAME / PASSWORD 설정 사용
+bash ./gradlew mariadbTest
+```
+
+`mariadbTest`는 기존 테이블의 PK와 읽기 전용 날짜 정렬을 확인하고, 고유한 테스트 행의 INSERT·UPDATE·DELETE를 실행한 뒤 롤백합니다. 기존 행은 변경하지 않습니다. 개발 계정에는 SELECT·INSERT·UPDATE·DELETE가 필요합니다. 운영 DB 설정을 지정하지 마세요.
+
+CREATE TEMPORARY TABLE 권한이 있는 별도 테스트 계정에서는 다음 명령으로 임시 테이블의 SQL·트랜잭션 검증도 실행할 수 있습니다. CI는 격리된 MariaDB 서비스에서 이 검증까지 수행합니다.
+
+```bash
+bash ./gradlew mariadbTest -Dtoady.mariadb.temporary.enabled=true
+```
+
 
 테스트는 H2 데이터베이스를 사용해 애플리케이션 컨텍스트, 주요 API 흐름, 통합 공고 검색 및 자동완성 동작을 확인합니다.
 

@@ -11,7 +11,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -40,8 +39,7 @@ public class AnnouncementSearchService {
         validateSearch(search);
         Pageable pageable = PageRequest.of(
                 search.page(),
-                search.size(),
-                Sort.by(Sort.Direction.DESC, receptionStartDateProperty(type))
+                search.size()
         );
         return switch (type) {
             case APT -> aptRepository.findAll(searchSpecification(search), pageable);
@@ -137,13 +135,12 @@ public class AnnouncementSearchService {
             var addressMatches = builder.like(
                     builder.lower(root.get(addressProperty)), pattern, '\\'
             );
-            query.orderBy(builder.desc(builder.function(
-                    "replace",
-                    String.class,
-                    root.get(receptionStartDateProperty),
-                    builder.literal("-"),
-                    builder.literal("")
-            )));
+            var date = builder.function("replace", String.class,
+                    root.get(receptionStartDateProperty), builder.literal("-"), builder.literal(""));
+            query.orderBy(
+                    builder.asc(builder.<Integer>selectCase().when(builder.isNull(date), 1).otherwise(0)),
+                    builder.desc(date), builder.asc(root.get("houseManageNo")), builder.asc(root.get("pblancNo"))
+            );
             return builder.or(nameMatches, addressMatches);
         };
         return repository.findBy(specification, query -> query.limit(limit).all())
@@ -165,7 +162,7 @@ public class AnnouncementSearchService {
         List<AnnouncementListItem> candidates = new ArrayList<>();
         long totalElements = 0;
         for (AnnouncementType type : types) {
-            Pageable pageable = candidatePage(requiredCount, type);
+            Pageable pageable = candidatePage(requiredCount);
             Page<AnnouncementListItem> page = switch (type) {
                 case APT -> aptRepository.findAll(
                         AnnouncementSearchService.<AptAnnouncementEntity>searchSpecification(search), pageable
@@ -231,6 +228,14 @@ public class AnnouncementSearchService {
                         builder.lessThanOrEqualTo(normalizedReceptionStartDate(root, builder), compactDate)
                 );
             }
+            // Apply normalized ordering before limiting candidates; also keep page boundaries stable.
+            if (query.getResultType() != Long.class && query.getResultType() != long.class) {
+                var date = normalizedReceptionStartDate(root, builder);
+                query.orderBy(
+                        builder.asc(builder.<Integer>selectCase().when(builder.isNull(date), 1).otherwise(0)),
+                        builder.desc(date), builder.asc(root.get("houseManageNo")), builder.asc(root.get("pblancNo"))
+                );
+            }
             return predicates;
         };
     }
@@ -287,15 +292,7 @@ public class AnnouncementSearchService {
         return digits.length() < 8 ? null : digits.substring(0, 8);
     }
 
-    private static Pageable candidatePage(long count, AnnouncementType type) {
-        return PageRequest.of(
-                0,
-                Math.toIntExact(count),
-                Sort.by(Sort.Direction.DESC, receptionStartDateProperty(type))
-        );
-    }
-
-    private static String receptionStartDateProperty(AnnouncementType type) {
-        return type == AnnouncementType.APT ? "rceptBgnde" : "subscrptRceptBgnde";
+    private static Pageable candidatePage(long count) {
+        return PageRequest.of(0, Math.toIntExact(count));
     }
 }

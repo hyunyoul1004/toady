@@ -2,7 +2,7 @@ package com.toady.web.apt.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.toady.web.apt.api.ApplyhomeApiClient;
-import com.toady.web.apt.api.ApplyhomeApiPage;
+import com.toady.web.apt.api.ApplyhomePageCollector;
 import com.toady.web.apt.api.ApplyhomeCompetitionApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,8 +10,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,7 +23,6 @@ public class ApplyhomeCompetitionSyncService {
 
 	private static final Logger log = LoggerFactory.getLogger(ApplyhomeCompetitionSyncService.class);
 	private static final DateTimeFormatter COMPACT_DATE = DateTimeFormatter.BASIC_ISO_DATE;
-	private static final List<String> ANNOUNCEMENT_KEYS = List.of("HOUSE_MANAGE_NO", "PBLANC_NO");
 
 	private static final TableSpec APT_RATE = new TableSpec("getAPTLttotPblancCmpet",
 			"TB_APT_LTTOT_PBLANC_CMPET",
@@ -93,11 +93,6 @@ public class ApplyhomeCompetitionSyncService {
 		this.syncLock = syncLock;
 	}
 
-	public void synchronizeCurrentAnnouncements() {
-		LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
-		synchronize(today.minusMonths(1), today.plusMonths(1));
-	}
-
 	public void synchronize(LocalDate startDate, LocalDate endDate) {
 		if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
 			throw new IllegalArgumentException("A valid start and end date range is required");
@@ -110,13 +105,15 @@ public class ApplyhomeCompetitionSyncService {
 		List<AnnouncementKey> urbanAnnouncements = discover(
 				"getUrbtyOfctlLttotPblancDetail", startDate, endDate, false);
 		List<AnnouncementKey> remnantAnnouncements = discover(
-				"getRemndrLttotPblancDetail", startDate, endDate, false);
+				"getRemndrLttotPblancDetail", startDate, endDate, false, "04");
+		List<AnnouncementKey> cancelledAnnouncements = discover(
+				"getRemndrLttotPblancDetail", startDate, endDate, false, "06");
 		List<AnnouncementKey> privateRentAnnouncements = discover(
 				"getPblPvtRentLttotPblancDetail", startDate, endDate, true);
 		List<AnnouncementKey> optionalAnnouncements = discover("getOPTLttotPblancDetail", startDate, endDate, true);
 
 		syncForAnnouncements(APT_RATE, aptAnnouncements);
-		syncForAnnouncements(CANCELLED_RATE, aptAnnouncements);
+		syncForAnnouncements(CANCELLED_RATE, cancelledAnnouncements);
 		syncForAnnouncements(APT_SCORE, aptAnnouncements);
 		syncForAnnouncements(SPECIAL_SUPPLY_STATUS, aptAnnouncements);
 		syncForAnnouncements(URBAN_RATE, urbanAnnouncements);
@@ -127,15 +124,21 @@ public class ApplyhomeCompetitionSyncService {
 
 	private List<AnnouncementKey> discover(
 			String endpoint, LocalDate startDate, LocalDate endDate, boolean compactDate) {
+		return discover(endpoint, startDate, endDate, compactDate, null);
+	}
+
+	private List<AnnouncementKey> discover(
+			String endpoint, LocalDate startDate, LocalDate endDate, boolean compactDate, String houseSecd) {
 		DateTimeFormatter formatter = compactDate ? COMPACT_DATE : DateTimeFormatter.ISO_LOCAL_DATE;
-		Map<String, String> filters = Map.of(
+		Map<String, String> filters = new LinkedHashMap<>(Map.of(
 				"cond[RCRIT_PBLANC_DE::GTE]", startDate.format(formatter),
-				"cond[RCRIT_PBLANC_DE::LTE]", endDate.format(formatter));
+				"cond[RCRIT_PBLANC_DE::LTE]", endDate.format(formatter)));
+		if (houseSecd != null) filters.put("cond[HOUSE_SECD::EQ]", houseSecd);
 		List<JsonNode> rows = fetchAllPages(announcementApiClient, endpoint, filters);
 		Set<AnnouncementKey> keys = new LinkedHashSet<>();
 		for (JsonNode row : rows) {
-			JsonNode houseManageNo = row.get("HOUSE_MANAGE_NO");
-			JsonNode pblancNo = row.get("PBLANC_NO");
+			JsonNode houseManageNo = field(row, "HOUSE_MANAGE_NO");
+			JsonNode pblancNo = field(row, "PBLANC_NO");
 			if (houseManageNo == null || houseManageNo.isNull() || pblancNo == null || pblancNo.isNull()) {
 				throw new IllegalStateException("Applyhome announcement response is missing keys: " + endpoint);
 			}
@@ -160,43 +163,16 @@ public class ApplyhomeCompetitionSyncService {
 	}
 
 	private List<JsonNode> fetchAllPages(ApplyhomeApiClient client, String endpoint, Map<String, String> filters) {
-		List<JsonNode> rows = new ArrayList<>();
-		int page = 1;
-		long matchCount;
-		do {
-			ApplyhomeApiPage response = client.getPage(endpoint, page, filters);
-			matchCount = response.matchCount();
-			rows.addAll(response.data());
-			if (rows.size() >= matchCount) {
-				break;
-			}
-			if (response.currentCount() == 0) {
-				throw new IllegalStateException("Applyhome API returned fewer rows than matchCount: " + endpoint);
-			}
-			page++;
-		} while (true);
-		return rows;
+		return ApplyhomePageCollector.fetchAll(endpoint, page -> client.getPage(endpoint, page, filters));
 	}
 
-	private List<JsonNode> fetchAllPages(
-			ApplyhomeCompetitionApiClient client, String endpoint, Map<String, String> filters) {
-		List<JsonNode> rows = new ArrayList<>();
-		int page = 1;
-		long matchCount;
-		do {
-			ApplyhomeApiPage response = client.getPage(endpoint, page, filters);
-			matchCount = response.matchCount();
-			rows.addAll(response.data());
-			if (rows.size() >= matchCount) {
-				break;
-			}
-			if (response.currentCount() == 0) {
-				throw new IllegalStateException("Applyhome competition API returned fewer rows than matchCount: "
-						+ endpoint);
-			}
-			page++;
-		} while (true);
-		return rows;
+	private List<JsonNode> fetchAllPages(ApplyhomeCompetitionApiClient client, String endpoint, Map<String, String> filters) {
+		return ApplyhomePageCollector.fetchAll(endpoint, page -> client.getPage(endpoint, page, filters));
+	}
+
+	private JsonNode field(JsonNode row, String name) {
+		JsonNode value = row.get(name);
+		return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
 	}
 
 	private record AnnouncementKey(String houseManageNo, String pblancNo) {

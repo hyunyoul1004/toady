@@ -6,6 +6,7 @@
  * - 공통 에러 핸들링 및 응답 파싱
  */
 import config from 'config';
+import { useAuthStore } from '@/features/auth/store/useAuthStore';
 
 /**
  * 로컬 스토리지에서 인증 토큰을 읽어 Authorization 헤더를 생성합니다.
@@ -34,7 +35,7 @@ export function getAuthHeaders() {
  * @param {Response} response Fetch Response 객체
  * @returns {Promise<any>} 파싱된 JSON 데이터
  */
-export async function handleResponse(response) {
+export async function handleResponse(response, requestToken = null) {
   const text = await response.text();
   let data;
 
@@ -47,7 +48,7 @@ export async function handleResponse(response) {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 && useAuthStore.getState().accessToken === requestToken) {
       // 401 Unauthorized 시 토큰 만료 처리
       localStorage.removeItem('user');
       window.dispatchEvent(new Event('auth-logout'));
@@ -60,6 +61,11 @@ export async function handleResponse(response) {
       `HTTP Error ${response.status}`;
 
     return Promise.reject(new Error(errorMessage));
+  }
+
+  const authorization = response.headers.get('Authorization');
+  if (requestToken && authorization?.startsWith('Bearer ')) {
+    useAuthStore.getState().renewToken(requestToken, authorization.slice(7));
   }
 
   return data || { resultCode: 'SUCCESS', resultMessage: '성공' };
@@ -89,11 +95,12 @@ export const apiClient = {
       }
     }
 
+    const headers = getAuthHeaders();
     const res = await fetch(url, {
       method: 'GET',
-      headers: getAuthHeaders()
+      headers
     });
-    return handleResponse(res);
+    return handleResponse(res, headers.Authorization?.slice(7));
   },
 
   /**
@@ -103,12 +110,13 @@ export const apiClient = {
    */
   async post(endpoint, body) {
     const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
+    const headers = getAuthHeaders();
     const res = await fetch(url, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers,
       body: JSON.stringify(body || {})
     });
-    return handleResponse(res);
+    return handleResponse(res, headers.Authorization?.slice(7));
   },
 
   /**
@@ -118,12 +126,13 @@ export const apiClient = {
    */
   async patch(endpoint, body) {
     const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
+    const headers = getAuthHeaders();
     const res = await fetch(url, {
       method: 'PATCH',
-      headers: getAuthHeaders(),
+      headers,
       body: JSON.stringify(body || {})
     });
-    return handleResponse(res);
+    return handleResponse(res, headers.Authorization?.slice(7));
   },
 
   /**
@@ -132,11 +141,12 @@ export const apiClient = {
    */
   async delete(endpoint) {
     const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
+    const headers = getAuthHeaders();
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: getAuthHeaders()
+      headers
     });
-    return handleResponse(res);
+    return handleResponse(res, headers.Authorization?.slice(7));
   }
 };
 

@@ -8,10 +8,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * API에서 받은 엔티티를 트랜잭션과 일정 크기의 flush 단위로 데이터베이스에 반영한다.
@@ -41,49 +41,55 @@ public class ApplyhomeDataPersistenceService {
 		entityManager.clear();
 	}
 
-	/**
-	 * 기존 복합 키로 식별할 수 없는 도시형 주택형 데이터를 공고별로 비교해 신규 내용만 저장한다.
-	 * DB 계정에 DELETE 권한이 없어 삭제 후 재삽입 대신, API가 반복 반환하는 동일 행을 값으로 판별한다.
-	 */
+	/** 공고별 전체 응답을 최신 스냅샷으로 반영한다. 변경 없는 행은 유지하고, 사라지거나 변경된 행은 같은 트랜잭션에서 교체한다. */
 	@Transactional
-	public void upsertUrbanModels(List<UrbtyOfctlLttotPblancMdl> entities) {
+	public void upsertUrbanModels(List<AnnouncementKey> announcements, List<UrbtyOfctlLttotPblancMdl> entities) {
 		Map<AnnouncementKey, List<UrbtyOfctlLttotPblancMdl>> modelsByAnnouncement = new LinkedHashMap<>();
+		for (AnnouncementKey key : announcements) {
+			modelsByAnnouncement.put(key, new ArrayList<>());
+		}
 		for (UrbtyOfctlLttotPblancMdl model : entities) {
 			AnnouncementKey key = new AnnouncementKey(model.getHouseManageNo(), model.getPblancNo());
-			modelsByAnnouncement.computeIfAbsent(key, ignored -> new ArrayList<>()).add(model);
+			if (!modelsByAnnouncement.containsKey(key)) {
+				throw new IllegalArgumentException("Model does not belong to a fetched announcement");
+			}
+			modelsByAnnouncement.get(key).add(model);
 		}
-
-		int persistedCount = 0;
-		for (Map.Entry<AnnouncementKey, List<UrbtyOfctlLttotPblancMdl>> entry : modelsByAnnouncement.entrySet()) {
+		for (var entry : modelsByAnnouncement.entrySet()) {
 			AnnouncementKey key = entry.getKey();
-			List<UrbtyOfctlLttotPblancMdl> existingModels = entityManager.createQuery("""
+			List<UrbtyOfctlLttotPblancMdl> existing = entityManager.createQuery("""
 					select model from UrbtyOfctlLttotPblancMdl model
 					where model.houseManageNo = :houseManageNo and model.pblancNo = :pblancNo
+					order by model.id desc
 					""", UrbtyOfctlLttotPblancMdl.class)
 					.setParameter("houseManageNo", key.houseManageNo())
-					.setParameter("pblancNo", key.pblancNo())
-					.getResultList();
-			Set<UrbanModelValues> knownValues = new HashSet<>();
-			for (UrbtyOfctlLttotPblancMdl model : existingModels) {
-				knownValues.add(valuesOf(model));
+					.setParameter("pblancNo", key.pblancNo()).getResultList();
+			Map<UrbanModelValues, UrbtyOfctlLttotPblancMdl> known = new LinkedHashMap<>();
+			for (var model : existing) {
+				known.putIfAbsent(valuesOf(model), model);
 			}
-
-			for (UrbtyOfctlLttotPblancMdl model : entry.getValue()) {
-				if (knownValues.add(valuesOf(model))) {
+			Set<UrbanModelValues> received = new HashSet<>();
+			for (var model : entry.getValue()) {
+				if (!received.add(valuesOf(model))) continue;
+				var current = known.get(valuesOf(model));
+				if (current == null) {
 					entityManager.persist(model);
-					persistedCount++;
-				}
-				if (persistedCount % FLUSH_BATCH_SIZE == 0 && persistedCount > 0) {
-					entityManager.flush();
-					entityManager.clear();
+					known.put(valuesOf(model), model);
 				}
 			}
+			for (var model : existing) {
+				// Remove obsolete values and legacy duplicate rows, keeping one unchanged ID.
+				if (!received.contains(valuesOf(model)) || known.get(valuesOf(model)) != model) {
+					entityManager.remove(model);
+				}
+			}
+			// Commit atomically; bound the persistence context to a single announcement.
+			entityManager.flush();
+			entityManager.clear();
 		}
-		entityManager.flush();
-		entityManager.clear();
 	}
 
-		private UrbanModelValues valuesOf(UrbtyOfctlLttotPblancMdl model) {
+	private UrbanModelValues valuesOf(UrbtyOfctlLttotPblancMdl model) {
 		return new UrbanModelValues(
 				model.getModelNo(), model.getGp(), model.getTp(), model.getExcluseAr(),
 				model.getSuplyHshldco(), model.getSuplyAmount(), model.getSubscrptReqstAmount());

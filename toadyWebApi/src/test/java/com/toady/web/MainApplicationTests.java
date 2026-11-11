@@ -65,9 +65,14 @@ class MainApplicationTests {
     @Test
     void createsAndReadsJava21CompatibleJwt() {
         CustomUserDetails user = new CustomUserDetails(
-                "member@example.test", "", List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                "member@example.test", "test-password-hash", List.of(new SimpleGrantedAuthority("ROLE_USER"))
         );
-        user.setUserSeq(7L);
+        jdbcTemplate.update("""
+                insert into TB_USER (USER_EMAIL, USER_PASSWORD, USER_NIC_NAME, EMAIL_CERTIFY_YN, LOCK_YN, WITHDRAWAL_YN)
+                values ('member@example.test', 'test-password-hash', 'member', 'Y', 'N', 'N')
+                """);
+        user.setUserSeq(jdbcTemplate.queryForObject(
+                "select USER_SEQ from TB_USER where USER_EMAIL = 'member@example.test'", Long.class));
         user.setUserNicName("member");
         var authentication = new UsernamePasswordAuthenticationToken(
                 user, "", user.getAuthorities()
@@ -400,4 +405,50 @@ class MainApplicationTests {
                 .andExpect(jsonPath("$.data.content[2].type").value("public-rental"))
                 .andExpect(jsonPath("$.data.content[3].type").value("remaining"));
     }
+    @Test
+    void returnsDistinctUrbanModelsEvenWithRepeatedOrMissingModelNumbers() throws Exception {
+        jdbcTemplate.update("""
+                insert into TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM)
+                values ('MODEL-REVIEW', 'MODEL-REVIEW', '모델 테스트')
+                """);
+        jdbcTemplate.update("""
+                insert into TB_URBTY_OFCTL_LTTOT_PBLANC_MDL
+                    (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, TP)
+                values ('MODEL-REVIEW', 'MODEL-REVIEW', '1', 'A'),
+                       ('MODEL-REVIEW', 'MODEL-REVIEW', '1', 'B'),
+                       ('MODEL-REVIEW', 'MODEL-REVIEW', null, 'C')
+                """);
+        mockMvc.perform(get("/api/v1/urban/announcements/MODEL-REVIEW/MODEL-REVIEW"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.models.length()").value(3))
+                .andExpect(jsonPath("$.data.models[*].tp", org.hamcrest.Matchers.containsInAnyOrder("A", "B", "C")));
+    }
+
+    @Test
+    void normalizesDatesAndUsesStableIdsBeforeCandidateLimit() throws Exception {
+        jdbcTemplate.update("""
+                insert into TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, RCEPT_BGNDE)
+                values ('DATE-A', 'DATE-A', 'DATE-REGRESSION', '2026-11-10'),
+                       ('DATE-B', 'DATE-B', 'DATE-REGRESSION', '20261101'),
+                       ('DATE-C', 'DATE-C', 'DATE-REGRESSION', '20261110'),
+                       ('DATE-D', 'DATE-D', 'DATE-REGRESSION', null)
+                """);
+        for (int page = 0; page < 4; page++) {
+            String expected = new String[]{"DATE-A", "DATE-C", "DATE-B", "DATE-D"}[page];
+            mockMvc.perform(get("/api/v1/announcements")
+                            .queryParam("keyword", "DATE-REGRESSION").queryParam("types", "apt")
+                            .queryParam("size", "1").queryParam("page", String.valueOf(page)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.content[0].houseManageNo").value(expected));
+        }
+        mockMvc.perform(get("/api/v1/apt/announcements")
+                        .queryParam("keyword", "DATE-REGRESSION").queryParam("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].houseManageNo").value("DATE-A"));
+        mockMvc.perform(get("/api/v1/announcements/suggestions")
+                        .queryParam("keyword", "DATE-REGRESSION").queryParam("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].houseManageNo").value("DATE-A"));
+    }
+
 }

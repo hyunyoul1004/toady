@@ -2,7 +2,7 @@ package com.toady.web.apt.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.toady.web.apt.api.ApplyhomeApiClient;
-import com.toady.web.apt.api.ApplyhomeApiPage;
+import com.toady.web.apt.api.ApplyhomePageCollector;
 import com.toady.web.apt.entity.AptLttotPblancDetail;
 import com.toady.web.apt.entity.AptLttotPblancMdl;
 import com.toady.web.apt.entity.OptLttotPblancDetail;
@@ -124,7 +124,7 @@ public class ApplyhomeSyncService {
 			List<UrbtyOfctlLttotPblancMdl> urbanModels = models.stream()
 					.map(UrbtyOfctlLttotPblancMdl.class::cast)
 					.toList();
-			persistenceService.upsertUrbanModels(urbanModels);
+			persistenceService.upsertUrbanModels(List.copyOf(announcementKeys), urbanModels);
 		} else {
 			persistenceService.upsertAll(models);
 		}
@@ -136,26 +136,7 @@ public class ApplyhomeSyncService {
 	 * matchCount에 도달할 때까지 페이지를 읽는다. 전체 건수가 바뀌거나 페이지가 비어 조기 종료되면 실패 처리한다.
 	 */
 	private List<JsonNode> fetchAllPages(String endpoint, Map<String, String> filters) {
-		List<JsonNode> rows = new ArrayList<>();
-		int pageNumber = 1;
-		long matchCount;
-
-		do {
-			ApplyhomeApiPage page = apiClient.getPage(endpoint, pageNumber, filters);
-			matchCount = page.matchCount();
-			rows.addAll(page.data());
-			log.info("Fetched Applyhome endpoint={} page={} rows={} total={}",
-					endpoint, pageNumber, page.currentCount(), matchCount);
-			if (rows.size() >= matchCount) {
-				break;
-			}
-			if (page.currentCount() == 0) {
-				throw new IllegalStateException("Applyhome endpoint returned fewer rows than matchCount: " + endpoint);
-			}
-			pageNumber++;
-		} while (true);
-
-		return rows;
+		return ApplyhomePageCollector.fetchAll(endpoint, page -> apiClient.getPage(endpoint, page, filters));
 	}
 
 	/**

@@ -38,7 +38,7 @@ flowchart LR
     Scheduler -->|공고 · 주택형 · 경쟁률 저장| DB
 ```
 
-세 앱은 하나의 저장소에서 관리하며 별도 애플리케이션·컨테이너로 실행합니다. 수집기와 API는 서로 다른 JVM을 사용하고 MariaDB를 공유합니다. 현재 배포 구성은 AWS EC2의 Docker Compose를 기준으로 합니다.
+세 앱은 하나의 저장소에서 관리하며 별도 애플리케이션·컨테이너로 실행합니다. 수집기와 API는 서로 다른 JVM을 사용하고 MariaDB를 공유합니다. 현재 배포 구성은 AWS EC2의 Docker Compose를 기준으로 합니다. 기본 자동 수집은 한국시간 공고·주택형 매일 03:15, 경쟁률·가점·특별공급 현황 매일 04:15와 20:15에 실행하며 90일 전부터 오늘까지의 공고를 재조회합니다. 시각은 일 단위 갱신 문서를 바탕으로 정한 운영 정책입니다.
 
 | 영역 | 사용 기술 |
 | --- | --- |
@@ -77,7 +77,7 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 - 응답의 `matchCount`에 도달할 때까지 페이지를 조회하고, 예상 건수에 못 미친 상태에서 빈 페이지가 오면 실패 처리합니다.
 - 공고 복합키로 연결된 주택형을 조회합니다. 일반 데이터는 JPA `merge`, 경쟁률은 `ON DUPLICATE KEY UPDATE`로 갱신합니다.
-- 도시형 주택형 응답의 동일 행은 값으로 비교해 중복 저장을 피합니다.
+- 도시형 주택형은 실제 `ID`를 식별자로 조회하며, 공고별 최신 응답과 DB를 비교해 변경 없는 행은 유지하고 사라지거나 변경된 행은 트랜잭션 안에서 교체합니다. 응답 내 동일 행은 중복 저장하지 않습니다.
 - MariaDB advisory lock을 획득한 실행만 동기화를 진행합니다.
 
 구현: [동기화](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [DB 잠금](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncLock.java) · [경쟁률 저장](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeCompetitionPersistenceService.java)
@@ -90,7 +90,7 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 ## 검증과 배포
 
-PR과 `master` push에서 API 테스트, 수집기 테스트, 프론트 빌드를 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
+PR과 `master` push에서 API·수집기의 단위 및 H2 회귀 테스트, 프론트 회귀 테스트·빌드와 격리된 MariaDB 검증을 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
 
 ```mermaid
 flowchart LR
@@ -108,7 +108,7 @@ flowchart LR
 | 배포 전 검증·커밋별 이미지 배포 | [GitHub Actions](.github/workflows/deploy.yml) |
 | 배포 후 준비 상태 | [확인 스크립트](scripts/check-deployment.sh) |
 
-2026-11-12 로컬 검증: API 12개 통과, 수집기 6개 통과·외부 연동 통합 테스트 2개 제외, 프론트 프로덕션 빌드 통과. 이 결과는 실제 운영 부하나 가용성을 측정한 수치가 아닙니다. 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
+H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 테스트는 전체 페이지 조회·토큰 갱신·늦은 인증 응답 처리를 검증합니다. 별도 `mariadbTest`로 개발 DB의 실제 PK·SQL·DML도 확인할 수 있습니다. 테스트 결과는 운영 부하나 가용성을 측정한 수치가 아니며, 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
 
 추가한 배포·마이그레이션 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·TLS·수집 완료를 보장하지 않으며, 무중단 배포와 자동 롤백은 구현하지 않았습니다.
 
@@ -130,13 +130,13 @@ flowchart LR
 
 ## 로컬에서 확인하기
 
-필요 환경은 Java 21, Node.js 22, npm입니다. 기본 테스트에는 실제 DB와 청약홈 API 키가 필요하지 않습니다.
+필요 환경은 Java 21, Node.js 22, npm입니다. 기본 테스트에는 실제 DB와 청약홈 API 키가 필요하지 않습니다. 개발 DB 검증은 API 폴더에서 `bash ./gradlew mariadbTest`로 별도 실행하며, 고유한 테스트 행의 변경은 롤백합니다. 상세 설정은 API README를 참고하세요.
 
 ```bash
 # 저장소 루트에서 실행
 (cd toadyWebApi && bash ./gradlew test)
 (cd toadyScheduler && bash ./gradlew test)
-(cd toadyReactWeb && npm ci && npm run build)
+(cd toadyReactWeb && npm ci && npm test && npm run build)
 ```
 
 화면 개발 서버는 다음과 같이 실행합니다.
@@ -233,11 +233,9 @@ Compose v1 환경에서는 `docker compose` 대신 `docker-compose`를 사용합
 
 ### 관리 범위와 후속 변경
 
-첫 버전 변경인 `V2__create_announcement_comments.sql`은 기존 댓글 테이블 생성 SQL과
-동일합니다. 테이블이 이미 있으면 유지하고, 없으면 생성합니다. 기존 테이블의
-열·인덱스 불일치를 자동 보정하지는 않습니다. 운영 테이블 정의와 SQL의 일치 여부를
-도입 전에 확인해야 합니다. 기존 `toadyWebApi/src/main/resources/db/schema` SQL은
-과거 참고 자료이며 앞으로 수정할 원본은 `db/migration`입니다.
+현재 `V2__create_announcement_comments.sql`에는 수동 권한 부여 SQL이 들어 있습니다. 해당 내용은 유지하며, 댓글 테이블을 생성하는 마이그레이션으로 간주하지 않습니다. 권한 SQL의 대상 범위·구문과 실행 계정을 확인하기 전에는 위 `migrate` 명령을 실행하지 마세요. 이미 V2를 적용한 DB는 파일 변경에 따른 Flyway 체크섬도 확인해야 합니다.
+
+댓글 테이블의 원래 생성 SQL은 `toadyWebApi/src/main/resources/db/schema/TB_LTTOT_PBLANC_COMMENT.sql`에서 확인할 수 있습니다. 이 경로는 기존 스키마의 참고 자료이고 신규 스키마 변경의 원본은 `db/migration`입니다.
 
 - 새 변경은 `V3__설명.sql`, `V4__설명.sql` 순으로 추가합니다.
 - 적용된 파일은 수정하지 않습니다. Flyway가 이력과 체크섬을 검사합니다.

@@ -29,7 +29,7 @@ applyhome:
       base-url: https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1
       per-page: 1000
     scheduler:
-      polling-cron: "${APPLYHOME_COMPETITION_POLL_CRON:0 */10 17-19 * * *}"
-      final-cron: "${APPLYHOME_COMPETITION_FINAL_CRON:0 0 20 * * *}"
+      cron: "${APPLYHOME_COMPETITION_CRON:0 15 4,20 * * *}"
   scheduler:
-    cron: ${APPLYHOME_SYNC_CRON:0 15 3 * * *}
+    cron: "${APPLYHOME_SYNC_CRON:0 15 3 * * *}"
+    lookback-days: ${APPLYHOME_LOOKBACK_DAYS:90}

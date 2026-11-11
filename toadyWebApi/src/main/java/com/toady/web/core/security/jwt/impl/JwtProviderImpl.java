@@ -1,25 +1,35 @@
 package com.toady.web.core.security.jwt.impl;
 
+import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.security.jwt.JwtProvider;
 import com.toady.web.core.security.service.CustomUserDetails;
 import com.toady.web.core.util.SecUtils;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 
-import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
 
 /** 서명된 JWT 발급·검증과 클레임에서 Spring Security 인증 정보를 복원합니다. */
+@RequiredArgsConstructor
 public class JwtProviderImpl implements JwtProvider {
+    private final UserRepository userRepository;
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
@@ -44,6 +54,7 @@ public class JwtProviderImpl implements JwtProvider {
                 .subject(authentication.getName())
                 .claim(authoritiesKey, SecUtils.getAuthorities(authentication.getAuthorities()))
                 .claim(tokenCreatedAtKey, Date.from(now))
+                .claim("credentialVersion", credentialVersion(user.getPassword()))
                 .claim("userSeq", user.getUserSeq())
                 .claim("userNicName", user.getUserNicName())
                 .issuedAt(Date.from(now))
@@ -66,17 +77,28 @@ public class JwtProviderImpl implements JwtProvider {
             return null;
         }
 
+        Object rawUserSeq = claims.get("userSeq");
+        if (!(rawUserSeq instanceof Number userSeq)) {
+            throw new JwtException("Missing user identifier");
+        }
+        var account = userRepository.findById(userSeq.longValue())
+                .orElseThrow(() -> new JwtException("Account is unavailable"));
+        if (!account.getUserEmail().equals(claims.getSubject())
+                || !"N".equals(account.getLockYn()) || !"N".equals(account.getWithdrawalYn())
+                || !"Y".equals(account.getEmailCertifyYn())) {
+            throw new JwtException("Account is unavailable");
+        }
+        String version = claims.get("credentialVersion", String.class);
+        if (version == null || !MessageDigest.isEqual(
+                version.getBytes(StandardCharsets.UTF_8),
+                credentialVersion(account.getUserPassword()).getBytes(StandardCharsets.UTF_8))) {
+            throw new JwtException("Credentials have changed");
+        }
         Collection<? extends GrantedAuthority> authorities =
                 SecUtils.mapToGrantedAuthorities(authoritiesValue);
-        CustomUserDetails user = new CustomUserDetails(claims.getSubject(), "", authorities);
-        Object userSeq = claims.get("userSeq");
-        if (userSeq instanceof Number value) {
-            user.setUserSeq(value.longValue());
-        }
-        Object nickname = claims.get("userNicName");
-        if (nickname instanceof String value) {
-            user.setUserNicName(value);
-        }
+        CustomUserDetails user = new CustomUserDetails(account.getUserEmail(), account.getUserPassword(), authorities);
+        user.setUserSeq(account.getUserSeq());
+        user.setUserNicName(account.getUserNicName());
         return new UsernamePasswordAuthenticationToken(user, null, authorities);
     }
 
@@ -97,6 +119,19 @@ public class JwtProviderImpl implements JwtProvider {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    private String credentialVersion(String passwordHash) {
+        if (passwordHash == null || passwordHash.isBlank()) {
+            throw new JwtException("Missing account credentials");
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(Decoders.BASE64.decode(secretKey), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(passwordHash.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Could not derive credential version", exception);
+        }
     }
 
     private SecretKey signingKey() {

@@ -49,4 +49,17 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	exclude '**/MariaDbCompatibilityTest.class'
+}
+
+// Explicit MariaDB verification, separate from the fast H2 suite.
+tasks.register('mariadbTest', Test) {
+    description = 'Verify MariaDB schema and SQL with development or isolated test credentials'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/MariaDbCompatibilityTest.class'
+    useJUnitPlatform()
+    systemProperty 'toady.mariadb.temporary.enabled',
+            System.getProperty('toady.mariadb.temporary.enabled', 'false')
 }

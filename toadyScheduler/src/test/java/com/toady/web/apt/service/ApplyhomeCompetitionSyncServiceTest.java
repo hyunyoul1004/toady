@@ -52,7 +52,7 @@ class ApplyhomeCompetitionSyncServiceTest {
 
 		ApplyhomeCompetitionSyncService service = new ApplyhomeCompetitionSyncService(
 				announcementApiClient, competitionApiClient, persistenceService, syncLock);
-		service.synchronizeCurrentAnnouncements();
+		service.synchronize(java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 11, 12));
 
 		ArgumentCaptor<String> endpoints = ArgumentCaptor.forClass(String.class);
 		verify(competitionApiClient, org.mockito.Mockito.times(8))
@@ -67,4 +67,30 @@ class ApplyhomeCompetitionSyncServiceTest {
 				"getOPTLttotPblancCmpet",
 				"getAPTSpsplyReqstStus");
 	}
+    @Test
+    void discoversCancellationFromIllegalResupplyInsteadOfOrdinaryAptAnnouncements() throws Exception {
+        var mapper = new ObjectMapper();
+        when(announcementApiClient.getPage(anyString(), eq(1), anyMap())).thenAnswer(invocation -> {
+            java.util.Map<String, String> filters = invocation.getArgument(2);
+            String code = filters.get("cond[HOUSE_SECD::EQ]");
+            String id = "06".equals(code) ? "CANCELLED" : "04".equals(code) ? "REMAINING" : "APT";
+            // The document tables use lowercase names as well as uppercase response examples.
+            JsonNode row = mapper.readTree("{\"house_manage_no\":\"" + id + "\",\"pblanc_no\":\"" + id + "\"}");
+            return new ApplyhomeApiPage(List.of(row), 1, 1);
+        });
+        when(competitionApiClient.getPage(anyString(), eq(1), anyMap()))
+                .thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(syncLock).execute(any(Runnable.class));
+        var service = new ApplyhomeCompetitionSyncService(
+                announcementApiClient, competitionApiClient, persistenceService, syncLock);
+        service.synchronize(java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 11, 12));
+        verify(competitionApiClient).getPage(eq("getCancResplLttotPblancCmpet"), eq(1),
+                eq(java.util.Map.of("cond[HOUSE_MANAGE_NO::EQ]", "CANCELLED", "cond[PBLANC_NO::EQ]", "CANCELLED")));
+        verify(competitionApiClient).getPage(eq("getRemndrLttotPblancCmpet"), eq(1),
+                eq(java.util.Map.of("cond[HOUSE_MANAGE_NO::EQ]", "REMAINING", "cond[PBLANC_NO::EQ]", "REMAINING")));
+    }
+
 }

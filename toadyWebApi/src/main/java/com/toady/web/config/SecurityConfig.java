@@ -1,6 +1,7 @@
 package com.toady.web.config;
 
 import com.toady.web.core.security.jwt.JwtProvider;
+import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.security.jwt.filter.JwtAuthenticationFilter;
 import com.toady.web.core.security.jwt.impl.JwtProviderImpl;
 import com.toady.web.core.security.service.SimpleUserDetailsService;
@@ -33,8 +34,8 @@ public class SecurityConfig {
     private final SimpleUserDetailsService userDetailsService;
 
     @Bean
-    public JwtProvider jwtProvider() {
-        return new JwtProviderImpl();
+    public JwtProvider jwtProvider(UserRepository userRepository) {
+        return new JwtProviderImpl(userRepository);
     }
 
     @Bean

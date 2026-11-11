@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -39,7 +40,7 @@ public class ApplyhomeCompetitionPersistenceService {
 
 		for (JsonNode row : rows) {
 			for (String key : keyColumns) {
-				if (row.path(key).isMissingNode() || row.path(key).isNull()) {
+				if (field(row, key) == null || field(row, key).isNull()) {
 					throw new IllegalStateException("Applyhome competition API row is missing primary-key field: " + key);
 				}
 			}
@@ -47,9 +48,14 @@ public class ApplyhomeCompetitionPersistenceService {
 
 		jdbcTemplate.batchUpdate(sql, rows, BATCH_SIZE, (statement, row) -> {
 			for (int index = 0; index < columns.size(); index++) {
-				JsonNode value = row.get(columns.get(index));
+				JsonNode value = field(row, columns.get(index));
 				statement.setString(index + 1, value == null || value.isNull() ? null : value.asText());
 			}
 		});
 	}
+    private JsonNode field(JsonNode row, String name) {
+        JsonNode value = row.get(name);
+        return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
+    }
+
 }

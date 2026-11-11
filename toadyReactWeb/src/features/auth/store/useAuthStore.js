@@ -66,6 +66,22 @@ export const useAuthStore = create((set) => ({
   /**
    * 로그아웃 시 인증 정보를 제거합니다.
    */
+  renewToken: (requestToken, accessToken) => {
+    // Ignore late responses after logout, another login or a newer renewal.
+    if (useAuthStore.getState().accessToken !== requestToken) return;
+    let user;
+    try {
+      user = jwtDecode(accessToken);
+      const current = useAuthStore.getState().user;
+      if (user.sub !== current?.sub || user.userSeq !== current?.userSeq) return;
+      if ((user.exp || 0) <= (current?.exp || 0)) return;
+    } catch {
+      return;
+    }
+    localStorage.setItem('user', JSON.stringify({ accessToken }));
+    set({ accessToken, user, isAuthenticated: true });
+  },
+
   logout: () => {
     localStorage.removeItem('user');
     set({
