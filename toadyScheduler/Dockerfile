@@ -16,5 +16,5 @@ RUN groupadd --system spring \
 COPY --from=build --chown=spring:spring /workspace/app.jar /app/app.jar
 
 USER spring:spring
-EXPOSE 8080
+EXPOSE 8082
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]

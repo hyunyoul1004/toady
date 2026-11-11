@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.username=sa", "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=file:../db/migration/V3__create_scheduler_admin_tables.sql"
+        "spring.sql.init.schema-locations=file:../database.sql"
 })
 @AutoConfigureMockMvc
 class AdminConsoleTest {

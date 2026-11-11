@@ -49,10 +49,10 @@ flowchart LR
 
 ### 1. 테이블 생성
 
-DB 관리 계정으로 저장소 루트의 **`db/migration/V3__create_scheduler_admin_tables.sql`만 직접 실행**하세요. 테이블 2개를 추가하며 기존 수집 테이블은 변경하지 않습니다. 현재 V2 파일은 권한 SQL이므로 전체 마이그레이션을 재실행할 필요가 없습니다.
+DB 관리 계정으로 저장소 루트의 **`database.sql`을 직접 실행**하세요. 관리자 테이블은 파일의 1번 구역에 있습니다. 댓글·경쟁률 테이블 생성문도 같은 파일에 모았으며, 모든 생성문은 없는 테이블만 추가합니다. 기존 도시형 PK 변경과 권한 명령은 참고용 주석으로 남겨 자동 실행되지 않습니다.
 
 ```bash
-mariadb -h DB호스트 -u 관리계정 -p DB이름 < db/migration/V3__create_scheduler_admin_tables.sql
+mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
 ```
 
 - `TB_SCHEDULER_ADMIN_JOB`: 수동·자동 실행 이력, 진행 상태, 중지 요청
@@ -77,13 +77,9 @@ SCHEDULER_ADMIN_SECURE_COOKIE=false
 
 ### 3. 접속
 
-로컬 직접 실행은 기본 `http://localhost:8080/admin`이며 `SERVER_PORT`로 포트를 변경할 수 있습니다. Compose는 관리자 포트를 **서버의 127.0.0.1:8082에만** 연결합니다. SSH 터널을 사용하는 경우:
+로컬 직접 실행은 기본 `http://localhost:8082/admin`이며 `SERVER_PORT`로 포트를 변경할 수 있습니다. Compose는 `SERVER_PORT=8082`와 `8082:8082` 매핑으로 호스트와 컨테이너 포트를 맞춥니다. 서버의 보안 그룹·방화벽에서 TCP 8082 접속을 허용하면 `http://서버주소:8082/admin`으로 접속할 수 있습니다.
 
-```bash
-ssh -L 8082:127.0.0.1:8082 ec2-user@서버주소
-```
-
-이후 브라우저에서 `http://localhost:8082/admin`에 접속합니다. 외부 도메인으로 제공하려면 별도 Nginx HTTPS 프록시를 구성하고 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 설정하세요. 인증 없이 관리자 포트를 외부에 공개하지 않습니다. 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
+관리자 화면은 `SCHEDULER_ADMIN_ENABLED=true`와 관리자 비밀번호를 설정해야 활성화됩니다. 외부 도메인으로 HTTPS를 제공하려면 별도 Nginx 프록시를 구성하고 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 설정하세요. 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
 
 ## 스케줄 및 데이터 흐름
 
@@ -170,7 +166,7 @@ APPLYHOME_API_KEY='your-service-key' \
 
 백필 작업은 외부 API 호출과 DB 쓰기를 많이 발생시킬 수 있습니다. 운영 데이터베이스에서 실행하지 마세요.
 
-공유 스키마의 신규 변경은 루트 `db/migration`에서 관리합니다. 기존 `db/manual` SQL은 과거 변경의 참고 자료이며 자동 재실행하지 않습니다. [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
+공유 DB 설정 SQL은 루트 `database.sql` 한 파일에서 관리하며 필요할 때 직접 실행합니다. [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
 
 ## Docker
 

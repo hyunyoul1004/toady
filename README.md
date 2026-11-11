@@ -48,7 +48,7 @@ flowchart LR
 | Data | MariaDB, 청약홈 Open API, Spring `@Scheduled` |
 | Validation | JUnit 5, Spring Boot Test, Mockito, H2 |
 | Delivery | Docker, Docker Compose, Nginx, Certbot, GitHub Actions |
-| DB 변경 관리 | 별도 실행하는 Flyway 구성, 버전별 SQL |
+| DB 설정 | 직접 실행하는 단일 `database.sql` |
 
 ## 설계 판단과 구현 근거
 
@@ -93,7 +93,7 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 `toadyScheduler`에 Thymeleaf 관리자 화면을 제공합니다. 공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 관리자 화면에서 모집공고일을 지정해 복원할 수 있습니다.
 
-기본값은 비활성화이며 관리자 테이블 두 개와 계정을 준비한 뒤 활성화합니다. [테이블 생성 SQL](db/migration/V3__create_scheduler_admin_tables.sql)과 [관리자 활성화·접속 안내](toadyScheduler/README.md#thymeleaf-수집-관리자)를 참고하세요. 현재 실행 상태는 5초마다 갱신되며 중지 요청·같은 기간 재실행도 지원합니다.
+기본값은 비활성화이며 관리자 테이블 두 개와 계정을 준비한 뒤 활성화합니다. [테이블 생성 SQL](database.sql)과 [관리자 활성화·접속 안내](toadyScheduler/README.md#thymeleaf-수집-관리자)를 참고하세요. 현재 실행 상태는 5초마다 갱신되며 중지 요청·같은 기간 재실행도 지원합니다.
 
 ## 검증과 배포
 
@@ -117,7 +117,7 @@ flowchart LR
 
 H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 테스트는 전체 페이지 조회·토큰 갱신·늦은 인증 응답 처리를 검증합니다. 별도 `mariadbTest`로 개발 DB의 실제 PK·SQL·DML도 확인할 수 있습니다. 테스트 결과는 운영 부하나 가용성을 측정한 수치가 아니며, 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
 
-추가한 배포·마이그레이션 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·TLS·수집 완료를 보장하지 않으며, 무중단 배포와 자동 롤백은 구현하지 않았습니다.
+추가한 배포 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·TLS·수집 완료를 보장하지 않으며, 무중단 배포와 자동 롤백은 구현하지 않았습니다.
 
 ## 저장소 안내
 
@@ -126,11 +126,10 @@ H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 
 ├── toadyReactWeb/           # React 화면 · API 클라이언트 · 서버 상태 관리
 ├── toadyWebApi/             # 공고 조회 · 인증 · 댓글 REST API
 ├── toadyScheduler/          # 청약홈 데이터 수집 · 저장
-├── db/                     # 공유 DB 버전별 마이그레이션 SQL
 ├── scripts/                # 배포 후 상태 확인
 ├── .github/workflows/      # 검증 및 배포 파이프라인
 ├── docker-compose.yml      # 운영 앱 · DB · Nginx · Certbot 구성
-└── compose.migrations.yml  # 명시적으로 실행하는 DB 변경 작업
+└── database.sql            # 공유 DB 테이블 생성·수동 변경 참고 SQL
 ```
 
 [프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md)
@@ -157,7 +156,7 @@ npm run dev
 
 `http://localhost:3000`에서 열리며, 데이터 조회·인증에는 `localhost:8081`의 API가 필요합니다. 지도는 본인의 Kakao JavaScript 키를 설정한 경우 사용할 수 있습니다.
 
-**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. Flyway 버전 1은 기존 DB를 기준으로 등록하는 도입 경로로, 빈 DB 초기화 기능이 아닙니다. API·수집기 실행 전 각 README와 [공유 DB 변경 관리](#공유-db-변경-관리)를 확인하세요.
+**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. `database.sql`은 댓글·경쟁률·관리자 테이블의 추가 설정이며, 공고 상세·주택형·회원 등을 포함한 전체 DB 초기화 파일은 아닙니다. API·수집기 실행 전 각 README와 [공유 DB 변경 관리](#공유-db-변경-관리)를 확인하세요.
 
 ## 저장소 관리
 
@@ -201,55 +200,21 @@ CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 
 
 ## 공유 DB 변경 관리
 
-API와 수집기가 공유하는 스키마의 신규 변경은 `db/migration`에서 관리합니다.
-두 애플리케이션의 자동 DDL 설정은 계속 `none`으로 유지합니다. 앱 기동이나
-일반 배포에서 마이그레이션을 자동 실행하지 않습니다. 변경 담당자는 배포 전에
-별도 유지보수 단계로 한 번 실행하고, 두 앱과의 호환성을 확인합니다.
+DB 설정은 루트 [database.sql](database.sql) 한 파일로 관리합니다. 앱과 일반 배포에서 자동 실행하지 않으며, 두 애플리케이션의 `ddl-auto=none` 설정을 유지합니다.
 
-### 기존 DB 도입
+```bash
+# 저장소 루트에서 필요한 DB를 선택해 직접 실행
+mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
+```
 
-현재 저장소에는 전체 초기 스키마가 없습니다. 버전 1은 **이미 구성된 기존 DB**를
-의미하며, 빈 DB를 만드는 초기화 스크립트가 아닙니다. 기존 수동 SQL 중 경쟁률
-테이블과 도시형 주택형 PK 변경은 이미 적용되어 있는지 먼저 확인해야 합니다.
-과거 SQL은 `toadyScheduler/src/main/resources/db/manual`에 참고용으로 남겨 두며
-자동 재실행하지 않습니다. 특히 도시형 PK 변경 SQL은 재실행하면 실패합니다.
+| 구역 | 내용 | 실행 방식 |
+| --- | --- | --- |
+| 1 | 수집 관리자 실행 이력·자동 스케줄 테이블 | 없는 테이블만 생성 |
+| 2 | 공고 댓글 테이블 | 없는 테이블만 생성 |
+| 3 | 경쟁률·당첨 가점·특별공급 현황 테이블 | 없는 테이블만 생성 |
+| 4 | 기존 도시형 주택형의 ID PK 변경 | 참고용 주석, 구조 확인 후 별도 적용 |
+| 5 | 기존 권한 부여 명령 | 참고용 주석, 대상 범위·구문 검토 후 별도 적용 |
 
-1. DB 백업과 복원 점검 후 운영 DB의 복제본에서 먼저 검증합니다.
-2. 공고·주택형·경쟁률·회원 테이블 및 도시형 주택형의 `ID` PK를 확인합니다.
-3. 루트 `.env.migrations` 파일에 아래 값을 설정합니다. 이 파일은 Git에서 제외됩니다.
+`CREATE TABLE IF NOT EXISTS`는 기존 테이블의 열·인덱스 차이를 보정하지 않습니다. 기존 도시형 PK 변경은 이미 반영한 DB에서 재실행하면 안 되므로 자동 실행문에 포함하지 않습니다. 권한 변경 역시 DB 관리 계정에서 확인 후 적용합니다.
 
-   ```dotenv
-   MIGRATION_DB_URL=jdbc:mariadb://mariadb:3306/실제_DB명
-   MIGRATION_DB_USERNAME=마이그레이션_계정
-   MIGRATION_DB_PASSWORD=실제_비밀번호
-   MIGRATION_NETWORK=toady_default
-   ```
-
-4. 저장소 루트에서 다음 명령으로 상태를 확인하고 기존 DB의 버전 1을 등록합니다.
-   `baseline`은 스키마를 검사하거나 생성하는 명령이 아니므로 사전 확인이 필요합니다.
-
-   ```bash
-   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate info
-   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate baseline
-   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate migrate
-   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate validate
-   ```
-
-Compose v1 환경에서는 `docker compose` 대신 `docker-compose`를 사용합니다.
-위 네트워크는 기존 `docker-compose -p toady up -d`가 생성한 네트워크여야 합니다.
-
-### 관리 범위와 후속 변경
-
-현재 `V2__create_announcement_comments.sql`에는 수동 권한 부여 SQL이 들어 있습니다. 해당 내용은 유지하며, 댓글 테이블을 생성하는 마이그레이션으로 간주하지 않습니다. 권한 SQL의 대상 범위·구문과 실행 계정을 확인하기 전에는 위 `migrate` 명령을 실행하지 마세요. 이미 V2를 적용한 DB는 파일 변경에 따른 Flyway 체크섬도 확인해야 합니다.
-
-댓글 테이블의 원래 생성 SQL은 `toadyWebApi/src/main/resources/db/schema/TB_LTTOT_PBLANC_COMMENT.sql`에서 확인할 수 있습니다. 이 경로는 기존 스키마의 참고 자료이고 신규 스키마 변경의 원본은 `db/migration`입니다.
-
-- 새 변경은 `V3__설명.sql`, `V4__설명.sql` 순으로 추가합니다.
-- 적용된 파일은 수정하지 않습니다. Flyway가 이력과 체크섬을 검사합니다.
-- 두 앱 모두 실행 가능한 확장 변경을 먼저 배포하고, 기존 열 제거는 후속 배포로 나눕니다.
-- MariaDB DDL은 자동 롤백을 기대하지 않습니다. 실패 시 실제 스키마를 확인하고
-  후속 수정 또는 백업 복원으로 대응합니다. 상태 확인 없이 `repair`하지 않습니다.
-- 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
-
-이 구성은 기존 DB의 버전 관리 도입 경로입니다. 전체 DB의 신규 구축에는 별도로
-검증된 전체 스키마 덤프 또는 초기화 마이그레이션이 필요합니다.
+전체 초기 스키마는 제공하지 않으므로 새 DB에는 공고·주택형·회원 등의 스키마를 별도로 준비해야 합니다. 기존 테이블을 변경할 때는 실제 구조와 백업을 확인하고 두 앱의 호환성을 검증한 뒤 필요한 구역을 적용합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.

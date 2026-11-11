@@ -136,7 +136,7 @@ bash ./gradlew bootRun
 
 예제의 `SERVER_PORT=8081`은 프론트 개발 서버의 프록시 대상입니다. 환경변수를 별도로 설정하지 않은 기본 서버 포트는 `8080`입니다. 이메일 기능에는 SMTP 설정이 필요합니다. 로컬 전용 `application-local.yml`이나 `.env.local`에 의존하지 않으므로 새 clone에서도 동일한 설정 경로를 사용합니다.
 
-애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 신규 공유 스키마 변경은 루트 `db/migration`에서 관리합니다. 기존 댓글 DDL은 참고 자료로 남기며, 도입 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
+애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 댓글·경쟁률·관리자 테이블 생성문과 기존 DB 변경 참고 SQL은 루트 `database.sql`에 모았습니다. 실행 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
 
 ## 테스트 및 Docker
 
