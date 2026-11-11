@@ -16,6 +16,12 @@ export const TYPE_TO_RCEPT_SE = {
   optional: '07'
 };
 
+/** 취소후재공급 상세는 remaining이며 경쟁률은 별도 리소스를 사용한다. */
+export function getCompetitionType(detail = {}) {
+  return detail.type === 'remaining' && String(detail.houseSecd) === '06'
+    ? 'cancel-resupply' : (detail.type || 'apt');
+}
+
 function getDisplayRceptSe(item, type) {
   if (type === 'remaining') {
     if (item.houseSecd === '04') return '06';
@@ -304,8 +310,8 @@ export const announcementApi = {
       pblancUrl: anno.pblancUrl || '',
       houseNm: anno.houseNm || '-',
       rceptSe,
-      hssplyAdres: anno.hssplyAdres || anno.hssply_adres || anno.supplyLocation || '',
-      supplyLocation: anno.hssplyAdres || anno.hssply_adres || anno.subscrptAreaCodeNm || '-',
+      hssplyAdres: anno.hssplyAdres || anno.hssplyHshldco || anno.hssply_adres || anno.supplyLocation || '',
+      supplyLocation: anno.hssplyAdres || anno.hssplyHshldco || anno.hssply_adres || anno.subscrptAreaCodeNm || '-',
       supplyScale: anno.totSuplyHshldco ? `${anno.totSuplyHshldco} 세대` : '-',
       developer: anno.bsnsMbyNm || anno.developer || '-',
       contractor: anno.cnstrctEntrpsNm || anno.contractor || '-',
@@ -315,15 +321,15 @@ export const announcementApi = {
         ? String(anno.pblancUrl).trim()
         : getFallbackPblancUrl(type, anno.houseManageNo || houseManageNo, anno.pblancNo || pblancNo),
       applicationDate: formatDate(anno.rcritPblancDe),
-      subscriptDate: formatDateRange(anno.subscrptRceptBgnde, anno.subscrptRceptEndde),
+      subscriptDate: formatDateRange(anno.rceptBgnde || anno.subscrptRceptBgnde, anno.rceptEndde || anno.subscrptRceptEndde),
       specialPriorityArea: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
       specialOtherAreas: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
       specialPlaceOfReception: '청약홈 (인터넷)',
-      onePriorityArea: formatDate(anno.gnrlRnk1CrspareaRceptPd),
-      oneOtherAreas: formatDate(anno.gnrlRnk1EtcAreaRceptPd || anno.gnrlRnk1EtcAtptReceiptPdd),
+      onePriorityArea: formatDateRange(anno.gnrlRnk1CrspareaRcptde, anno.gnrlRnk1CrspareaEndde),
+      oneOtherAreas: formatDateRange(anno.gnrlRnk1EtcAreaRcptde, anno.gnrlRnk1EtcAreaEndde),
       onePlaceOfReception: '청약홈 (인터넷)',
-      twoPriorityArea: formatDate(anno.gnrlRnk2CrspareaRceptPd),
-      twoOtherAreas: formatDate(anno.gnrlRnk2EtcAreaRceptPd || anno.gnrlRnk2EtcAtptReceiptPdd),
+      twoPriorityArea: formatDateRange(anno.gnrlRnk2CrspareaRcptde, anno.gnrlRnk2CrspareaEndde),
+      twoOtherAreas: formatDateRange(anno.gnrlRnk2EtcAreaRcptde, anno.gnrlRnk2EtcAreaEndde),
       twoPlaceOfReception: '청약홈 (인터넷)',
       winnerAnnouncementDate: formatDate(anno.przwnerPresnatnDe),
       contractDate: formatDateRange(anno.cntrctCnclsBgnde, anno.cntrctCnclsEndde),

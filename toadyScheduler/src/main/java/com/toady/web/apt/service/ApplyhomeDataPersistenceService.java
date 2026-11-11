@@ -89,6 +89,32 @@ public class ApplyhomeDataPersistenceService {
 		}
 	}
 
+    /** 일반 주택형도 공고별 전체 응답으로 교체해 삭제·모델번호 정정을 반영한다. */
+    @Transactional
+    public <T> void replaceModels(Class<T> type, List<AnnouncementKey> announcements, List<T> models) {
+        Set<Class<?>> allowed = Set.of(com.toady.web.apt.entity.AptLttotPblancMdl.class,
+                com.toady.web.apt.entity.RemndrLttotPblancMdl.class,
+                com.toady.web.apt.entity.PblPvtRentLttotPblancMdl.class,
+                com.toady.web.apt.entity.OptLttotPblancMdl.class);
+        if (!allowed.contains(type)) throw new IllegalArgumentException("Unsupported model entity");
+        Set<AnnouncementKey> scopes = Set.copyOf(announcements);
+        for (T model : models) {
+            var bean = new org.springframework.beans.BeanWrapperImpl(model);
+            var key = new AnnouncementKey((String) bean.getPropertyValue("houseManageNo"),
+                    (String) bean.getPropertyValue("pblancNo"));
+            if (!scopes.contains(key) || bean.getPropertyValue("modelNo") == null) {
+                throw new IllegalArgumentException("Model is missing keys or belongs to another announcement");
+            }
+        }
+        for (AnnouncementKey key : scopes) {
+            entityManager.createQuery("delete from " + type.getSimpleName()
+                    + " m where m.houseManageNo = :house and m.pblancNo = :notice")
+                    .setParameter("house", key.houseManageNo()).setParameter("notice", key.pblancNo()).executeUpdate();
+        }
+        entityManager.clear();
+        upsertAll(models);
+    }
+
 	private UrbanModelValues valuesOf(UrbtyOfctlLttotPblancMdl model) {
 		return new UrbanModelValues(
 				model.getModelNo(), model.getGp(), model.getTp(), model.getExcluseAr(),

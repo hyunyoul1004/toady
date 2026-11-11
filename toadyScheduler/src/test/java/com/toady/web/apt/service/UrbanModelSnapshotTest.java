@@ -81,4 +81,52 @@ class UrbanModelSnapshotTest {
     private int count() {
         return jdbc.queryForObject("select count(*) from TB_URBTY_OFCTL_LTTOT_PBLANC_MDL", Integer.class);
     }
+
+    @Test void ordinaryModelSnapshotRemovesMissingAndEmptyModels() {
+        var first = aptModel("1", "50"); var second = aptModel("2", "60");
+        persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(first, second));
+        persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(second));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_MDL", Integer.class));
+        persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_MDL", Integer.class));
+    }
+    @Test
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void ordinarySnapshotRestoresDeletedRowsWhenInsertFails() {
+        persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(aptModel("1", "50")));
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () ->
+                persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(aptModel("2", "area-exceeds-column-length-17"))));
+        assertEquals("50", jdbc.queryForObject("SELECT SUPLY_AR FROM TB_APT_LTTOT_PBLANC_MDL WHERE MODEL_NO = '1'", String.class));
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_MDL");
+    }
+    private com.toady.web.apt.entity.AptLttotPblancMdl aptModel(String number, String area) {
+        var model = new com.toady.web.apt.entity.AptLttotPblancMdl();
+        model.setHouseManageNo(key.houseManageNo()); model.setPblancNo(key.pblancNo());
+        model.setModelNo(number); model.setSuplyAr(area); return model;
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(classes = {
+            com.toady.web.apt.entity.AptLttotPblancMdl.class,
+            com.toady.web.apt.entity.RemndrLttotPblancMdl.class,
+            com.toady.web.apt.entity.PblPvtRentLttotPblancMdl.class,
+            com.toady.web.apt.entity.OptLttotPblancMdl.class
+    })
+    <T> void ordinarySnapshotIsScopedToTheFetchedAnnouncement(Class<T> type) throws Exception {
+        var other = new AnnouncementKey("OTHER", "NOTICE");
+        T first = type.getDeclaredConstructor().newInstance();
+        T second = type.getDeclaredConstructor().newInstance();
+        for (var pair : List.of(new Object[]{first, key}, new Object[]{second, other})) {
+            var bean = new org.springframework.beans.BeanWrapperImpl(pair[0]);
+            var scope = (AnnouncementKey) pair[1];
+            bean.setPropertyValue("houseManageNo", scope.houseManageNo());
+            bean.setPropertyValue("pblancNo", scope.pblancNo());
+            bean.setPropertyValue("modelNo", "1");
+        }
+        persistence.replaceModels(type, List.of(key, other), List.of(first, second));
+        persistence.replaceModels(type, List.of(key), List.of());
+        String table = type.getAnnotation(jakarta.persistence.Table.class).name();
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE HOUSE_MANAGE_NO='OTHER'", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE HOUSE_MANAGE_NO='SNAPSHOT'", Integer.class));
+    }
 }

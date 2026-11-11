@@ -29,7 +29,7 @@ async function harness(fetch) {
     config: { default: { apiUrl: '' } },
     zustand: { create },
     'jwt-decode': { jwtDecode },
-    '@/utils/date.util': { formatDate: value => value, formatDateRange: () => '' }
+    '@/utils/date.util': { formatDate: value => value, formatDateRange: (start, end) => `${start || ''}~${end || ''}` }
   };
   const cache = new Map();
   async function load(specifier) {
@@ -52,6 +52,7 @@ async function harness(fetch) {
   await api.evaluate();
   return {
     api: api.namespace.default,
+    getCompetitionType: api.namespace.getCompetitionType,
     client: cache.get('@/api/client').namespace,
     store: cache.get('@/features/auth/store/useAuthStore').namespace.useAuthStore,
     storage
@@ -152,4 +153,47 @@ test('comments reject partial results when an older page fails', async () => {
     return response({ data: { content: [], totalPages: 2 } });
   });
   await assert.rejects(h.api.getComments({ type: 'apt', houseManageNo: '1', pblancNo: '1' }), /comments unavailable/);
+});
+
+
+test('APT detail uses API reception start and end fields', async () => {
+  const h = await harness(async () => response({ data: { announcement: {
+    rceptBgnde: '2026-11-01', rceptEndde: '2026-11-04',
+    gnrlRnk1CrspareaRcptde: '2026-11-02', gnrlRnk1CrspareaEndde: '2026-11-03',
+    gnrlRnk1EtcAreaRcptde: '2026-11-03', gnrlRnk1EtcAreaEndde: '2026-11-04',
+    gnrlRnk2CrspareaRcptde: '2026-11-04', gnrlRnk2CrspareaEndde: '2026-11-04'
+  }, models: [] } }));
+  const detail = (await h.api.getAnnouncementDetail({ type: 'apt', houseManageNo: '1', pblancNo: '1' })).data.subscriptDetail;
+  assert.equal(detail.onePriorityArea, '2026-11-02~2026-11-03');
+  assert.equal(detail.oneOtherAreas, '2026-11-03~2026-11-04');
+  assert.equal(detail.twoPriorityArea, '2026-11-04~2026-11-04');
+  assert.equal(detail.subscriptDate, '2026-11-01~2026-11-04');
+});
+
+test('urban detail preserves its API address for display and map lookup', async () => {
+  const h = await harness(async () => response({ data: { announcement: { hssplyHshldco: '서울특별시 실제주소 1' }, models: [] } }));
+  const detail = (await h.api.getAnnouncementDetail({ type: 'urban', houseManageNo: '1', pblancNo: '1' })).data.subscriptDetail;
+  assert.equal(detail.hssplyAdres, '서울특별시 실제주소 1');
+  assert.equal(detail.supplyLocation, '서울특별시 실제주소 1');
+});
+
+test('map text escapes executable HTML and preserves ordinary text', async () => {
+  const source = await fs.readFile(new URL('../src/utils/html.util.js', import.meta.url), 'utf8');
+  const { escapeHtml } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  assert.equal(escapeHtml('<img src=x onerror="alert(1)">'), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+  assert.equal(escapeHtml("서울 & '아파트'"), '서울 &amp; &#39;아파트&#39;');
+});
+
+
+test('cancelled resupply uses its competition endpoint while keeping remaining detail type', async () => {
+  const urls = [];
+  const h = await harness(async url => { urls.push(url); return response({ data: [] }); });
+  const detail = { type: 'remaining', houseSecd: '06', houseManageNo: '1', pblancNo: '2' };
+  const type = h.getCompetitionType(detail);
+  assert.equal(type, 'cancel-resupply');
+  await h.api.getCompetitionRates({ ...detail, type });
+  assert.match(urls[0], /\/cancel-resupply\/announcements\/1\/2\/competition-rates$/);
+  assert.equal(detail.type, 'remaining');
+  assert.equal(h.getCompetitionType({ type: 'remaining', houseSecd: '04' }), 'remaining');
+  assert.equal(h.getCompetitionType({ type: 'apt' }), 'apt');
 });

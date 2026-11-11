@@ -66,6 +66,8 @@ public class CertifyDTO {
     @NoArgsConstructor (access = AccessLevel.PROTECTED)
     public static class UserInfo {
 
+        @NotBlank(message = "이메일을 입력해 주세요.")
+        @jakarta.validation.constraints.Email(message = "올바른 이메일을 입력해 주세요.")
         private String userEmail;
 
     }

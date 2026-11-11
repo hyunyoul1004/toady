@@ -301,6 +301,10 @@ export const LoginPage = (props) => {
           {isLoading ? <CircularProgress size={24} color="inherit" /> : '로그인'}
         </Button>
 
+        <Button component="a" href="/certify" variant="text" sx={{ alignSelf: 'center' }}>
+          가입 인증 메일 다시 받기
+        </Button>
+
         {/* 4. 하단 회원가입 전환 안내 */}
         <Box sx={{ textAlign: 'center', pt: 1, borderTop: '1px solid #f1f5f9' }}>
           <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.85rem' }}>

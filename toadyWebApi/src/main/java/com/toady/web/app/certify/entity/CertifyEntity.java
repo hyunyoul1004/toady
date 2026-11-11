@@ -47,8 +47,8 @@ public class CertifyEntity {
     @Comment("인증 값")
     private String certifyCode;
 
-    @Column(nullable = false, length = 200)
-    @Comment("전송 메시지")
+    @Column(nullable = false, columnDefinition = "TEXT")
+    @Comment("인증 이메일 본문")
     private String certifyMessage;
 
     @Column(nullable = false, length = 1)

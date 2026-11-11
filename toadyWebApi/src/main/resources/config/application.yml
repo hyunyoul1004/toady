@@ -23,6 +23,10 @@ spring:
     properties:
       mail:
         smtp:
+          # SMTP 지연 시 DB 트랜잭션과 계정 잠금을 오래 점유하지 않도록 제한한다. (밀리초)
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT_MS:5000}
+          timeout: ${MAIL_READ_TIMEOUT_MS:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT_MS:5000}
           auth: true
           starttls:
             enable: true

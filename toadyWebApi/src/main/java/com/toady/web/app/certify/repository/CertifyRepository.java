@@ -37,5 +37,15 @@ public interface CertifyRepository extends JpaRepository<CertifyEntity, Long> {
      */
     public CertifyEntity findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc(String CertifyType, String CertifySendType, Long userSeq);
 
+    /** 비밀번호 변경 후 같은 계정에 발급된 미사용 코드를 모두 폐기한다. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("update CertifyEntity c set c.certifyYn = 'Y', c.updateDt = :now, c.updateUserSeq = :userSeq where c.createUserSeq = :userSeq and c.certifyType = 'FIND_PW' and c.certifyYn = 'N'")
+    int invalidatePasswordCodes(@org.springframework.data.repository.query.Param("userSeq") Long userSeq,
+            @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
 
+
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("update CertifyEntity c set c.certifyYn = 'Y', c.updateDt = :now, c.updateUserSeq = :userSeq where c.createUserSeq = :userSeq and c.certifyType = 'ACCOUNT' and c.certifyYn = 'N'")
+    int invalidateAccountCodes(@org.springframework.data.repository.query.Param("userSeq") Long userSeq,
+            @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
 }

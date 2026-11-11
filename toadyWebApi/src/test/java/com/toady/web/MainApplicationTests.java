@@ -89,7 +89,6 @@ class MainApplicationTests {
 
     @Test
     void registrationReturnsFailureAndRollsBackWhenVerificationEmailCannotBeSent() throws Exception {
-        jdbcTemplate.execute("alter table TB_CERTIFY alter column CERTIFY_MESSAGE varchar(4000)");
         int certifyCountBefore = jdbcTemplate.queryForObject("select count(*) from TB_CERTIFY", Integer.class);
         doThrow(new MailAuthenticationException("SMTP authentication failed"))
                 .when(emailUtilService)

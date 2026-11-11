@@ -35,6 +35,10 @@ export const authApi = {
     }
   },
 
+  async resendAccountVerification(userEmail) {
+    return apiClient.post('/webApi/certify/resend-account-verification', { userEmail });
+  },
+
   /**
    * 비밀번호 찾기 인증번호 요청
    * POST /webApi/certify/find-password-request-certify

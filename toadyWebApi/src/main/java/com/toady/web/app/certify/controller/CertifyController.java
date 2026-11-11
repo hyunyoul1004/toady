@@ -55,14 +55,32 @@ public class CertifyController {
     }
 
 
+    @Operation(summary = "가입 인증 메일 재발송", tags = "인증 API")
+    @PostMapping("/resend-account-verification")
+    public ResponseEntity<ResData> resendAccountVerification(@Valid @RequestBody CertifyDTO.UserInfo param) {
+        try {
+            return certifyService.resendAccountVerification(param);
+        } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
+            log.error("가입 인증 이메일 재발송 실패", exception);
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ResData.of(
+                    ResultCode.SYSTEM_ERROR.getCode(), "인증 이메일을 발송하지 못했습니다. 잠시 후 다시 요청해 주세요."));
+        }
+    }
+
     /**
      * 비밀번호 찾기 인증번호 요청.
      * @return 결과.
      */
     @Operation(summary = "비밀번호 찾기 인증번호 요청", description = "비밀번호 찾기 인증번호 요청", tags = "인증 API")
     @PostMapping("/find-password-request-certify")
-    public ResponseEntity<ResData> findPasswordRequestCertify(@RequestBody CertifyDTO.UserInfo userInfo){
-        return certifyService.findPasswordRequestCertify(userInfo);
+    public ResponseEntity<ResData> findPasswordRequestCertify(@Valid @RequestBody CertifyDTO.UserInfo userInfo){
+        try {
+            return certifyService.findPasswordRequestCertify(userInfo);
+        } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
+            log.error("비밀번호 재설정 이메일 발송 실패", exception);
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ResData.of(
+                    ResultCode.SYSTEM_ERROR.getCode(), "인증 이메일을 발송하지 못했습니다. 잠시 후 다시 요청해 주세요."));
+        }
     }
 
     /**

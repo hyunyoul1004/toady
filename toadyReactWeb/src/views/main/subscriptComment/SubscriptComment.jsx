@@ -60,7 +60,7 @@ export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
   const currentSubscriptSeq = subscriptSeq || subscriptDetail?.subscriptSeq;
 
   // 댓글 목록 조회 (TanStack Query)
-  const { data: commentsRes, isLoading } = useCommentsQuery(currentSubscriptSeq, Boolean(currentSubscriptSeq));
+  const { data: commentsRes, isLoading, isError, error, refetch } = useCommentsQuery(currentSubscriptSeq, Boolean(currentSubscriptSeq));
 
   // Mutations
   const addMutation = useAddCommentMutation();
@@ -698,6 +698,10 @@ export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
             댓글을 불러오는 중입니다...
           </Typography>
         </Box>
+      ) : isError ? (
+        <Alert severity="error" action={<Button color="inherit" onClick={() => refetch()}>다시 시도</Button>}>
+          댓글을 불러오지 못했습니다. {error?.message}
+        </Alert>
       ) : treeCommentList.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {treeCommentList.map((row) => (

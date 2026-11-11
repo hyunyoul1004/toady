@@ -62,7 +62,9 @@ public class CertifyService {
             String certifyCode = StrUtils.createCode();
 
             StringBuilder sendMessage = new StringBuilder();
-            String url = DOMAIN+"/certify?userEmail="+param.getUserEmail()+"&certifyCode="+certifyCode;
+            String url = org.springframework.web.util.UriComponentsBuilder.fromUriString(DOMAIN)
+                    .path("/certify").queryParam("userEmail", "{email}").queryParam("certifyCode", "{code}")
+                    .encode().buildAndExpand(param.getUserEmail(), certifyCode).toUriString();
 
             sendMessage
                 .append("<html>")
@@ -139,12 +141,31 @@ public class CertifyService {
     }
 
 
+    /** 미인증 계정에 새 가입 링크를 발송한다. 이전 링크 폐기와 발급은 함께 롤백된다. */
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<ResData> resendAccountVerification(CertifyDTO.UserInfo param) {
+        UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+        if (user == null) return ResponseEntity.ok(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
+        if ("Y".equals(user.getEmailCertifyYn())) return ResponseEntity.ok(ResData.of(ResultCode.ALREADY_CERTIFY_ERROR.getCode(), "이미 이메일 인증을 완료했습니다. 로그인해 주세요."));
+        if (!"N".equals(user.getLockYn()) || !"N".equals(user.getWithdrawalYn())) {
+            return ResponseEntity.badRequest().body(ResData.of(ResultCode.LOCKED_ERROR.getCode(), "사용할 수 없는 계정입니다."));
+        }
+        var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
+        if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) {
+            return ResponseEntity.ok(ResData.of(ResultCode.RE_CERTIFY_REQUEST_ERROR.getCode(), "인증 메일은 4분 간격으로 재발송할 수 있습니다."));
+        }
+        certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
+        CertifyDTO.Save request = new CertifyDTO().new Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL");
+        saveCertify(request);
+        return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(), "새 인증 메일을 발송했습니다. 새 링크는 24시간 동안 유효합니다."));
+    }
+
     /** 가입 인증 코드를 확인하고 이메일 인증 상태를 갱신합니다. */
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> certifyCheck(CertifyDTO.CheckParam param){
 
         try {
-            UserEntity userEntity = userRepository.findByUserEmail(param.getUserEmail());
+            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
             if(userEntity == null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
@@ -161,7 +182,7 @@ public class CertifyService {
             }
             // 가입 링크는 발급 후 24시간까지만 허용한다.
             if (!certifyEntity.getCreateDt().plusHours(24).isAfter(LocalDateTime.now())) {
-                return ResponseEntity.ok().body(ResData.of(ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getCode(), ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getMessage()));
+                return ResponseEntity.ok().body(ResData.of(ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getCode(), "가입 인증 링크의 유효시간 24시간이 지났습니다. 인증 메일을 다시 요청해 주세요."));
             }
             certifyEntity.setCertifyYn("Y");
             certifyEntity.setUpdateUserSeq(userEntity.getUserSeq());
@@ -187,9 +208,10 @@ public class CertifyService {
     }
 
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> findPasswordRequestCertify(CertifyDTO.UserInfo param){
         Map<String, String> resultMap = new HashMap<>();
-        UserEntity userEntity = userRepository.findByUserEmail(param.getUserEmail());
+        UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
         if(userEntity == null){
             return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
@@ -267,13 +289,18 @@ public class CertifyService {
 
             certifyRepository.save(certifyParam);
 
-            emailUtilService.sendEmail(param.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage.toString());
+            try {
+                emailUtilService.sendEmail(param.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage.toString());
+            } catch (Exception exception) {
+                // 발송 실패 시 새 코드와 요청 시각을 롤백해 즉시 재요청할 수 있게 한다.
+                throw new EmailDeliveryException("비밀번호 재설정 이메일 발송에 실패했습니다.", exception);
+            }
 
             resultMap.put("userEmail", userEntity.getUserEmail());
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.ok().body(ResData.of(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage()));
+            if (e instanceof EmailDeliveryException delivery) throw delivery;
+            throw new IllegalStateException("비밀번호 재설정 요청에 실패했습니다.", e);
         }
 
 
@@ -288,7 +315,7 @@ public class CertifyService {
 
 
         try {
-            UserEntity userEntity = userRepository.findByUserEmail(param.getUserEmail());
+            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
             if(userEntity == null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
             }
@@ -328,6 +355,8 @@ public class CertifyService {
             certifyEntity.setUpdateDt(LocalDateTime.now());
 
             certifyRepository.save(certifyEntity);
+            // 다른 코드로 동시에 변경을 시도해도 계정 잠금 뒤에는 폐기된 상태를 읽는다.
+            certifyRepository.invalidatePasswordCodes(userEntity.getUserSeq(), LocalDateTime.now());
 
         } catch (Exception e) {
             // 예외를 전파해 회원 정보와 인증 코드 소비를 함께 롤백한다.

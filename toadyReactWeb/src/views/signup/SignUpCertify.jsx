@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Box, Button, Container, Typography, Alert, AlertTitle, CircularProgress } from '@mui/material';
+import { Box, Button, Container, Typography, Alert, AlertTitle, CircularProgress, TextField } from '@mui/material';
 import { authApi } from '@/features/auth/api/authApi';
 
 export const SignUpCertify = () => {
@@ -16,6 +16,23 @@ export const SignUpCertify = () => {
   const certifyCode = searchParams.get('certifyCode');
 
   const [isLoading, setIsLoading] = useState(true);
+  const [resendEmail, setResendEmail] = useState(userEmail || '');
+  const [isSending, setIsSending] = useState(false);
+  const [resendNotice, setResendNotice] = useState(null);
+
+  async function resend(event) {
+    event.preventDefault();
+    setIsSending(true);
+    setResendNotice(null);
+    try {
+      const result = await authApi.resendAccountVerification(resendEmail.trim());
+      setResendNotice({ severity: result.resultCode === 'SUCCESS' ? 'success' : 'error', text: result.resultMessage });
+    } catch (error) {
+      setResendNotice({ severity: 'error', text: error.message || '재발송에 실패했습니다. 다시 시도해 주세요.' });
+    } finally {
+      setIsSending(false);
+    }
+  }
   const [resultState, setResultState] = useState({ resultCode: null, resultMessage: '' });
 
   useEffect(() => {
@@ -27,7 +44,7 @@ export const SignUpCertify = () => {
           setIsLoading(false);
           setResultState({
             resultCode: 'FAIL',
-            resultMessage: '유효하지 않은 인증 링크입니다. 파라미터가 누락되었습니다.'
+            resultMessage: '인증 링크가 없거나 만료됐다면 가입 이메일로 새 링크를 요청해 주세요.'
           });
         }
         return;
@@ -100,6 +117,17 @@ export const SignUpCertify = () => {
               <AlertTitle>인증 실패</AlertTitle>
               {resultState.resultMessage}
             </Alert>
+          )}
+
+          {!isLoading && resultState.resultCode !== 'SUCCESS' && (
+            <Box component="form" onSubmit={resend} sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField label="가입 이메일" type="email" required fullWidth value={resendEmail}
+                onChange={(event) => setResendEmail(event.target.value)} disabled={isSending} />
+              <Button type="submit" variant="outlined" disabled={isSending || !resendEmail.trim()}>
+                {isSending ? '발송 중…' : '인증 메일 다시 받기'}
+              </Button>
+              {resendNotice && <Alert severity={resendNotice.severity}>{resendNotice.text}</Alert>}
+            </Box>
           )}
 
           <Button variant="contained" onClick={() => navigate('/')} sx={{ mt: 2 }}>

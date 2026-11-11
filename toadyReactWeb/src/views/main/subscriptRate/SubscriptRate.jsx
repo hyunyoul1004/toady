@@ -2,6 +2,7 @@
  * @file SubscriptRate.jsx
  * @description 청약 경쟁률, 당첨 가점 및 특별공급 신청 현황 테이블 컴포넌트
  */
+import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import React, { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -68,7 +69,7 @@ const headerCellStyle = {
 };
 
 export function SubscriptRate({ subscriptDetail }) {
-  const type = subscriptDetail?.type || 'apt';
+  const type = getCompetitionType(subscriptDetail);
   const houseManageNo = subscriptDetail?.houseManageNo;
   const pblancNo = subscriptDetail?.pblancNo || houseManageNo;
   const idKey = `${type}/${houseManageNo}/${pblancNo}`;

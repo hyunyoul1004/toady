@@ -20,6 +20,11 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     /** 이메일 주소로 사용자 계정을 조회합니다. */
     public UserEntity findByUserEmail(String userEmail);
 
+    /** 인증 코드 발급·검증과 비밀번호 변경을 계정 단위로 직렬화한다. 반드시 트랜잭션 안에서 호출한다. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from UserEntity u where u.userEmail = :email")
+    UserEntity findByEmailForUpdate(@org.springframework.data.repository.query.Param("email") String email);
+
     //닉네임 조회.
     /** 가입 시 닉네임 중복 여부를 확인합니다. */
     public UserEntity findByUserNicName(String userNicName);

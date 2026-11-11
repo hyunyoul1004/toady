@@ -238,3 +238,6 @@ CREATE TABLE IF NOT EXISTS TB_APT_SPSPLY_REQST_STUS (
 -- ============================================================================
 -- GRANT DELETE ON toady TO 'toady_sources'@'%';
 -- FLUSH PRIVILEGES;
+
+-- 6. 인증 이메일 본문 컬럼 확장 (운영 DB 적용 완료, 미적용 DB에만 수동 실행)
+-- ALTER TABLE TB_CERTIFY MODIFY COLUMN CERTIFY_MESSAGE TEXT NOT NULL COMMENT '인증 이메일 본문';

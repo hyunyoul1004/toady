@@ -58,7 +58,7 @@ flowchart TD
 
 ### 인증 및 인가
 
-JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 연결된 토큰 검증값을 확인합니다. 잠금·탈퇴·비밀번호 변경 후에는 기존 토큰을 거부합니다. 검증값은 서버 키로 계산하며 비밀번호 해시 자체를 JWT에 넣지 않습니다. 이 검증값이 없는 기존 토큰은 재로그인이 필요합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다. 가입 인증 링크는 24시간, 비밀번호 재설정 코드는 10분 동안 유효합니다. 인증 코드 행을 잠근 상태에서 회원 변경과 코드 사용 처리를 하나의 트랜잭션으로 수행합니다.
+JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 연결된 토큰 검증값을 확인합니다. 잠금·탈퇴·비밀번호 변경 후에는 기존 토큰을 거부합니다. 검증값은 서버 키로 계산하며 비밀번호 해시 자체를 JWT에 넣지 않습니다. 이 검증값이 없는 기존 토큰은 재로그인이 필요합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다. 가입 인증 링크는 24시간, 비밀번호 재설정 코드는 10분 동안 유효합니다. 가입 인증·재발송과 비밀번호 재설정은 계정 행을 먼저 잠근 뒤 필요한 코드 행을 잠가 같은 계정의 변경을 직렬화합니다. 비밀번호 변경 시 해당 계정의 미사용 재설정 코드를 모두 폐기합니다. 코드 발급은 메일 발송이 실패하면 롤백하여 즉시 재요청할 수 있습니다. 로그인 화면 또는 `/certify`에서 가입 인증 메일을 다시 요청할 수 있습니다. 재발송은 4분 간격이며, 새 링크 발송이 성공하면 이전 가입 링크는 폐기됩니다. 메일 본문은 `TB_CERTIFY.CERTIFY_MESSAGE TEXT NOT NULL`에 저장합니다.
 
 ## 코드 구성
 
@@ -74,6 +74,7 @@ JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 �
 
 | Method | Endpoint | 설명 | 접근 |
 | --- | --- | --- | --- |
+| `POST` | `/webApi/certify/resend-account-verification` | 가입 인증 메일 재발송 (`userEmail`, 4분 간격) | 공개 |
 | `GET` | `/api/v1/announcements` | 5개 유형 공고 통합 검색 및 페이지 조회 | 공개 |
 | `GET` | `/api/v1/announcements/suggestions` | 전체 기간 공고 자동완성 검색 | 공개 |
 | `GET` | `/api/v1/{type}/announcements` | 공고 유형별 검색 | 공개 |
@@ -86,7 +87,7 @@ JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 �
 | `PATCH` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 수정 | 로그인 필요 |
 | `DELETE` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 삭제 | 로그인 필요 |
 
-`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 예제 환경 설정의 `SERVER_PORT=8081`을 사용하면 프론트 개발 프록시와 연결됩니다.
+`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 경쟁률 조회는 `cancel-resupply`도 지원합니다. 취소후재공급 공고의 상세 유형은 `remaining`으로 유지하고 `houseSecd=06`일 때 경쟁률만 `cancel-resupply`로 조회합니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 예제 환경 설정의 `SERVER_PORT=8081`을 사용하면 프론트 개발 프록시와 연결됩니다.
 
 ### 자동완성 요청 예시
 
@@ -134,7 +135,7 @@ bash ./gradlew test
 bash ./gradlew bootRun
 ```
 
-예제의 `SERVER_PORT=8081`은 프론트 개발 서버의 프록시 대상입니다. 환경변수를 별도로 설정하지 않은 기본 서버 포트는 `8080`입니다. 이메일 기능에는 SMTP 설정이 필요합니다. 로컬 전용 `application-local.yml`이나 `.env.local`에 의존하지 않으므로 새 clone에서도 동일한 설정 경로를 사용합니다.
+예제의 `SERVER_PORT=8081`은 프론트 개발 서버의 프록시 대상입니다. 환경변수를 별도로 설정하지 않은 기본 서버 포트는 `8080`입니다. 이메일 기능에는 SMTP 설정이 필요합니다. SMTP 연결·읽기·쓰기 타임아웃은 각각 기본 5초이며 `MAIL_CONNECTION_TIMEOUT_MS`, `MAIL_READ_TIMEOUT_MS`, `MAIL_WRITE_TIMEOUT_MS`로 밀리초 단위로 조정합니다. 로컬 전용 `application-local.yml`이나 `.env.local`에 의존하지 않으므로 새 clone에서도 동일한 설정 경로를 사용합니다.
 
 애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 댓글·경쟁률·관리자 테이블 생성문과 기존 DB 변경 참고 SQL은 루트 `database.sql`에 모았습니다. 실행 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
 

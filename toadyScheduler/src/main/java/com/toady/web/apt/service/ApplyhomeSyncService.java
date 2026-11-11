@@ -126,7 +126,7 @@ public class ApplyhomeSyncService {
 					.toList();
 			persistenceService.upsertUrbanModels(List.copyOf(announcementKeys), urbanModels);
 		} else {
-			persistenceService.upsertAll(models);
+			persistenceService.replaceModels(modelType, List.copyOf(announcementKeys), models);
 		}
 		log.info("Upserted Applyhome endpoint={} announcements={} rows={}",
 				modelEndpoint, announcementKeys.size(), models.size());

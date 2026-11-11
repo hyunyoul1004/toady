@@ -2,6 +2,7 @@
  * @file Kakaomap.jsx
  * @description 카카오 지도 SDK 비동기 로드 및 공고 위치 좌표 검색/표출 컴포넌트
  */
+import { escapeHtml } from '@/utils/html.util';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -247,10 +248,10 @@ export const Kakaomap = (props) => {
           const content = `
             <div style="padding:10px 12px;min-width:210px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#1e293b;border-radius:8px;">
               <div style="font-weight:800;font-size:13px;line-height:1.4;margin-bottom:3px;color:#0f172a;">
-                ${titleText}
+                ${escapeHtml(titleText)}
               </div>
               <div style="font-size:11px;color:#64748b;margin-bottom:8px;line-height:1.3;">
-                ${addrText}
+                ${escapeHtml(addrText)}
               </div>
               <div style="display:flex;gap:6px;font-size:11px;">
                 <a href="${kakaoMapUrl}" target="_blank" rel="noopener noreferrer" 
