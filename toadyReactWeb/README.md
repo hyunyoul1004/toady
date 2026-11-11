@@ -44,6 +44,8 @@ src/
 └── utils/                    # 날짜·문자열·SEO 유틸리티
 ```
 
+메인 화면은 캘린더 조회와 상세 패널을 연결합니다. `announcementFilters.js`는 지역·유형·검색 옵션을 정의하고, `hooks/useAnnouncementSearch.js`는 자동완성·옵션 조합·목록 필터링을 담당합니다. `components/AnnouncementFilters.jsx`는 필터 UI, `components/AnnouncementNotice.jsx`는 공고 원문과 유형별 상세를 표시합니다.
+
 ## 주요 UX 동작
 
 ### 반응형 청약 캘린더

@@ -119,15 +119,14 @@ flowchart LR
 ├── toadyReactWeb/           # React 화면 · API 클라이언트 · 서버 상태 관리
 ├── toadyWebApi/             # 공고 조회 · 인증 · 댓글 REST API
 ├── toadyScheduler/          # 청약홈 데이터 수집 · 저장
-├── db/                     # 공유 DB 마이그레이션 및 도입 절차
+├── db/                     # 공유 DB 버전별 마이그레이션 SQL
 ├── scripts/                # 배포 후 상태 확인
-├── docs/                   # 구조 · 배포 설명
 ├── .github/workflows/      # 검증 및 배포 파이프라인
 ├── docker-compose.yml      # 운영 앱 · DB · Nginx · Certbot 구성
 └── compose.migrations.yml  # 명시적으로 실행하는 DB 변경 작업
 ```
 
-[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md) · [구조와 배포 검증](docs/REFACTORING.md) · [DB 변경 관리](db/README.md)
+[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md)
 
 ## 로컬에서 확인하기
 
@@ -151,7 +150,7 @@ npm run dev
 
 `http://localhost:3000`에서 열리며, 데이터 조회·인증에는 `localhost:8081`의 API가 필요합니다. 지도는 본인의 Kakao JavaScript 키를 설정한 경우 사용할 수 있습니다.
 
-**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. Flyway 버전 1은 기존 DB를 기준으로 등록하는 도입 경로로, 빈 DB 초기화 기능이 아닙니다. API·수집기 실행 전 각 README와 [DB 안내](db/README.md)를 확인하세요.
+**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. Flyway 버전 1은 기존 DB를 기준으로 등록하는 도입 경로로, 빈 DB 초기화 기능이 아닙니다. API·수집기 실행 전 각 README와 [공유 DB 변경 관리](#공유-db-변경-관리)를 확인하세요.
 
 ## 저장소 관리
 
@@ -161,4 +160,91 @@ npm run dev
 - 프론트엔드는 npm으로 통일하고, 사용하지 않는 기존 폰트와 Yarn 잠금 파일은 추적에서 제외합니다.
 - `VITE_*` 값은 브라우저 번들에 포함됩니다. DB 비밀번호·JWT 비밀키·서버용 API 키를 넣지 않습니다.
 
-커밋 전 확인 방법과 공개 설정 범위는 [저장소 관리 안내](docs/REPOSITORY.md)를 참고하세요.
+README는 루트와 세 애플리케이션의 최상위 폴더에 하나씩만 유지합니다. 다른 경로의 README와 이 문서에 통합된 개발 메모는 Git 추적에서 제외합니다. 이미 추적된 금지 파일도 `scripts/check-repository.py`로 검사하며 PR·master CI에 동일하게 적용합니다.
+
+```bash
+python3 scripts/check-repository.py
+git diff --check
+git status --short
+git diff --cached --stat
+```
+
+검사는 파일 정책과 일부 식별 가능한 키 형식을 확인하며 모든 비밀값 탐지를 보장하지는 않습니다. 스테이징된 diff도 직접 확인합니다. 이미 적용된 Git 이력을 삭제하는 작업은 수행하지 않습니다.
+
+
+## 수동 배포와 상태 확인
+
+서버에는 Docker Compose, `bash`, `curl`이 필요합니다. 배포 전에 GitHub Actions Secret `VITE_KAKAO_MAP_KEY`와 기존 EC2·Docker Hub Secrets를 설정합니다. 지도 키는 이미지 빌드 시 전달되며, 런타임 환경변수 변경만으로 정적 앱에 반영되지 않습니다.
+
+세 앱의 `DOCKER_USERNAME`, `IMAGE_TAG`를 동일하게 지정해 배포합니다. 새 CI는 커밋 SHA 태그를 사용하고 `latest`를 갱신하지 않습니다.
+
+```bash
+cd ~/toady
+export DOCKER_USERNAME=dukkeoba
+export IMAGE_TAG=배포할_커밋_SHA
+docker-compose -p toady pull toadyWebApi toadyScheduler toadyReactWeb
+docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
+bash scripts/check-deployment.sh
+```
+
+상태 검사는 API `/internal/health`와 DB 연결, 웹 컨테이너의 정적 페이지 응답, 세 앱 컨테이너의 실행·재시작 상태를 확인합니다. 수집 작업의 완료나 외부 DNS·TLS·Nginx 경로를 검증하지는 않습니다.
+
+CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 기록합니다. 이전 커밋 태그를 지정하면 앱 이미지를 롤백할 수 있습니다. 배포 실패 시 현재 컨테이너 이미지와 마지막 성공 태그가 다를 수 있으므로 실제 상태를 확인합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
+
+
+## 공유 DB 변경 관리
+
+API와 수집기가 공유하는 스키마의 신규 변경은 `db/migration`에서 관리합니다.
+두 애플리케이션의 자동 DDL 설정은 계속 `none`으로 유지합니다. 앱 기동이나
+일반 배포에서 마이그레이션을 자동 실행하지 않습니다. 변경 담당자는 배포 전에
+별도 유지보수 단계로 한 번 실행하고, 두 앱과의 호환성을 확인합니다.
+
+### 기존 DB 도입
+
+현재 저장소에는 전체 초기 스키마가 없습니다. 버전 1은 **이미 구성된 기존 DB**를
+의미하며, 빈 DB를 만드는 초기화 스크립트가 아닙니다. 기존 수동 SQL 중 경쟁률
+테이블과 도시형 주택형 PK 변경은 이미 적용되어 있는지 먼저 확인해야 합니다.
+과거 SQL은 `toadyScheduler/src/main/resources/db/manual`에 참고용으로 남겨 두며
+자동 재실행하지 않습니다. 특히 도시형 PK 변경 SQL은 재실행하면 실패합니다.
+
+1. DB 백업과 복원 점검 후 운영 DB의 복제본에서 먼저 검증합니다.
+2. 공고·주택형·경쟁률·회원 테이블 및 도시형 주택형의 `ID` PK를 확인합니다.
+3. 루트 `.env.migrations` 파일에 아래 값을 설정합니다. 이 파일은 Git에서 제외됩니다.
+
+   ```dotenv
+   MIGRATION_DB_URL=jdbc:mariadb://mariadb:3306/실제_DB명
+   MIGRATION_DB_USERNAME=마이그레이션_계정
+   MIGRATION_DB_PASSWORD=실제_비밀번호
+   MIGRATION_NETWORK=toady_default
+   ```
+
+4. 저장소 루트에서 다음 명령으로 상태를 확인하고 기존 DB의 버전 1을 등록합니다.
+   `baseline`은 스키마를 검사하거나 생성하는 명령이 아니므로 사전 확인이 필요합니다.
+
+   ```bash
+   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate info
+   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate baseline
+   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate migrate
+   docker compose --env-file .env.migrations -f compose.migrations.yml run --rm migrate validate
+   ```
+
+Compose v1 환경에서는 `docker compose` 대신 `docker-compose`를 사용합니다.
+위 네트워크는 기존 `docker-compose -p toady up -d`가 생성한 네트워크여야 합니다.
+
+### 관리 범위와 후속 변경
+
+첫 버전 변경인 `V2__create_announcement_comments.sql`은 기존 댓글 테이블 생성 SQL과
+동일합니다. 테이블이 이미 있으면 유지하고, 없으면 생성합니다. 기존 테이블의
+열·인덱스 불일치를 자동 보정하지는 않습니다. 운영 테이블 정의와 SQL의 일치 여부를
+도입 전에 확인해야 합니다. 기존 `toadyWebApi/src/main/resources/db/schema` SQL은
+과거 참고 자료이며 앞으로 수정할 원본은 `db/migration`입니다.
+
+- 새 변경은 `V3__설명.sql`, `V4__설명.sql` 순으로 추가합니다.
+- 적용된 파일은 수정하지 않습니다. Flyway가 이력과 체크섬을 검사합니다.
+- 두 앱 모두 실행 가능한 확장 변경을 먼저 배포하고, 기존 열 제거는 후속 배포로 나눕니다.
+- MariaDB DDL은 자동 롤백을 기대하지 않습니다. 실패 시 실제 스키마를 확인하고
+  후속 수정 또는 백업 복원으로 대응합니다. 상태 확인 없이 `repair`하지 않습니다.
+- 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
+
+이 구성은 기존 DB의 버전 관리 도입 경로입니다. 전체 DB의 신규 구축에는 별도로
+검증된 전체 스키마 덤프 또는 초기화 마이그레이션이 필요합니다.

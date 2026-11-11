@@ -66,3 +66,14 @@ LOG_FILE_NAME_IS_UNDEFINED/
 /toadyReactWeb/src/resources/MaruBuriTTF/
 /toadyReactWeb/src/resources/nanum-barun-pen/
 /toadyReactWeb/src/resources/nanum-gothic/
+
+# Keep one README at the repository root and each application root only.
+[Rr][Ee][Aa][Dd][Mm][Ee]*
+!/README.md
+!/toadyReactWeb/README.md
+!/toadyWebApi/README.md
+!/toadyScheduler/README.md
+
+# Local notes consolidated into the root README
+/docs/REFACTORING.md
+/docs/REPOSITORY.md

@@ -20,6 +20,13 @@ legacy_fonts = {
     'toadyReactWeb/src/resources/nanum-barun-pen',
     'toadyReactWeb/src/resources/nanum-gothic',
 }
+allowed_readmes = {
+    'README.md',
+    'toadyReactWeb/README.md',
+    'toadyWebApi/README.md',
+    'toadyScheduler/README.md',
+}
+local_notes = {'docs/REFACTORING.md', 'docs/REPOSITORY.md'}
 # Only recognizable credential formats; never print their values.
 credential_patterns = [
     re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----'),
@@ -37,6 +44,10 @@ for relative in sorted(set(filter(None, paths))):
     name = file.name
     env_example = name == '.env.example' or (name.startswith('.env.') and name.endswith('.example'))
     reasons = []
+    if name.lower().startswith('readme') and relative not in allowed_readmes:
+        reasons.append('README outside repository/application roots')
+    if relative in local_notes:
+        reasons.append('local notes consolidated into root README')
     if (name == '.env' or name.startswith('.env.')) and not env_example:
         reasons.append('actual environment configuration')
     if excluded_directories.intersection(parts):
