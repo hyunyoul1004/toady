@@ -38,7 +38,6 @@ import CommentIcon from '@mui/icons-material/Comment';
 import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import Tooltip from '@mui/material/Tooltip';
-import ShareIcon from '@mui/icons-material/Share';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -384,6 +383,7 @@ export const Main = () => {
             <Tooltip title="공고 공유하기">
               <IconButton
                 onClick={handleShare}
+                aria-label="공고 공유하기"
                 size="small"
                 sx={{
                   width: 36,
@@ -393,13 +393,26 @@ export const Main = () => {
                   border: '1px solid #bfdbfe',
                   transition: 'all 0.15s ease',
                   '&:hover': {
-                    bgcolor: '#2563eb',
-                    color: '#ffffff',
+                    bgcolor: '#dbeafe',
                     borderColor: '#2563eb'
                   }
                 }}
               >
-                <ShareIcon fontSize="small" />
+                {/* 모바일 브라우저에서도 크기와 색상이 명확하도록 직접 지정한다. */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                  style={{ display: 'block', flexShrink: 0 }}
+                >
+                  <path d="M7 11L17 6M7 13L17 18" fill="none" stroke="#2563eb" strokeWidth="2" />
+                  <circle cx="5" cy="12" r="3" fill="#2563eb" />
+                  <circle cx="19" cy="5" r="3" fill="#2563eb" />
+                  <circle cx="19" cy="19" r="3" fill="#2563eb" />
+                </svg>
               </IconButton>
             </Tooltip>
 
