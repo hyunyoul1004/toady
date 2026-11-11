@@ -5,6 +5,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Public browser configuration; do not pass server credentials here.
+ARG VITE_KAKAO_MAP_KEY
+ENV VITE_KAKAO_MAP_KEY=$VITE_KAKAO_MAP_KEY
+
 # 의존성 캐시 활용을 위해 패키지 정의 파일 먼저 복사
 COPY package.json package-lock.json ./
 

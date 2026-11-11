@@ -15,6 +15,7 @@ class ApplyhomeEntityMapperTest {
 
 	@Test
 	void mapsUppercaseApiFieldsAndNumericIdentifiers() throws Exception {
+		// API의 대문자 필드명과 숫자 값도 엔티티의 문자열 필드에 맞게 변환되어야 한다.
 		JsonNode response = objectMapper.readTree("""
 				{
 				  "HOUSE_MANAGE_NO": 2022000248,
@@ -34,6 +35,7 @@ class ApplyhomeEntityMapperTest {
 
 	@Test
 	void mapsOptionalModelNumberAndRepeatedTypeFields() throws Exception {
+		// 선택 필드가 null이어도 매핑이 실패하지 않고, 반복적으로 쓰이는 TP 필드도 보존한다.
 		JsonNode response = objectMapper.readTree("""
 				{
 				  "HOUSE_MANAGE_NO": "2022950004",

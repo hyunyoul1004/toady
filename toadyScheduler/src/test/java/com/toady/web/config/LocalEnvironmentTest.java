@@ -16,6 +16,7 @@ class LocalEnvironmentTest {
 
 	@Test
 	void readsQuotedValuesWithoutOverwritingExistingProperties() throws IOException {
+		// 따옴표 안의 특수문자를 보존하고, 외부에서 이미 설정한 시스템 속성을 우선한다.
 		Path envFile = tempDir.resolve(".env.local");
 		Files.writeString(envFile, """
 				TOADY_TEST_DB_URL="jdbc:mariadb://localhost/toady"
@@ -36,6 +37,7 @@ class LocalEnvironmentTest {
 			LocalEnvironment.loadMissingProperties(envFile);
 			assertThat(System.getProperty("TOADY_TEST_DB_URL")).isEqualTo("provided-externally");
 		} finally {
+			// 테스트가 변경한 전역 시스템 속성은 테스트 전 상태로 복구한다.
 			restoreProperty("TOADY_TEST_DB_URL", existingUrl);
 			restoreProperty("TOADY_TEST_DB_PASSWORD", existingPassword);
 		}

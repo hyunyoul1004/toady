@@ -15,7 +15,7 @@ services:
 
   toadyWebApi:
     container_name: toadyWebApi
-    image: dukkeoba/toady-web-api:latest
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:-latest}
     env_file:
       - /home/ec2-user/toady/toadyWebApi/.env.prod
     environment:
@@ -32,7 +32,7 @@ services:
 
   toadyScheduler:
     container_name: toadyScheduler
-    image: dukkeoba/toady-scheduler:latest
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-scheduler:${IMAGE_TAG:-latest}
     env_file:
       - /home/ec2-user/toady/toadyScheduler/.env.prod
     environment:
@@ -46,7 +46,7 @@ services:
 
   toadyReactWeb:
     container_name: toadyReactWeb
-    image: dukkeoba/toady-react-web:latest
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:-latest}
     environment:
       - TZ=Asia/Seoul
     restart: always

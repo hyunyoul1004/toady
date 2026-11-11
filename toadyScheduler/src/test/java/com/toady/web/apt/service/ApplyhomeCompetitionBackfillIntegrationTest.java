@@ -17,6 +17,7 @@ class ApplyhomeCompetitionBackfillIntegrationTest {
 
 	@Test
 	void loadsCompetitionResultsFromSelectedAnnouncementDateRange() {
+		// 기본 범위는 경쟁률 API 데이터가 제공되는 초기 시점부터 오늘까지로 잡는다.
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
 		LocalDate startDate = LocalDate.parse(
 				System.getProperty("applyhome.competition.test.start-date", "2017-01-01"));

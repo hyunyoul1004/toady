@@ -98,6 +98,8 @@ APPLYHOME_API_KEY='your-service-key' \
 
 백필 작업은 외부 API 호출과 DB 쓰기를 많이 발생시킬 수 있습니다. 운영 데이터베이스에서 실행하지 마세요.
 
+공유 스키마의 신규 변경은 루트 `db/migration`에서 관리합니다. 기존 `db/manual` SQL은 과거 변경의 참고 자료이며 자동 재실행하지 않습니다. [DB 변경 관리](../db/README.md)를 확인하세요.
+
 ## Docker
 
 ```bash

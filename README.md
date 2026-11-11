@@ -1,135 +1,164 @@
-# TOADY - 청약 일정 캘린더 및 분양 정보 플랫폼
+# TOADY · 청약 일정 캘린더 및 분양 정보 플랫폼
 
-청약홈 공공데이터를 수집하고, 분양 공고의 일정·주택형·경쟁률 정보를 캘린더와 상세 화면으로 제공하는 풀스택 모노리포 프로젝트입니다.
+**유형별로 나뉜 청약홈 공공데이터를 모아, 청약 일정부터 경쟁률·당첨 가점까지 한 화면에서 확인하는 웹 서비스입니다.**
 
-- 서비스: <https://www.toady.co.kr>
-- REST API: <https://api.toady.co.kr>
-- API 문서: <https://www.toady.co.kr/swagger-ui/index.html>
+월별 일정 조회, 지역·공급유형 필터, 전체 기간 공고 검색, 공고 상세와 커뮤니티 기능을 제공합니다. 프론트엔드·API·데이터 수집기를 별도 애플리케이션으로 구성하고 Docker Compose로 배포합니다.
 
-## 프로젝트 구조
+[서비스 바로가기](https://www.toady.co.kr) · [API 문서](https://www.toady.co.kr/swagger-ui/index.html)
+
+## 프로젝트에서 해결한 문제
+
+청약 정보는 주택 유형별로 API와 데이터 형식이 나뉘어 있습니다. 같은 접수 일정도 필드명과 날짜 형식이 달라, 그대로는 하나의 캘린더와 검색 결과로 표현하기 어렵습니다. 또 사용자 요청마다 외부 API를 호출하면 외부 서비스의 응답 지연에 영향을 받습니다.
+
+TOADY는 **데이터 수집을 사용자 요청 처리와 분리**하고, 저장된 공고를 **공통 목록 계약으로 변환**해 캘린더와 검색 화면에 제공합니다.
+
+| 구현 범위 | 내용 |
+| --- | --- |
+| 사용자 화면 | 데스크톱·모바일 캘린더, 지역·공급유형 필터, 전체 기간 자동완성, 상세 패널 |
+| API | 5개 공고 유형 통합 조회, 상세·경쟁률·가점, JWT 인증, 이메일 인증, 댓글 |
+| 수집 | 공고·주택형·경쟁률 수집, 페이지 순회, 중복 실행 방지, 기존 데이터 갱신 |
+| 운영 구성 | Docker Compose, Nginx·TLS 연동, GitHub Actions 검증·이미지 배포 |
+
+## 주요 사용자 흐름
+
+1. 캘린더에서 월별 청약 일정을 확인하고 지역·공급유형을 선택합니다.
+2. 지역이나 단지명으로 검색합니다. 전체 기간 검색 결과를 선택하면 해당 접수 월로 이동합니다.
+3. 공고를 선택해 상세, 경쟁률·가점, 위치, 댓글을 확인합니다.
+4. 로그인한 사용자는 공고에 댓글과 답글을 작성하고 본인 글을 수정·삭제합니다.
+
+## 시스템 구성
+
+```mermaid
+flowchart LR
+    Browser[웹 브라우저] --> Nginx[Nginx · TLS / 도메인 라우팅]
+    Nginx --> Web[React · Vite]
+    Nginx --> API[Spring Boot API]
+    API --> DB[(MariaDB)]
+    Scheduler[Spring Boot 수집기] -->|주기적 조회| Applyhome[청약홈 Open API]
+    Scheduler -->|공고 · 주택형 · 경쟁률 저장| DB
+```
+
+세 앱은 하나의 저장소에서 관리하며 별도 애플리케이션·컨테이너로 실행합니다. 수집기와 API는 서로 다른 JVM을 사용하고 MariaDB를 공유합니다. 현재 배포 구성은 AWS EC2의 Docker Compose를 기준으로 합니다.
+
+| 영역 | 사용 기술 |
+| --- | --- |
+| Frontend | React 18, Vite 5, TanStack Query v5, Zustand, MUI, FullCalendar |
+| Backend | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT |
+| Data | MariaDB, 청약홈 Open API, Spring `@Scheduled` |
+| Validation | JUnit 5, Spring Boot Test, Mockito, H2 |
+| Delivery | Docker, Docker Compose, Nginx, Certbot, GitHub Actions |
+| DB 변경 관리 | 별도 실행하는 Flyway 구성, 버전별 SQL |
+
+## 설계 판단과 구현 근거
+
+### 1. 수집기와 사용자 API의 실행 경계 분리
+
+외부 API 대기와 데이터 적재가 사용자 요청과 같은 JVM의 스레드·메모리를 직접 사용하지 않도록 수집기를 분리했습니다. 수집기는 조회·변환·저장을 담당하고, API는 DB의 데이터를 조회해 응답합니다.
+
+대신 호스트와 DB는 공유하므로 DB 부하나 호스트 장애까지 격리되지는 않습니다. 현재 규모에서 운영 복잡도를 제한하면서 필요한 실행 경계를 확보한 구성입니다.
+
+구현: [수집 동기화 서비스](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [스케줄 실행](toadyScheduler/src/main/java/com/toady/web/apt/scheduler/ApplyhomeSyncScheduler.java)
+
+### 2. 서로 다른 5개 공고 유형을 공통 목록으로 통합
+
+APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 필드가 다릅니다. 유형별 Repository에 검색 조건을 적용하고, 공통 `AnnouncementListItem`으로 변환한 뒤 접수 시작일 기준으로 병합·정렬합니다. 날짜 비교에서는 `yyyy-MM-dd`와 `yyyyMMdd`의 차이를 정규화합니다.
+
+유형별 저장 구조를 유지하면서 클라이언트에 일관된 목록을 제공합니다. 다만 깊은 페이지일수록 가져오는 후보가 늘어납니다. 실제 데이터량과 응답 시간을 측정한 뒤 DB 통합 조회나 공통 조회 테이블을 검토할 지점입니다.
+
+구현: [검색 서비스](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementSearchService.java) · [유형별 DTO 변환](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementListMapper.java)
+
+### 3. 현재 월을 넘어서는 검색과 캘린더 이동
+
+현재 월 데이터만 검색하면 과거 공고를 찾을 수 없습니다. 별도 자동완성 API가 전체 기간의 주택명·주소를 검색하고, 화면에서는 2자 이상 입력 시 300ms 디바운스를 적용합니다. 결과를 선택하면 접수 월로 이동하고 상세 패널을 엽니다. 입력이 바뀐 뒤 도착한 이전 요청의 응답은 무시합니다.
+
+구현: [검색·필터 훅](toadyReactWeb/src/views/main/hooks/useAnnouncementSearch.js) · [필터 UI](toadyReactWeb/src/views/main/components/AnnouncementFilters.jsx)
+
+### 4. 수집 데이터의 누락·중복과 동시 실행 대응
+
+- 응답의 `matchCount`에 도달할 때까지 페이지를 조회하고, 예상 건수에 못 미친 상태에서 빈 페이지가 오면 실패 처리합니다.
+- 공고 복합키로 연결된 주택형을 조회합니다. 일반 데이터는 JPA `merge`, 경쟁률은 `ON DUPLICATE KEY UPDATE`로 갱신합니다.
+- 도시형 주택형 응답의 동일 행은 값으로 비교해 중복 저장을 피합니다.
+- MariaDB advisory lock을 획득한 실행만 동기화를 진행합니다.
+
+구현: [동기화](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [DB 잠금](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncLock.java) · [경쟁률 저장](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeCompetitionPersistenceService.java)
+
+### 5. 기능 변경의 영향을 줄이는 책임 분리
+
+메인 화면의 검색·필터, 필터 UI, 공고 원문 표시를 훅과 컴포넌트로 분리했습니다. 서버 상태는 TanStack Query로 관리하며 댓글 변경 후 관련 쿼리를 무효화합니다. API의 공고 조회 진입점은 유지하고 검색·상세·경쟁률 서비스를 나눴습니다.
+
+구현: [메인 화면](toadyReactWeb/src/views/main/Main.jsx) · [공고 Query 훅](toadyReactWeb/src/features/announcement/hooks/useAnnouncements.js) · [조회 진입점](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementService.java)
+
+## 검증과 배포
+
+PR과 `master` push에서 API 테스트, 수집기 테스트, 프론트 빌드를 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
+
+```mermaid
+flowchart LR
+    Change[PR / master push] --> Verify[API 테스트 · 수집기 테스트 · 웹 빌드]
+    Verify -->|master push만| Images[커밋 SHA 이미지 빌드 · Push]
+    Images --> Deploy[EC2 Compose 갱신]
+    Deploy --> Check[API · DB 연결 · 웹 응답 · 컨테이너 상태 확인]
+```
+
+| 검증 범위 | 근거 |
+| --- | --- |
+| 통합 공고 조회·날짜 필터·자동완성·인증 등 | [API 통합 테스트](toadyWebApi/src/test/java/com/toady/web/MainApplicationTests.java) |
+| DB 연결 성공·실패 시 준비 상태 응답 | [준비 상태 테스트](toadyWebApi/src/test/java/com/toady/web/core/health/HealthControllerTest.java) |
+| 외부 API 요청 구성·매핑·수집 흐름 | [수집기 테스트](toadyScheduler/src/test/java/com/toady/web/apt) |
+| 배포 전 검증·커밋별 이미지 배포 | [GitHub Actions](.github/workflows/deploy.yml) |
+| 배포 후 준비 상태 | [확인 스크립트](scripts/check-deployment.sh) |
+
+2026-11-12 로컬 검증: API 12개 통과, 수집기 6개 통과·외부 연동 통합 테스트 2개 제외, 프론트 프로덕션 빌드 통과. 이 결과는 실제 운영 부하나 가용성을 측정한 수치가 아닙니다. 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
+
+추가한 배포·마이그레이션 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·TLS·수집 완료를 보장하지 않으며, 무중단 배포와 자동 롤백은 구현하지 않았습니다.
+
+## 저장소 안내
 
 ```text
-toady/
-├── toadyReactWeb/   # React 웹 애플리케이션
-├── toadyWebApi/     # 사용자 요청을 처리하는 REST API
-├── toadyScheduler/  # 청약홈 공공데이터 수집 배치
-└── docker-compose.yml
+.
+├── toadyReactWeb/           # React 화면 · API 클라이언트 · 서버 상태 관리
+├── toadyWebApi/             # 공고 조회 · 인증 · 댓글 REST API
+├── toadyScheduler/          # 청약홈 데이터 수집 · 저장
+├── db/                     # 공유 DB 마이그레이션 및 도입 절차
+├── scripts/                # 배포 후 상태 확인
+├── docs/                   # 구조 · 배포 설명
+├── .github/workflows/      # 검증 및 배포 파이프라인
+├── docker-compose.yml      # 운영 앱 · DB · Nginx · Certbot 구성
+└── compose.migrations.yml  # 명시적으로 실행하는 DB 변경 작업
 ```
 
-웹 API와 수집 스케줄러는 별도 애플리케이션·컨테이너로 실행하며 MariaDB를 공유합니다. 데이터 수집 작업이 API 애플리케이션과 같은 프로세스에서 실행되지 않도록 분리한 구조입니다. 다만 두 서비스는 호스트 자원과 데이터베이스를 공유하므로, 이 분리가 모든 장애나 자원 경합으로부터 API를 격리한다는 뜻은 아닙니다.
+[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md) · [구조와 배포 검증](docs/REFACTORING.md) · [DB 변경 관리](db/README.md)
 
-```mermaid
-flowchart LR
-    Browser["웹 브라우저"]
-    Browser --> Ingress["Nginx · TLS / 도메인 라우팅"]
-    Ingress --> Web["toadyReactWeb<br/>React · Vite"]
-    Ingress --> API["toadyWebApi<br/>Spring Boot · Java 21"]
-    Scheduler["toadyScheduler<br/>Spring Boot · Java 21"] -->|"주기적 수집"| Applyhome["청약홈 Open API"]
-    Scheduler -->|"공고·주택형·경쟁률 저장"| DB[("MariaDB")]
-    API -->|"공고 조회·회원·댓글"| DB
-```
+## 로컬에서 확인하기
 
-운영 환경에서 Nginx는 프론트엔드 및 API 도메인의 요청을 각각 전달합니다. 프론트엔드 개발 서버에서는 Vite가 `/api`와 `/webApi` 요청을 로컬 API 서버로 프록시합니다. 프로덕션 프론트엔드는 `https://api.toady.co.kr`를 API 주소로 사용하므로, 운영 도메인과 Nginx 라우팅·CORS 설정은 배포 환경에 맞게 구성되어야 합니다.
-
-## 하위 프로젝트
-
-| 프로젝트 | 역할 | 주요 기술 | 문서 |
-| --- | --- | --- | --- |
-| `toadyReactWeb` | 반응형 청약 캘린더 및 분양 정보 웹 UI | React 18, Vite, TanStack Query, MUI, FullCalendar | [README](./toadyReactWeb/README.md) |
-| `toadyWebApi` | 공고 조회, 인증, 회원 및 댓글 REST API | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, MariaDB | [README](./toadyWebApi/README.md) |
-| `toadyScheduler` | 청약홈 공공데이터 수집 및 DB 적재 | Java 21, Spring Boot 3.5, Spring Data JPA, MariaDB | [README](./toadyScheduler/README.md) |
-
-## 주요 엔지니어링 내용
-
-### 서로 다른 5개 공고 유형의 통합 검색
-
-APT, URBAN, REMAINING, PUBLIC_RENTAL, OPTIONAL 공고는 저장 테이블과 접수일 필드 등이 서로 다릅니다. API는 유형별 JPA Repository에 공통 검색 조건을 적용하고, 필요한 후보를 `AnnouncementListItem`으로 변환해 모은 뒤 접수 시작일 최신순으로 정렬하고 요청한 페이지를 구성합니다.
-
-```mermaid
-flowchart TD
-    Request["통합 공고 조회 요청"] --> Service["AnnouncementService.searchAll()"]
-    Service --> APT["APT Repository"]
-    Service --> URBAN["URBAN Repository"]
-    Service --> REM["REMAINING Repository"]
-    Service --> RENT["PUBLIC_RENTAL Repository"]
-    Service --> OPT["OPTIONAL Repository"]
-    APT --> Convert["공통 AnnouncementListItem 변환"]
-    URBAN --> Convert
-    REM --> Convert
-    RENT --> Convert
-    OPT --> Convert
-    Convert --> Sort["전체 후보 접수 시작일 기준 정렬"]
-    Sort --> Page["요청 페이지 구간 반환"]
-```
-
-### 전체 기간 자동완성과 캘린더 이동
-
-캘린더의 현재 월 데이터만으로는 과거 공고를 찾을 수 없으므로, 별도 제안 API가 전체 기간의 공고를 검색합니다. 프론트엔드는 2자 이상 입력 시 300ms 디바운스로 API를 호출합니다. 사용자가 결과를 선택하면 접수 시작일에 해당하는 월로 캘린더를 이동하고 공고 상세 화면을 엽니다. API는 각 공고 유형에서 상위 후보를 제한 조회한 뒤 전체 결과를 접수 시작일 최신순으로 정렬해 최대 20건 반환합니다.
-
-### 수집 작업과 사용자 API 분리
-
-`toadyScheduler`는 Spring `@Scheduled` 기반으로 청약홈 공고·주택형·경쟁률 데이터를 가져와 MariaDB에 저장합니다. API 서버는 별도 프로세스로 DB 데이터를 조회해 응답합니다. 배치 작업의 외부 API 대기와 대량 적재가 API 요청 처리와 같은 JVM의 스레드·메모리를 직접 공유하지 않도록 실행 경계를 분리했습니다. 스케줄러에는 중복 수집을 방지하기 위한 MariaDB advisory lock이 구현되어 있습니다. 배치와 API가 같은 DB 및 호스트 자원을 사용하므로 DB 장애나 호스트 전체 자원 문제까지 분리되는 것은 아닙니다.
-
-### 컨테이너 배포
-
-루트 `docker-compose.yml`은 MariaDB, 웹 API, 스케줄러, 프론트엔드, Nginx, Certbot 서비스를 정의합니다. GitHub Actions workflow는 `master` 브랜치 push 시 세 앱의 Docker 이미지를 빌드·푸시한 뒤 Compose 파일을 서버로 복사하고 원격에서 컨테이너를 갱신합니다. 현재 workflow에 자동 테스트나 별도 헬스 체크 단계가 있다고 가정하지 않습니다.
-
-### 이슈 및 해결 과정
-
-아래는 실제 구현과 테스트로 확인할 수 있는 데이터 특성 및 운영 조건, 그리고 이에 적용한 대응을 정리한 내용입니다.
-
-#### 공고 유형마다 다른 접수일 필드와 날짜 형식
-
-- **문제:** 5개 공고 유형은 접수 시작일 필드명이 다르고, 일부 데이터는 `yyyy-MM-dd`, 일부는 `yyyyMMdd` 형식으로 저장됩니다. 이를 그대로 비교하면 통합 정렬이나 기간 검색 결과가 유형별로 달라질 수 있습니다.
-- **대응:** 공고 유형별 접수일 필드로 조회하고, 날짜 비교 전 숫자만 추출해 정규화합니다. 통합 목록은 공통 DTO로 변환해 동일한 정렬 규칙을 적용합니다. 유형별 데이터가 섞이는 통합 검색은 H2 기반 테스트에서 순서와 응답 필드를 검증합니다.
-
-#### 청약홈 페이지 응답의 누락 및 중복 데이터
-
-- **문제:** 외부 API는 페이지 단위로 응답하고, 공고 상세에서 주택형 API를 다시 호출해야 합니다. 페이지를 일부만 읽거나 동일 행을 그대로 저장하면 데이터 누락 또는 중복이 생길 수 있습니다.
-- **대응:** 수집기는 `matchCount`에 도달할 때까지 페이지를 순회하고, 예상 건수에 못 미친 상태에서 빈 페이지가 오면 성공으로 간주하지 않고 오류 처리합니다. 상세 공고의 복합키로 주택형을 조회하며, 일반 유형은 복합키 기준 `merge`를 사용하고 경쟁률 데이터는 `ON DUPLICATE KEY UPDATE`로 반영합니다. 도시형 주택형 응답은 반복되는 동일 행을 값으로 비교해 중복 저장을 방지합니다.
-
-#### 스케줄러 다중 실행에 따른 중복 수집
-
-- **문제:** 배포·재시작 과정에서 스케줄러 인스턴스가 둘 이상 동작하면 같은 수집 작업이 동시에 실행될 수 있습니다.
-- **대응:** MariaDB advisory lock을 획득한 실행만 동기화를 진행하도록 했습니다. 잠금을 획득하지 못하면 다른 작업이 실행 중인 것으로 처리하고 중복 수집을 시작하지 않습니다.
-
-## 운영 인프라 및 CI/CD
-
-현재 운영 구성은 AWS EC2 인스턴스에서 Docker Compose로 애플리케이션을 실행합니다. DNS는 서비스 도메인으로 연결하고, Nginx 컨테이너가 80/443 포트를 받아 프론트엔드 및 API 요청을 전달합니다. TLS 인증서는 Certbot 컨테이너로 발급하며, 인증서와 Nginx 설정은 EC2 호스트 디렉터리를 컨테이너에 마운트합니다. MariaDB 데이터와 앱 로그도 호스트 볼륨에 저장해 컨테이너 재생성 후에도 유지합니다.
-
-```mermaid
-flowchart LR
-    Dev["master 브랜치 push"] --> Actions["GitHub Actions"]
-    Actions --> Build["React · Web API · Scheduler 이미지 빌드"]
-    Build --> Registry["Docker Hub"]
-    Actions -->|"Compose 파일 복사 · SSH 배포"| EC2
-
-    subgraph EC2["AWS EC2 · Docker Compose"]
-        Nginx["Nginx :80/:443"]
-        Web["React 컨테이너"]
-        API["Spring Web API"]
-        Scheduler["Spring Scheduler"]
-        DB[("MariaDB<br/>호스트 볼륨")]
-        Nginx --> Web
-        Nginx --> API
-        API --> DB
-        Scheduler --> DB
-    end
-    Registry -->|"이미지 pull"| EC2
-    Scheduler --> Applyhome["청약홈 Open API"]
-```
-
-배포 workflow는 `master` push 시 GitHub-hosted runner에서 세 Docker 이미지를 빌드해 Docker Hub에 push하고, `docker-compose.yml`을 EC2에 복사합니다. 이후 SSH로 접속해 이미지를 pull하고 Compose 서비스를 갱신하며 사용하지 않는 이미지를 정리합니다. Docker build 단계에서 테스트를 실행하지 않고 배포 후 별도 헬스 체크도 수행하지 않으므로, 현재 파이프라인은 자동 테스트 검증이나 헬스 체크를 포함한 무중단 배포로 설명하지 않습니다.
-
-운영용 DB 비밀번호, JWT 키, 외부 API 키 등은 서버의 각 앱 환경 파일과 GitHub Actions Secrets를 통해 관리합니다. 이 저장소의 Compose 설정에는 운영 경로가 포함되어 있으므로 다른 서버에 적용할 때는 경로, 도메인, 환경 파일을 조정해야 합니다.
-
-## 로컬 개발 및 테스트
-
-세부 환경 변수와 실행 방법은 각 하위 프로젝트 README를 참고하세요. API와 스케줄러는 MariaDB 접속 정보가 필요하며, 공공데이터 수집에는 청약홈 API 키가 필요합니다. 프론트엔드 개발 서버는 기본적으로 `http://localhost:3000`에서 실행되고 `/api`, `/webApi` 요청을 `http://localhost:8081`로 프록시합니다.
+필요 환경은 Java 21, Node.js 22, npm입니다. 기본 테스트에는 실제 DB와 청약홈 API 키가 필요하지 않습니다.
 
 ```bash
-# 각 프로젝트 디렉터리에서 실행
-cd toadyWebApi && ./gradlew test
-cd ../toadyScheduler && ./gradlew test
-cd ../toadyReactWeb && npm ci && npm run build
+# 저장소 루트에서 실행
+(cd toadyWebApi && bash ./gradlew test)
+(cd toadyScheduler && bash ./gradlew test)
+(cd toadyReactWeb && npm ci && npm run build)
 ```
+
+화면 개발 서버는 다음과 같이 실행합니다.
+
+```bash
+cd toadyReactWeb
+cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+`http://localhost:3000`에서 열리며, 데이터 조회·인증에는 `localhost:8081`의 API가 필요합니다. 지도는 본인의 Kakao JavaScript 키를 설정한 경우 사용할 수 있습니다.
+
+**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. Flyway 버전 1은 기존 DB를 기준으로 등록하는 도입 경로로, 빈 DB 초기화 기능이 아닙니다. API·수집기 실행 전 각 README와 [DB 안내](db/README.md)를 확인하세요.
+
+## 저장소 관리
+
+- 소스·테스트·문서·SQL·Gradle Wrapper·`package-lock.json`은 추적합니다.
+- 실제 환경 설정, 인증서·개인키, IDE 설정, 의존성, 빌드 산출물, 로그·DB 백업은 제외합니다.
+- 환경 설정은 `.env.example` 등 값이 비어 있거나 예시인 파일만 공개합니다.
+- 프론트엔드는 npm으로 통일하고, 사용하지 않는 기존 폰트와 Yarn 잠금 파일은 추적에서 제외합니다.
+- `VITE_*` 값은 브라우저 번들에 포함됩니다. DB 비밀번호·JWT 비밀키·서버용 API 키를 넣지 않습니다.
+
+커밋 전 확인 방법과 공개 설정 범위는 [저장소 관리 안내](docs/REPOSITORY.md)를 참고하세요.

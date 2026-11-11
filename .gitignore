@@ -1,10 +1,68 @@
-# macOS
+# OS / editors
 .DS_Store
-**/.DS_Store
 ._*
-**/*/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.run/
+*.iml
+*.swp
+*.swo
+*~
 
-# Environment
+# Dependencies, build outputs and local caches
+node_modules/
+.gradle/
+.pnp.*
+build/
+dist/
+out/
+bin/
+coverage/
+.vite/
+.cache/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Logs, process dumps and runtime data
+logs/
+*.log
+*.pid
+*.hprof
+hs_err_pid*
+replay_pid*
+LOG_FILE_PATH_IS_UNDEFINED/
+LOG_FILE_NAME_IS_UNDEFINED/
+.deployed-image-tag
+
+# Local credentials and environment overrides
 .env
 .env.*
 !.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.aws/
+.ssh/
+**/src/main/resources/**/application-local.yml
+**/src/main/resources/**/application-local.yaml
+**/src/main/resources/**/application-dev.yml
+**/src/main/resources/**/application-dev.yaml
+
+# Database backups (versioned schema/migration SQL remains tracked)
+*.sql.gz
+*.sql.zip
+*.dump
+/backups/
+
+# npm is the single frontend package manager
+/toadyReactWeb/yarn.lock
+
+# Unused legacy fonts: keep local copies, exclude from the public repository
+/toadyReactWeb/src/resources/MaruBuriTTF/
+/toadyReactWeb/src/resources/nanum-barun-pen/
+/toadyReactWeb/src/resources/nanum-gothic/

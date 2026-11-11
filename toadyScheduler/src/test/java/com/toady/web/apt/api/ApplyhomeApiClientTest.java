@@ -13,6 +13,7 @@ class ApplyhomeApiClientTest {
 
 	@Test
 	void decodesAlreadyEncodedServiceKeyBeforeBuildingRequestUri() {
+		// 환경 변수의 서비스 키가 이미 URL 인코딩된 경우에도 요청에서 이중 인코딩되지 않아야 한다.
 		String encodedServiceKey = "sample%2Fkey%2Bvalue%3D%3D";
 
 		URI uri = ApplyhomeApiClient.buildUri(

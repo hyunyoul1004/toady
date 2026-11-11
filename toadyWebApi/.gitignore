@@ -40,6 +40,7 @@ out/
 /.env
 /.env.*
 !/.env.example
+!/.env.*.example
 /logs/
 /LOG_FILE_PATH_IS_UNDEFINED/
 /src/main/resources/config/application-local.yml

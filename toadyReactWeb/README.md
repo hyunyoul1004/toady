@@ -33,6 +33,8 @@ src/
 ├── components/               # 레이아웃, 날짜 선택, 지도 등 공통 UI
 ├── views/
 │   ├── main/                 # 캘린더 메인 화면
+│   │   ├── components/        # 공급유형·지역 필터 및 공고 원문 UI
+│   │   ├── hooks/             # 자동완성·검색 옵션·목록 필터링
 │   │   ├── calendar/          # 데스크톱 및 모바일 캘린더
 │   │   ├── subscriptDetail/   # 공고 상세 화면
 │   │   ├── subscriptRate/     # 경쟁률·가점 화면
@@ -58,9 +60,10 @@ src/
 
 ## 로컬 실행
 
-필요 환경: Node.js 20 이상 권장, npm.
+필요 환경: Node.js 22, npm. 의존성 잠금 파일은 `package-lock.json`으로 통일합니다.
 
 ```bash
+cp .env.example .env.local
 npm ci
 npm run dev
 ```
@@ -79,6 +82,10 @@ npm run preview
 
 개발 환경에서는 Vite 프록시를 사용하고, 프로덕션 환경에서는 `src/config/index.js`에 설정된 `https://api.toady.co.kr`를 API 주소로 사용합니다. 별도 API 도메인을 호출하므로 운영 환경의 DNS, TLS, Nginx 라우팅 및 API CORS 허용 Origin 설정이 서로 일치해야 합니다.
 
-Kakao Maps SDK는 `index.html`에서 로드하며, 지도 기능을 사용할 때는 Kakao 개발자 콘솔의 JavaScript 키와 도메인 등록을 확인해야 합니다. 키를 공개 저장소에 둘 때는 해당 키의 사용 도메인을 제한해야 합니다.
+지도 기능은 `.env.local`의 `VITE_KAKAO_MAP_KEY`에 본인의 Kakao JavaScript 키를 설정하면 사용할 수 있습니다. `src/config/loadKakaoMaps.js`가 SDK를 로드합니다. 키가 없어도 캘린더 화면과 빌드는 사용할 수 있으며 지도 기능에는 키가 필요합니다.
+
+`VITE_*` 값은 빌드 시 브라우저 번들에 포함됩니다. JavaScript 키는 서버 비밀키가 아니며 Kakao 개발자 콘솔에 허용 도메인을 등록해야 합니다. DB 비밀번호·JWT 비밀키·서버용 API 키는 이곳에 넣지 않습니다.
+
+Docker 빌드 시 `--build-arg VITE_KAKAO_MAP_KEY`로 전달합니다. CI 배포는 GitHub Actions의 `VITE_KAKAO_MAP_KEY` Secret을 사용하며, 누락되면 이미지 생성 전에 중단합니다. 정적 앱이므로 실행 중인 컨테이너의 환경변수만 바꾸어서는 키가 변경되지 않고 다시 빌드해야 합니다.
 
 Dockerfile은 Node.js 이미지에서 Vite 정적 산출물을 만든 뒤 Nginx 이미지에서 서빙하는 멀티스테이지 빌드입니다. `nginx.conf`에는 SPA 라우팅 fallback과 정적 파일 캐시 헤더, Gzip 압축을 설정해 반복 방문 시 리소스 재사용을 돕고 텍스트 기반 에셋의 전송량을 줄이도록 했습니다.

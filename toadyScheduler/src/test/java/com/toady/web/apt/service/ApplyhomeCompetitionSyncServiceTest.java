@@ -37,6 +37,7 @@ class ApplyhomeCompetitionSyncServiceTest {
 
 	@Test
 	void queriesAllEightDocumentedResultEndpointsForCurrentAnnouncements() throws Exception {
+		// 잠금의 실행 동작만 대체하고, 현재 공고 하나에 대해 문서화된 결과 API를 모두 조회하는지 검증한다.
 		JsonNode announcement = new ObjectMapper().readTree("""
 				{"HOUSE_MANAGE_NO":"2026000528","PBLANC_NO":"2026000528"}
 				""");

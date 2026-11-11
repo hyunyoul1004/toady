@@ -38,6 +38,7 @@ out/
 /.env
 /.env.*
 !/.env.example
+!/.env.*.example
 /src/main/resources/config/application-default.yml
 /src/main/resources/config/application-dev.yml
 /src/main/resources/config/application-local.yml

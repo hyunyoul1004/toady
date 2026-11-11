@@ -17,6 +17,7 @@ class ApplyhomeBackfillIntegrationTest {
 
 	@Test
 	void loadsSelectedAnnouncementDateRangeIntoMariaDb() {
+		// 날짜 범위를 지정하지 않으면 오늘 기준 전후 한 달을 실제 DB에 동기화한다.
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
 		String configuredStartDate = System.getProperty("applyhome.test.start-date", "");
 		LocalDate startDate = configuredStartDate.isBlank()

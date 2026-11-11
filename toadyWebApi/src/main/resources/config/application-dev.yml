@@ -1,4 +1,0 @@
-config:
-  logging:
-    level:
-      src: ${LOG_LEVEL_SRC:DEBUG}

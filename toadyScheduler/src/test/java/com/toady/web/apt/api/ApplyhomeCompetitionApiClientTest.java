@@ -13,6 +13,7 @@ class ApplyhomeCompetitionApiClientTest {
 
 	@Test
 	void buildsCompetitionRequestWithAnnouncementFilters() {
+		// 공고 식별 조건 두 개가 특수문자 인코딩 후에도 API 필터로 전달되는지 확인한다.
 		URI uri = ApplyhomeCompetitionApiClient.buildUri(
 				"https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1",
 				"getAPTLttotPblancCmpet",

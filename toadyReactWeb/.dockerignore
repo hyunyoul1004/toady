@@ -35,3 +35,9 @@ yarn-error.log*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Unused legacy assets and duplicate package-manager lock
+yarn.lock
+src/resources/MaruBuriTTF/
+src/resources/nanum-barun-pen/
+src/resources/nanum-gothic/

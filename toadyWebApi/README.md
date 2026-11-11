@@ -33,7 +33,7 @@ Spring Boot 기반의 분양 공고 통합 조회 및 커뮤니티 백엔드입�
 
 ```mermaid
 flowchart TD
-    Request["통합 공고 조회"] --> Service["AnnouncementService.searchAll()"]
+    Request["통합 공고 조회"] --> Service["AnnouncementSearchService.searchAll()"]
     Service --> APT["APT Repository"]
     Service --> URBAN["URBAN Repository"]
     Service --> REM["REMAINING Repository"]
@@ -60,6 +60,16 @@ flowchart TD
 
 JWT 기반 무상태 인증을 사용합니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다.
 
+## 코드 구성
+
+- `AnnouncementService`: 기존 공고 조회 계약의 진입점
+- `AnnouncementSearchService`: 유형별·통합 검색과 자동완성
+- `AnnouncementListMapper`: 유형별 엔티티를 통합 목록 DTO로 변환
+- `AnnouncementDetailService`: 상세·주택형 조회와 존재 확인
+- `AnnouncementCompetitionService`: 경쟁률·가점·특별공급 조회
+- `AnnouncementCommentService`: 댓글 및 답글 처리
+- `HealthController`: DB 연결을 포함한 `/internal/health` 준비 상태 응답
+
 ## API 요약
 
 | Method | Endpoint | 설명 | 접근 |
@@ -76,7 +86,7 @@ JWT 기반 무상태 인증을 사용합니다. 공고 조회 API는 비회원�
 | `PATCH` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 수정 | 로그인 필요 |
 | `DELETE` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 삭제 | 로그인 필요 |
 
-`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 로컬 프로파일은 기본 포트 `8081`을 사용합니다.
+`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 예제 환경 설정의 `SERVER_PORT=8081`을 사용하면 프론트 개발 프록시와 연결됩니다.
 
 ### 자동완성 요청 예시
 
@@ -110,28 +120,23 @@ GET /api/v1/announcements/suggestions?keyword=자이&limit=10
 
 필요 환경: Java 21, MariaDB, Gradle Wrapper.
 
-기본 프로파일은 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` 환경변수가 필요합니다. 로컬 프로파일은 `.env.local` 파일을 읽으며 기본 서버 포트는 `8081`입니다. 프로젝트 루트에 아래 형식으로 `.env.local`을 준비하고 실제 접속 정보와 Base64 인코딩 JWT 서명 키를 설정합니다.
-
-```properties
-DB_URL=jdbc:mariadb://localhost:3306/toady
-DB_USERNAME=your-db-user
-DB_PASSWORD=your-db-password
-JWT_SECRET=your-base64-encoded-secret
-MAIL_USERNAME=
-MAIL_PASSWORD=
-```
-
-`JWT_SECRET`은 운영용 비밀값을 저장소에 커밋하지 말고 안전한 방법으로 관리하세요. 회원가입 및 비밀번호 재설정 이메일 기능을 사용하려면 SMTP 설정도 필요합니다.
+기본 설정은 이 디렉터리의 `.env` 파일을 읽습니다. 실제 비밀값은 Git에서 제외하고 예제만 공개합니다.
 
 ```bash
-# 테스트
-./gradlew test
+cp .env.example .env
+# .env의 DB 접속 정보를 수정하고 JWT_SECRET에 아래 명령의 출력값을 넣습니다.
+openssl rand -base64 64
 
-# 로컬 프로파일로 실행
-./gradlew bootRun --args='--spring.profiles.active=local'
+# 외부 DB 없이 실행할 수 있는 기본 테스트
+bash ./gradlew test
+
+# 준비된 MariaDB와 스키마를 사용해 실행
+bash ./gradlew bootRun
 ```
 
-애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 댓글 테이블 DDL은 `src/main/resources/db/schema/TB_LTTOT_PBLANC_COMMENT.sql`에 있습니다.
+예제의 `SERVER_PORT=8081`은 프론트 개발 서버의 프록시 대상입니다. 환경변수를 별도로 설정하지 않은 기본 서버 포트는 `8080`입니다. 이메일 기능에는 SMTP 설정이 필요합니다. 로컬 전용 `application-local.yml`이나 `.env.local`에 의존하지 않으므로 새 clone에서도 동일한 설정 경로를 사용합니다.
+
+애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 신규 공유 스키마 변경은 루트 `db/migration`에서 관리합니다. 기존 댓글 DDL은 참고 자료로 남기며, 도입 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../db/README.md)를 확인하세요.
 
 ## 테스트 및 Docker
 
