@@ -77,7 +77,7 @@ SCHEDULER_ADMIN_SECURE_COOKIE=false
 
 ### 3. 접속
 
-로컬 직접 실행은 기본 `http://localhost:8082/admin`이며 `SERVER_PORT`로 포트를 변경할 수 있습니다. Compose는 `SERVER_PORT=8082`와 `8082:8082` 매핑으로 호스트와 컨테이너 포트를 맞춥니다. 서버의 보안 그룹·방화벽에서 TCP 8082 접속을 허용하면 `http://서버주소:8082/admin`으로 접속할 수 있습니다.
+로컬 직접 실행은 기본 `http://localhost:8082/admin`이며 `SERVER_PORT`로 포트를 변경할 수 있습니다. Compose는 `SERVER_PORT=8082`와 `127.0.0.1:8082:8082` 매핑으로 서버 안에서만 포트를 엽니다. 운영 관리자 화면은 앞단 nginx를 거쳐 HTTPS `https://www.toady.co.kr/admin/`으로 접속하며, 관리자 계정·세션이 평문으로 오가지 않도록 8082를 외부에 열지 않습니다.
 
 관리자 목록은 `/admin`과 `/admin/` 모두 처리합니다. 로그인 성공·변경 요청 후 이동과 화면 갱신 링크는 `/admin/`로 통일해, 프록시의 끝 슬래시 리다이렉트에 따른 404나 갱신 누락을 방지합니다.
 

@@ -90,14 +90,6 @@ public class UserService {
 
             param.setUserEmail(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
-            if(userRepository.findByUserEmail(param.getUserEmail() ) != null){
-                return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
-            }
-
-            if(userRepository.findByUserNicName(param.getUserNicName())  != null){
-                return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
-            }
-
             if(!param.getUserPassword().equals(param.getUserPasswordConfirm())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_MISMATCH_ERROR.getCode(), ResultCode.PASSWORD_MISMATCH_ERROR.getMessage()));
             }
@@ -107,6 +99,30 @@ public class UserService {
 
             if (!passMatcher.find()) {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_PATTERN_VALID1_ERROR.getCode(), ResultCode.PASSWORD_PATTERN_VALID1_ERROR.getMessage()));
+            }
+
+            UserEntity existing = userRepository.findByEmailForUpdate(param.getUserEmail());
+            if (existing != null) {
+                // 이메일 인증을 마치지 않은 계정은 다시 가입하는 사람의 정보로 덮어쓴다.
+                // 남의 이메일로 먼저 가입해 둔 비밀번호가, 주인이 인증 링크를 누를 때 그대로 활성화되는 선점을 막는다.
+                boolean reusable = !"Y".equals(existing.getEmailCertifyYn()) && "N".equals(existing.getLockYn()) && "N".equals(existing.getWithdrawalYn());
+                if (!reusable) {
+                    return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
+                }
+                UserEntity sameNick = userRepository.findByUserNicName(param.getUserNicName());
+                if (sameNick != null && !sameNick.getUserSeq().equals(existing.getUserSeq())) {
+                    return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
+                }
+                existing.setUserPassword(passwordEncoder.encode(param.getUserPassword()));
+                existing.setUserNicName(param.getUserNicName());
+                existing.setUpdateDt(LocalDateTime.now());
+                userRepository.save(existing);
+                certifyService.reissueAccountVerification(existing);
+                return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "["+param.getUserEmail()+"]로 인증 URL을 보냈습니다.<br/>메일의 링크를 열고 방금 정한 비밀번호를 입력하면 가입이 완료됩니다.<br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
+            }
+
+            if(userRepository.findByUserNicName(param.getUserNicName())  != null){
+                return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
             }
             UserEntity userParam = UserEntity.builder()
                     .userEmail(param.getUserEmail())
@@ -138,6 +154,6 @@ public class UserService {
             throw new IllegalStateException("회원가입 처리에 실패했습니다.", e);
         }
 
-        return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/> 인증 후 로그인 가능하며, <br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
+        return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/>메일의 링크를 열고 가입 비밀번호를 입력하면 인증이 완료되며, <br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
     }
 }

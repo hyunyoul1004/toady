@@ -15,14 +15,22 @@ function track(path) {
   void tracker(path);
 }
 
-/** 첫 진입과 경로 이동을 기록한다. 쿼리·해시 변경 및 StrictMode의 effect 재실행은 제외한다. */
+/** 공고 상세는 공유 주소(/announcements/…)든 앱 안 주소(?subscriptSeq=)든 같은 '/announcements'로 센다. */
+export function logicalPath(pathname, search) {
+  if (pathname.startsWith('/announcements/')) return '/announcements';
+  if (new URLSearchParams(search).has('subscriptSeq')) return '/announcements';
+  return pathname;
+}
+
+/** 첫 진입과 경로 이동을 기록한다. 상세 열기 외의 쿼리·해시 변경 및 StrictMode의 effect 재실행은 제외한다. */
 export default function PageViewTracker() {
-  const { pathname, key } = useLocation();
+  const { pathname, search, key } = useLocation();
   const previous = useRef(null);
+  const path = logicalPath(pathname, search);
   useEffect(() => {
-    if (previous.current?.key === key || previous.current?.pathname === pathname) return;
-    previous.current = { key, pathname };
-    track(pathname.startsWith('/announcements/') ? '/announcements' : pathname);
-  }, [pathname, key]);
+    if (previous.current?.key === key || previous.current?.path === path) return;
+    previous.current = { key, path };
+    track(path);
+  }, [path, key]);
   return null;
 }

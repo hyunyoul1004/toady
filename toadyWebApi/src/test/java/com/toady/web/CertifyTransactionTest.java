@@ -22,6 +22,7 @@ class CertifyTransactionTest {
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.toady.web.core.util.email.EmailUtilService email;
     @Autowired CertifyService service;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     @Autowired JdbcTemplate jdbc;
     @Autowired AnnouncementSearchService search;
     @BeforeEach void seed() {
@@ -37,7 +38,11 @@ class CertifyTransactionTest {
         Long id = jdbc.queryForObject("SELECT USER_SEQ FROM TB_USER", Long.class);
         jdbc.update("INSERT INTO TB_CERTIFY (CERTIFY_TYPE,CERTIFY_SEND_TYPE,CERTIFY_CODE,CERTIFY_MESSAGE,CERTIFY_YN,CREATE_USER_SEQ,CREATE_DT) VALUES (?,'EMAIL','code','test','N',?,?)", type, id, created);
     }
-    CertifyDTO.CheckParam check() { return new CertifyDTO.CheckParam("verify@example.test", "code"); }
+    /** 가입 인증은 링크(코드)와 가입 비밀번호가 모두 맞아야 한다. */
+    CertifyDTO.CheckParam check() {
+        jdbc.update("UPDATE TB_USER SET USER_PASSWORD=? WHERE USER_EMAIL='verify@example.test'", encoder.encode("Signup123!"));
+        return new CertifyDTO.CheckParam("verify@example.test", "code", "Signup123!");
+    }
     CertifyDTO.PasswordChange password() { return new CertifyDTO.PasswordChange("verify@example.test", "Newpass123!", "Newpass123!", "code"); }
     String flag() { return jdbc.queryForObject("SELECT CERTIFY_YN FROM TB_CERTIFY", String.class); }
     @Test void accountFailureRollsBackConsumedCode() {
@@ -57,6 +62,14 @@ class CertifyTransactionTest {
         code("ACCOUNT", LocalDateTime.now().minusHours(25)); service.certifyCheck(check());
         assertEquals("N", flag());
         assertEquals("N", jdbc.queryForObject("SELECT EMAIL_CERTIFY_YN FROM TB_USER", String.class));
+    }
+    @Test void accountCodeWithWrongPasswordDoesNotAuthenticateOrConsumeCode() {
+        code("ACCOUNT", LocalDateTime.now());
+        var wrong = check(); wrong.setUserPassword("Attacker123!");
+        assertEquals(com.toady.web.core.constants.ResultCode.PASSWORD_MISMATCH_ERROR.getCode(), service.certifyCheck(wrong).getBody().getResultCode());
+        assertEquals("N", flag(), "비밀번호가 틀리면 코드를 소비하지 않는다");
+        assertEquals("N", jdbc.queryForObject("SELECT EMAIL_CERTIFY_YN FROM TB_USER", String.class));
+        assertEquals("SUCCESS", service.certifyCheck(check()).getBody().getResultCode());
     }
     @Test void validAccountCodeAuthenticatesUser() {
         code("ACCOUNT", LocalDateTime.now()); service.certifyCheck(check());

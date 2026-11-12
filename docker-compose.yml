@@ -10,7 +10,8 @@ services:
       - TZ=Asia/Seoul
       # - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in toadyWebApi/.env.prod}
     ports:
-      - "3306:3306"
+      # 앱 컨테이너는 compose 네트워크(mariadb:3306)로 접속한다. 외부 DB 도구는 SSH 터널을 쓴다.
+      - "127.0.0.1:3306:3306"
     restart: always
 
   toadyWebApi:
@@ -25,7 +26,8 @@ services:
     volumes:
       - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
     ports:
-      - "8080:8080"
+      # 외부 요청은 앞단 nginx를 거친다. 서버 안 배포 확인(127.0.0.1:8080)만 직접 접속한다.
+      - "127.0.0.1:8080:8080"
     depends_on:
       - mariadb
     restart: always
@@ -42,8 +44,8 @@ services:
     volumes:
       - /usr/local/dockerVolumes/toady/toadyScheduler/logs/:/app/logs/
     ports:
-      # 호스트와 컨테이너 모두 8082를 사용해 관리자 화면에 접속한다.
-      - "8082:8082"
+      # 관리자 화면은 https://www.toady.co.kr/admin/ (앞단 nginx)으로 접속한다. 직접 포트는 서버 안에서만 연다.
+      - "127.0.0.1:8082:8082"
     depends_on:
       - mariadb
     restart: always

@@ -53,7 +53,9 @@ public class PublicAreaPage {
         query.setSize(100);
         return classify(search.searchAll(query, types).getContent(), today);
     }
-    static Groups classify(List<AnnouncementListItem> sources, LocalDate today) {
+    static Groups classify(List<AnnouncementListItem> sources, LocalDate today) { return classify(sources, today, 12); }
+    /** closedLimit: 최근 마감 목록을 몇 건까지 남길지(생활권 페이지 12건). 집계에 쓰는 곳은 Integer.MAX_VALUE로 자르지 않는다. */
+    static Groups classify(List<AnnouncementListItem> sources, LocalDate today, int closedLimit) {
         List<Item> open = new ArrayList<>(), upcoming = new ArrayList<>(), closed = new ArrayList<>();
         for (AnnouncementListItem source : sources) {
             LocalDate start = PlannerSummary.date(source.rceptBgnde() == null ? "" : source.rceptBgnde());
@@ -66,11 +68,12 @@ public class PublicAreaPage {
         }
         Comparator<Item> byStart = Comparator.comparing(Item::start);
         open.sort(byStart); upcoming.sort(byStart); closed.sort(byStart.reversed());
-        return new Groups(open, upcoming, closed.size() > 12 ? closed.subList(0, 12) : closed);
+        return new Groups(open, upcoming, closed.size() > closedLimit ? closed.subList(0, closedLimit) : closed);
     }
 
     @GetMapping(value = "/api/v1/public/areas", produces = "text/html;charset=UTF-8")
-    public ResponseEntity<String> index() {
+    public ResponseEntity<String> index() { return PublicHtml.cached("areas", this::renderIndex); }
+    private ResponseEntity<String> renderIndex() {
         StringBuilder links = new StringBuilder();
         for (var area : LivingAreas.ALL) links.append("<a href='").append(esc(domain + "/areas/" + area.slug())).append("'><strong>")
             .append(esc(area.label())).append(" 청약</strong><span class='muted'>").append(esc(area.description())).append("</span></a>");
@@ -83,6 +86,10 @@ public class PublicAreaPage {
 
     @GetMapping(value = "/api/v1/public/areas/{slug}", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> page(@PathVariable String slug) {
+        if (LivingAreas.bySlug(slug).isEmpty()) return renderPage(slug);
+        return PublicHtml.cached("areas/" + slug, () -> renderPage(slug));
+    }
+    private ResponseEntity<String> renderPage(String slug) {
         var found = LivingAreas.bySlug(slug);
         if (found.isEmpty()) return ResponseEntity.status(404).header("Content-Type", "text/html;charset=UTF-8")
             .body("<!doctype html><html lang='ko'><meta charset='UTF-8'><title>생활권을 찾을 수 없음 · TOADY</title><h1>생활권을 찾을 수 없습니다.</h1><a href='/areas'>생활권 목록</a></html>");

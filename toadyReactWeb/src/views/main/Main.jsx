@@ -254,7 +254,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     setResearchTab('info');
     setDetailTabValue(0);
     setModalOpen(true);
-    navigate(`/announcements/${seq}`, {state:{detailOverlay:true}});
+    // 앱 안 상세는 SPA 주소를 쓴다. /announcements/…는 nginx가 검색·공유용 서버 HTML로 보내므로 새로고침하면 앱이 아닌 정적 페이지가 열린다.
+    navigate(`/?subscriptSeq=${encodeURIComponent(seq)}`, {state:{detailOverlay:true}});
   };
 
   const handleCloseDetail = () => {

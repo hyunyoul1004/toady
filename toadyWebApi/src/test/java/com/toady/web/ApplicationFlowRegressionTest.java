@@ -76,7 +76,7 @@ class ApplicationFlowRegressionTest {
         register();
         String code = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT'", String.class);
         mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
-                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code))))
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code, "userPassword", PASSWORD))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
         String token = login(PASSWORD);
         announcement();
@@ -114,6 +114,43 @@ class ApplicationFlowRegressionTest {
         mvc.perform(post(endpoint).header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("content", "이전 토큰")))).andExpect(status().isUnauthorized());
         assertFalse(login("Newpass123!").isBlank());
+    }
+    @Test void unverifiedAccountCannotBePreemptedByAnotherPassword() throws Exception {
+        // 공격자가 남의 이메일로 먼저 가입해 둔다.
+        mvc.perform(post("/webApi/user/regUser").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", EMAIL, "userPassword", "Attacker123!", "userPasswordConfirm", "Attacker123!", "userNicName", "선점자"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        // 이메일 주인이 다시 가입하면 미인증 계정을 자기 정보로 덮어쓴다(4분 안이라 새 메일 없이 기존 링크를 그대로 쓴다).
+        register();
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER", Integer.class));
+        assertEquals("검증회원", jdbc.queryForObject("SELECT USER_NIC_NAME FROM TB_USER", String.class));
+        String code = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT' AND CERTIFY_YN='N'", String.class);
+        mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code, "userPassword", "Attacker123!"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("ERR-205"));
+        mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code, "userPassword", PASSWORD))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        login(PASSWORD);
+        // 인증을 마친 계정은 더 이상 덮어쓸 수 없다.
+        mvc.perform(post("/webApi/user/regUser").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", EMAIL, "userPassword", "Attacker123!", "userPasswordConfirm", "Attacker123!", "userNicName", "선점자"))))
+                .andExpect(jsonPath("$.resultCode").value(com.toady.web.core.constants.ResultCode.ALREADY_EMAIL_ERROR.getCode()));
+    }
+    @Test void mailSendingRequestsAreLimitedPerClientIp() throws Exception {
+        for (int i = 0; i < 5; i++)
+            mvc.perform(post("/webApi/certify/find-password-request-certify").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
+                    .content(body(Map.of("userEmail", "nobody" + i + "@example.test")))).andExpect(status().isOk());
+        mvc.perform(post("/webApi/user/regUser").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", "flood@example.test", "userPassword", PASSWORD, "userPasswordConfirm", PASSWORD, "userNicName", "대량가입"))))
+                .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.resultCode").value("ERR-429"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER WHERE USER_EMAIL='flood@example.test'", Integer.class));
+        // 다른 IP는 영향을 받지 않는다.
+        mvc.perform(post("/webApi/certify/find-password-request-certify").header("X-Real-IP", "203.0.113.10").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", "nobody@example.test")))).andExpect(status().isOk());
     }
     @Test void invalidInputsReturnBadRequestInsteadOfServerErrors() throws Exception {
         for (String payload : new String[]{"{}", "{\"userEmail\":null,\"certifyCode\":null}", "{\"userEmail\":\"bad\",\"certifyCode\":\"x\"}"}) {

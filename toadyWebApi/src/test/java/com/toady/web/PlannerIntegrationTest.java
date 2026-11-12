@@ -31,6 +31,7 @@ class PlannerIntegrationTest {
     @Autowired UserRepository users; @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
     @Autowired MailBudget budget; @Autowired PlannerService planner;
     @MockitoBean EmailUtilService mail;
+    @Autowired com.toady.web.app.planner.ScoreBenchmarks benchmarks;
     @BeforeEach void setup() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT,ANNOUNCEMENT_TYPE VARCHAR(20),HOUSE_MANAGE_NO VARCHAR(40),PBLANC_NO VARCHAR(40),NOTE VARCHAR(2000),CHECKLIST INT,EMAIL_ENABLED BOOLEAN,REG_DT TIMESTAMP,PRIMARY KEY(USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (ID INT PRIMARY KEY)");
@@ -42,6 +43,8 @@ class PlannerIntegrationTest {
         jdbc.update("INSERT INTO TB_MAIL_BUDGET VALUES (1)");
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
+        com.toady.web.app.planner.PublicPagesCache.clear();
+        com.toady.web.app.planner.PublicPagesCache.clear(benchmarks);
     }
     UserEntity user(String email) {
         return users.save(UserEntity.builder().userEmail(email).userNicName(email.substring(0,email.indexOf('@'))).userPassword(passwords.encode("Password123!"))
@@ -126,6 +129,13 @@ class PlannerIntegrationTest {
         assertEquals(47.0,unjeong.path("items").get(0).path("low").asDouble());
         assertEquals(74.0,unjeong.path("items").get(0).path("high").asDouble());
         assertEquals("apt/S1/N1",tree.path("recent").get(0).path("id").asText());
+        var found=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/search").param("sido","경기").param("district","파주시")).andExpect(status().isOk())));
+        assertEquals("경기 파주시",found.path("scope").asText());
+        assertEquals(0,found.path("years").asInt(),"최근 3년 1건뿐이라 전체 기간으로 넓힌다");
+        assertEquals(2,found.path("total").asInt());
+        var regions=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/regions")).andExpect(status().isOk())));
+        assertEquals("경기",regions.get(0).path("sido").asText());
+        assertEquals("파주시",regions.get(0).path("districts").get(0).path("name").asText());
     }
     @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
@@ -140,6 +150,13 @@ class PlannerIntegrationTest {
         String weekly=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
         assertTrue(weekly.contains("이번 주 청약 일정") && weekly.contains("/announcements/remaining/R1/N1"),weekly);
         assertTrue(weekly.contains("/announcements/apt/W1/N1?tabType=rate"),"이번 주 발표 공고는 경쟁률 탭으로 연결한다");
+        // 이번 주에 마감된 공고가 12건을 넘어도 접수 건수를 자르지 않는다(생활권 페이지의 최근 마감 12건 제한과 별개).
+        java.time.LocalDate monday=today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+        for(int i=0;i<15;i++) jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES (?,?,?,?,?,?)",
+                "K"+i,"N1","주간 단지 "+i,"서울특별시 강서구 "+i,monday.minusDays(60).toString(),monday.toString());
+        com.toady.web.app.planner.PublicPagesCache.clear();
+        String many=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
+        for(int i=0;i<15;i++) assertTrue(many.contains("/announcements/apt/K"+i+"/N1"),"60일 전에 시작해 이번 주까지 접수하는 공고도 모두 넣는다: K"+i);
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
         assertTrue(sitemap.contains("/zupzup") && sitemap.contains("/weekly") && sitemap.contains("/score"));
     }

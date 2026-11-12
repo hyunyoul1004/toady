@@ -1,60 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, MenuItem, Skeleton, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Alert, Button, MenuItem, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import IosShareRounded from '@mui/icons-material/IosShareRounded';
 import RestartAltRounded from '@mui/icons-material/RestartAltRounded';
 import CheckCircleRounded from '@mui/icons-material/CheckCircleRounded';
-import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
-import apiClient from '@/api/client';
 import { Main } from '@/views/main/Main';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { trackAction } from '@/features/analytics/trackAction';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { MAX_SCORE, SCORE_PARTS, compareToRange, fmt, normalizeSelection, scoreOf, selectionFromParams, selectionToParams } from './scoreRules';
+import { MAX_SCORE, SCORE_PARTS, normalizeSelection, scoreOf, selectionFromParams, selectionToParams } from './scoreRules';
 import { saveMyScore, clearMyScore, useMyScore } from './myScore';
-import ScoreRangeBar from './ScoreRangeBar';
+import ScoreBenchmarkSearch from './ScoreBenchmarkSearch';
+import PeriodByDate from './PeriodByDate';
 import './score.css';
 
 const HELP = {
-  housing: '만 30세부터 계산해요. 30세 전에 혼인했다면 혼인신고일부터예요. 세대원 모두 무주택이어야 해요.',
+  housing: '만 30세부터 계산해요(30세 전에 혼인했다면 혼인신고일부터). 본인과 배우자 모두 집이 없어야 하고, 소형·저가 주택 등 예외는 모집공고 기준을 확인해 주세요.',
   dependents: '본인은 빼고 세요. 배우자, 같은 세대의 미혼 자녀, 3년 이상 같은 세대로 등록된 부모님 등이 해당돼요.',
-  account: '청약통장에 처음 가입한 날부터 입주자모집공고일까지의 기간이에요.'
+  account: '청약통장에 처음 가입한 날부터 입주자모집공고일까지의 기간이에요. 여기서는 오늘을 기준으로 계산해요.'
 };
-const AREA_KEY = 'toady.score.area';
-const readArea = () => { try { return sessionStorage.getItem(AREA_KEY) || 'recent'; } catch { return 'recent'; } };
-
-function Benchmarks({ total, onOpen }) {
-  const query = useQuery({ queryKey: ['scoreBenchmarks'], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks'), staleTime: 1800000, retry: 1 });
-  const [area, setArea] = useState(readArea);
-  const data = query.data;
-  const tabs = useMemo(() => [{ slug: 'recent', label: '전국 최근', items: data?.recent || [] }, ...(data?.areas || [])], [data]);
-  const current = tabs.find(tab => tab.slug === area) || tabs[0];
-  const choose = value => { if (!value) return; setArea(value); try { sessionStorage.setItem(AREA_KEY, value); } catch { /* 무시 */ } };
-  return <section className="score-section" aria-labelledby="benchmark-heading">
-    <div className="score-section-heading">
-      <div><h2 id="benchmark-heading">최근 공개 당첨가점과 비교</h2><p>청약홈이 공개한 아파트 공고별 최저·최고 당첨가점이에요. 공고를 누르면 주택형별 경쟁률과 가점을 볼 수 있어요.</p></div>
-    </div>
-    {query.isLoading ? <div className="score-bench-list"><Skeleton variant="rounded" height={64} /><Skeleton variant="rounded" height={64} /><Skeleton variant="rounded" height={64} /></div>
-      : query.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => query.refetch()}>다시 시도</Button>}>당첨가점 자료를 불러오지 못했어요.</Alert>
-      : <>
-        <ToggleButtonGroup exclusive size="small" value={current.slug} onChange={(_, value) => choose(value)} className="score-area-tabs" aria-label="비교할 생활권">
-          {tabs.map(tab => <ToggleButton key={tab.slug} value={tab.slug}>{tab.label}{tab.slug !== 'recent' && <em>{tab.items.length}</em>}</ToggleButton>)}
-        </ToggleButtonGroup>
-        {current.items.length ? <ul className="score-bench-list">{current.items.map(item => {
-          const result = compareToRange(total, { low: item.low, high: item.high });
-          return <li key={item.id}><button type="button" onClick={() => onOpen(item.id)}>
-            <div className="score-bench-title"><strong>{item.houseNm}</strong><span>{item.receiptDate.slice(0, 7).replace('-', '.')} 접수{item.low !== null && <> · 최저 <b>{fmt(item.low)}</b></>}{item.high !== null && <> · 최고 <b>{fmt(item.high)}</b>점</>}</span></div>
-            <ScoreRangeBar low={item.low} high={item.high} mine={total} />
-            {Number.isFinite(total) && <span className={`score-bench-status is-${result.status}`}>{result.text}</span>}
-            <ChevronRightRounded className="score-bench-go" />
-          </button></li>;
-        })}</ul> : <p className="score-empty">최근 {data?.years || 3}년 동안 {current.label}에서 공개된 아파트 당첨가점이 없어요. 다른 생활권이나 전국 최근을 확인해 보세요.</p>}
-        {!Number.isFinite(total) && current.items.length > 0 && <p className="score-hint">위에서 내 가점을 계산하면 공고마다 비교 결과를 함께 보여드려요.</p>}
-      </>}
-  </section>;
-}
-
 export default function ScoreCalculator() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation(), navigate = useNavigate();
@@ -65,6 +29,9 @@ export default function ScoreCalculator() {
   const [shared] = useState(() => selectionFromParams(searchParams));
   const [draft, setDraft] = useState(() => shared || saved.selection || {});
   const [message, setMessage] = useState(null);
+  // 날짜로 계산(처음 쓰는 사람) / 직접 고르기(이미 고른 값이 있으면). 날짜 입력값은 저장하지 않는다.
+  const [resetKey, setResetKey] = useState(0);
+  const [modes, setModes] = useState(() => ({ housing: draft.housing === undefined ? 'dates' : 'select', account: draft.account === undefined ? 'dates' : 'select' }));
   const score = scoreOf(draft);
   const filled = SCORE_PARTS.filter(part => draft[part.key] !== undefined && draft[part.key] !== null && draft[part.key] !== '').length;
   const same = (a, b) => Boolean(a && b) && a.housing === b.housing && a.dependents === b.dependents && a.account === b.account;
@@ -73,7 +40,7 @@ export default function ScoreCalculator() {
 
   useEffect(() => {
     if (detailId) return undefined;
-    updatePageSeo({ title: '청약 가점 계산기 · 84점 만점 내 점수와 당첨가점 비교 · TOADY', description: '무주택 기간·부양가족 수·청약통장 가입기간만 고르면 청약 가점을 계산하고, 운정·동탄·검단 등 생활권별 최근 공개 당첨가점과 비교해 드려요.', path: '/score' });
+    updatePageSeo({ title: '청약 가점 계산기 · 84점 만점 내 점수와 당첨가점 비교 · TOADY', description: '무주택 기간·부양가족 수·청약통장 가입기간만 고르면 청약 가점을 계산하고, 전국 시·군·구와 운정·동탄 등 생활권별 공개 당첨가점과 비교해 드려요.', path: '/score' });
     return () => resetDefaultSeo();
   }, [detailId]);
 
@@ -84,7 +51,7 @@ export default function ScoreCalculator() {
   };
   const clearShared = () => { if (searchParams.has('h')) { const next = new URLSearchParams(searchParams); ['h', 'd', 'a'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); } };
   // 공유 점수를 보는 중이면 내 저장값은 지우지 않고 내 점수로 돌아간다.
-  const reset = () => { if (showingShared) { setDraft(saved.selection || {}); clearShared(); return; } setDraft({}); clearMyScore(); clearShared(); };
+  const reset = () => { if (showingShared) { setDraft(saved.selection || {}); clearShared(); return; } setDraft({}); setResetKey(value => value + 1); clearMyScore(); clearShared(); };
   const share = async () => {
     const url = new URL('/score', window.location.origin);
     selectionToParams(draft).forEach((value, key) => url.searchParams.set(key, value));
@@ -108,7 +75,7 @@ export default function ScoreCalculator() {
     <header className="score-hero">
       <span className="score-eyebrow">청약 가점 계산기</span>
       <h1>내 청약 가점은 몇 점일까요?</h1>
-      <p>세 가지만 고르면 84점 만점 기준으로 계산하고, 생활권별 최근 당첨가점과 비교해 드려요.</p>
+      <p>생년월일과 통장 가입일만 넣으면 기간을 알아서 골라 84점 만점으로 계산하고, 전국 지역별 공개 당첨가점과 비교해 드려요.</p>
     </header>
 
     <div className="score-layout">
@@ -126,11 +93,17 @@ export default function ScoreCalculator() {
               ? <ToggleButtonGroup exclusive value={value ?? null} onChange={(_, next) => next !== null && change(part.key, next)} className="score-dependents" aria-labelledby={`score-${part.key}`}>
                   {part.options.map((option, optionIndex) => <ToggleButton key={option.label} value={optionIndex} aria-label={`${option.label} ${option.points}점`}>{option.label.replace('명 이상', '+').replace('명', '')}<small>{option.points}점</small></ToggleButton>)}
                 </ToggleButtonGroup>
-              : <TextField select fullWidth size="small" value={value ?? ''} onChange={event => change(part.key, Number(event.target.value))} inputProps={{ 'aria-labelledby': `score-${part.key}` }}
+              : <>
+                <ToggleButtonGroup exclusive size="small" value={modes[part.key]} onChange={(_, mode) => mode && setModes(previous => ({ ...previous, [part.key]: mode }))} className="score-choice score-mode" aria-label={`${part.title} 입력 방식`}>
+                  <ToggleButton value="dates">날짜로 계산</ToggleButton><ToggleButton value="select">직접 고르기</ToggleButton>
+                </ToggleButtonGroup>
+                {modes[part.key] === 'dates' ? <PeriodByDate key={`${part.key}-${resetKey}`} kind={part.key} options={part.options} value={value} onPick={index => change(part.key, index)} />
+                : <TextField select fullWidth size="small" value={value ?? ''} onChange={event => change(part.key, Number(event.target.value))} inputProps={{ 'aria-labelledby': `score-${part.key}` }}
                   SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { sx: { maxHeight: 360 } } } }}>
                   <MenuItem value="" disabled>기간을 선택해 주세요</MenuItem>
                   {part.options.map((option, optionIndex) => <MenuItem key={option.label} value={optionIndex}><span className="score-option">{option.label}{option.hint && <small>{option.hint}</small>}</span><span className="score-option-points">{option.points}점</span></MenuItem>)}
                 </TextField>}
+              </>}
             <p className="score-help">{HELP[part.key]}</p>
           </div>;
         })}
@@ -161,7 +134,7 @@ export default function ScoreCalculator() {
       </aside>
     </div>
 
-    <Benchmarks total={score?.total} onOpen={openDetail} />
+    <ScoreBenchmarkSearch total={score?.total} onOpen={openDetail} />
 
     <section className="score-section score-notes" aria-labelledby="score-notes-heading">
       <h2 id="score-notes-heading">알아두면 좋은 점</h2>

@@ -154,8 +154,9 @@ public class AnnouncementSearchService {
 
         long requiredCount = ((long) search.page() + 1) * search.size();
         // 유형별 선행 조회가 무제한으로 커지지 않도록 통합 탐색 범위를 제한한다.
-        if (requiredCount > 10_000) {
-            throw new IllegalArgumentException("통합 검색은 (page + 1) × size가 10000 이하인 범위에서 조회할 수 있습니다.");
+        // 유형마다 이 개수만큼 읽어 합치므로 실제 조회량은 유형 수(5)배가 된다. 한 달 캘린더(수백 건)에 충분한 1000으로 둔다.
+        if (requiredCount > 1_000) {
+            throw new IllegalArgumentException("통합 검색은 (page + 1) × size가 1000 이하인 범위에서 조회할 수 있습니다.");
         }
 
         List<AnnouncementListItem> candidates = new ArrayList<>();

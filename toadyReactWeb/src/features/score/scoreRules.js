@@ -77,3 +77,47 @@ export function selectionToParams(selection) {
   const valid = normalizeSelection(selection);
   return valid ? new URLSearchParams({ h: String(valid.housing), d: String(valid.dependents), a: String(valid.account) }) : new URLSearchParams();
 }
+
+/* ---------- 날짜로 구간 고르기 ---------- */
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const validDate = value => DATE.test(value || '') && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+/** YYYY-MM-DD에 n년을 더한다. 2월 29일은 다음 해 3월 1일로 넘긴다(만 나이 계산과 같다). */
+export function addYears(value, years) {
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(y + years, m - 1, d));
+  return date.toISOString().slice(0, 10);
+}
+/** from부터 to까지 꽉 찬 개월 수. */
+export function fullMonths(from, to) {
+  const [fy, fm, fd] = from.split('-').map(Number), [ty, tm, td] = to.split('-').map(Number);
+  let months = (ty - fy) * 12 + (tm - fm);
+  if (td < fd) months -= 1;
+  return Math.max(0, months);
+}
+export const periodText = months => `${Math.floor(months / 12) ? `${Math.floor(months / 12)}년` : ''}${Math.floor(months / 12) && months % 12 ? ' ' : ''}${months % 12 || !Math.floor(months / 12) ? `${months % 12}개월` : ''}`;
+const dot = value => value.replaceAll('-', '.');
+
+/**
+ * 무주택 기간 구간을 날짜로 정한다. 기준: 만 30세가 된 날부터(30세 전에 혼인했다면 혼인신고일부터),
+ * 집을 가진 적이 있으면 마지막으로 무주택이 된 날 중 늦은 날부터 오늘까지.
+ * 반환: { index, start, months, reason } 또는 입력이 부족하면 { error }.
+ */
+export function housingFromDates({ birth, married, marriageDate, owned, soldDate }, today) {
+  if (!validDate(birth) || birth > today) return { error: '생년월일을 입력해 주세요.' };
+  if (married && (!validDate(marriageDate) || marriageDate > today)) return { error: '혼인신고일을 입력해 주세요.' };
+  if (owned && (!validDate(soldDate) || soldDate > today)) return { error: '집을 처분한(무주택이 된) 날을 입력해 주세요.' };
+  const age30 = addYears(birth, 30);
+  const marriedEarly = married && marriageDate < age30;
+  let start = marriedEarly ? marriageDate : age30, reason = marriedEarly ? `만 30세 전에 혼인해 혼인신고일(${dot(marriageDate)})부터` : `만 30세가 된 날(${dot(age30)})부터`;
+  if (start > today) return { index: 0, start: null, months: 0, reason: '만 30세 미만 미혼이라 무주택 기간 점수가 없어요(0점).' };
+  if (owned && soldDate > start) { start = soldDate; reason = `마지막으로 무주택이 된 날(${dot(soldDate)})부터`; }
+  const months = fullMonths(start, today), years = Math.floor(months / 12);
+  return { index: years < 1 ? 1 : Math.min(16, years + 1), start, months, reason: `${reason} ${periodText(months)}` };
+}
+/** 청약통장 가입기간 구간을 가입일로 정한다. */
+export function accountFromDate(joined, today) {
+  if (!validDate(joined) || joined > today) return { error: '청약통장 가입일을 입력해 주세요.' };
+  const months = fullMonths(joined, today), years = Math.floor(months / 12);
+  const index = months < 6 ? 0 : years < 1 ? 1 : Math.min(16, years + 1);
+  return { index, months, reason: `가입일(${dot(joined)})부터 ${periodText(months)}` };
+}

@@ -215,6 +215,12 @@ docker run --rm -p 8080:8080 \
 
 일정 요약은 `ScheduleEvents`에서 날짜별로 정리합니다. 같은 날의 해당·경기·기타지역 순위를 합치고, 상세 접수 일정과 겹치는 일반 시작/마감 표시는 생략합니다. 원래 접수 기간은 요약의 startDate/endDate로 유지합니다. `ScheduleEventsTest`는 예시 10개 일정이 6개 날짜로 합쳐져도 발표·계약 일정과 지역 구분이 남는지 검증합니다. 이 규칙은 API 요약·일정 이메일·공유 HTML에 함께 적용되며 DB 변경은 필요하지 않습니다.
 
+### 가입 인증과 메일 요청 제한
+
+- 가입 인증(`POST /webApi/certify/certify-check`)은 메일 링크의 코드와 가입 비밀번호(`userPassword`)가 모두 맞아야 완료됩니다. 비밀번호가 틀리면 코드를 소비하지 않습니다. 이메일 인증을 마치지 않은 계정에 같은 이메일로 다시 가입하면 비밀번호·닉네임을 새 정보로 덮어써, 남이 먼저 가입해 둔 비밀번호가 활성화되는 선점을 막습니다.
+- 메일을 보내는 요청(가입, 인증 재발송, 비밀번호 찾기)은 요청자 IP별로 10분 5회·하루 20회까지 받고 초과하면 429를 반환합니다(`MailRequestLimitFilter`). IP는 앞단 프록시(사설·루프백 주소)에서 온 요청의 `X-Real-IP`만 신뢰합니다.
+- 통합 공고 검색은 `(page+1)×size ≤ 1000`, 공개 HTML(`/areas`, `/zupzup`, `/weekly`)은 5분간 서버에서 재사용합니다.
+
 ### 웹 푸시 알림
 
 - 구독: `GET /api/v1/push/config`(사용 여부·VAPID 공개키), `PUT /api/v1/push/subscription`(엔드포인트·키·범위 저장, 로그인 상태면 회원 관심 공고로 연결), `POST /api/v1/push/subscription/lookup`, `POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`(구독한 본인 브라우저에만, 30초에 한 번). 엔드포인트는 접근 로그에 남지 않도록 본문으로만 받고, 서버가 임의 주소로 요청하지 않도록 FCM·Mozilla·Apple·WNS 푸시 서비스 호스트만 허용합니다.

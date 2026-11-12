@@ -71,3 +71,35 @@ test('실거래 비교는 같은 면적 주택형과 화면의 실거래만 쓴�
   assert.equal(tradeComparison(units, trades, '74'), null, '같은 면적 주택형이 없으면 비교하지 않는다');
   assert.equal(tradeComparison(units, [{ amountManwon: 1 }, { amountManwon: 3 }], '60').median, 2);
 });
+
+import { housingFromDates, accountFromDate, fullMonths, addYears, HOUSING_OPTIONS as H, ACCOUNT_OPTIONS as A } from '../src/features/score/scoreRules.js';
+test('날짜로 무주택 기간과 통장 가입기간 구간을 정한다', () => {
+  const today = '2026-11-12';
+  assert.equal(fullMonths('2019-03-02', today), 92);
+  assert.equal(addYears('1996-02-29', 30), '2026-03-01');
+  // 미혼: 만 30세부터
+  let r = housingFromDates({ birth: '1989-03-02', married: false, owned: false }, today);
+  assert.equal(r.start, '2019-03-02'); assert.equal(H[r.index].label, '7년 이상 ~ 8년 미만'); assert.equal(H[r.index].points, 16);
+  // 30세 전 혼인: 혼인신고일부터
+  r = housingFromDates({ birth: '1995-01-01', married: true, marriageDate: '2021-05-01', owned: false }, today);
+  assert.equal(r.start, '2021-05-01'); assert.equal(H[r.index].points, 12);
+  // 30세 이후 혼인: 만 30세부터
+  r = housingFromDates({ birth: '1985-01-01', married: true, marriageDate: '2018-01-01', owned: false }, today);
+  assert.equal(r.start, '2015-01-01');
+  // 집을 처분한 날이 더 늦으면 그날부터
+  r = housingFromDates({ birth: '1985-01-01', married: false, owned: true, soldDate: '2026-02-01' }, today);
+  assert.equal(r.start, '2026-02-01'); assert.equal(H[r.index].label, '1년 미만');
+  // 만 30세 미만 미혼
+  r = housingFromDates({ birth: '2000-01-01', married: false, owned: false }, today);
+  assert.equal(r.index, 0); assert.equal(H[r.index].points, 0);
+  // 15년 이상
+  assert.equal(H[housingFromDates({ birth: '1960-01-01', married: false, owned: false }, today).index].points, 32);
+  assert.ok(housingFromDates({ birth: '', married: false }, today).error);
+  assert.ok(housingFromDates({ birth: '1990-01-01', married: true, marriageDate: '' }, today).error);
+  assert.ok(housingFromDates({ birth: '2027-01-01' }, today).error, '미래 날짜는 받지 않는다');
+  assert.equal(A[accountFromDate('2026-08-01', today).index].label, '6개월 미만');
+  assert.equal(A[accountFromDate('2026-03-01', today).index].label, '6개월 이상 ~ 1년 미만');
+  assert.equal(A[accountFromDate('2016-11-12', today).index].points, 12, '정확히 10년이면 10년 이상 구간');
+  assert.equal(A[accountFromDate('2000-01-01', today).index].points, 17);
+  assert.ok(accountFromDate('2026-02-30', today).error, '없는 날짜는 받지 않는다');
+});

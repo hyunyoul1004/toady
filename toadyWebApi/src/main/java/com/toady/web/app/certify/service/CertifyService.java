@@ -149,6 +149,12 @@ public class CertifyService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
             }
 
+            // 인증 링크를 가진 사람이 가입한 본인인지 비밀번호로 확인한다. 코드는 소비하지 않아 다시 시도할 수 있다.
+            if (param.getUserPassword() == null || !passwordEncoder.matches(param.getUserPassword(), userEntity.getUserPassword())) {
+                return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_MISMATCH_ERROR.getCode(),
+                        "가입할 때 정한 비밀번호와 다릅니다. 기억나지 않으면 같은 이메일로 다시 가입하면 새 인증 메일을 보내 드립니다."));
+            }
+
             if("Y".equals(certifyEntity.getCertifyYn())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_CERTIFY_ERROR.getCode(), ResultCode.ALREADY_CERTIFY_ERROR.getMessage()));
             }
@@ -177,6 +183,18 @@ public class CertifyService {
 
         return ResponseEntity.ok().body(ResData.of(ResultCode.CERTIFY_SUCCESS.getCode(), ResultCode.CERTIFY_SUCCESS.getMessage()));
 
+    }
+
+    /**
+     * 미인증 계정을 다시 가입 정보로 덮어쓴 뒤 인증 메일을 새로 보낸다. 직전 메일이 4분 안이면 그 링크를 그대로 쓰게 하고 보내지 않는다.
+     * 호출하는 쪽 트랜잭션 안에서 사용자 행이 잠겨 있어야 한다.
+     */
+    public boolean reissueAccountVerification(UserEntity user) {
+        var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
+        if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return false;
+        certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
+        saveCertify(new CertifyDTO().new Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL"));
+        return true;
     }
 
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */

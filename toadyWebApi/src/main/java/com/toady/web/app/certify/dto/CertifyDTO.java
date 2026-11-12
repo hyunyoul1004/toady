@@ -57,6 +57,12 @@ public class CertifyDTO {
         @Size(max = 50)
         private String certifyCode;
 
+        /** 가입할 때 정한 비밀번호. 인증 링크만으로는 계정을 활성화하지 않는다(미인증 계정 선점 방지). */
+        @NotBlank(message = "가입할 때 정한 비밀번호를 입력해 주세요.")
+        @Size(max = 100)
+        private String userPassword;
+
+        public CheckParam(String userEmail, String certifyCode) { this.userEmail = userEmail; this.certifyCode = certifyCode; }
     }
 
 

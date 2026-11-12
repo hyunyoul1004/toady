@@ -25,6 +25,23 @@ final class PublicHtml {
     /** 공개 페이지에서 앱으로 이동할 때 원래 유입처(검색·메신저 도메인)만 넘긴다. 전체 URL·검색어는 넘기지 않는다. */
     static final String SOURCE_SCRIPT = "<script>(function(){try{var h=new URL(document.referrer).hostname;if(!h||/(^|\\.)toady\\.co\\.kr$/.test(h))return;"
         + "document.querySelectorAll('a[data-app]').forEach(function(a){var u=new URL(a.href);u.searchParams.set('src',h);a.href=u.toString();});}catch(e){}})();</script>";
+    /**
+     * 공개 HTML은 요청마다 공고 쿼리를 여러 번 실행하므로 같은 주소의 응답을 5분간 재사용한다.
+     * get(key, loader)는 같은 키를 동시에 한 번만 만들어, 만료 순간 요청이 몰려도 쿼리가 겹치지 않는다.
+     */
+    private static final com.google.common.cache.Cache<String, ResponseEntity<String>> PAGES = com.google.common.cache.CacheBuilder.newBuilder()
+            .maximumSize(200).expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
+    static ResponseEntity<String> cached(String key, java.util.function.Supplier<ResponseEntity<String>> render) {
+        try { return PAGES.get(key, render::get); }
+        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
+            Throwable cause = failed.getCause();
+            if (cause instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException(cause);
+        }
+    }
+    /** 테스트에서 데이터를 바꾼 뒤 새로 그리게 한다. */
+    static void clearCache() { PAGES.invalidateAll(); }
+
     /** 공개 페이지 공통 문서 틀. 검색 결과 제목·설명·대표 주소를 한곳에서 같은 규칙으로 만든다. */
     static ResponseEntity<String> page(String title, String description, String canonical, String body) {
         String html = """

@@ -101,3 +101,41 @@
 .score-compare-sub{margin:0;font-size:12px;color:#64748b;line-height:1.5;word-break:keep-all}
 .score-compare .MuiButton-root{text-transform:none;border-radius:10px;font-weight:700;flex-shrink:0}
 .score-compare-note{flex-basis:100%;margin:0;font-size:11.5px;color:#94a3b8}
+/* 날짜로 계산 */
+.score-choice{display:inline-flex !important;flex-wrap:wrap;gap:4px}
+.score-choice .MuiToggleButton-root{border:1px solid #dbe3ec !important;border-radius:999px !important;margin:0 !important;padding:4px 12px;font-weight:700;font-size:12.5px;color:#475569;text-transform:none}
+.score-choice .MuiToggleButton-root.Mui-selected,.score-choice .MuiToggleButton-root.Mui-selected:hover{background:#eef4ff !important;border-color:var(--score-blue) !important;color:var(--score-blue) !important}
+.score-mode{margin-bottom:12px}
+.score-dates{background:#f8fafc;border:1px solid #eef2f6;border-radius:14px;padding:14px}
+.score-dates-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 12px;align-items:center}
+.score-dates-grid .MuiOutlinedInput-root{background:#fff;border-radius:10px}
+.score-dates-row{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:2px 2px}
+.score-dates-row .score-choice{flex-wrap:nowrap}
+.score-dates-row>span{font-size:13px;font-weight:700;color:#334155;white-space:nowrap}
+.score-dates-result{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0 !important;padding:10px 12px;border-radius:10px;background:#eef4ff;color:#1e3a8a;font-size:13px;line-height:1.5;word-break:keep-all}
+.score-dates-result svg{margin-top:2px;flex-shrink:0}
+.score-dates-result small{display:block;color:#475569;font-size:12px;margin-top:2px}
+.score-dates-result.is-pending{background:#fff;border:1px dashed #d6dee8;color:#64748b}
+/* 지역별 공개 당첨가점 */
+.score-filter{background:#fff;border:1px solid var(--score-line);border-radius:16px;padding:14px;display:grid;gap:12px;margin-bottom:14px}
+.score-filter-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr);gap:10px}
+.score-filter-row.is-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.score-filter .MuiOutlinedInput-root{border-radius:10px}
+.score-filter-label{font-size:12.5px;font-weight:800;color:#64748b}
+.score-count{font-style:normal;font-size:11px;color:#94a3b8;margin-left:6px}
+.score-area-chips{display:flex;flex-wrap:wrap;gap:6px}
+.score-area-chips button{font:inherit;font-size:12.5px;font-weight:700;color:#475569;background:#fff;border:1px solid #dbe3ec;border-radius:999px;padding:4px 12px;cursor:pointer}
+.score-area-chips button:hover{border-color:#93b4f5;color:#1d4ed8}
+.score-area-chips button.is-active{background:#172b42;border-color:#172b42;color:#fff}
+.score-area-chips button:focus-visible{outline:2px solid var(--score-blue);outline-offset:2px}
+.score-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;color:#475569;margin:0 2px 10px}
+.score-summary strong{font-size:15px;color:#0f172a}
+.score-summary span:not(:first-of-type)::before{content:'·';margin-right:10px;color:#cbd5e1}
+.score-summary b{color:#0f172a}
+.score-notice{margin-bottom:10px;border-radius:12px !important}
+.score-bench-body.is-fetching{opacity:.55;transition:opacity .15s}
+.score-more{margin-top:10px !important;border-radius:12px !important}
+.score-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.score-empty p{margin:0}
+@media (max-width:700px){.score-filter-row{grid-template-columns:1fr 1fr}.score-filter-row>:last-child:not(.score-area-chips){grid-column:1/-1}}
+@media (max-width:600px){.score-dates-grid{grid-template-columns:1fr}}

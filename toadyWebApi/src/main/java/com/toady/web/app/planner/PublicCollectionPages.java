@@ -37,7 +37,8 @@ public class PublicCollectionPages {
     private String nav(String label) { return "<nav><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>" + esc(label) + "</span></nav>"; }
 
     @GetMapping(value = "/api/v1/public/zupzup", produces = "text/html;charset=UTF-8")
-    public ResponseEntity<String> zupzup() {
+    public ResponseEntity<String> zupzup() { return PublicHtml.cached("zupzup", this::renderZupzup); }
+    private ResponseEntity<String> renderZupzup() {
         LocalDate today = today();
         var groups = areas.groups(null, UNRANKED_TYPES, today, 60);
         String title = "무순위·줍줍 청약 일정" + (groups.open().isEmpty() ? "" : " · 접수 중 " + groups.open().size() + "건") + " · TOADY";
@@ -73,19 +74,17 @@ public class PublicCollectionPages {
 
     /** 이번 주(월~일) 접수 중인 공고, 다음 주 접수 시작 공고, 이번 주 APT 당첨자 발표. */
     @GetMapping(value = "/api/v1/public/weekly", produces = "text/html;charset=UTF-8")
-    public ResponseEntity<String> weekly() {
+    public ResponseEntity<String> weekly() { return PublicHtml.cached("weekly", this::renderWeekly); }
+    private ResponseEntity<String> renderWeekly() {
         LocalDate today = today();
         Week week = Week.of(today), next = week.next();
-        AnnouncementSearch query = new AnnouncementSearch();
-        query.setStartDate(week.monday().minusDays(30));
-        query.setEndDate(next.sunday());
-        query.setSize(100);
-        List<AnnouncementListItem> found = search.searchAll(query, null).getContent();
+        // 접수 기간이 긴 공고(공공임대 등)도 이번 주에 열려 있으면 넣도록 시작일을 넉넉히 거슬러 올라가 모든 페이지를 읽는다.
+        List<AnnouncementListItem> found = startingBetween(week.monday().minusDays(LOOKBACK_DAYS), next.sunday());
         var thisWeek = PublicAreaPage.classify(found.stream().filter(item -> {
             LocalDate start = PlannerSummary.date(nz(item.rceptBgnde())), end = PlannerSummary.date(nz(item.rceptEndde()));
             return start != null && week.overlaps(start, end);
-        }).toList(), today);
-        var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today);
+        }).toList(), today, Integer.MAX_VALUE);
+        var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today, Integer.MAX_VALUE);
         List<PublicAreaPage.Item> current = new java.util.ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
         current.sort(java.util.Comparator.comparing(PublicAreaPage.Item::start));
         List<Winner> winners = winners(week);
@@ -110,6 +109,20 @@ public class PublicCollectionPages {
             + PublicHtml.explore(domain, "/weekly")
             + "<small>출처: 청약홈 공개 데이터. 당첨자 발표는 아파트(APT) 공고 기준이며, 일정은 공식 모집공고를 함께 확인해 주세요.</small>";
         return PublicHtml.page(title, description, domain + "/weekly", body);
+    }
+
+    static final int LOOKBACK_DAYS = 120, PAGE_SIZE = 100, MAX_PAGES = 10;
+    /** 접수 시작일이 범위 안인 공고를 페이지를 넘기며 모두 읽는다(통합 검색 상한 1000건 안). */
+    List<AnnouncementListItem> startingBetween(LocalDate from, LocalDate to) {
+        List<AnnouncementListItem> all = new java.util.ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            AnnouncementSearch query = new AnnouncementSearch();
+            query.setStartDate(from); query.setEndDate(to); query.setSize(PAGE_SIZE); query.setPage(page);
+            var result = search.searchAll(query, null);
+            all.addAll(result.getContent());
+            if (!result.hasNext()) break;
+        }
+        return all;
     }
 
     List<Winner> winners(Week week) {
