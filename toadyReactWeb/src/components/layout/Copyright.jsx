@@ -4,7 +4,7 @@ import './footer.css';
 
 /**
  * 사이트 푸터: 서비스 소개, 데이터 출처, 정책 문서, 문의. 처음 온 사용자가 운영 주체와 정보 출처를 확인할 수 있게 한다.
- * /zupzup·/weekly는 서버 HTML이라 앱 라우터가 아닌 일반 링크로 연다.
+ * /zupzup·/weekly·/faq는 서버 HTML이라 앱 라우터가 아닌 일반 링크로 연다.
  */
 function Copyright() {
   return (
@@ -20,6 +20,7 @@ function Copyright() {
         <a href="/zupzup">무순위·줍줍</a>
         <a href="/weekly">이번 주 청약</a>
         <a href="/areas">생활권별 청약</a>
+        <a href="/faq">자주 묻는 질문</a>
       </nav>
       <nav className="site-footer-links is-policy" aria-label="정책">
         <RouterLink to="/privacy"><b>개인정보처리방침</b></RouterLink>

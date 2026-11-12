@@ -44,13 +44,17 @@ final class PublicHtml {
 
     /** 공개 페이지 공통 문서 틀. 검색 결과 제목·설명·대표 주소를 한곳에서 같은 규칙으로 만든다. current는 상단 메뉴에서 지금 페이지를 표시할 경로다. */
     static ResponseEntity<String> page(String domain, String current, String title, String description, String canonical, String body) {
+        return page(domain, current, title, description, canonical, body, "");
+    }
+    /** head: 구조화 데이터(JSON-LD)·페이지 전용 스타일처럼 head에 더할 내용. 호출하는 쪽에서 안전하게 만든 문자열만 넘긴다. */
+    static ResponseEntity<String> page(String domain, String current, String title, String description, String canonical, String body, String head) {
         String html = """
             <!doctype html><html lang='ko'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
             <title>%s</title><meta name='description' content='%s'><link rel='canonical' href='%s'>
             <meta property='og:type' content='website'><meta property='og:locale' content='ko_KR'><meta property='og:site_name' content='TOADY'>
             <meta property='og:title' content='%s'><meta property='og:description' content='%s'><meta property='og:url' content='%s'>
             <meta name='theme-color' content='#ffffff'>%s</head><body>%s<main>%s</main>%s%s</body></html>
-            """.formatted(esc(title), esc(description), esc(canonical), esc(title), esc(description), esc(canonical), STYLE, header(domain, current), body, footer(domain), SOURCE_SCRIPT);
+            """.formatted(esc(title), esc(description), esc(canonical), esc(title), esc(description), esc(canonical), STYLE + head, header(domain, current), body, footer(domain), SOURCE_SCRIPT);
         return ResponseEntity.ok().header("Content-Type", "text/html;charset=UTF-8").cacheControl(CacheControl.maxAge(Duration.ofMinutes(10))).body(html);
     }
     /** 앱과 같은 로고·메뉴를 위에 두어 검색으로 들어온 사람도 같은 서비스임을 알아보게 한다. 앱 화면(/, /score)으로 가는 링크만 유입처를 넘긴다. */
@@ -68,12 +72,12 @@ final class PublicHtml {
     static String footer(String domain) {
         return "<footer class='site-foot'><div class='site-in'><p><strong>TOADY</strong> · 청약 공고 일정과 분양가·경쟁률·위치·동네 실거래가를 한 화면에서 확인하는 청약 정보 서비스</p>"
             + "<p>데이터 출처: 청약홈·국토교통부 공개 데이터. 일정·가격·신청 자격은 공식 모집공고를 함께 확인해 주세요.</p>"
-            + "<p class='foot-links'><a href='" + esc(domain + "/privacy") + "'>개인정보처리방침</a><a href='" + esc(domain + "/terms") + "'>이용약관</a>"
+            + "<p class='foot-links'><a href='" + esc(domain + "/faq") + "'>자주 묻는 질문</a><a href='" + esc(domain + "/privacy") + "'>개인정보처리방침</a><a href='" + esc(domain + "/terms") + "'>이용약관</a>"
             + "<a href='mailto:dukkeoba@gmail.com'>문의 dukkeoba@gmail.com</a></p></div></footer>";
     }
     /** 공개 페이지끼리 서로 이어지도록 하단에 같은 탐색 묶음을 둔다. current는 지금 페이지라 링크에서 뺀다. */
     static String explore(String domain, String current) {
-        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"} };
+        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"}, {"/faq", "청약 자주 묻는 질문"} };
         StringBuilder out = new StringBuilder("<section class='card'><h2>더 알아보기</h2><div class='chips'>");
         for (String[] link : links) if (!link[0].equals(current))
             out.append("<a class='chip' href='").append(esc(domain + link[0])).append("'>").append(esc(link[1])).append("</a>");

@@ -172,6 +172,21 @@ class PlannerIntegrationTest {
         assertEquals("remaining/R9/N9",remaining.path("id").asText());
         assertEquals("UPCOMING",remaining.path("status").asText());
     }
+    @Test void faqPageServesQuestionsWithStructuredData() throws Exception {
+        String html=html(mvc.perform(get("/api/v1/public/faq")).andExpect(status().isOk()));
+        assertTrue(html.contains("<h1>청약, 이것부터 확인하세요</h1>") && html.contains("<details id='deposit'>"),html);
+        assertTrue(html.contains("/faq'>자주 묻는 질문</a>"),"공개 페이지 공통 꼬리말에 FAQ 링크가 있다");
+        assertTrue(html.contains("<a data-app href='") && html.contains("/score'>가점 계산기</a>"),"답 안의 앱 화면 링크는 유입처를 넘긴다");
+        assertTrue(html.contains("href='https://www.applyhome.co.kr'") && html.contains("rel='noopener noreferrer'"),"외부 링크는 청약홈만 새 창으로 연다");
+        assertFalse(html.contains("[가점 계산기]"),"링크 표기는 화면에 남기지 않는다");
+        int start=html.indexOf("<script type='application/ld+json'>")+"<script type='application/ld+json'>".length();
+        var ld=json.readTree(html.substring(start,html.indexOf("</script>",start)));
+        assertEquals("FAQPage",ld.path("@type").asText());
+        assertEquals(com.toady.web.app.planner.PublicFaqPageAccess.count(),ld.path("mainEntity").size());
+        assertFalse(ld.toString().contains("](/"),"구조화 데이터에는 링크 표기 없이 문장만 넣는다");
+        String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
+        assertTrue(sitemap.contains("/faq</loc>") && sitemap.contains("/match</loc>"),sitemap);
+    }
     @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R1','N1','<줍줍 단지>','서울특별시 강동구 1',?,?)",today.toString(),today.plusDays(1).toString());

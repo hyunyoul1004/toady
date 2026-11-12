@@ -47,6 +47,6 @@ export default function EligibilityCard({ detail }) {
     <TrackList tracks={tracks.filter(t => t.status !== 'no')} />
     {tracks.some(t => t.status === 'no') && (tracks.every(t => t.status === 'no') ? <TrackList tracks={tracks} />
       : <details className="match-detail-more"><summary>해당하지 않는 유형 {tracks.filter(t => t.status === 'no').length}개 보기</summary><TrackList tracks={tracks.filter(t => t.status === 'no')} /></details>)}
-    <p className="match-detail-foot">공통 요건을 단순화한 결과예요. 세부 자격은 모집공고 원문에서 확인하세요. <Link to="/match">조건 수정</Link></p>
+    <p className="match-detail-foot">공통 요건을 단순화한 결과예요. 세부 자격은 모집공고 원문에서 확인하세요. <a href="/faq#basics">자격 기준 자주 묻는 질문</a> · <Link to="/match">조건 수정</Link></p>
   </section>;
 }
