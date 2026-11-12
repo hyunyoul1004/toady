@@ -5,6 +5,10 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      # 메일 발송 트랜잭션은 예산 확인용 커넥션을 하나 더 쓴다. 동시 요청이 몰려도 전체 API가 커넥션을 기다리며 멈추지 않게 여유를 두고, 대기는 짧게 끊는다.
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:10000}
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
     open-in-view: false

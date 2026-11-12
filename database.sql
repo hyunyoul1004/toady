@@ -380,3 +380,18 @@ CREATE TABLE IF NOT EXISTS TB_PUSH_AREA_SEEN (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='생활권 새 공고 판정';
 -- 앱 계정에는 두 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
 -- 구독 현황: SELECT USER_SEQ IS NOT NULL AS MEMBER, COUNT(*), SUM(LAST_SUCCESS_DT IS NOT NULL) FROM TB_PUSH_SUBSCRIPTION GROUP BY 1;
+
+-- 14. 지표·푸시 조회 인덱스와 보관 기간 정리 권한 (스케줄러 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- 관리자 유입 경로 집계(VISIT_DATE 범위 + REFERRER_HOST별 COUNT(DISTINCT SESSION_ID))를 인덱스만으로 처리한다.
+-- 기존 IX_PAGE_VIEW_SESSION(VISIT_DATE, SESSION_ID)에는 REFERRER_HOST가 없어 기간 안의 행을 모두 읽었다. 10번 컬럼이 있어야 한다.
+CREATE INDEX IF NOT EXISTS IX_PAGE_VIEW_SOURCE ON TB_PAGE_VIEW (VISIT_DATE, REFERRER_HOST, SESSION_ID);
+-- 하루 1회 묶음 발송이 '오늘 아직 시도하지 않은 구독'을 고를 때 구독 전체를 훑지 않게 한다.
+CREATE INDEX IF NOT EXISTS IX_PUSH_LAST_ATTEMPT ON TB_PUSH_SUBSCRIPTION (LAST_ATTEMPT_DATE);
+-- 스케줄러의 보관 기간 정리(매일 04:40): 방문 로그 90일, 행동 집계 180일, 일정 알림 이력 90일, 생활권 새 공고 판정 365일.
+-- 스케줄러 계정에 아래 권한이 없으면 해당 테이블만 건너뛰고 경고 로그를 남긴다. DB명·접속 호스트를 실제 값으로 확인한 뒤 관리 계정으로 실행하세요.
+-- MariaDB는 WHERE 조건 컬럼을 읽기 위해 DELETE와 함께 SELECT 권한도 요구한다.
+-- GRANT SELECT, DELETE ON toady.TB_PAGE_VIEW TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_USAGE_EVENT TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_REMINDER_DELIVERY TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_PUSH_AREA_SEEN TO 'toady_sources'@'%';
+-- 권한 확인: SHOW GRANTS FOR 'toady_sources'@'%';

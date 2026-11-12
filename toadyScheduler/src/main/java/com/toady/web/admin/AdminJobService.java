@@ -165,6 +165,25 @@ public class AdminJobService {
         return ranges;
     }
     record DateRange(LocalDate start, LocalDate end) { }
+    /**
+     * 시작 시 이전 프로세스가 남긴 활성 작업을 중단 상태로 정리한다. 스케줄러는 한 인스턴스만 실행하고,
+     * compose가 새 컨테이너를 띄우기 전에 이전 컨테이너를 멈추므로 남은 활성 행은 끝난 프로세스의 것이다.
+     * 정리하지 않으면 생존 신호가 만료되는 10분 동안 새 수동·자동 실행이 막힌다.
+     */
+    public int interruptLeftovers() {
+        int cleaned = repository.interruptLeftovers(localJob.get(), now());
+        if (cleaned > 0) log.warn("Marked {} leftover scheduler job(s) from a previous process as INTERRUPTED", cleaned);
+        return cleaned;
+    }
     // 앱 종료 시 실행기를 닫는다. 중단 작업은 자동 재개하지 않고 관리자가 이력을 확인해 다시 실행한다.
-    @PreDestroy public void close() { closing = true; worker.shutdownNow(); }
+    // 작업 스레드가 중단 상태를 기록할 수 있도록 DB 연결이 닫히기 전에 잠시 기다린다(compose stop_grace_period 30초 안).
+    @PreDestroy public void close() {
+        closing = true;
+        worker.shutdownNow();
+        try {
+            if (!worker.awaitTermination(20, TimeUnit.SECONDS)) log.warn("Scheduler admin worker did not stop within 20 seconds");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
 }

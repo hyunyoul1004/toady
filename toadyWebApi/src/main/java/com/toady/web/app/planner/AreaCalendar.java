@@ -16,8 +16,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -29,8 +27,9 @@ public class AreaCalendar {
     static final int MAX_ANNOUNCEMENTS = 40;
     private static final Duration CACHE = Duration.ofMinutes(30);
     private final PublicAreaPage areas; private final PlannerSummary summaries; private final String domain; private final Clock clock;
-    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
-    private record Cached(String body, Instant at) { }
+    /** 생활권별 피드. 만료 순간 요청이 몰려도 같은 생활권은 한 번만 만든다. */
+    private final com.google.common.cache.Cache<String, String> cache = com.google.common.cache.CacheBuilder.newBuilder()
+            .maximumSize(50).expireAfterWrite(CACHE).build();
 
     @org.springframework.beans.factory.annotation.Autowired
     public AreaCalendar(PublicAreaPage areas, PlannerSummary summaries, @Value("${toady.web.domain}") String domain) {
@@ -56,10 +55,12 @@ public class AreaCalendar {
     public ResponseEntity<String> feed(@PathVariable String slug) {
         var found = LivingAreas.bySlug(slug);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
-        Instant now = clock.instant();
-        Cached hit = cache.get(slug);
-        String body = hit != null && hit.at().plus(CACHE).isAfter(now) ? hit.body() : build(found.get(), now);
-        if (hit == null || hit.body() != body) cache.put(slug, new Cached(body, now));
+        String body;
+        try { body = cache.get(slug, () -> build(found.get(), clock.instant())); }
+        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
+            if (failed.getCause() instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException(failed.getCause());
+        }
         return ResponseEntity.ok().header("Content-Type", "text/calendar;charset=UTF-8")
             .header("Content-Disposition", "inline; filename=\"toady-" + slug + ".ics\"")
             .cacheControl(CacheControl.maxAge(CACHE).cachePublic()).body(body);

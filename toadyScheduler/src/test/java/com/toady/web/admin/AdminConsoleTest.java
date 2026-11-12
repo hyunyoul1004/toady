@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "applyhome.admin.enabled=true", "applyhome.admin.username=operator",
         "applyhome.admin.password=local-test-password",
         "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-",
+        "applyhome.admin.busy-retry-seconds=1", "data.retention.cron=-",
         "spring.datasource.url=jdbc:h2:mem:admin;MODE=MariaDB;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password=",
@@ -161,6 +162,77 @@ class AdminConsoleTest {
         assertThrows(org.springframework.dao.DuplicateKeyException.class, () -> repository.insert("repeat",
                 JobKind.SCORES, "SCHEDULE", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto", old));
     }
+    @Test void locksLoginPerClientIpAfterRepeatedFailures() throws Exception {
+        org.springframework.test.web.servlet.request.RequestPostProcessor attacker = request -> {
+            request.setRemoteAddr("203.0.113.7"); return request;
+        };
+        for (int i = 1; i <= AdminLoginThrottle.MAX_FAILURES; i++) {
+            mvc.perform(post("/admin/login").with(csrf()).with(attacker)
+                            .param("username", "operator").param("password", "wrong-password-" + i))
+                    .andExpect(redirectedUrl(i < AdminLoginThrottle.MAX_FAILURES ? "/admin/login?error" : "/admin/login?locked"));
+        }
+        // 잠긴 동안에는 올바른 비밀번호도 확인하지 않고 돌려보낸다.
+        mvc.perform(post("/admin/login").with(csrf()).with(attacker)
+                        .param("username", "operator").param("password", "local-test-password"))
+                .andExpect(redirectedUrl("/admin/login?locked"))
+                .andExpect(org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated());
+        mvc.perform(get("/admin/login").param("locked", "")).andExpect(content().string(containsString("15분")));
+        // 다른 IP의 정상 로그인은 영향을 받지 않는다.
+        mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
+                .andExpect(authenticated().withUsername("operator"));
+    }
+
+    @Test void marksLeftoverActiveJobsFromAPreviousProcessAsInterruptedOnStartup() {
+        // 생존 신호가 아직 유효해도(10분 미만) 이전 프로세스의 활성 작업이면 새 실행을 막지 않도록 정리한다.
+        repository.insert("leftover", JobKind.ANNOUNCEMENTS, "SCHEDULE", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto", AdminJobService.now());
+        assertEquals(1, jobs.interruptLeftovers());
+        assertEquals("INTERRUPTED", repository.find("leftover").orElseThrow().status());
+        assertTrue(repository.active().isEmpty());
+        String id = jobs.submit(JobKind.ANNOUNCEMENTS, LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2), "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
+    }
+
+    @Test void retriesABusyScheduledRunOnce() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        when(competition.synchronizeScores(any(), any())).thenAnswer(invocation -> {
+            entered.countDown();
+            assertTrue(release.await(5, TimeUnit.SECONDS));
+            return 1L;
+        });
+        String manual = jobs.submit(JobKind.SCORES, LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), "operator", "MANUAL");
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            schedules.trigger(new AdminSchedule(JobKind.COMPETITION, true, "0 15 4 * * *", 1, AdminJobService.now(), null), false);
+            assertTrue(repository.recent().stream().noneMatch(job -> "SCHEDULE".equals(job.source())), "바쁜 동안에는 접수하지 않는다");
+        } finally { release.countDown(); }
+        await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(manual).orElseThrow().isActive());
+        // 설정한 대기(1초) 뒤 한 번 더 시도해 자동 실행이 접수되어야 한다.
+        await().atMost(Duration.ofSeconds(10)).until(() -> repository.recent().stream()
+                .anyMatch(job -> "SCHEDULE".equals(job.source()) && job.kind() == JobKind.COMPETITION && !job.isActive()));
+    }
+
+    @Test void deletesExpiredLogsInBatchesAndKeepsAreaBaselines() {
+        jdbc.update("DELETE FROM TB_PAGE_VIEW"); jdbc.update("DELETE FROM TB_PUSH_AREA_SEEN");
+        jdbc.update("DELETE FROM TB_USAGE_EVENT"); jdbc.update("DELETE FROM TB_REMINDER_DELIVERY");
+        java.time.LocalDateTime now = java.time.LocalDateTime.of(2026, 11, 12, 4, 40);
+        LocalDate today = now.toLocalDate();
+        for (int i = 0; i < 5; i++) pageView(i, i, i, today.minusDays(91 + i), null);
+        pageView(9, 9, 9, today.minusDays(90), null);
+        action(1, 1, "detail_view", "apt/A/1", today.minusDays(181));
+        action(2, 1, "detail_view", "apt/A/1", today.minusDays(179));
+        jdbc.update("INSERT INTO TB_REMINDER_DELIVERY (USER_SEQ,SEND_DATE,STATUS,UPDATED_AT) VALUES (1,?,'SENT',?),(1,?,'SENT',?)",
+                today.minusDays(91), now, today.minusDays(1), now);
+        jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES ('a','*',?),('a','apt/B/1',?),('a','apt/C/1',?),('a','apt/D/1',?)",
+                com.toady.web.retention.DataRetentionJob.PUSH_AREA_BASELINE, com.toady.web.retention.DataRetentionJob.PUSH_AREA_BASELINE,
+                now.minusDays(400), now.minusDays(10));
+        var job = new com.toady.web.retention.DataRetentionJob(jdbc);
+        var result = job.run(now);
+        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L), result);
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class));
+        assertEquals(java.util.List.of("*", "apt/B/1", "apt/D/1"), jdbc.queryForList(
+                "SELECT ANNOUNCEMENT_ID FROM TB_PUSH_AREA_SEEN ORDER BY ANNOUNCEMENT_ID", String.class));
+    }
+
     @Test void clampsAutomaticHistoryToTheSupportedDateRange() {
         assertEquals(LocalDate.of(2017, 1, 1),
                 AdminScheduleManager.scheduleStart(LocalDate.of(2026, 11, 12), 3660));

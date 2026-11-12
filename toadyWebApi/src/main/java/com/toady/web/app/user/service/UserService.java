@@ -57,14 +57,20 @@ public class UserService {
     @Autowired
     private CertifyService certifyService;
 
+    /** 없는 계정도 실제 비교와 비슷한 시간이 걸리게 하는 더미 해시. 응답 시간으로 가입 여부를 알아내지 못하게 한다. */
+    private static final String DUMMY_HASH = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(java.util.UUID.randomUUID().toString());
+
     /** 이메일과 비밀번호를 확인하고 로그인 토큰을 반환합니다. */
     public Map<String, Object> getUser(UserDTO.Login param) throws Exception {
 
-        CustomUserDetails userInfo = (CustomUserDetails) simpleUserDetailsService.loadUserByUsername(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
-
-        if (passwordEncoder.matches(param.getUserPassword() , userInfo.getPassword()) == false) { //비밀번호 체크
+        String email = param.getUserEmail().toLowerCase(java.util.Locale.ROOT);
+        // 비밀번호부터 확인한다. 계정 상태(미인증·잠금·탈퇴) 안내는 비밀번호를 아는 사람에게만 보여 가입 여부·상태가 드러나지 않게 한다.
+        UserEntity account = userRepository.findByUserEmail(email);
+        String hash = account == null ? DUMMY_HASH : account.getUserPassword();
+        if (!passwordEncoder.matches(param.getUserPassword(), hash) || account == null) {
             throw new BadCredentialsException(ResultCode.BAD_CREDENTIALS_ERROR.getMessage());
         }
+        CustomUserDetails userInfo = (CustomUserDetails) simpleUserDetailsService.loadUserByUsername(email);
 
 
         String accessToken = generatorToken(userInfo);

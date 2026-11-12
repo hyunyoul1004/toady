@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { ToggleButton, ToggleButtonGroup } from '@mui/material';
+import DateDigitsField from './DateDigitsField';
 import AutoFixHighRounded from '@mui/icons-material/AutoFixHighRounded';
 import { koreaToday } from '@/features/planner/plannerUtils';
 import { accountFromDate, housingFromDates } from './scoreRules';
 
-const dateProps = today => ({ type: 'date', size: 'small', fullWidth: true, InputLabelProps: { shrink: true }, inputProps: { max: today } });
 
 function Choice({ value, onChange, options, label }) {
   return <ToggleButtonGroup exclusive size="small" value={value} onChange={(_, next) => next !== null && onChange(next)} className="score-choice" aria-label={label}>
@@ -28,14 +28,14 @@ export default function PeriodByDate({ kind, options, value, onPick }) {
   return <div className="score-dates">
     {kind === 'housing' ? <>
       <div className="score-dates-grid">
-        <TextField label="생년월일" value={form.birth} onChange={event => set('birth', event.target.value)} {...dateProps(today)} />
+        <DateDigitsField label="생년월일" value={form.birth} onChange={next => set('birth', next)} max={today} />
         <div className="score-dates-row"><span>혼인</span><Choice label="혼인 여부" value={form.married} onChange={next => set('married', next)} options={[[false, '미혼'], [true, '기혼']]} /></div>
-        {form.married && <TextField label="혼인신고일" value={form.marriageDate} onChange={event => set('marriageDate', event.target.value)} {...dateProps(today)} />}
+        {form.married && <DateDigitsField label="혼인신고일" value={form.marriageDate} onChange={next => set('marriageDate', next)} max={today} />}
         <div className="score-dates-row"><span>집을 가진 적</span><Choice label="주택 소유 이력" value={form.owned} onChange={next => set('owned', next)} options={[[false, '없어요'], [true, '있어요']]} /></div>
-        {form.owned && <TextField label="마지막으로 집을 처분한 날" helperText="본인·배우자 중 더 늦게 무주택이 된 날" value={form.soldDate} onChange={event => set('soldDate', event.target.value)} {...dateProps(today)} />}
+        {form.owned && <DateDigitsField label="마지막으로 집을 처분한 날" helperText="본인·배우자 중 더 늦게 무주택이 된 날" value={form.soldDate} onChange={next => set('soldDate', next)} max={today} />}
       </div>
     </> : <div className="score-dates-grid">
-      <TextField label="청약통장 가입일" value={form.joined} onChange={event => set('joined', event.target.value)} {...dateProps(today)} />
+      <DateDigitsField label="청약통장 가입일" value={form.joined} onChange={next => set('joined', next)} max={today} />
     </div>}
     {touched && (result.error
       ? <p className="score-dates-result is-pending">{result.error}</p>

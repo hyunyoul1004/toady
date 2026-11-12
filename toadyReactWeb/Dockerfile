@@ -1,7 +1,8 @@
 # ==========================================
 # 1단계: 빌드 환경 (Node.js)
 # ==========================================
-FROM node:20-alpine AS builder
+# CI(actions/setup-node 22)와 같은 Node 메이저 버전으로 빌드한다.
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -25,7 +26,8 @@ RUN npm run build
 # ==========================================
 # 2단계: 운영 서빙 환경 (Nginx 경량 이미지)
 # ==========================================
-FROM nginx:alpine
+# CI의 nginx -t 검사와 앞단 nginx 컨테이너와 같은 버전으로 고정한다.
+FROM nginx:1.27-alpine
 
 # Nginx 기본 설정 파일 교체 (SPA 라우팅 및 캐싱/gzip 설정 포함)
 COPY nginx.conf /etc/nginx/conf.d/default.conf

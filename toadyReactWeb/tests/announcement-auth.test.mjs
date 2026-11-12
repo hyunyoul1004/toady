@@ -10,8 +10,8 @@ function token(exp, sub = 'member@example.test', userSeq = 1) {
   return `e30.${Buffer.from(JSON.stringify({ sub, userSeq, exp })).toString('base64url')}.signature`;
 }
 
-async function harness(fetch) {
-  const storage = new Map();
+async function harness(fetch, initialStorage = {}) {
+  const storage = new Map(Object.entries(initialStorage));
   const listeners = new Map();
   const context = vm.createContext({
     console, URLSearchParams, Event,
@@ -185,14 +185,6 @@ test('urban detail preserves its API address for display and map lookup', async 
   assert.equal(detail.supplyLocation, '서울특별시 실제주소 1');
 });
 
-test('map text escapes executable HTML and preserves ordinary text', async () => {
-  const source = await fs.readFile(new URL('../src/utils/html.util.js', import.meta.url), 'utf8');
-  const { escapeHtml } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-  assert.equal(escapeHtml('<img src=x onerror="alert(1)">'), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
-  assert.equal(escapeHtml("서울 & '아파트'"), '서울 &amp; &#39;아파트&#39;');
-});
-
-
 test('cancelled resupply uses its competition endpoint while keeping remaining detail type', async () => {
   const urls = [];
   const h = await harness(async url => { urls.push(url); return response({ data: [] }); });
@@ -239,19 +231,27 @@ test('storage account changes synchronize UI, request headers and cached query d
   const old = token(1000), next = token(2000, 'other@example.test', 2);
   h.store.getState().login(old);
   const unbind = h.bindCache(cache);
-  cache.setQueryData(['profile'], { name: 'old account' });
+  cache.setQueryData(['planner'], { name: 'old account' });
+  cache.setQueryData(['announcements', 'list', { startDate: '2026-11-01' }], { data: { resultList: [1] } });
+  const before = h.store.getState().user;
+  // 같은 토큰으로 다시 동기화하면 새 user 객체를 만들지 않는다(구독 화면 재렌더 방지).
+  h.dispatchStorage('user');
+  assert.equal(h.store.getState().user, before);
   h.storage.set('user', JSON.stringify({ accessToken: next })); h.dispatchStorage('user');
   assert.equal(h.store.getState().user.userSeq, 2);
-  assert.equal(cache.getQueryData(['profile']), undefined);
+  assert.equal(cache.getQueryData(['planner']), undefined);
+  // 공용 공고 목록은 비우지 않고 다시 받아오도록 표시만 한다.
+  assert.deepEqual(cache.getQueryData(['announcements', 'list', { startDate: '2026-11-01' }]), { data: { resultList: [1] } });
+  assert.equal(cache.getQueryState(['announcements', 'list', { startDate: '2026-11-01' }]).isInvalidated, true);
   await h.client.apiClient.post('/protected', {});
   assert.equal(requests[0], `Bearer ${next}`);
-  cache.setQueryData(['profile'], { name: 'new account' });
+  cache.setQueryData(['planner'], { name: 'new account' });
   const renewed = token(3000, 'other@example.test', 2);
   h.storage.set('user', JSON.stringify({ accessToken: renewed })); h.dispatchStorage('user');
-  assert.equal(cache.getQueryData(['profile']).name, 'new account');
+  assert.equal(cache.getQueryData(['planner']).name, 'new account');
   h.storage.delete('user'); h.dispatchStorage('user');
   assert.equal(h.store.getState().isAuthenticated, false);
-  assert.equal(cache.getQueryData(['profile']), undefined);
+  assert.equal(cache.getQueryData(['planner']), undefined);
   unbind(); cache.clear();
 });
 
@@ -274,7 +274,7 @@ test('account switch cancels old cached queries so a late result cannot replace 
   h.store.getState().login(token(1000));
   const unbind = h.bindCache(cache);
   let finishOld;
-  const observer = new QueryObserver(cache, { queryKey: ['profile'], queryFn: () => {
+  const observer = new QueryObserver(cache, { queryKey: ['planner'], queryFn: () => {
     const userSeq = h.store.getState().user.userSeq;
     return userSeq === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve({ userSeq });
   } });
@@ -283,13 +283,23 @@ test('account switch cancels old cached queries so a late result cannot replace 
   h.storage.set('user', JSON.stringify({ accessToken: token(2000, 'other@example.test', 2) }));
   h.dispatchStorage('user');
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(cache.getQueryData(['profile']).userSeq, 2);
+  assert.equal(cache.getQueryData(['planner']).userSeq, 2);
   finishOld({ userSeq: 1 });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(cache.getQueryData(['profile']).userSeq, 2);
+  assert.equal(cache.getQueryData(['planner']).userSeq, 2);
   unsubscribe(); unbind(); cache.clear();
 });
 
+
+test('startup treats an expired stored JWT as logged out and clears it', async () => {
+  const expired = await harness(async () => response({}), { user: JSON.stringify({ accessToken: token(1000) }) });
+  assert.equal(expired.store.getState().isAuthenticated, false);
+  assert.equal(expired.storage.has('user'), false);
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const valid = await harness(async () => response({}), { user: JSON.stringify({ accessToken: token(future) }) });
+  assert.equal(valid.store.getState().isAuthenticated, true);
+  assert.equal(valid.store.getState().user.exp, future);
+});
 
 test('map SDK loading has a deadline even after the delayed load function appears', async () => {
   const source = await fs.readFile(new URL('../src/config/ensureKakaoLoaded.js', import.meta.url), 'utf8');

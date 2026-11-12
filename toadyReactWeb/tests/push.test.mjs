@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { appPath, base64UrlToBytes, detectPlatform, pushMode, scopeKey } from '../src/features/push/pushSupport.js';
+import { SPA_PATHS, appPath, base64UrlToBytes, detectPlatform, isSpaPath, pushMode, scopeKey } from '../src/features/push/pushSupport.js';
 
 const win = (standalone = false) => ({ isSecureContext: true, PushManager: function () {}, Notification: function () {}, matchMedia: () => ({ matches: standalone }) });
 const nav = (userAgent, extra = {}) => ({ userAgent, serviceWorker: {}, ...extra });
@@ -35,7 +35,7 @@ test('VAPID key decoding, same-origin routing and scope comparison', () => {
 });
 
 async function serviceWorker(windows = []) {
-  const listeners = {}, shown = [], opened = [], messages = [];
+  const listeners = {}, shown = [], opened = [], messages = [], navigated = [];
   const self = {
     location: new URL('https://www.toady.co.kr/sw.js'),
     addEventListener: (type, handler) => { listeners[type] = handler; },
@@ -43,13 +43,16 @@ async function serviceWorker(windows = []) {
     registration: { showNotification: async (title, options) => { shown.push({ title, options }); } },
     clients: {
       claim: async () => {},
-      matchAll: async () => windows.map(url => ({ url, focus: async () => {}, postMessage: message => messages.push({ url, message }) })),
+      matchAll: async () => windows.map(url => ({
+        url, focus: async () => {}, postMessage: message => messages.push({ url, message }),
+        navigate: async target => { navigated.push({ from: url, to: target }); return {}; }
+      })),
       openWindow: async url => { opened.push(url); }
     }
   };
   vm.runInNewContext(await readFile(new URL('../public/sw.js', import.meta.url), 'utf8'), { self, URL });
   const fire = async (type, event) => { let wait; listeners[type]({ ...event, waitUntil: promise => { wait = promise; } }); await wait; };
-  return { fire, shown, opened, messages };
+  return { fire, shown, opened, messages, navigated };
 }
 
 test('service worker shows the payload and opens only same-origin detail pages', async () => {
@@ -71,6 +74,41 @@ test('service worker shows the payload and opens only same-origin detail pages',
   await open.fire('notificationclick', { notification, action: '' });
   assert.deepEqual(open.opened, []);
   assert.equal(JSON.stringify(open.messages[0].message), JSON.stringify({ type: 'toady-push-open', url: 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1' }));
+});
+
+test('notification click: SPA window + SPA target uses the router, otherwise the window navigates', async () => {
+  const click = async (windows, url) => {
+    const sw = await serviceWorker(windows);
+    await sw.fire('notificationclick', { notification: { data: { url }, close() {} }, action: '' });
+    return sw;
+  };
+  // 서버 HTML 생활권 페이지로 가는 알림은 열린 앱 창이 있어도 창을 직접 이동시킨다.
+  let sw = await click(['https://www.toady.co.kr/my'], '/areas/unjeong');
+  assert.deepEqual(sw.messages, []);
+  assert.deepEqual(sw.navigated, [{ from: 'https://www.toady.co.kr/my', to: 'https://www.toady.co.kr/areas/unjeong' }]);
+  assert.deepEqual(sw.opened, []);
+  // 열린 창이 서버 페이지면 앱 라우터가 없으므로 앱 경로도 창 이동으로 처리한다.
+  sw = await click(['https://www.toady.co.kr/weekly'], '/?subscriptSeq=apt%2FP1%2FN1');
+  assert.deepEqual(sw.messages, []);
+  assert.equal(sw.navigated[0].to, 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1');
+  // 앱 창 + 앱 경로(끝 슬래시 포함)는 메시지로 라우터 이동.
+  sw = await click(['https://www.toady.co.kr/score/'], '/my');
+  assert.equal(sw.messages.length, 1);
+  assert.deepEqual(sw.navigated, []);
+});
+
+test('SPA path classification matches the service worker list', async () => {
+  const origin = 'https://www.toady.co.kr';
+  assert.equal(isSpaPath('/?subscriptSeq=apt%2FP1%2FN1&tabType=0', origin), true);
+  assert.equal(isSpaPath('/my', origin), true);
+  assert.equal(isSpaPath('/my/', origin), true);
+  assert.equal(isSpaPath('/areas/unjeong', origin), false);
+  assert.equal(isSpaPath('/announcements/apt/P1/N1', origin), false);
+  assert.equal(isSpaPath('/weekly', origin), false);
+  assert.equal(isSpaPath('https://evil.example/my', origin), false);
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const list = JSON.parse(source.match(/const SPA_PATHS = (\[[^\]]*\])/)[1].replace(/'/g, '"'));
+  assert.deepEqual(list, SPA_PATHS);
 });
 
 test('manifest declares same-origin 192/512 PNG icons and standalone display', async () => {

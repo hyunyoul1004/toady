@@ -41,6 +41,8 @@ services:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
       - SERVER_PORT=8082
+    # 종료 시 진행 중인 수집 구간을 중단 상태로 기록할 시간을 준다(앱은 최대 20초 대기).
+    stop_grace_period: 30s
     volumes:
       - /usr/local/dockerVolumes/toady/toadyScheduler/logs/:/app/logs/
     ports:
@@ -59,7 +61,8 @@ services:
 
   nginx:
     container_name: nginx
-    image: nginx:1.21.5
+    # 웹 컨테이너(toadyReactWeb/Dockerfile)·CI 문법 검사와 같은 버전. nginx 컨테이너를 다시 만들 때 적용된다.
+    image: nginx:1.27-alpine
     environment:
       - TZ=Asia/Seoul
     ports:
@@ -77,12 +80,14 @@ services:
       - /usr/local/dockerVolumes/certbot/data:/var/www/certbot
     restart: always
 
+  # 최초 발급용. 갱신은 서버 cron에서 `docker-compose -p toady run --rm --no-deps certbot renew`로 실행한다(README 참고).
+  # 만료 30일 전까지는 다시 발급하지 않아 Let's Encrypt 발급 한도를 소모하지 않는다.
   certbot:
     container_name: certbot
     image: certbot/certbot:latest
     depends_on:
       - nginx
-    command: certonly --webroot --webroot-path=/var/www/certbot --email dbsgusduf@naver.com --agree-tos --no-eff-email --force-renewal -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr
+    command: certonly --webroot --webroot-path=/var/www/certbot --email dbsgusduf@naver.com --agree-tos --no-eff-email --keep-until-expiring -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr
     volumes:
       - /usr/local/dockerVolumes/certbot/conf:/etc/letsencrypt
       - /usr/local/dockerVolumes/certbot/logs:/var/log/letsencrypt

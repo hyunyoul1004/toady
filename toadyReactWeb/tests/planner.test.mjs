@@ -18,6 +18,10 @@ test('living area aliases use terms rather than matching the entire municipality
   assert.equal(matchesArea('경기도 파주시 동패동','운정역',areas),true);
   assert.equal(matchesArea('경기도 파주시 문산읍','운정',areas),false);
   assert.equal(matchesArea('경기도 파주시 문산읍','파주',areas),true);
+  const scoped=[{label:'검단',aliases:['검단'],terms:['검단','서구 원당동'],scope:['인천']}];
+  assert.equal(matchesArea('대구광역시 북구 검단동 검단 푸르지오','검단',scoped),false,'다른 시·도의 같은 이름은 생활권이 아니다');
+  assert.equal(matchesArea('인천광역시 서구 백석동 검단 아파트','검단',scoped),true);
+  assert.equal(matchesArea('인천광역시 서구 원당동 1',{type:'living_area',label:'검단',terms:['검단','서구 원당동']},scoped),true,'저장된 검색 조건에 scope가 없어도 생활권 목록에서 찾는다');
 });
 
 test('research links use fixed external origins and encode apartment/address text', () => {

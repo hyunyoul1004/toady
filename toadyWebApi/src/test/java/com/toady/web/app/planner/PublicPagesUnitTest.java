@@ -25,6 +25,12 @@ class PublicPagesUnitTest {
         assertEquals("unjeong", LivingAreas.match("경기도 파주시 파주운정3지구 주상복합 3블록(경기도 파주시 동패동 1673번지 일원)", "시티프라디움").orElseThrow().slug());
         assertEquals("wirye", LivingAreas.match("서울특별시 송파구 장지동 100", null).orElseThrow().slug());
         assertTrue(LivingAreas.match("서울특별시 강남구 역삼동 1", "역삼 아파트").isEmpty());
+        // 같은 이름의 다른 지역은 생활권으로 보지 않는다(시·군 조건).
+        assertTrue(LivingAreas.match("대구광역시 북구 검단동 100", "검단 푸르지오").isEmpty(), "대구 검단동은 인천 검단이 아니다");
+        assertTrue(LivingAreas.match("경상북도 고령군 다산면 1", null).isEmpty(), "고령 다산면은 남양주 다산이 아니다");
+        assertEquals("geomdan", LivingAreas.match("인천광역시 서구 불로동 1", "검단신도시 우미린").orElseThrow().slug());
+        assertEquals("geomdan", LivingAreas.match("인천광역시 서구 백석동 1", "검단 아파트").orElseThrow().slug(), "인천 안의 '검단' 단지명은 인정");
+        assertEquals("dasan", LivingAreas.match("경기도 남양주시 다산동 1", null).orElseThrow().slug());
         assertEquals("운정", LivingAreas.bySlug("unjeong").orElseThrow().label());
         assertTrue(LivingAreas.bySlug("운정").isEmpty());
         assertEquals(LivingAreas.ALL.size(), LivingAreas.ALL.stream().map(LivingAreas.Area::slug).distinct().count());

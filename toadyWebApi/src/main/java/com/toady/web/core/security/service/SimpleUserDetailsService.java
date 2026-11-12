@@ -41,7 +41,7 @@ public class SimpleUserDetailsService implements UserDetailsService {
 	{
 
 		// 이메일로 계정을 조회하고, 잠금·탈퇴·이메일 미인증 상태를 로그인 전에 차단합니다.
-		log.info("로그인 시도 [userEmail : "+userEmail+"] DB 조회.");
+		log.debug("계정 조회 [{}]", com.toady.web.core.util.CmnUtils.maskEmail(userEmail));
 		UserEntity dbUserInfo = userRepository.findByUserEmail(userEmail);
 		
 		if (dbUserInfo == null) {

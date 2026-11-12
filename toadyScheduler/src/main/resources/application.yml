@@ -29,6 +29,11 @@ server:
         same-site: strict
         secure: ${SCHEDULER_ADMIN_SECURE_COOKIE:false}
 
+data:
+  retention:
+    # 방문·행동 로그와 발송 이력의 보관 기간 정리(한국시간). "-"이면 끈다. 스케줄러 계정에 DELETE 권한이 필요하다(database.sql 14번).
+    cron: "${DATA_RETENTION_CRON:0 40 4 * * *}"
+
 applyhome:
   admin:
     # 테이블·관리자 계정을 준비하기 전에는 기존 정적 스케줄만 실행하도록 기본 비활성화한다.

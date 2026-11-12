@@ -4,7 +4,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import { REGION_SEOUL, REGION_METRO, REGION_PROVINCE, ALL_REGIONS, SUPPLY_FILTER_ITEMS } from '../announcementFilters';
 
-export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, setJumpToDate, setSnackbar, handleOpenDetail }) {
+export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
 
   // 공급지역 개별 토글 핸들러
@@ -306,7 +306,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
 
                           // 1. 해당 아파트 청약 접수일이 있는 년/월로 캘린더 이동
                           if (targetDate) {
-                            setJumpToDate(targetDate);
+                            onJumpToDate(targetDate);
                             const ym = targetDate.substring(0, 7);
                             setSnackbar({
                               open: true,

@@ -68,7 +68,8 @@ mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
 SCHEDULER_ADMIN_ENABLED=true
 SCHEDULER_ADMIN_USERNAME=admin
 SCHEDULER_ADMIN_PASSWORD=직접_정한_관리자_비밀번호
-SCHEDULER_ADMIN_SECURE_COOKIE=false
+# 로컬 HTTP 실행은 false, 운영(HTTPS https://www.toady.co.kr/admin/)은 반드시 true
+SCHEDULER_ADMIN_SECURE_COOKIE=true
 ```
 
 기본값은 비활성화입니다. 비활성화 상태에서는 기존 `@Scheduled` 수집이 계속 동작하고, 관리자 테이블·비밀번호 없이 배포할 수 있습니다. 활성화하면 기존 정적 스케줄 대신 DB 설정으로 동작합니다. 첫 활성화 때 공고·경쟁률 스케줄은 현재 cron 환경 설정을 가져오고, 전체 수집·가점 단독 스케줄은 꺼진 상태로 등록합니다.
@@ -81,7 +82,11 @@ SCHEDULER_ADMIN_SECURE_COOKIE=false
 
 관리자 목록은 `/admin`과 `/admin/` 모두 처리합니다. 로그인 성공·변경 요청 후 이동과 화면 갱신 링크는 `/admin/`로 통일해, 프록시의 끝 슬래시 리다이렉트에 따른 404나 갱신 누락을 방지합니다.
 
-관리자 화면은 `SCHEDULER_ADMIN_ENABLED=true`와 관리자 비밀번호를 설정해야 활성화됩니다. 외부 도메인으로 HTTPS를 제공하려면 별도 Nginx 프록시를 구성하고 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 설정하세요. 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
+관리자 화면은 `SCHEDULER_ADMIN_ENABLED=true`와 관리자 비밀번호를 설정해야 활성화됩니다. 운영 관리자는 이제 앞단 nginx의 HTTPS `/admin/`으로만 제공하므로 서버 `toadyScheduler/.env.prod`에 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 설정하고 스케줄러 컨테이너를 다시 만드세요. 이 값이 false면 세션 쿠키에 Secure 속성이 빠져 HTTP 요청에도 쿠키가 실릴 수 있습니다(로컬 `http://localhost:8082`에서는 true로 두면 로그인이 유지되지 않으므로 false). 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
+
+같은 IP에서 15분 안에 로그인을 5번 실패하면 그 IP는 15분 동안 비밀번호 확인 없이 로그인 화면으로 돌려보내집니다(`/admin/login?locked`). 기록은 스케줄러 메모리에 있어 재시작하면 초기화됩니다. IP는 접속 주소가 루프백·사설망(앞단 nginx 컨테이너)일 때만 `X-Real-IP` 헤더를 사용하므로, 앞단 nginx의 `/admin/` location에 `proxy_set_header X-Real-IP $remote_addr;`가 있어야 사용자별로 구분됩니다. 없으면 모든 접속이 nginx 주소 하나로 집계되어 다른 사람의 실패로 관리자도 함께 잠길 수 있습니다.
+
+스케줄러가 시작되면 이전 프로세스가 남긴 활성 작업(`ACTIVE_SLOT=1`)을 즉시 `INTERRUPTED`로 정리합니다. 스케줄러는 한 인스턴스만 실행하고 compose가 새 컨테이너 시작 전에 이전 컨테이너를 멈추므로, 생존 신호 만료(10분)를 기다리지 않고 바로 새 실행을 받을 수 있습니다. 종료 시에는 작업 스레드가 중단 상태를 기록하도록 최대 20초 기다리며, compose의 `stop_grace_period: 30s`가 이 시간을 보장합니다. 자동 스케줄이 다른 작업과 겹쳐 접수되지 못하면 5분 뒤 한 번 더 시도하고(`applyhome.admin.busy-retry-seconds`), 그때도 겹치면 로그만 남기고 건너뜁니다.
 
 ## 스케줄 및 데이터 흐름
 
@@ -91,6 +96,9 @@ SCHEDULER_ADMIN_SECURE_COOKIE=false
 | --- | --- | --- |
 | 공고·주택형 | 매일 03:15 | `0 15 3 * * *` |
 | 경쟁률·당첨 가점·특별공급 신청현황 | 매일 04:15, 20:15 | `0 15 4,20 * * *` |
+| 로그 보관 기간 정리 | 매일 04:40 | `0 40 4 * * *` (`DATA_RETENTION_CRON`) |
+
+로그 보관 기간 정리는 관리자 기능 활성화와 관계없이 동작하며, 기간이 지난 행을 10,000건씩 나눠 지웁니다(한 테이블당 하루 최대 100만 건). 방문 로그 `TB_PAGE_VIEW` 90일, 행동 집계 `TB_USAGE_EVENT` 180일, 일정 알림 이력 `TB_REMINDER_DELIVERY` 90일, 생활권 새 공고 판정 `TB_PUSH_AREA_SEEN` 365일(`FIRST_SEEN_DT` 기준, 생활권 최초 기록용 2000-01-01 기준 행은 유지)이 기준입니다. 메일 시도 기록 `TB_MAIL_ATTEMPT`는 API가 스스로 정리하므로 제외합니다. 테이블이 없거나 스케줄러 계정에 권한이 없으면 해당 테이블만 경고 로그를 남기고 건너뜁니다. 필요한 권한은 [database.sql](../database.sql) 14번을 참고하세요.
 
 04:15 실행은 야간 반영분을, 20:15 실행은 당일 변경분을 확인하기 위한 재조회입니다. API가 해당 시각 전에 갱신된다는 의미는 아닙니다. 실행 시간이 길면 실제 시작 시각은 지연될 수 있습니다.
 
@@ -131,6 +139,8 @@ SCHEDULER_ADMIN_SECURE_COOKIE=false
 | `APPLYHOME_SYNC_CRON` | 아니오 | 공고 동기화 cron. 기본 `0 15 3 * * *` |
 | `APPLYHOME_COMPETITION_CRON` | 아니오 | 경쟁률·가점·특별공급 cron. 기본 `0 15 4,20 * * *` |
 | `APPLYHOME_LOOKBACK_DAYS` | 아니오 | 공고일 재조회 범위. 기본 `90`, 양수 |
+| `SCHEDULER_ADMIN_SECURE_COOKIE` | 운영 예 | 관리자 세션 쿠키 Secure 속성. 운영 HTTPS는 `true`, 로컬 HTTP는 `false` |
+| `DATA_RETENTION_CRON` | 아니오 | 로그 보관 기간 정리 cron. 기본 `0 40 4 * * *`, `-`이면 끔 |
 
 기존 `APPLYHOME_COMPETITION_POLL_CRON`·`APPLYHOME_COMPETITION_FINAL_CRON`은 사용하지 않습니다. 배포 서버에서는 새 `APPLYHOME_COMPETITION_CRON` 값으로 변경한 뒤 컨테이너를 재생성해야 합니다. 이 저장소의 로컬 `.env.local`·`.env.prod`에는 새 스케줄을 반영하지만 원격 서버의 환경 파일은 자동으로 변경되지 않습니다.
 

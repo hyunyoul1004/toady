@@ -57,12 +57,20 @@ export function summaryOf(detail = {}) {
     }), unavailable: false };
 }
 export function safeRead(storage, key, fallback) { try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; } }
+/**
+ * 생활권 판정은 API(LivingAreas.match)와 같은 규칙을 쓴다. '검단'처럼 시·군이 없는 짧은 이름(공백 없는 term)은
+ * 생활권의 scope(소속 시·군) 중 하나도 주소·단지명에 있어야 한다. 대구 검단동이 인천 검단으로 잡히지 않게 한다.
+ */
 export function matchesArea(text, target, areas = []) {
-  const query = typeof target === 'string' ? target : (target.label || '');
-  const area = areas.find(a => a.aliases.includes(query.trim()));
+  const query = (typeof target === 'string' ? target : (target.label || '')).trim();
+  const area = areas.find(a => a.aliases?.includes(query) || a.label === query);
   const terms = target?.terms || area?.terms || [query];
+  const scope = (target?.scope || area?.scope || []).map(value => value.toLowerCase());
   const normalized = String(text).toLowerCase().replace(/\s+/g, ' ');
-  return terms.some(term => normalized.includes(term.toLowerCase()));
+  return terms.some(term => {
+    const value = term.toLowerCase();
+    return normalized.includes(value) && (value.includes(' ') || !scope.length || scope.some(name => normalized.includes(name)));
+  });
 }
 const escapeIcs = value => String(value || '').replaceAll('\\','\\\\').replace(/\r?\n/g,'\\n').replaceAll(';','\\;').replaceAll(',','\\,');
 export function calendarText(summaries, origin = 'https://www.toady.co.kr') {

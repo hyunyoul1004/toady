@@ -20,6 +20,8 @@ public class PlannerReminder {
     @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc; private final PlannerService planner; private final UserRepository users;
     private final EmailUtilService mail; private final String domain;
+    /** 회원별로 '오늘 보낼 일정 없음'을 확인한 관심 공고 상태. 날짜·관심 공고가 바뀌면 다시 확인한다. */
+    private final java.util.Map<Long,String> nothingToSend=new java.util.concurrent.ConcurrentHashMap<>();
     public PlannerReminder(JdbcTemplate jdbc,PlannerService planner,UserRepository users,EmailUtilService mail,
             @Value("${toady.web.domain}") String domain) { this.jdbc=jdbc;this.planner=planner;this.users=users;this.mail=mail;this.domain=domain.replaceAll("/+$",""); }
     /** 정시에 서버가 중단되어도 08~18시 사이 재기동 후 실행할 수 있도록 30분마다 확인한다. */
@@ -39,6 +41,10 @@ public class PlannerReminder {
         if(account==null || !"Y".equals(account.getEmailCertifyYn()) || !"N".equals(account.getWithdrawalYn()) || !"N".equals(account.getLockYn())) return;
         // 이미 전송을 시도한 날짜에는 공고를 다시 읽거나 중복 발송하지 않는다.
         if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_REMINDER_DELIVERY WHERE USER_SEQ=? AND SEND_DATE=?",Integer.class,id,java.sql.Date.valueOf(today))>0) return;
+        // 오늘 이미 확인했는데 보낼 일정이 없었고 관심 공고도 그대로면 30분마다 공고를 다시 읽지 않는다.
+        String signature=jdbc.queryForObject("SELECT CONCAT(COUNT(*),'/',COALESCE(MAX(REG_DT),'')) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE",String.class,id);
+        String checked=today+"|"+signature;
+        if(checked.equals(nothingToSend.get(id))) return;
         StringBuilder lines=new StringBuilder();
         for(var favorite:planner.list(id)) {
             if(!favorite.emailEnabled() || favorite.summary().unavailable()) continue;
@@ -51,7 +57,7 @@ public class PlannerReminder {
                 }
             }
         }
-        if(lines.isEmpty()) return;
+        if(lines.isEmpty()) { nothingToSend.put(id,checked); return; }
         try { jdbc.update("INSERT INTO TB_REMINDER_DELIVERY (USER_SEQ,SEND_DATE,STATUS,UPDATED_AT) VALUES (?,?,'SENDING',?)",id,java.sql.Date.valueOf(today),java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneOffset.UTC))); }
         catch(DuplicateKeyException duplicate) { return; }
         String body="<!doctype html><html lang='ko'><meta charset='UTF-8'><body style='margin:0;background:#f3f6f9;font-family:Arial,sans-serif;color:#172b3a'><table role='presentation' width='100%'><tr><td align='center' style='padding:32px 16px'><table role='presentation' width='100%' style='max-width:560px;background:white;border-radius:16px'><tr><td style='padding:32px'><b style='color:#087f73'>TOADY</b><h1 style='font-size:24px'>오늘과 내일, 나의 청약 일정</h1><p>저장한 관심 공고의 확인할 일정을 모았습니다.</p><ul style='padding-left:20px'>"+lines+"</ul><p style='font-size:13px;color:#64748b'>공개된 공고 데이터 기준이며 신청 자격과 최종 일정은 공식 모집공고에서 확인해 주세요.</p><hr style='border:0;border-top:1px solid #e2e8f0'><p><a href='"+HtmlUtils.htmlEscape(domain+"/my")+"'>나의 청약 · 알림 설정 및 전체 해제</a></p></td></tr></table></td></tr></table></body></html>";

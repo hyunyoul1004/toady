@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useGuestFavoriteIds } from '@/features/planner/usePlanner';
 import { SYNCED_KEY, usePushStore } from './pushStore';
-import { appPath, scopeKey } from './pushSupport';
+import { appPath, isSpaPath, scopeKey } from './pushSupport';
 
 /**
  * 앱 전체에서 한 번: 서비스 워커 등록(권한 요청 없음), 구독 상태 확인, 알림 클릭 이동,
@@ -23,8 +23,11 @@ export default function PushBootstrap() {
     const onMessage = event => {
       if (event.data?.type !== 'toady-push-open') return;
       const path = appPath(event.data.url, window.location.origin);
+      if (!path) return;
+      // 서버가 그리는 페이지(/areas 등)는 앱 라우터에 없으므로 전체 페이지로 이동한다.
+      if (!isSpaPath(path, window.location.origin)) { window.location.assign(path); return; }
       // 앱 안 이동이므로 상세의 '직접 진입' 처리를 건너뛰어, 뒤로가기가 보던 화면으로 돌아가게 한다.
-      if (path) navigate(path, { state: { detailOverlay: true, plannerDetail: true, scoreDetail: true } });
+      navigate(path, { state: { detailOverlay: true, plannerDetail: true, scoreDetail: true } });
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);

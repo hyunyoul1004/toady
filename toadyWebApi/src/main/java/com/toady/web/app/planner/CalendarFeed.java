@@ -59,8 +59,13 @@ public class CalendarFeed {
         String token = newToken();
         var now = java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
         // MariaDB·H2 공통으로 동작하도록 갱신 후 없으면 추가한다. 회원당 한 행이라 기존 주소는 바로 무효가 된다.
-        if (jdbc.update("UPDATE TB_CALENDAR_FEED SET FEED_TOKEN=?,REG_DT=?,LAST_READ_DT=NULL WHERE USER_SEQ=?", token, now, user.getUserSeq()) == 0)
-            jdbc.update("INSERT INTO TB_CALENDAR_FEED (USER_SEQ,FEED_TOKEN,REG_DT) VALUES (?,?,?)", user.getUserSeq(), token, now);
+        if (jdbc.update("UPDATE TB_CALENDAR_FEED SET FEED_TOKEN=?,REG_DT=?,LAST_READ_DT=NULL WHERE USER_SEQ=?", token, now, user.getUserSeq()) == 0) {
+            try { jdbc.update("INSERT INTO TB_CALENDAR_FEED (USER_SEQ,FEED_TOKEN,REG_DT) VALUES (?,?,?)", user.getUserSeq(), token, now); }
+            catch (org.springframework.dao.DuplicateKeyException raced) {
+                // 처음 발급 요청이 동시에 두 번 오면 먼저 들어간 행을 이번 토큰으로 바꾼다(마지막 요청의 주소가 유효).
+                jdbc.update("UPDATE TB_CALENDAR_FEED SET FEED_TOKEN=?,REG_DT=?,LAST_READ_DT=NULL WHERE USER_SEQ=?", token, now, user.getUserSeq());
+            }
+        }
         return ResData.of(view(token), "SUCCESS", "캘린더 구독 주소를 만들었습니다.");
     }
 

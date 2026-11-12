@@ -48,6 +48,21 @@ export function appPath(url, origin) {
   } catch { return null; }
 }
 
+/**
+ * React 앱(SPA)이 그리는 경로. 나머지(/areas, /announcements, /zupzup, /weekly, /calendar 등)는 서버가 HTML을 직접 그려
+ * 앱 라우터로 이동하면 첫 화면으로 떨어지므로 전체 페이지 이동이 필요하다. public/sw.js의 목록과 같아야 한다.
+ */
+export const SPA_PATHS = ['/', '/my', '/score', '/certify', '/login', '/showSubscriptDetail'];
+
+/** 같은 출처의 SPA 경로인지(끝 슬래시는 무시). */
+export function isSpaPath(url, origin) {
+  try {
+    const parsed = new URL(url, origin);
+    const path = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
+    return parsed.origin === origin && SPA_PATHS.includes(path);
+  } catch { return false; }
+}
+
 /** 구독 범위가 바뀌었을 때만 서버와 다시 맞추기 위한 비교 키. */
 export function scopeKey({ endpoint, userSeq, favorites, areas = [], favoriteIds = [] }) {
   return JSON.stringify([endpoint || '', userSeq ?? null, favorites !== false, [...areas].sort(), userSeq ? [] : [...favoriteIds].sort()]);

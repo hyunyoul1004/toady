@@ -103,3 +103,14 @@ test('날짜로 무주택 기간과 통장 가입기간 구간을 정한다', ()
   assert.equal(A[accountFromDate('2000-01-01', today).index].points, 17);
   assert.ok(accountFromDate('2026-02-30', today).error, '없는 날짜는 받지 않는다');
 });
+
+import { formatDigits, toIsoDate } from '../src/features/score/scoreRules.js';
+test('날짜 숫자 입력은 점을 자동으로 넣고 실제 있는 날짜만 받는다', () => {
+  assert.equal(formatDigits('1989'), '1989');
+  assert.equal(formatDigits('198903'), '1989.03');
+  assert.equal(formatDigits('1989-03-02'), '1989.03.02');
+  assert.equal(formatDigits('19890302123'), '1989.03.02', '8자리를 넘으면 자른다');
+  assert.equal(toIsoDate('1989.03.02'), '1989-03-02');
+  assert.equal(toIsoDate('1989.02.30'), '', '없는 날짜');
+  assert.equal(toIsoDate('1989.03'), '');
+});

@@ -38,17 +38,27 @@ public class NeighborhoodResearchService {
         // 키가 없으면 화면은 미제공 상태로만 보이므로 운영 로그에서 설정 누락을 바로 알 수 있게 남긴다.
         if(!tradesEnabled()) log.warn("Neighborhood trades are disabled: MOLIT_TRADE_SERVICE_KEY is not configured");
     }
+    static final java.util.Set<String> SIDO_CODES=java.util.Set.of("11","26","27","28","29","30","31","36","41","42","43","44","45","46","47","48","50","51","52");
+    private final com.google.common.cache.Cache<String,Boolean> failedMonths=com.google.common.cache.CacheBuilder.newBuilder()
+        .maximumSize(5000).expireAfterWrite(3,TimeUnit.MINUTES).build();
     public boolean tradesEnabled() {return !molitKey.isBlank();}
     public TradeResult trades(String bcode,String dong) {return trades(bcode,dong,null);}
     public TradeResult trades(String bcode,String dong,BigDecimal area) {
         YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(2);
         if(!tradesEnabled()) return new TradeResult("NOT_CONFIGURED",bcode,dong,start.toString(),end.toString(),null,0,List.of());
+        // 법정동 코드 앞 2자리는 시·도 코드다. 없는 시·도는 외부 호출 없이 거절한다.
+        if(bcode==null || !bcode.matches("\\d{10}") || !SIDO_CODES.contains(bcode.substring(0,2))) return new TradeResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,0,List.of());
         try {
             List<Trade> all=new ArrayList<>();List<Instant> updated=new ArrayList<>();
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(12);
             for(int month=0;month<3;month++) {
                 String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
-                TradeMonth data=tradeCache.get(bcode.substring(0,5)+"/"+ymd,()->loadMonth(bcode.substring(0,5),ymd,deadline));
+                String key=bcode.substring(0,5)+"/"+ymd;
+                // 최근 실패한 시군구·월은 몇 분간 다시 부르지 않는다(잘못된 코드 반복으로 공공데이터 일일 쿼터를 쓰지 않게).
+                if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
+                TradeMonth data;
+                try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                catch(Exception failure) { failedMonths.put(key,Boolean.TRUE); throw failure; }
                 all.addAll(data.trades());updated.add(data.fetchedAt());
             }
             String legalDong=bcode.substring(5);

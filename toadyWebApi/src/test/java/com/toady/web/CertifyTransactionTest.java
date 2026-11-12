@@ -43,6 +43,17 @@ class CertifyTransactionTest {
         jdbc.update("UPDATE TB_USER SET USER_PASSWORD=? WHERE USER_EMAIL='verify@example.test'", encoder.encode("Signup123!"));
         return new CertifyDTO.CheckParam("verify@example.test", "code", "Signup123!");
     }
+    /** 코드는 DB에 해시로만 남으므로 실제로 보낸 메일 본문에서 꺼낸다(마지막 발송 기준). */
+    String mailedCode() throws Exception {
+        var captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(email, org.mockito.Mockito.atLeastOnce()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), captor.capture());
+        String body = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        var link = java.util.regex.Pattern.compile("certifyCode=([A-Z0-9-]{20,30})").matcher(body);
+        if (link.find()) return link.group(1);
+        var plain = java.util.regex.Pattern.compile("(?<![A-Z0-9])([A-HJ-NP-Z2-9]{24})(?![A-Z0-9])").matcher(body);
+        assertTrue(plain.find(), body);
+        return plain.group(1);
+    }
     CertifyDTO.PasswordChange password() { return new CertifyDTO.PasswordChange("verify@example.test", "Newpass123!", "Newpass123!", "code"); }
     String flag() { return jdbc.queryForObject("SELECT CERTIFY_YN FROM TB_CERTIFY", String.class); }
     @Test void accountFailureRollsBackConsumedCode() {
@@ -127,9 +138,9 @@ class CertifyTransactionTest {
         code("ACCOUNT", LocalDateTime.now().minusHours(25));
         assertEquals("SUCCESS", service.resendAccountVerification(new CertifyDTO.UserInfo("verify@example.test")).getBody().getResultCode());
         assertEquals("Y", jdbc.queryForObject("SELECT CERTIFY_YN FROM TB_CERTIFY WHERE CERTIFY_CODE='code'", String.class));
-        String fresh = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class);
-        String body = jdbc.queryForObject("SELECT CERTIFY_MESSAGE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class);
-        assertTrue(body.length() > 200); // 엔티티의 TEXT 정의로 실제 이메일 본문을 저장한다.
+        String fresh = mailedCode();
+        assertTrue(jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class).startsWith("h1:"), "코드는 해시로만 저장한다");
+        assertFalse(jdbc.queryForObject("SELECT CERTIFY_MESSAGE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class).contains(fresh), "메일 본문(코드)은 저장하지 않는다");
         var check = check(); check.setCertifyCode(fresh);
         assertEquals("SUCCESS", service.certifyCheck(check).getBody().getResultCode());
         assertEquals("Y", jdbc.queryForObject("SELECT EMAIL_CERTIFY_YN FROM TB_USER", String.class));
@@ -147,9 +158,15 @@ class CertifyTransactionTest {
     @Test void recentSignupResendIsThrottledAndVerifiedUserReceivesNoEmail() {
         code("ACCOUNT", LocalDateTime.now());
         var request = new CertifyDTO.UserInfo("verify@example.test");
-        assertEquals(com.toady.web.core.constants.ResultCode.RE_CERTIFY_REQUEST_ERROR.getCode(), service.resendAccountVerification(request).getBody().getResultCode());
+        // 재요청 간격·인증 완료·없는 계정 모두 같은 응답이라 계정 존재 여부가 드러나지 않는다(메일은 보내지 않는다).
+        var throttled = service.resendAccountVerification(request).getBody();
         jdbc.update("UPDATE TB_USER SET EMAIL_CERTIFY_YN='Y'");
-        assertEquals(com.toady.web.core.constants.ResultCode.ALREADY_CERTIFY_ERROR.getCode(), service.resendAccountVerification(request).getBody().getResultCode());
+        var verified = service.resendAccountVerification(request).getBody();
+        var unknown = service.resendAccountVerification(new CertifyDTO.UserInfo("nobody@example.test")).getBody();
+        for (var body : List.of(throttled, verified, unknown)) {
+            assertEquals("SUCCESS", body.getResultCode());
+            assertEquals(unknown.getResultMessage(), body.getResultMessage());
+        }
         org.mockito.Mockito.verifyNoInteractions(email);
     }
     @Test void smtpOperationsHaveFiniteTimeouts(@Autowired org.springframework.mail.javamail.JavaMailSender sender) {
@@ -170,8 +187,7 @@ class CertifyTransactionTest {
             }));
             start.countDown();
             var results = List.of(tasks.get(0).get(10, java.util.concurrent.TimeUnit.SECONDS), tasks.get(1).get(10, java.util.concurrent.TimeUnit.SECONDS));
-            assertEquals(1, results.stream().filter("SUCCESS"::equals).count());
-            assertEquals(1, results.stream().filter(com.toady.web.core.constants.ResultCode.RE_CERTIFY_REQUEST_ERROR.getCode()::equals).count());
+            assertEquals(2, results.stream().filter("SUCCESS"::equals).count(), "응답은 같고 메일은 한 번만 보낸다");
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_CERTIFY WHERE CERTIFY_YN='N'", Integer.class));
             org.mockito.Mockito.verify(email).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
         }

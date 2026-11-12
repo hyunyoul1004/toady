@@ -24,7 +24,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -v
       # 배포 이미지와 같은 nginx로 설정 문법을 미리 검사한다. 설정 오류는 배포 후 웹 컨테이너 재시작 반복으로만 드러나기 때문이다.
       - name: Check nginx config
-        run: docker run --rm -v "$PWD/toadyReactWeb/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t
+        run: docker run --rm -v "$PWD/toadyReactWeb/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.27-alpine nginx -t
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -140,7 +140,33 @@ jobs:
             set -eu
             cd ~/toady
             export DOCKER_USERNAME IMAGE_TAG
+            NEW_TAG="$IMAGE_TAG"
+            # 마지막으로 검증에 성공한 태그. 새 이미지가 확인을 통과하지 못하면 이 태그로 되돌린다.
+            PREVIOUS_TAG=""
+            if [ -f .deployed-image-tag ]; then PREVIOUS_TAG=$(tr -d '[:space:]' < .deployed-image-tag); fi
             docker-compose -p toady pull toadyWebApi toadyScheduler toadyReactWeb
             docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
-            bash scripts/check-deployment.sh
-            printf '%s\n' "$IMAGE_TAG" > .deployed-image-tag
+            # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
+            docker exec nginx nginx -s reload || true
+            if ! bash scripts/check-deployment.sh; then
+              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$NEW_TAG" ]; then
+                echo "DEPLOY FAILED: $NEW_TAG did not pass checks. Rolling back app containers to $PREVIOUS_TAG." >&2
+                export IMAGE_TAG="$PREVIOUS_TAG"
+                docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
+                docker exec nginx nginx -s reload || true
+                if bash scripts/check-deployment.sh; then
+                  echo "ROLLBACK OK: app containers are running $PREVIOUS_TAG. DB changes are not rolled back." >&2
+                else
+                  echo "ROLLBACK CHECK FAILED: $PREVIOUS_TAG also failed checks. Inspect the server manually." >&2
+                fi
+              else
+                echo "DEPLOY FAILED: $NEW_TAG did not pass checks and no previous successful tag is recorded. Not rolled back." >&2
+              fi
+              exit 1
+            fi
+            printf '%s\n' "$NEW_TAG" > .deployed-image-tag
+            # 서버에서 직접 docker-compose를 실행해도(예: certbot 갱신, 재시작) 배포한 태그를 쓰도록 .env의 IMAGE_TAG 줄만 바꾼다.
+            touch .env
+            { grep -v '^IMAGE_TAG=' .env || true; printf 'IMAGE_TAG=%s\n' "$NEW_TAG"; } > .env.next
+            cat .env.next > .env
+            rm -f .env.next

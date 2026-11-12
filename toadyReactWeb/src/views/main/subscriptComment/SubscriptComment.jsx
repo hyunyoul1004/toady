@@ -60,7 +60,8 @@ const getAvatarColor = (name = '') => {
 };
 
 const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
-  const { user, isAuthenticated } = useAuthStore();
+  const user = useAuthStore(state => state.user);
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const currentSubscriptSeq = subscriptSeq || subscriptDetail?.subscriptSeq;
 
   // 댓글 목록 조회 (TanStack Query)

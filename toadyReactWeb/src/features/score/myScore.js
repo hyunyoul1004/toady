@@ -18,7 +18,8 @@ function snapshot() {
   return cache;
 }
 function emit() { listeners.forEach(listener => listener()); }
-if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === KEY) { cache = read(); emit(); } });
+// key가 null이면 다른 탭에서 저장소 전체를 비운 것이므로 함께 다시 읽는다.
+if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) { cache = read(); emit(); } });
 
 export function saveMyScore(selection) {
   const valid = normalizeSelection(selection);

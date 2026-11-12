@@ -43,6 +43,18 @@ class ApplicationFlowRegressionTest {
         org.mockito.Mockito.reset(email);
     }
     String body(Object value) throws Exception { return json.writeValueAsString(value); }
+    /** 코드는 DB에 해시로만 남으므로 실제로 보낸 메일 본문에서 꺼낸다(마지막 발송 기준). */
+    String mailedCode() throws Exception {
+        var captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(email, org.mockito.Mockito.atLeastOnce()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), captor.capture());
+        String body = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        var link = java.util.regex.Pattern.compile("certifyCode=([A-Z0-9-]{20,30})").matcher(body);
+        if (link.find()) return link.group(1);
+        var plain = java.util.regex.Pattern.compile("(?<![A-Z0-9])([A-HJ-NP-Z2-9]{24})(?![A-Z0-9])").matcher(body);
+        assertTrue(plain.find(), body);
+        return plain.group(1);
+    }
+
     void announcement() {
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,RCEPT_BGNDE) VALUES ('FLOW','FLOW','통합검증','2026-11-01')");
     }
@@ -74,7 +86,8 @@ class ApplicationFlowRegressionTest {
     }
     @Test void fullAccountAndCommentLifecycle() throws Exception {
         register();
-        String code = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT'", String.class);
+        String code = mailedCode();
+        assertTrue(jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT'", String.class).startsWith("h1:"), "코드는 해시로만 저장한다");
         mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("userEmail", EMAIL, "certifyCode", code, "userPassword", PASSWORD))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
@@ -107,7 +120,7 @@ class ApplicationFlowRegressionTest {
                 .andExpect(jsonPath("$.data.content[0].commentCount").value(0));
         mvc.perform(post("/webApi/certify/find-password-request-certify").contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("userEmail", EMAIL)))).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
-        String reset = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='FIND_PW'", String.class);
+        String reset = mailedCode();
         mvc.perform(post("/webApi/certify/certify-confrim-and-password-change").contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("userEmail", EMAIL, "certifyCode", reset, "userPassword", "Newpass123!", "userPasswordConfirm", "Newpass123!"))))
                 .andExpect(jsonPath("$.resultCode").value("SUCCESS"));
@@ -124,7 +137,7 @@ class ApplicationFlowRegressionTest {
         register();
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER", Integer.class));
         assertEquals("검증회원", jdbc.queryForObject("SELECT USER_NIC_NAME FROM TB_USER", String.class));
-        String code = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT' AND CERTIFY_YN='N'", String.class);
+        String code = mailedCode();
         mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("userEmail", EMAIL, "certifyCode", code, "userPassword", "Attacker123!"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("ERR-205"));

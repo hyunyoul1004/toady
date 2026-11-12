@@ -68,6 +68,23 @@ public class CertifyService {
         }
     }
 
+    /** DB에는 메일 본문(코드·링크 포함)을 남기지 않는다. 코드는 해시로만 저장한다. */
+    static final String STORED_MESSAGE = "인증 메일 발송(본문은 보관하지 않음)";
+    private static final String HASH_PREFIX = "h1:";
+    /** 인증 코드를 SHA-256(base64url, 43자)으로 바꿔 저장한다. DB가 유출돼도 유효한 코드를 바로 쓸 수 없게 한다. */
+    static String hashCode(String code) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return HASH_PREFIX + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+    /** 해시로 찾고, 배포 전에 발급된 평문 코드(최대 24시간 유효)도 받아 준다. */
+    private CertifyEntity findCode(String type, String code, Long userSeq) {
+        if (code == null || code.startsWith(HASH_PREFIX)) return null;
+        CertifyEntity hashed = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", hashCode(code), userSeq);
+        return hashed != null ? hashed : certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", code, userSeq);
+    }
+
     /** 가입 인증 코드를 저장하고 인증 메일을 발송합니다. */
     public void saveCertify(CertifyDTO.Save param){
 
@@ -83,8 +100,8 @@ public class CertifyService {
             CertifyEntity certifyParam = CertifyEntity.builder()
                     .certifyType(param.getCertifyType())
                     .certifySendType(param.getSendType())
-                    .certifyCode(certifyCode)
-                    .certifyMessage(sendMessage)
+                    .certifyCode(hashCode(certifyCode))
+                    .certifyMessage(STORED_MESSAGE)
                     .certifyYn("N")
                     .createUserSeq(param.getUserSeq())
                     .createDt(LocalDateTime.now())
@@ -117,19 +134,18 @@ public class CertifyService {
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> resendAccountVerification(CertifyDTO.UserInfo param) {
         UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
-        if (user == null) return ResponseEntity.ok(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
-        if ("Y".equals(user.getEmailCertifyYn())) return ResponseEntity.ok(ResData.of(ResultCode.ALREADY_CERTIFY_ERROR.getCode(), "이미 이메일 인증을 완료했습니다. 로그인해 주세요."));
-        if (!"N".equals(user.getLockYn()) || !"N".equals(user.getWithdrawalYn())) {
-            return ResponseEntity.badRequest().body(ResData.of(ResultCode.LOCKED_ERROR.getCode(), "사용할 수 없는 계정입니다."));
-        }
+        // 계정 유무·인증 여부·상태와 상관없이 같은 응답을 돌려 이메일 존재 여부가 드러나지 않게 한다.
+        if (user == null || "Y".equals(user.getEmailCertifyYn()) || !"N".equals(user.getLockYn()) || !"N".equals(user.getWithdrawalYn())) return resendAccepted();
         var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
-        if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) {
-            return ResponseEntity.ok(ResData.of(ResultCode.RE_CERTIFY_REQUEST_ERROR.getCode(), "인증 메일은 4분 간격으로 재발송할 수 있습니다."));
-        }
+        if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return resendAccepted();
         certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
         CertifyDTO.Save request = new CertifyDTO().new Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL");
         saveCertify(request);
-        return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(), "새 인증 메일을 발송했습니다. 새 링크는 24시간 동안 유효합니다."));
+        return resendAccepted();
+    }
+    private static ResponseEntity<ResData> resendAccepted() {
+        return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(),
+                "인증을 기다리는 계정이면 새 인증 메일을 보냈습니다(링크 24시간 유효). 이미 인증했다면 바로 로그인해 주세요. 메일은 4분 간격으로 보낼 수 있어요."));
     }
 
     /** 가입 인증 코드를 확인하고 이메일 인증 상태를 갱신합니다. */
@@ -143,7 +159,7 @@ public class CertifyService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
             }
 
-            CertifyEntity certifyEntity = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq("ACCOUNT", "EMAIL", param.getCertifyCode(), userEntity.getUserSeq());
+            CertifyEntity certifyEntity = findCode("ACCOUNT", param.getCertifyCode(), userEntity.getUserSeq());
 
             if(certifyEntity == null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
@@ -197,14 +213,21 @@ public class CertifyService {
         return true;
     }
 
+    private static ResponseEntity<ResData> passwordRequestAccepted() {
+        return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(),
+                "가입된 이메일이면 인증번호를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요."));
+    }
+
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> findPasswordRequestCertify(CertifyDTO.UserInfo param){
         Map<String, String> resultMap = new HashMap<>();
         UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
-        if(userEntity == null){
-            return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
+        // 가입 여부·계정 상태·재요청 간격과 상관없이 같은 응답을 돌려 이메일 존재 여부를 알아낼 수 없게 한다.
+        // 탈퇴·잠금 계정에는 메일을 보내지 않는다.
+        if(userEntity == null || !"N".equals(userEntity.getLockYn()) || !"N".equals(userEntity.getWithdrawalYn())){
+            return passwordRequestAccepted();
         }
 
         CertifyEntity certifyEntity = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("FIND_PW", "EMAIL", userEntity.getUserSeq());
@@ -212,10 +235,8 @@ public class CertifyService {
         if(certifyEntity != null){
             LocalDateTime currentTime = LocalDateTime.now();
             long time = ChronoUnit.MINUTES.between(certifyEntity.getCreateDt(), currentTime);
-
-
             if((int)time < 4){
-                return ResponseEntity.ok().body(ResData.of(ResultCode.RE_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.RE_CERTIFY_REQUEST_ERROR.getMessage()));
+                return passwordRequestAccepted();
             }
         }
 
@@ -229,8 +250,8 @@ public class CertifyService {
             CertifyEntity certifyParam = CertifyEntity.builder()
                     .certifyType("FIND_PW")
                     .certifySendType("EMAIL")
-                    .certifyCode(certifyCode)
-                    .certifyMessage(sendMessage)
+                    .certifyCode(hashCode(certifyCode))
+                    .certifyMessage(STORED_MESSAGE)
                     .certifyYn("N")
                     .createUserSeq(userEntity.getUserSeq())
                     .createDt(LocalDateTime.now())
@@ -269,7 +290,7 @@ public class CertifyService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
             }
 
-            CertifyEntity certifyEntity = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq("FIND_PW", "EMAIL", param.getCertifyCode(), userEntity.getUserSeq());
+            CertifyEntity certifyEntity = findCode("FIND_PW", param.getCertifyCode(), userEntity.getUserSeq());
 
             if(certifyEntity == null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));

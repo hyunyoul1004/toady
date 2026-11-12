@@ -20,18 +20,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class MvcConfig implements WebMvcConfigurer {
 
-	@Override
-	public void addCorsMappings(CorsRegistry registry) {
-		//@formatter:off
-		registry
-			.addMapping("/webApi/**") //CORS를 적용할 URL패턴을 정의
-				.allowedOrigins("*") // 자원 공유를 허락할 Origin을 지정
-				//.allowedOriginPatterns("*")
-				.allowedMethods("*") // ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS") 허용할 HTTP method를 지정
-			.allowCredentials(false)
-			.maxAge(3600); //원하는 시간만큼 pre-flight 리퀘스트를 캐싱
-		//@formatter:on
-	}
+	// CORS는 SecurityConfig의 허용 출처 목록(toady.web.allowed-origins) 한 곳에서만 관리한다.
+	// 예전 "/webApi/** 모든 출처 허용" 설정은 Security CORS가 먼저 처리해 쓰이지 않았고 오해만 낳아 제거했다.
 
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {

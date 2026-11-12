@@ -3,7 +3,7 @@
  * @description FullCalendar 기반 청약 일정 달력 컴포넌트
  * - 날짜 칸이 일정 개수(8개 이상 등)에 맞춰 자동으로 확장 (height: auto)
  * - 주말(토/일) 제외 (weekends: false)
- * - 날짜 이동 시 자동 파라미터(startStr, endStr) 갱신 및 조회 연동
+ * - 날짜 이동 시 onMonthChange로 월을 알리고, 조회 기간은 Main이 계산한다
  */
 import React, { useRef, useState, useMemo, useCallback } from 'react';
 import FullCalendar from '@fullcalendar/react';
@@ -70,20 +70,7 @@ export function SubscriptionCalendar(props) {
   const [currentTitle, setCurrentTitle] = useState(() => props.initialMonth || dayjs().format('YYYY-MM'));
   const [currentDate, setCurrentDate] = useState(() => props.initialMonth ? new Date(`${props.initialMonth}-01T12:00:00`) : new Date());
 
-  // 마운트 시 초기 날짜 범위 세팅 (모바일 환경에서도 즉각적인 API 페칭 보장)
-  React.useEffect(() => {
-    if (props.setParamInfo) {
-      const d = dayjs(currentDate);
-      props.setParamInfo((prev) => {
-        if (prev?.startStr && prev?.endStr) return prev;
-        return {
-          ...prev,
-          startStr: d.startOf('month').subtract(7, 'day').format('YYYY-MM-DD'),
-          endStr: d.endOf('month').add(14, 'day').format('YYYY-MM-DD')
-        };
-      });
-    }
-  }, [currentDate, props.setParamInfo]);
+  // 조회 기간(startStr/endStr)은 Main이 onMonthChange로 받은 월에서 monthRange로 한 곳에서만 계산한다.
 
   // 1. FullCalendar용 이벤트 데이터 포맷팅
   const events = useMemo(() => {
@@ -128,23 +115,19 @@ export function SubscriptionCalendar(props) {
       if (api) {
         api.gotoDate(newDate);
       }
-
-      if (props.setParamInfo) {
-        props.setParamInfo((prev) => ({
-          ...prev,
-          startStr: d.startOf('month').subtract(7, 'day').format('YYYY-MM-DD'),
-          endStr: d.endOf('month').add(14, 'day').format('YYYY-MM-DD')
-        }));
-      }
     },
-    [props.setParamInfo, props.onMonthChange]
+    [props.onMonthChange]
   );
 
-  // 외부(Main)에서 전달된 특정 날짜로 캘린더 화면 및 월 강제 이동
+  // 외부(Main)에서 전달된 특정 날짜로 캘린더 화면 및 월 강제 이동.
+  // jumpToDate는 { date, nonce } 객체라 같은 날짜를 다시 골라도 새 요청으로 보고 다시 이동한다.
+  // 목록 보기에서 달력으로 돌아와 다시 마운트될 때는 이미 처리된 예전 요청을 되풀이하지 않는다(월은 initialMonth로 이어받음).
+  const handledJumpNonce = useRef(props.jumpToDate?.nonce ?? null);
   React.useEffect(() => {
-    if (props.jumpToDate) {
-      changeMonth(props.jumpToDate);
-    }
+    const jump = props.jumpToDate;
+    if (!jump?.date || jump.nonce === handledJumpNonce.current) return;
+    handledJumpNonce.current = jump.nonce;
+    changeMonth(jump.date);
   }, [props.jumpToDate, changeMonth]);
 
   // 2. FullCalendar 날짜 범위 변경 시 부모 컴포넌트(Main)에 조회 파라미터 전달
@@ -157,15 +140,8 @@ export function SubscriptionCalendar(props) {
         setCurrentTitle(dayjs(viewDate).format('YYYY-MM'));
         props.onMonthChange?.(dayjs(viewDate).format('YYYY-MM'));
       }
-
-      if (props.setParamInfo) {
-        const view = dayjs(api?.getDate() || currentDate);
-        const startStr = view.startOf('month').subtract(7,'day').format('YYYY-MM-DD');
-        const endStr = view.endOf('month').add(14,'day').format('YYYY-MM-DD');
-        props.setParamInfo(previous => previous.startStr === startStr && previous.endStr === endStr ? previous : {...previous,startStr,endStr});
-      }
     },
-    [props.setParamInfo, props.onMonthChange]
+    [props.onMonthChange]
   );
 
   // 3. 네비게이션 버튼 동작

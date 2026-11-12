@@ -48,7 +48,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     {result?.status==='UNRESOLVED' && <Alert severity="info" sx={{mb:2}}>정확한 위치 확인 중입니다. 지구·블록 주소는 부지를 특정하지 못할 수 있어 임의의 위치를 표시하지 않습니다.</Alert>}
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:2}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}
     {visible && <>
-      <Alert severity={precise?'info':'warning'} sx={{mb:1}}>{manualResult?'직접 검색한 주소 · 공고의 확정 위치가 아닙니다':result.label} · {result.address}{result.sourceUrl && <> · <a href={result.sourceUrl} target="_blank" rel="noopener noreferrer">확인 출처</a></>}</Alert>
+      <Alert severity={precise?'info':'warning'} sx={{mb:1}}>{manualResult?'직접 검색한 주소 · 공고의 확정 위치가 아닙니다':result.label} · {result.address}</Alert>
       {mapError?<Alert severity="error">{mapError}</Alert>:<div ref={container} aria-label={precise?'공급 주소 기준 지도':'미확인 위치 검색 후보 지도'} style={{height:420,width:'100%',border:'1px solid #e2e8f0',borderRadius:8}}/>}
       <Typography variant="caption" color="text.secondary">표시 지점은 부지 경계·출입구를 뜻하지 않습니다.</Typography>
     </>}

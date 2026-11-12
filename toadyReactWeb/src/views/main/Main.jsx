@@ -102,8 +102,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   }));
   useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.searchAreas',JSON.stringify(normalizeSearchTargets(paramInfo.citys))); } catch {} },[paramInfo.citys,detailOnly]);
 
-  // 캘린더 특정 날짜로 강제 이동 상태 (전체 기간 아파트 선택 시 사용)
+  // 캘린더 특정 날짜로 강제 이동 요청 (전체 기간 아파트 선택, 생활권·모음 페이지 진입 시 사용).
+  // { date, nonce } 객체로 두어 같은 날짜를 다시 요청해도 달력이 다시 이동하게 한다.
   const [jumpToDate, setJumpToDate] = useState(null);
+  const requestJumpToDate = date => setJumpToDate(previous => ({ date, nonce: (previous?.nonce || 0) + 1 }));
 
   useEffect(() => {
     const range = monthRange(calendarMonth);
@@ -111,12 +113,13 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     if(detailOnly)return;
     try { localStorage.setItem('toady.calendarMonth',JSON.stringify(calendarMonth)); } catch {}
   },[calendarMonth,detailOnly]);
-  useEffect(() => { const date=isoDate(jumpToDate); if (date) setCalendarMonth(date.slice(0,7)); },[jumpToDate]);
+  useEffect(() => { const date=isoDate(jumpToDate?.date); if (date) setCalendarMonth(date.slice(0,7)); },[jumpToDate]);
 
   // 1. TanStack Query로 공고 목록 페칭
   const {
     data: announcementsRes,
     isError: isListError,
+    isPlaceholderData: isListPlaceholder,
     error: listError,
     refetch: refetchAnnouncements
   } = useAnnouncementsQuery(paramInfo,!detailOnly);
@@ -141,7 +144,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
       setSearchInputValue('');
       setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([{ type:'living_area', label:area.label, key:`area_${area.label}`, terms:area.terms }]) }));
       // 달력은 첫 표시 월만 받아 두므로, 검색 결과 이동과 같은 jumpToDate 경로로 월을 옮긴다.
-      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) setJumpToDate(`${month}-01`);
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) requestJumpToDate(`${month}-01`);
     }
     const next = new URLSearchParams(searchParams);
     next.delete('area'); next.delete('month');
@@ -159,7 +162,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
       setSearchInputValue('');
       setParamInfo(previous => ({ ...previous, citys: [], ...Object.fromEntries(Array.from({length:8},(_,index)=>{const key=String(index+1).padStart(2,'0');return [`rceptSe${key}`,UNRANKED_RCEPT_SE.includes(key)?'Y':'N'];})) }));
     }
-    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(entryMonth || '')) setJumpToDate(`${entryMonth}-01`);
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(entryMonth || '')) requestJumpToDate(`${entryMonth}-01`);
     const next = new URLSearchParams(searchParams);
     next.delete('focus'); next.delete('month');
     setSearchParams(next, { replace:true, state:location.state });
@@ -356,7 +359,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
               allSearchOptions={allSearchOptions}
               searchInputValue={searchInputValue}
               setSearchInputValue={setSearchInputValue}
-              setJumpToDate={setJumpToDate}
+              onJumpToDate={requestJumpToDate}
               setSnackbar={setSnackbar}
               handleOpenDetail={handleOpenDetail}
             />
@@ -371,13 +374,12 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             action={<Button color="inherit" onClick={() => refetchAnnouncements()}>다시 시도</Button>}>
             공고 목록을 불러오지 못했습니다. {listError?.message}
           </Alert>}
-          {viewMode==='calendar' && announcementsRes!=null && !isListError && !subscriptList.some(item=>String(item.inDate || '').startsWith(calendarMonth)) && <Alert severity="info" sx={{mb:1.5}} action={<Button size="small" onClick={resetBrowseFilters}>검색 조건 초기화</Button>}>이 달에는 선택한 조건의 청약 일정이 없습니다. 다른 달을 선택하거나 검색 조건을 초기화해 주세요.</Alert>}
+          {viewMode==='calendar' && announcementsRes!=null && !isListPlaceholder && !isListError && !subscriptList.some(item=>String(item.inDate || '').startsWith(calendarMonth)) && <Alert severity="info" sx={{mb:1.5}} action={<Button size="small" onClick={resetBrowseFilters}>검색 조건 초기화</Button>}>이 달에는 선택한 조건의 청약 일정이 없습니다. 다른 달을 선택하거나 검색 조건을 초기화해 주세요.</Alert>}
           {viewMode === 'calendar' && <SubscriptionCalendar
             initialMonth={calendarMonth}
             onMonthChange={setCalendarMonth}
             jumpToDate={jumpToDate}
             paramInfo={paramInfo}
-            setParamInfo={setParamInfo}
             fn_subscriptList={refetchAnnouncements}
             subscriptList={subscriptList}
             handleOpen={(seq) => handleOpenDetail(seq)}
@@ -391,6 +393,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         open={modalOpen}
         onClose={handleCloseDetail}
         PaperProps={{
+          // 화면 읽기 프로그램이 상세 패널을 단지명으로 부르도록 대화상자 이름을 연결한다.
+          role: 'dialog',
+          'aria-modal': true,
+          'aria-labelledby': 'announcement-detail-title',
           sx: {
             width: { xs: '100%', sm: 580, md: 680, lg: 760 },
             maxWidth: '100vw',
@@ -449,6 +455,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
             {/* 단지명 (SEO 최적화: h1 시맨틱 태그) */}
             <Typography
+              id="announcement-detail-title"
               component="h1"
               variant="h6"
               sx={{

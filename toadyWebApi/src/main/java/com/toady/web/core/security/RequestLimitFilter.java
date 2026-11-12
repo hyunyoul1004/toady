@@ -1,0 +1,120 @@
+package com.toady.web.core.security;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 비용이 큰 공개 요청을 요청자 IP별로 제한한다(규칙마다 10분·하루 창).
+ * - 메일: 가입·인증 재발송·비밀번호 찾기. 무작위 이메일 대량 요청으로 하루 메일 한도(Gmail)를 소진시키는 공격을 막는다.
+ * - 외부 API·대량 조회: 동네 실거래(국토부 일일 쿼터), 관심 공고 요약(요청당 최대 50건 조회), 자동완성.
+ * - 익명 쓰기: 웹 푸시 구독, 경쟁률 투표.
+ * API는 단일 인스턴스로 운영하므로 메모리 창으로 충분하다(재시작 시 초기화).
+ */
+@Component
+public class RequestLimitFilter extends OncePerRequestFilter {
+    record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, int shortLimit, int dailyLimit) {
+        boolean matches(String method, String path) {
+            return methods.contains(method) && (exact.contains(path) || prefixes.stream().anyMatch(path::startsWith));
+        }
+    }
+    static List<Rule> rules(int mailShort, int mailDaily) {
+        return List.of(
+            new Rule("mail", Set.of("POST"), List.of(), Set.of("/webApi/user/regUser", "/webApi/certify/resend-account-verification", "/webApi/certify/find-password-request-certify"), mailShort, mailDaily),
+            new Rule("trade", Set.of("GET"), List.of("/api/v1/research/transactions"), Set.of(), 60, 500),
+            new Rule("summary", Set.of("POST"), List.of(), Set.of("/api/v1/planner/summaries"), 60, 1000),
+            new Rule("suggest", Set.of("GET"), List.of(), Set.of("/api/v1/announcements/suggestions"), 300, 5000),
+            new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
+            new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
+    }
+
+    private final List<Rule> rules;
+    private final Duration shortWindow;
+    private final Clock clock;
+    private final Cache<String, Deque<Long>> hits = CacheBuilder.newBuilder()
+            .maximumSize(200_000).expireAfterAccess(1, TimeUnit.DAYS).build();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RequestLimitFilter(@Value("${toady.security.mail-requests-per-10min:5}") int mailShort,
+                              @Value("${toady.security.mail-requests-per-day:20}") int mailDaily) {
+        this(rules(mailShort, mailDaily), Duration.ofMinutes(10), Clock.systemUTC());
+    }
+    RequestLimitFilter(List<Rule> rules, Duration shortWindow, Clock clock) {
+        this.rules = rules; this.shortWindow = shortWindow; this.clock = clock;
+    }
+
+    private Optional<Rule> rule(HttpServletRequest request) {
+        String method = request.getMethod(), path = request.getRequestURI();
+        return rules.stream().filter(rule -> rule.matches(method, path)).findFirst();
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) { return rule(request).isEmpty(); }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        Rule rule = rule(request).orElseThrow();
+        if (!allow(rule, clientIp(request))) {
+            tooMany(response, "요청이 너무 많습니다. 10분 뒤에 다시 시도해 주세요.");
+            return;
+        }
+        chain.doFilter(request, response);
+    }
+
+    static void tooMany(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(429);
+        response.setHeader("Retry-After", "600");
+        response.setContentType("application/json;charset=UTF-8");
+        response.getOutputStream().write(("{\"resultCode\":\"ERR-429\",\"resultMessage\":\"" + message + "\"}").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 규칙별 10분·하루 창 안의 요청 수를 확인하고, 허용할 때만 이번 요청을 기록한다. */
+    boolean allow(Rule rule, String ip) {
+        long now = clock.millis(), shortFrom = now - shortWindow.toMillis(), dayFrom = now - Duration.ofDays(1).toMillis();
+        Deque<Long> times;
+        try { times = hits.get(rule.name() + "|" + ip, ArrayDeque::new); } catch (java.util.concurrent.ExecutionException impossible) { return true; }
+        synchronized (times) {
+            while (!times.isEmpty() && times.peekFirst() <= dayFrom) times.pollFirst();
+            long recent = times.stream().filter(time -> time > shortFrom).count();
+            if (recent >= rule.shortLimit() || times.size() >= rule.dailyLimit()) return false;
+            times.addLast(now);
+            return true;
+        }
+    }
+
+    /**
+     * 앞단 nginx가 넣은 X-Real-IP는 요청이 사설·루프백 주소(프록시)에서 왔을 때만 믿는다.
+     * 외부에서 직접 들어온 요청이 헤더를 꾸며 제한을 피하지 못하게 하기 위해서다.
+     */
+    public static String clientIp(HttpServletRequest request) {
+        String remote = request.getRemoteAddr();
+        String forwarded = request.getHeader("X-Real-IP");
+        if (forwarded != null && !forwarded.isBlank() && fromProxy(remote)) return forwarded.trim();
+        return remote;
+    }
+    private static boolean fromProxy(String address) {
+        try {
+            InetAddress parsed = InetAddress.getByName(address);
+            return parsed.isLoopbackAddress() || parsed.isSiteLocalAddress();
+        } catch (Exception invalid) { return false; }
+    }
+}

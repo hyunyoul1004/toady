@@ -39,11 +39,16 @@ public class AdminScheduleManager {
     private final int defaultLookback;
     private volatile boolean ready;
 
+    // 다른 작업과 겹쳐 건너뛴 자동 실행을 한 번 더 시도하기까지의 대기 시간.
+    private final Duration busyRetryDelay;
+
     public AdminScheduleManager(JdbcTemplate jdbc, AdminJobService jobs,
             @Value("${applyhome.scheduler.cron:0 15 3 * * *}") String daily,
             @Value("${applyhome.competition.scheduler.cron:0 15 4,20 * * *}") String competition,
-            @Value("${applyhome.scheduler.lookback-days:90}") int lookback) {
+            @Value("${applyhome.scheduler.lookback-days:90}") int lookback,
+            @Value("${applyhome.admin.busy-retry-seconds:300}") long busyRetrySeconds) {
         this.jdbc = jdbc; this.jobs = jobs;
+        this.busyRetryDelay = Duration.ofSeconds(Math.max(1, busyRetrySeconds));
         this.defaultDaily = daily; this.defaultCompetition = competition; this.defaultLookback = lookback;
         timer.setPoolSize(1); timer.setThreadNamePrefix("admin-schedule-"); timer.initialize();
     }
@@ -53,6 +58,7 @@ public class AdminScheduleManager {
     public synchronized void initialize() {
         // 관리자 기능을 명시적으로 켰는데 테이블이 없으면, 자동 수집이 조용히 빠지지 않도록 시작을 실패시킨다.
         jdbc.queryForObject("SELECT COUNT(*) FROM TB_SCHEDULER_ADMIN_JOB", Long.class);
+        jobs.interruptLeftovers();
         seed(JobKind.ANNOUNCEMENTS, true, defaultDaily);
         seed(JobKind.COMPETITION, true, defaultCompetition);
         seed(JobKind.SCORES, false, "0 15 6 * * *");
@@ -121,17 +127,31 @@ public class AdminScheduleManager {
             // 타이머 교체는 이후 자동 실행만 바꾼다. 이미 시작한 수집의 중지는 별도 중지 요청으로 처리한다.
             if (old != null) old.cancel(false);
             if (schedule.enabled()) {
-                futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule),
+                futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule, false),
                         new CronTrigger(schedule.cronExpression(), ZONE)));
             }
             versions.put(schedule.kind(), signature);
         }
     }
-    /** 실행 중인 다른 작업과 겹치면 자동 요청을 쌓지 않고 건너뛴 사실을 로그에 기록한다. */
-    private void trigger(AdminSchedule schedule) {
+    /**
+     * 실행 중인 다른 작업과 겹치면 요청을 쌓지 않고, 정해진 시간 뒤에 한 번만 다시 시도한다.
+     * 재시도도 겹치면 건너뛴 사실만 로그에 남긴다(예: 긴 전체 수집과 같은 시각에 걸린 경쟁률 수집).
+     */
+    void trigger(AdminSchedule schedule, boolean retry) {
         try {
             LocalDate today = AdminJobService.today();
             jobs.submit(schedule.kind(), scheduleStart(today, schedule.lookbackDays()), today, "자동 스케줄", "SCHEDULE");
+        } catch (IllegalStateException busy) {
+            if (retry) {
+                log.warn("Scheduled retry skipped for {}: {}", schedule.kind(), busy.getMessage());
+                return;
+            }
+            log.info("Scheduled submission for {} is busy; retrying once in {}", schedule.kind(), busyRetryDelay);
+            try {
+                timer.schedule(() -> trigger(schedule, true), Instant.now().plus(busyRetryDelay));
+            } catch (RuntimeException rejected) {
+                log.warn("Scheduled retry could not be registered for {}: {}", schedule.kind(), rejected.getMessage());
+            }
         } catch (Exception exception) {
             log.warn("Scheduled submission skipped for {}: {}", schedule.kind(), exception.getMessage());
         }

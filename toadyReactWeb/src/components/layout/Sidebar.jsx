@@ -33,7 +33,9 @@ export const DRAWER_WIDTH = 240;
 export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const user = useAuthStore(state => state.user);
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const logout = useAuthStore(state => state.logout);
 
   const nickname = user?.userNicName || user?.sub || '회원';
 

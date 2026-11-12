@@ -4,14 +4,17 @@
  * - 자동 캐싱, 백그라운드 리페칭, 로딩/에러 상태 관리
  * - 댓글 등록/수정/삭제 시 쿼리 무효화(invalidateQueries)를 통한 실시간 동기화
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import announcementApi, { parseSubscriptId } from '../api/announcementApi';
+import { announcementListKeyParams } from '../api/announcementParams';
+import { formatDate } from '@/utils/date.util';
 
 /** Query Keys */
 export const announcementKeys = {
   all: ['announcements'],
   lists: ['announcements', 'list'],
-  list: (params) => ['announcements', 'list', params],
+  // 화면 조건 전체가 아니라 실제 서버 요청 파라미터로 키를 만든다(citys 등 화면 전용 조건 제외).
+  list: (params) => ['announcements', 'list', announcementListKeyParams(params, formatDate)],
   detail: (id) => ['announcements', 'detail', id],
   comments: (id) => ['announcements', 'comments', id],
   competitionRates: (id) => ['announcements', 'competitionRates', id],
@@ -30,6 +33,8 @@ export function useAnnouncementsQuery(params, enabled = true) {
     // 달력에서 날짜 범위가 세팅되기 전(초기값 '')에는 요청하지 않음 → 중복 호출 방지
     enabled: enabled && Boolean(params?.startStr && params?.endStr),
     staleTime: 1000 * 60 * 3, // 3분간 캐시 유지
+    // 월·조건을 바꾸는 동안 이전 결과를 유지해 달력이 비었다가 다시 그려지지 않게 한다.
+    placeholderData: keepPreviousData,
     refetchOnWindowFocus: false
   });
 }

@@ -15,6 +15,16 @@ import java.util.List;
  */
 public class CmnUtils {
 
+    /** 로그에 이메일 전체를 남기지 않는다. 예: hong@example.com → ho***@example.com */
+    public static String maskEmail(String email) {
+        if (email == null || email.isBlank()) return "";
+        int at = email.indexOf('@');
+        if (at <= 0) return "***";
+        String local = email.substring(0, at);
+        return local.substring(0, Math.min(2, local.length())) + "***" + email.substring(at);
+    }
+
+
 	/**
 	 * @Valid 에서 출력된 메시지를 가져옴.
 	 *

@@ -40,4 +40,17 @@ done
 if ! curl --fail --silent --max-time 3 http://127.0.0.1:8080/api/v1/research/capabilities | grep -q '"tradesEnabled":true'; then
   echo 'WARNING: Neighborhood trades are disabled. Set MOLIT_TRADE_SERVICE_KEY in toadyWebApi/.env.prod and recreate the API container.' >&2
 fi
+# API가 필요로 하는 테이블 중 DB에 없는 것을 알려 준다. 이전 이미지(404)나 응답 실패는 건너뛴다.
+# 일부 기능만 숨겨지는 선택 테이블일 수 있으므로 배포를 막지 않고 database.sql 적용을 안내한다.
+schema=$(curl --fail --silent --max-time 5 http://127.0.0.1:8080/internal/schema || true)
+missing=$(printf '%s' "$schema" | tr -d '\n' | sed -n 's/.*"missing"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' | tr -d '" ')
+if [ -n "$missing" ]; then
+  echo "WARNING: Database tables missing for the API: $missing. Apply the matching sections of database.sql." >&2
+fi
+# 앞단 nginx(80/443)를 거친 실제 서비스 경로를 확인한다. --resolve로 서버 자신에게 접속하되 인증서 검증은 그대로 둔다.
+# 인증서·도메인 구성이 다른 서버에서도 배포를 막지 않도록 경고만 남긴다.
+public_host=${PUBLIC_HOST:-www.toady.co.kr}
+if ! curl --fail --silent --max-time 5 -o /dev/null --resolve "$public_host:443:127.0.0.1" "https://$public_host/"; then
+  echo "WARNING: https://$public_host/ did not respond through the front nginx. Check the nginx container, its upstreams and certificates." >&2
+fi
 echo 'API, database connection, scheduler readiness, frontend and container startup checks passed'

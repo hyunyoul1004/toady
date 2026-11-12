@@ -100,15 +100,26 @@ public class AdminMetrics {
         }
     }
 
-    /** 검색·메신저처럼 의미 있는 묶음으로 보이게 도메인을 분류한다. 모르는 도메인은 그대로 둔다. */
+    /**
+     * 검색·메신저처럼 의미 있는 묶음으로 보이게 도메인을 분류한다. 모르는 도메인은 그대로 둔다.
+     * 부분 문자열이 아니라 도메인 자체 또는 하위 도메인으로만 판별한다(dropbox.com이 x.com으로 잡히지 않게).
+     */
     static String sourceLabel(String host) {
         String h = host.toLowerCase(Locale.ROOT);
-        if (h.contains("google.")) return "검색 · 구글";
-        if (h.contains("naver.com")) return h.contains("cafe.") ? "네이버 카페" : h.contains("blog.") ? "네이버 블로그" : "검색 · 네이버";
-        if (h.contains("daum.net")) return h.contains("cafe.") ? "다음 카페" : "검색 · 다음";
-        if (h.contains("bing.com")) return "검색 · 빙";
-        if (h.contains("kakao")) return "카카오톡·카카오";
-        if (h.contains("instagram.") || h.contains("threads.") || h.contains("facebook.") || h.equals("t.co") || h.contains("x.com")) return "SNS";
+        if (GOOGLE.matcher(h).matches()) return "검색 · 구글";
+        if (isHost(h, "naver.com")) return isHost(h, "cafe.naver.com") ? "네이버 카페" : isHost(h, "blog.naver.com") ? "네이버 블로그" : "검색 · 네이버";
+        if (isHost(h, "daum.net")) return isHost(h, "cafe.daum.net") ? "다음 카페" : "검색 · 다음";
+        if (isHost(h, "bing.com")) return "검색 · 빙";
+        if (isHost(h, "kakao.com") || isHost(h, "kakaocorp.com")) return "카카오톡·카카오";
+        if (SNS.stream().anyMatch(domain -> isHost(h, domain))) return "SNS";
         return h;
+    }
+    // google.com, google.co.kr, google.com.au 같은 구글 국가 도메인만 인정한다(google.example.com 제외).
+    private static final java.util.regex.Pattern GOOGLE =
+            java.util.regex.Pattern.compile("(?:.+\\.)?google\\.(?:com|co\\.[a-z]{2}|com\\.[a-z]{2}|[a-z]{2})");
+    private static final List<String> SNS = List.of("instagram.com", "threads.net", "threads.com", "facebook.com",
+            "t.co", "x.com", "twitter.com");
+    static boolean isHost(String host, String domain) {
+        return host.equals(domain) || host.endsWith("." + domain);
     }
 }

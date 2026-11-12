@@ -31,11 +31,13 @@ class NeighborhoodResearchServiceTest {
         var page=NeighborhoodResearchService.parseTrades(response("202610","동패동","Y"));
         assertEquals(1,page.rawCount());assertTrue(page.trades().isEmpty());
     }
-    @Test void providerFailuresAreNotReportedAsEmptyOrCached() {
+    @Test void providerFailuresAreNotReportedAsEmptyAndAreNotRetriedImmediately() {
         AtomicInteger calls=new AtomicInteger();
         var service=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();return "<response><resultCode>30</resultCode></response>".getBytes();},"key");
         assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());
-        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(2,calls.get());
+        // 실패는 '거래 없음'으로 바꾸지 않고, 같은 시군구·월은 몇 분간 다시 부르지 않아 일일 쿼터를 지킨다.
+        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(1,calls.get());
+        assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(1,calls.get());
     }
     @Test void incompletePaginationAndWrongMonthsNeverReturnPartialResults() {
         var service=new NeighborhoodResearchService((uri,headers)->{

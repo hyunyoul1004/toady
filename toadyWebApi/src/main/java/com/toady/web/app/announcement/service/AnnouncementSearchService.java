@@ -53,7 +53,8 @@ public class AnnouncementSearchService {
 
     /** 전체 공고 유형에서 주택명 또는 주소가 일치하는 자동완성 후보를 접수일 최신순으로 조회합니다. */
     public List<AnnouncementSuggestionResponse> suggestions(String keyword, int limit) {
-        if (keyword == null || keyword.isBlank()) {
+        // 한 글자 검색은 5개 테이블 전체를 훑어 비용만 크고 결과가 쓸모없어 받지 않는다(화면도 2자부터 요청).
+        if (keyword == null || keyword.isBlank() || keyword.trim().length() < 2) {
             return List.of();
         }
 
@@ -128,10 +129,8 @@ public class AnnouncementSearchService {
     ) {
         Specification<T> specification = (root, query, builder) -> {
             var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
-            for (String term : com.toady.web.app.planner.LivingAreas.terms(keyword)) {
-                String pattern = "%" + term.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
-                matches.add(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'));
-                matches.add(builder.like(builder.lower(root.get(addressProperty)), pattern, '\\'));
+            for (var matcher : com.toady.web.app.planner.LivingAreas.matchers(keyword)) {
+                matches.add(livingAreaPredicate(builder, root, addressProperty, matcher));
             }
             var date = builder.function("replace", String.class,
                     root.get(receptionStartDateProperty), builder.literal("-"), builder.literal(""));
@@ -200,6 +199,18 @@ public class AnnouncementSearchService {
         return new PageImpl<>(commentCounts.enrich(content), resultPage, totalElements);
     }
 
+    /** (단지명 또는 주소에 term) 그리고 scope가 있으면 (단지명 또는 주소에 scope 중 하나). LivingAreas.match와 같은 규칙이다. */
+    private static jakarta.persistence.criteria.Predicate livingAreaPredicate(jakarta.persistence.criteria.CriteriaBuilder builder,
+            jakarta.persistence.criteria.Root<?> root, String addressProperty, com.toady.web.app.planner.LivingAreas.Matcher matcher) {
+        java.util.function.Function<String, jakarta.persistence.criteria.Predicate> contains = value -> {
+            String pattern = "%" + value.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+            return builder.or(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'), builder.like(builder.lower(root.get(addressProperty)), pattern, '\\'));
+        };
+        var term = contains.apply(matcher.term());
+        if (matcher.scope().isEmpty()) return term;
+        return builder.and(term, builder.or(matcher.scope().stream().map(contains).toArray(jakarta.persistence.criteria.Predicate[]::new)));
+    }
+
     private static <T> Specification<T> searchSpecification(AnnouncementSearch search) {
         return (root, query, builder) -> {
             var predicates = builder.conjunction();
@@ -209,10 +220,8 @@ public class AnnouncementSearchService {
             if (search.keyword() != null && !search.keyword().isBlank()) {
                 var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
                 String address = root.getJavaType() == UrbanAnnouncementEntity.class ? "hssplyHshldco" : "hssplyAdres";
-                for (String term : com.toady.web.app.planner.LivingAreas.terms(search.keyword())) {
-                    String pattern = "%" + term.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
-                    matches.add(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'));
-                    matches.add(builder.like(builder.lower(root.get(address)), pattern, '\\'));
+                for (var matcher : com.toady.web.app.planner.LivingAreas.matchers(search.keyword())) {
+                    matches.add(livingAreaPredicate(builder, root, address, matcher));
                 }
                 predicates = builder.and(predicates, builder.or(matches.toArray(jakarta.persistence.criteria.Predicate[]::new)));
             }

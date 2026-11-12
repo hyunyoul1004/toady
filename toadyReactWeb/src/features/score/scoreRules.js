@@ -121,3 +121,17 @@ export function accountFromDate(joined, today) {
   const index = months < 6 ? 0 : years < 1 ? 1 : Math.min(16, years + 1);
   return { index, months, reason: `가입일(${dot(joined)})부터 ${periodText(months)}` };
 }
+
+/** 숫자만 받아 YYYY.MM.DD로 보여 준다. 8자리가 되면 YYYY-MM-DD로 넘기고, 아니면 빈 값을 넘긴다. */
+export function formatDigits(raw) {
+  const digits = String(raw || '').replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 4), digits.slice(4, 6), digits.slice(6, 8)].filter(Boolean).join('.');
+}
+export function toIsoDate(display) {
+  const digits = String(display || '').replace(/\D/g, '');
+  if (digits.length !== 8) return '';
+  const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : '';
+}
+
