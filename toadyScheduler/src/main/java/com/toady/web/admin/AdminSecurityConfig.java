@@ -29,8 +29,10 @@ public class AdminSecurityConfig {
         return new OncePerRequestFilter() {
             @Override
             protected boolean shouldNotFilter(jakarta.servlet.http.HttpServletRequest request) {
+                // 원본 URI가 아니라 디코딩·정규화된 경로로 비교한다. /admin/%6Cogin 처럼 글자를 인코딩해도
+                // Spring Security의 로그인 처리 매처는 같은 경로로 보므로, 잠금 확인도 같은 기준이어야 우회되지 않는다.
                 return !("POST".equals(request.getMethod())
-                        && "/admin/login".equals(request.getRequestURI().substring(request.getContextPath().length())));
+                        && "/admin/login".equals(new org.springframework.web.util.UrlPathHelper().getPathWithinApplication(request)));
             }
             @Override
             protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,

@@ -23,6 +23,8 @@ public class LoginAttemptLimiter {
     static final Duration WINDOW = Duration.ofMinutes(15);
     static final int PER_IP = 20, PER_EMAIL_IP = 5, PER_EMAIL = 30;
     private final Clock clock;
+    /** 로그인에 성공한 (이메일, 네트워크). 30일간 기억한다. */
+    private final Cache<String, Boolean> trustedNetworks = CacheBuilder.newBuilder().maximumSize(200_000).expireAfterWrite(30, TimeUnit.DAYS).build();
     private final Cache<String, Deque<Long>> failures = CacheBuilder.newBuilder()
             .maximumSize(200_000).expireAfterAccess(WINDOW.toMinutes(), TimeUnit.MINUTES).build();
 
@@ -34,10 +36,17 @@ public class LoginAttemptLimiter {
     private static String pair(String ip, String email) { return email(email) + "|" + RequestLimitFilter.limitKey(ip); }
 
     public boolean blocked(String ip, String email) {
-        return count(ip(ip)) >= PER_IP || count(pair(ip, email)) >= PER_EMAIL_IP || count(email(email)) >= PER_EMAIL;
+        // 이메일 전체 한도는 이 이메일로 로그인에 성공한 적 있는 네트워크에는 적용하지 않는다.
+        // 여러 IP로 남의 계정을 일부러 잠가도 평소 쓰던 기기·네트워크의 주인은 로그인할 수 있다.
+        return count(ip(ip)) >= PER_IP || count(pair(ip, email)) >= PER_EMAIL_IP
+            || (count(email(email)) >= PER_EMAIL && !trusted(ip, email));
     }
     public void failed(String ip, String email) { add(ip(ip)); add(pair(ip, email)); add(email(email)); }
-    public void succeeded(String ip, String email) { failures.invalidate(email(email)); failures.invalidate(pair(ip, email)); }
+    public void succeeded(String ip, String email) {
+        failures.invalidate(email(email)); failures.invalidate(pair(ip, email));
+        trustedNetworks.put(pair(ip, email), Boolean.TRUE);
+    }
+    private boolean trusted(String ip, String email) { return trustedNetworks.getIfPresent(pair(ip, email)) != null; }
 
     private int count(String key) {
         Deque<Long> times = failures.getIfPresent(key);

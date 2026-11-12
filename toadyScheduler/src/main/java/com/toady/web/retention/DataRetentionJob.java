@@ -60,8 +60,11 @@ public class DataRetentionJob {
                 // 생활권 새 공고 판정: 1년 넘게 보이지 않은(마지막 확인 기준) 공고만 지운다. 아직 접수 중인 장기 공고를 지웠다가
                 // '새 공고'로 다시 알리는 일을 막는다. 생활권별 기록 시작 표시('*')는 남긴다. LAST_SEEN_DT는 database.sql 15번이며,
                 // 없으면 이 테이블만 건너뛴다(경고 로그).
-                new Target("TB_PUSH_AREA_SEEN", "COALESCE(LAST_SEEN_DT, FIRST_SEEN_DT) < ? AND ANNOUNCEMENT_ID <> '*'",
-                        List.of(Timestamp.valueOf(now.minusDays(365)))));
+                // LAST_SEEN_DT가 아직 없는 행(컬럼 추가 직후)은 기준 시각(2000-01-01) 행을 지우지 않는다. 기준 시각 행은 생활권 기록을
+                // 시작할 때 이미 접수 중이던 공고라, 지우면 다음 묶음 알림에서 '새 공고'로 대량 발송된다.
+                new Target("TB_PUSH_AREA_SEEN", "ANNOUNCEMENT_ID <> '*' AND ((LAST_SEEN_DT IS NOT NULL AND LAST_SEEN_DT < ?)"
+                        + " OR (LAST_SEEN_DT IS NULL AND FIRST_SEEN_DT > ? AND FIRST_SEEN_DT < ?))",
+                        List.of(Timestamp.valueOf(now.minusDays(365)), Timestamp.valueOf(PUSH_AREA_BASELINE), Timestamp.valueOf(now.minusDays(365)))));
     }
 
     /** 테이블별 삭제 행 수를 돌려준다. 실패한 테이블은 -1이다. */

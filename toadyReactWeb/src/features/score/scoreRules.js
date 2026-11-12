@@ -145,11 +145,12 @@ export function normalizeDateInput(display, max) {
 /**
  * 날짜 입력 결과를 구간 선택에 어떻게 반영할지 정한다.
  * - 계산된 구간이 있으면 그 값으로(이미 같으면 그대로)
- * - 날짜를 입력한 적이 있는데 지금 입력이 부족·잘못되면 이전 자동 선택을 지운다(null)
+ * - 날짜를 입력한 적이 있는데 지금 입력이 부족·잘못되면, 이 날짜 입력이 골랐던 값(lastPicked)일 때만 지운다(null)
  * 반환값이 undefined 이면 아무것도 바꾸지 않는다.
  */
-export function periodPickUpdate(result, value, dirty) {
+export function periodPickUpdate(result, value, dirty, lastPicked) {
   if (result.index !== undefined) return result.index !== value ? result.index : undefined;
-  if (dirty && result.error && value !== undefined && value !== null && value !== '') return null;
+  // 날짜 입력이 직접 자동으로 골랐던 값일 때만 지운다. 직접 고른 값이나 예전에 저장된 값은 건드리지 않는다.
+  if (dirty && result.error && value !== undefined && value !== null && value !== '' && value === lastPicked) return null;
   return undefined;
 }

@@ -45,7 +45,9 @@ test('날짜로 고른 구간: 입력이 부족해지면 이전 자동 선택을
   // 기혼으로 바꾸고 혼인신고일을 아직 넣지 않은 상태
   const pending = housingFromDates({ birth: '1980-01-01', married: true, marriageDate: '', owned: false }, today);
   assert.ok(pending.error);
-  assert.equal(periodPickUpdate(pending, single.index, true), null);
+  assert.equal(periodPickUpdate(pending, single.index, true, single.index), null, '날짜 입력이 골랐던 값은 지운다');
+  assert.equal(periodPickUpdate(pending, single.index, true, undefined), undefined, '저장돼 있던 값은 숫자 하나 입력으로 지우지 않는다');
+  assert.equal(periodPickUpdate(pending, 7, true, single.index), undefined, '직접 고른 값은 지우지 않는다');
   assert.equal(periodPickUpdate(pending, undefined, true), undefined, '이미 비어 있으면 그대로');
   assert.equal(periodPickUpdate(pending, 5, false), undefined, '날짜를 만지지 않았으면 직접 고른 값을 지우지 않는다');
 });

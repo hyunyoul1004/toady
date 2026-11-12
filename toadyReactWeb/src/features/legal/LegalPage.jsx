@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigationType } from 'react-router-dom';
 import { CONTACT_EMAIL, EFFECTIVE_DATE, PRIVACY, TERMS } from './legalContent';
 import { resetDefaultSeo, updatePageSeo } from '@/utils/seo.util';
 import './legal.css';
@@ -12,11 +12,13 @@ const DOCS = {
 /** 개인정보처리방침·이용약관. 푸터와 회원가입 화면에서 연결한다. */
 export default function LegalPage({ kind }) {
   const doc = DOCS[kind];
+  const navigationType = useNavigationType();
   useEffect(() => {
     updatePageSeo({ title: `${doc.title} · TOADY`, description: doc.lead, path: doc.path });
-    window.scrollTo(0, 0);
+    // 새로 들어올 때만 맨 위로 올린다. 뒤로가기·앞으로가기(POP)는 브라우저가 복원한 읽던 위치를 지킨다.
+    if (navigationType !== 'POP') window.scrollTo(0, 0);
     return () => resetDefaultSeo();
-  }, [doc]);
+  }, [doc]); // eslint-disable-line react-hooks/exhaustive-deps
   return <article className="legal-page">
     <header>
       <span className="legal-eyebrow">TOADY 정책</span>

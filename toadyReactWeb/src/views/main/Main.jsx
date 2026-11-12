@@ -667,6 +667,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             overflowY: 'auto',
             p: { xs: 2, sm: 2.5 },
             pt: 1,
+            // 홈 표시줄·노치와 겹치지 않게 아래·좌우 안전 영역만큼 여백을 더한다.
+            pb: 'calc(20px + env(safe-area-inset-bottom))',
+            pl: { xs: 'max(16px, env(safe-area-inset-left))', sm: 2.5 },
+            pr: { xs: 'max(16px, env(safe-area-inset-right))', sm: 2.5 },
             bgcolor: '#ffffff'
           }}
         >

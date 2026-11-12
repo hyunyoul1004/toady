@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import DateDigitsField from './DateDigitsField';
 import AutoFixHighRounded from '@mui/icons-material/AutoFixHighRounded';
@@ -21,6 +21,8 @@ export default function PeriodByDate({ kind, options, value, onPick, active = tr
   const [form, setForm] = useState({ birth: '', married: false, marriageDate: '', owned: false, soldDate: '', joined: '' });
   // 한 번이라도 날짜를 만졌는지. 만진 뒤 입력이 부족해지면(예: 기혼으로 바꾸고 혼인신고일 미입력) 이전 자동 선택을 지운다.
   const [dirty, setDirty] = useState(false);
+  // 이 날짜 입력이 마지막으로 자동 선택한 구간. 입력이 부족해졌을 때 이 값일 때만 비운다(저장된 값·직접 고른 값 보호).
+  const lastPicked = useRef(undefined);
   const set = (key, next) => { setDirty(true); setForm(previous => ({ ...previous, [key]: next })); };
   const result = useMemo(() => kind === 'housing' ? housingFromDates(form, today) : accountFromDate(form.joined, today), [kind, form, today]);
   const touched = kind === 'housing' ? Boolean(form.birth) : Boolean(form.joined);
@@ -28,8 +30,10 @@ export default function PeriodByDate({ kind, options, value, onPick, active = tr
   // 입력이 부족해지면 null 을 넘겨 점수 계산·저장에서 빠지게 한다. '직접 고르기'에서 돌아오면(active) 날짜 결과를 다시 반영한다.
   useEffect(() => {
     if (!active) return;
-    const next = periodPickUpdate(result, value, dirty);
-    if (next !== undefined) onPick(next);
+    const next = periodPickUpdate(result, value, dirty, lastPicked.current);
+    if (next === undefined) return;
+    lastPicked.current = next;
+    onPick(next);
   }, [result.index, result.error, dirty, active]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div className="score-dates" hidden={!active}>

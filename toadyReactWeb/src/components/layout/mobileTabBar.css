@@ -8,3 +8,5 @@
 }
 /* 하단 탭과 겹치지 않게 알림 토스트를 위로 올린다 */
 @media (max-width:899.95px){.MuiSnackbar-anchorOriginBottomCenter{bottom:calc(76px + env(safe-area-inset-bottom)) !important}}
+/* 아이폰 가로 모드: 노치 쪽 탭이 가려지지 않게 좌우 안전 영역만큼 띄운다 */
+@media (max-width:899.95px){.mobile-tabbar{padding-left:max(4px, env(safe-area-inset-left));padding-right:max(4px, env(safe-area-inset-right))}}

@@ -143,7 +143,7 @@ public class CertifyService {
         saveCertify(request);
         return resendAccepted();
     }
-    private static ResponseEntity<ResData> resendAccepted() {
+    public static ResponseEntity<ResData> resendAccepted() {
         return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(),
                 "인증을 기다리는 계정이면 새 인증 메일을 보냈습니다(링크 24시간 유효). 이미 인증했다면 바로 로그인해 주세요. 메일은 4분 간격으로 보낼 수 있어요."));
     }
@@ -213,7 +213,7 @@ public class CertifyService {
         return true;
     }
 
-    private static ResponseEntity<ResData> passwordRequestAccepted() {
+    public static ResponseEntity<ResData> passwordRequestAccepted() {
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(),
                 "가입된 이메일이면 인증번호를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요."));
     }

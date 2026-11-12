@@ -141,3 +141,5 @@
 .area-subscribe-actions .MuiButton-root{text-transform:none;border-radius:9px;font-weight:700;white-space:nowrap}
 /* 모바일 하단 탭(64px) 위로 비교 안내를 띄운다 */
 @media (max-width:899.95px){.planner-compare-hint{bottom:calc(72px + env(safe-area-inset-bottom))}}
+/* 전체 화면 캘린더 연결 대화상자: 홈 표시줄과 겹치지 않게 아래 여백 */
+.calendar-dialog .MuiDialog-paperFullScreen .calendar-content{padding-bottom:calc(24px + env(safe-area-inset-bottom)) !important;padding-left:max(22px, env(safe-area-inset-left)) !important;padding-right:max(22px, env(safe-area-inset-right)) !important}

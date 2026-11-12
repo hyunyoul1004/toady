@@ -46,6 +46,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
     }
 
+    private static final java.util.regex.Pattern IP_LITERAL = java.util.regex.Pattern.compile("[0-9A-Fa-f:.]{2,45}");
     private static final org.springframework.web.util.UrlPathHelper PATHS = new org.springframework.web.util.UrlPathHelper();
     private final List<Rule> rules;
     private final Duration shortWindow;
@@ -111,7 +112,8 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     public static String clientIp(HttpServletRequest request) {
         String remote = request.getRemoteAddr();
         String forwarded = request.getHeader("X-Real-IP");
-        if (forwarded != null && !forwarded.isBlank() && fromProxy(remote)) return forwarded.trim();
+        // 프록시가 넣은 값이라도 IP 형식일 때만 쓴다(호스트 이름이면 DNS 조회가 일어나고, 임의 문자열로 키를 바꿀 수 있다).
+        if (forwarded != null && IP_LITERAL.matcher(forwarded.trim()).matches() && fromProxy(remote)) return forwarded.trim();
         return remote;
     }
     /**

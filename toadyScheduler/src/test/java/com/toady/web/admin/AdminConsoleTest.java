@@ -177,6 +177,10 @@ class AdminConsoleTest {
                         .param("username", "operator").param("password", "local-test-password"))
                 .andExpect(redirectedUrl("/admin/login?locked"))
                 .andExpect(org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated());
+        // 글자를 인코딩한 로그인 경로로도 잠금을 피할 수 없다.
+        mvc.perform(post(java.net.URI.create("/admin/%6Cogin")).with(csrf()).with(attacker)
+                        .param("username", "operator").param("password", "local-test-password"))
+                .andExpect(org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated());
         mvc.perform(get("/admin/login").param("locked", "")).andExpect(content().string(containsString("15분")));
         // 다른 IP의 정상 로그인은 영향을 받지 않는다.
         mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
@@ -275,10 +279,10 @@ class AdminConsoleTest {
         jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT,LAST_SEEN_DT) VALUES ('a','apt/E/1',?,?)", now.minusDays(500), now.minusDays(5));
         var job = new com.toady.web.retention.DataRetentionJob(jdbc);
         var result = job.run(now);
-        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 2L), result);
+        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L), result);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class));
-        // 생활권 기록 시작 표시('*')는 남기고, 1년 넘게 보이지 않은 공고(B: 기준 시각, C: 400일 전)는 지운다.
-        assertEquals(java.util.List.of("*", "apt/D/1", "apt/E/1"), jdbc.queryForList(
+        // 생활권 기록 시작 표시('*')와 마지막 확인 시각이 아직 없는 기준 시각 행(B)은 남기고, 1년 넘게 보이지 않은 공고(C)만 지운다.
+        assertEquals(java.util.List.of("*", "apt/B/1", "apt/D/1", "apt/E/1"), jdbc.queryForList(
                 "SELECT ANNOUNCEMENT_ID FROM TB_PUSH_AREA_SEEN ORDER BY ANNOUNCEMENT_ID", String.class));
     }
 

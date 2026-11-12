@@ -7,6 +7,7 @@
  */
 import React, { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Button from '@mui/material/Button';
@@ -32,16 +33,17 @@ import { groupCalendarSchedules, groupsByDate, usedRceptSes, describeGroup, rcep
 import './SubscriptionCalendar.css';
 
 // 한 날짜 칸에 보여줄 최대 줄 수('+N건 더보기' 줄 포함). 넘치면 더보기 목록으로 모은다.
-const DAY_MAX_ROWS = 4;
 const DAY_OVERLAY_ID = 'calendar-day';
 const isDateKey = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 /** 공고 단계 뱃지 묶음: 공고 전체 단계(특·1·2)를 보여주고 이 칸의 단계만 채워서 강조한다. */
 function StageBadges({ group, size = 'sm' }) {
   const active = new Set(group.stages.map((stage) => stage.rceptSe));
+  // 달력 칸(sm)에서는 그날 해당하는 단계만 보여 단지명 자리를 넓힌다. 전체 단계 흐름은 날짜 목록·상세에서 본다.
+  const shown = size === 'sm' ? group.allStages.filter(({ rceptSe }) => active.has(rceptSe)) : group.allStages;
   return (
     <span className={`tc-stages tc-stages-${size}`} aria-hidden="true">
-      {group.allStages.map(({ rceptSe }) => {
+      {shown.map(({ rceptSe }) => {
         const meta = rceptSeMeta(rceptSe);
         return (
           <span
@@ -222,6 +224,15 @@ export function SubscriptionCalendar(props) {
     const frame = requestAnimationFrame(() => setDayAnchor(find()));
     return () => cancelAnimationFrame(frame);
   }, [openDate, events, isMobile, currentTitle]);
+  // 예전 방문 기록으로 다른 달의 날짜 목록이 복원되면(칸도 없고 지금 데이터에 그 날 일정도 없음) 빈 창을 띄우지 않고
+  // 그 레이어를 현재 기록에서 조용히 지운다(replace라 뒤로가기 횟수가 늘지 않는다).
+  const location = useLocation(), navigate = useNavigate();
+  useEffect(() => {
+    if (!openDate || dayAnchor !== null || dayGroups.length > 0) return;
+    const layers = (location.state?.overlayLayers || []).filter((layer) => layer.id !== DAY_OVERLAY_ID);
+    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, overlayLayers: layers } });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDate, dayAnchor, dayGroups.length]);
   const centerPosition = typeof window === 'undefined' ? { top: 0, left: 0 } : { top: Math.round(window.innerHeight / 2), left: Math.round(window.innerWidth / 2) };
 
   const closeDayList = () => setOverlayDate(null);
@@ -400,7 +411,6 @@ export function SubscriptionCalendar(props) {
                   </li>
                 );
               })}
-              <li className="tc-legend-note">진한 뱃지가 그날 일정, 옅은 뱃지는 같은 공고의 다른 단계</li>
             </Box>
           )}
           <FullCalendar
@@ -412,7 +422,8 @@ export function SubscriptionCalendar(props) {
             weekends={false}
             firstDay={1}
             height="auto"
-            dayMaxEventRows={DAY_MAX_ROWS}
+            // 하루 일정을 모두 펼쳐 한눈에 본다(사용자 요청). 같은 단지는 calendarGroup에서 한 줄로 묶여 있어 칸이 과하게 길어지지 않는다.
+            dayMaxEventRows={false}
             moreLinkClick={handleMoreLinkClick}
             moreLinkContent={(arg) => `+${arg.num}건 더보기`}
             moreLinkHint={(num) => `${num}건 더 보기`}
@@ -431,7 +442,7 @@ export function SubscriptionCalendar(props) {
       )}
 
           <Popover
-            open={Boolean(openDate) && dayAnchor !== undefined}
+            open={Boolean(openDate) && dayAnchor !== undefined && (dayAnchor !== null || dayGroups.length > 0)}
             anchorReference={dayAnchor ? 'anchorEl' : 'anchorPosition'}
             anchorEl={dayAnchor || null}
             anchorPosition={centerPosition}

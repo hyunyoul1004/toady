@@ -58,7 +58,7 @@ export function MainLayout() {
           borderBottom: '1px solid #e2e8f0'
         }}
       >
-        <Toolbar sx={{ minHeight: '56px !important', px: 2 }}>
+        <Toolbar sx={{ minHeight: '56px !important', px: 2, pl: 'max(16px, env(safe-area-inset-left))', pr: 'max(16px, env(safe-area-inset-right))' }}>
           <IconButton
             color="inherit"
             aria-label="메뉴 열기"
@@ -97,6 +97,9 @@ export function MainLayout() {
           minWidth: 0,
           maxWidth:'100%',
           p: { xs: 1.5, sm: 2.5 },
+          // 아이폰 가로 모드의 노치 영역(viewport-fit=cover)을 피한다.
+          pl: { xs: 'max(12px, env(safe-area-inset-left))', sm: 'max(20px, env(safe-area-inset-left))' },
+          pr: { xs: 'max(12px, env(safe-area-inset-right))', sm: 'max(20px, env(safe-area-inset-right))' },
           width: { xs:'100%',md: `calc(100% - ${DRAWER_WIDTH}px)` },
           mt: { xs: '56px', md: 0 }, // 모바일 상단 바 높이만큼 여백 확보
           display: 'flex',

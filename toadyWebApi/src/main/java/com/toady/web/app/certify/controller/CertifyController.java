@@ -37,6 +37,9 @@ public class CertifyController {
     @Autowired
     private CertifyService certifyService;
 
+    @org.springframework.beans.factory.annotation.Value("${toady.security.mail-response-min-ms:1500}")
+    private long mailResponseMinMillis;
+
     /**
      * 인증
      * @param param
@@ -52,12 +55,15 @@ public class CertifyController {
     @Operation(summary = "가입 인증 메일 재발송", tags = "인증 API")
     @PostMapping("/resend-account-verification")
     public ResponseEntity<ResData> resendAccountVerification(@Valid @RequestBody CertifyDTO.UserInfo param) {
+        long started = System.nanoTime();
         try {
             return certifyService.resendAccountVerification(param);
         } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
+            // 발송 실패도 같은 응답으로 돌려 가입 여부를 숨긴다. 코드 기록은 롤백되어 바로 다시 요청할 수 있다.
             log.error("가입 인증 이메일 재발송 실패", exception);
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ResData.of(
-                    ResultCode.SYSTEM_ERROR.getCode(), "인증 이메일을 발송하지 못했습니다. 잠시 후 다시 요청해 주세요."));
+            return CertifyService.resendAccepted();
+        } finally {
+            padResponse(started);
         }
     }
 
@@ -68,13 +74,26 @@ public class CertifyController {
     @Operation(summary = "비밀번호 찾기 인증번호 요청", description = "비밀번호 찾기 인증번호 요청", tags = "인증 API")
     @PostMapping("/find-password-request-certify")
     public ResponseEntity<ResData> findPasswordRequestCertify(@Valid @RequestBody CertifyDTO.UserInfo userInfo){
+        long started = System.nanoTime();
         try {
             return certifyService.findPasswordRequestCertify(userInfo);
         } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
+            // 메일 한도 소진 등으로 발송에 실패해도 같은 응답을 돌려, 가입된 이메일에만 오류가 나는 차이로 가입 여부가 드러나지 않게 한다.
             log.error("비밀번호 재설정 이메일 발송 실패", exception);
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ResData.of(
-                    ResultCode.SYSTEM_ERROR.getCode(), "인증 이메일을 발송하지 못했습니다. 잠시 후 다시 요청해 주세요."));
+            return CertifyService.passwordRequestAccepted();
+        } finally {
+            padResponse(started);
         }
+    }
+
+    /**
+     * 메일을 실제로 보낼 때만 SMTP 왕복으로 응답이 늦어지는 차이를 줄이기 위해, 메일 요청 응답을 최소 시간까지 맞춘다.
+     * 요청 수는 RequestLimitFilter가 IP별로 제한한다.
+     */
+    private void padResponse(long started) {
+        long remaining = mailResponseMinMillis - (System.nanoTime() - started) / 1_000_000;
+        if (remaining <= 0) return;
+        try { Thread.sleep(remaining); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
     }
 
     /**

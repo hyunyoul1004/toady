@@ -31,7 +31,7 @@ public class RatePoll {
     public RatePoll(JdbcTemplate jdbc, PlannerSummary summaries) { this(jdbc, summaries, Clock.system(ZoneId.of("Asia/Seoul"))); }
     RatePoll(JdbcTemplate jdbc, PlannerSummary summaries, Clock clock) { this.jdbc = jdbc; this.summaries = summaries; this.clock = clock; }
 
-    static final int VOTERS_PER_IP = 3;
+    static final int VOTERS_PER_IP = 20;
     private final com.google.common.cache.Cache<String, java.util.Set<String>> voters = com.google.common.cache.CacheBuilder.newBuilder()
             .maximumSize(100_000).expireAfterWrite(java.time.Duration.ofDays(1)).build();
     boolean voterAllowed(String ipKey, String announcementId, String visitorId) {
@@ -77,14 +77,16 @@ public class RatePoll {
     public ResponseEntity<Map<String, Object>> vote(@PathVariable String house, @PathVariable String notice, @Valid @RequestBody Vote vote,
                                                     jakarta.servlet.http.HttpServletRequest request) {
         if (!valid(house, notice)) return ResponseEntity.notFound().build();
-        // 방문자 ID는 브라우저가 만들므로, 같은 IP에서 공고 하나에 새 ID로 표를 늘리는 것을 하루 3개까지로 막는다(기존 표 변경은 허용).
-        if (!voterAllowed(com.toady.web.core.security.RequestLimitFilter.limitKey(com.toady.web.core.security.RequestLimitFilter.clientIp(request)), "apt/" + house + "/" + notice, vote.visitorId().toString()))
-            return ResponseEntity.status(429).body(Map.of("message", "이 공고에는 같은 네트워크에서 더 투표할 수 없어요."));
         var found = summary(house, notice);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
         Map<String, Object> current = view(found.get(), house, notice, vote.visitorId());
         if (!Boolean.TRUE.equals(current.get("open"))) return ResponseEntity.status(409).body(Map.of("message", "투표가 마감되었어요."));
         String id = "apt/" + house + "/" + notice;
+        // 방문자 ID는 브라우저가 만들므로, 같은 네트워크에서 공고 하나에 새 ID로 표를 늘리는 것을 하루 몇 개로 제한한다.
+        // 이미 표가 있는 방문자의 선택 변경은 언제나 허용한다(재시작으로 메모리가 비어도 DB 기준). 공용 IP(회사·통신사)를 고려해 여유를 둔다.
+        boolean existing = current.get("myChoice") != null;
+        if (!existing && !voterAllowed(com.toady.web.core.security.RequestLimitFilter.limitKey(com.toady.web.core.security.RequestLimitFilter.clientIp(request)), id, vote.visitorId().toString()))
+            return ResponseEntity.status(429).body(Map.of("message", "같은 네트워크에서 이 공고에 투표한 사람이 많아 잠시 후 다시 시도해 주세요."));
         var now = java.sql.Timestamp.valueOf(LocalDateTime.now(clock.withZone(ZoneId.of("Asia/Seoul"))));
         // 같은 방문자는 마감 전까지 선택을 바꿀 수 있다(행 하나). MariaDB·H2 공통 문법으로 갱신 후 없으면 추가한다.
         if (jdbc.update("UPDATE TB_RATE_POLL SET CHOICE=?,REG_DT=? WHERE ANNOUNCEMENT_ID=? AND VISITOR_ID=?", vote.choice(), now, id, vote.visitorId().toString()) == 0) {

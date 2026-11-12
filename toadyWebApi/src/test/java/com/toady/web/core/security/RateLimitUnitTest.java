@@ -20,5 +20,9 @@ class RateLimitUnitTest {
         assertTrue(limiter.blocked("203.0.113.20", "victim@example.test"), "여러 IP로 나눈 30회 실패는 이메일 단위로 늦춘다");
         limiter.succeeded("203.0.113.20", "victim@example.test");
         assertFalse(limiter.blocked("203.0.113.20", "victim@example.test"));
+        // 로그인에 성공한 적 있는 네트워크의 주인은, 다른 IP들로 다시 30회를 채워도 이메일 전체 한도에 막히지 않는다.
+        for (int i = 0; i < 30; i++) limiter.failed("192.0.2." + (100 + i), "victim@example.test");
+        assertFalse(limiter.blocked("203.0.113.20", "victim@example.test"));
+        assertTrue(limiter.blocked("203.0.113.99", "victim@example.test"), "처음 보는 네트워크는 여전히 늦춘다");
     }
 }
