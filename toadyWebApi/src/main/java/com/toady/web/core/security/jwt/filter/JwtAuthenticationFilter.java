@@ -38,7 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 if (jwtProvider.getJwtExpiryRenewalCheck(request, authentication)) {
-                    response.setHeader("Authorization", "Bearer " + jwtProvider.generatorToken(authentication));
+                    response.setHeader("Authorization", "Bearer " + jwtProvider.renewToken(request, authentication));
                 } else {
                     response.setHeader("Authorization", header);
                 }

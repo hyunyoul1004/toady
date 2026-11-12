@@ -69,7 +69,10 @@ public class EligibilityFeed {
         query.setStartDate(today.minusDays(PAST_DAYS));
         query.setEndDate(today.plusDays(FUTURE_DAYS));
         query.setSize(MAX_ITEMS);
-        var groups = PublicAreaPage.classify(search.searchAll(query, TYPES).getContent(), today, 0);
+        var page = search.searchAll(query, TYPES);
+        if (page.getTotalElements() > MAX_ITEMS) org.slf4j.LoggerFactory.getLogger(EligibilityFeed.class)
+            .warn("자격 판정 목록이 {}건을 넘어 일부 공고가 빠졌습니다: total={}", MAX_ITEMS, page.getTotalElements());
+        var groups = PublicAreaPage.classify(page.getContent(), today, 0);
         List<PublicAreaPage.Item> active = new ArrayList<>(groups.open());
         active.addAll(groups.upcoming());
 

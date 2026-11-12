@@ -19,7 +19,7 @@ export default function MobileTabBar({ onOpenMenu, menuOpen = false }) {
   const active = path => path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
   return <nav className="mobile-tabbar" aria-label="주요 메뉴">
     {TABS.map(tab => <button type="button" key={tab.path} className={active(tab.path) ? 'is-active' : ''} aria-current={active(tab.path) ? 'page' : undefined}
-      onClick={() => { if (!active(tab.path) || location.search) navigate(tab.path, { state: tab.path === '/' ? { browseView: 'calendar' } : null }); }}>
+      onClick={() => { if (location.pathname !== tab.path || location.search) navigate(tab.path, { state: tab.path === '/' ? { browseView: 'calendar' } : null }); }}>
       {tab.icon}<span>{tab.label}</span>
     </button>)}
     <button type="button" onClick={onOpenMenu} aria-haspopup="dialog" aria-expanded={menuOpen}><MenuRounded /><span>메뉴</span></button>

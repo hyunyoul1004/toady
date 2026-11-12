@@ -45,6 +45,20 @@ public class PublicAreaPage {
         return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
     }
 
+    /** 접수 마감이 오늘부터 days일 안쪽(오늘 포함)인 APT 공고 ID. 결과 알림의 공개 시각 기록에 쓴다. */
+    public List<String> aptEndedWithin(LocalDate today, int days) {
+        AnnouncementSearch query = new AnnouncementSearch();
+        query.setStartDate(today.minusDays(days + 60)); query.setEndDate(today); query.setSize(500);
+        List<String> ids = new java.util.ArrayList<>();
+        for (AnnouncementListItem item : search.searchAll(query, List.of("apt")).getContent()) {
+            LocalDate start = PlannerSummary.date(item.rceptBgnde() == null ? "" : item.rceptBgnde());
+            LocalDate end = PlannerSummary.date(item.rceptEndde() == null ? "" : item.rceptEndde());
+            LocalDate last = end != null ? end : start;
+            if (last != null && !last.isAfter(today) && !last.isBefore(today.minusDays(days))) ids.add(item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo());
+        }
+        return ids;
+    }
+
     /** 주간 브리핑 집계: 기간 안에 접수를 시작하는 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). */
     public record WeekCounts(int apt, int unranked, int others) { public int total() { return apt + unranked + others; } }
     public WeekCounts startingCounts(LocalDate from, LocalDate to) {
@@ -68,14 +82,21 @@ public class PublicAreaPage {
     }
 
     /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
-    Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) {
+    Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) { return groups(keyword, types, today, pastDays, 12); }
+    /** closedLimit: 최근 마감을 몇 건까지 남길지. 건수 통계를 내는 화면은 자르지 않고 받은 뒤 목록만 줄인다. */
+    Groups groups(String keyword, List<String> types, LocalDate today, int pastDays, int closedLimit) {
         AnnouncementSearch query = new AnnouncementSearch();
         query.setKeyword(keyword);
         query.setStartDate(today.minusDays(pastDays));
         query.setEndDate(today.plusDays(FUTURE_DAYS));
-        query.setSize(100);
-        return classify(search.searchAll(query, types).getContent(), today);
+        query.setSize(SEARCH_LIMIT);
+        var page = search.searchAll(query, types);
+        // 접수 시작일 최신순으로 자르므로, 넘치면 오래전에 시작한 접수 중 공고가 빠질 수 있다.
+        if (page.getTotalElements() > SEARCH_LIMIT) log.warn("공개 목록 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, total={}", SEARCH_LIMIT, keyword, types, page.getTotalElements());
+        return classify(page.getContent(), today, closedLimit);
     }
+    static final int SEARCH_LIMIT = 100;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PublicAreaPage.class);
     static Groups classify(List<AnnouncementListItem> sources, LocalDate today) { return classify(sources, today, 12); }
     /** closedLimit: 최근 마감 목록을 몇 건까지 남길지(생활권 페이지 12건). 집계에 쓰는 곳은 Integer.MAX_VALUE로 자르지 않는다. */
     static Groups classify(List<AnnouncementListItem> sources, LocalDate today, int closedLimit) {

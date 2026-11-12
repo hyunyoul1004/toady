@@ -66,7 +66,8 @@ function ZupzupAlert() {
   const current = push.subscribed ? zupzupTopic(push.scope.areas) : null;
   const canPush = push.platform.mode === 'ready' && push.enabled && push.permission !== 'denied';
   if (!canPush && !current) return null;
-  const full = !current && push.subscribed && push.scope.areas.length >= 6;
+  // 알림을 꺼 둔 상태에서도 저장된 범위가 가득 차 있으면 줍줍 주제를 넣을 수 없다(조용히 빠지지 않게 미리 막는다).
+  const full = !current && withZupzup(push.scope.areas, null).length >= 6;
   function watch(slug) {
     setState('busy');
     const scope = { ...push.scope, areas: withZupzup(push.scope.areas, slug) };
@@ -105,7 +106,13 @@ export default function MatchPage({ tab = 'match' }) {
   const [editLayer, setEditLayer] = useHistoryOverlay('match-edit');
   const editing = Boolean(editLayer);
   const setEditing = open => setEditLayer(open ? true : null);
-  const [filter, setFilter] = useState('possible');
+  // 필터는 주소(?filter=)에 둬서 상세·다른 화면에 갔다가 뒤로 와도 그대로 보이게 한다.
+  const filter = ['ok', 'possible', 'all'].includes(searchParams.get('filter')) ? searchParams.get('filter') : 'possible';
+  const setFilter = value => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'possible') next.delete('filter'); else next.set('filter', value);
+    setSearchParams(next, { replace: true, state: location.state });
+  };
   const [shareMessage, setShareMessage] = useState('');
   /** 개인 조건은 넣지 않고, 같은 진단을 해 볼 수 있는 주소만 공유한다. */
   async function share(count) {
@@ -201,7 +208,7 @@ export default function MatchPage({ tab = 'match' }) {
       {feed.isLoading ? <FeedSkeleton /> : feed.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => feed.refetch()}>다시 시도</Button>}>공고를 불러오지 못했어요.</Alert>
         : zupzup.length ? <ul className="match-list">{zupzup.map(item => <FeedCard key={item.id} item={item} result={complete ? evaluate(profile, item, today) : null} today={today} onOpen={openDetail} />)}</ul>
           : <div className="match-empty"><p>지금 접수 중이거나 예정된 무순위·줍줍 공고가 없어요. 새 공고는 매일 반영돼요.</p></div>}
-      <p className="match-disclaimer">2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역·재당첨 제한은 공고마다 달라 원문을 확인하세요(<a href="/faq#zupzup">무순위 자주 묻는 질문</a>).{!complete && <> <Link to="/match">자격 진단</Link>을 하면 공고마다 신청 가능성을 함께 보여 드려요.</>}</p>
+      <p className="match-disclaimer">2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역·재당첨 제한은 공고마다 달라 원문을 확인하세요(<a href="/faq#zupzup-who">무순위 자주 묻는 질문</a>).{!complete && <> <Link to="/match">자격 진단</Link>을 하면 공고마다 신청 가능성을 함께 보여 드려요.</>}</p>
     </>}
 
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}

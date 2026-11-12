@@ -59,7 +59,7 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
     </section>
     <section className="push-option">
       <strong>새 공고를 받을 생활권</strong><small>공고가 새로 올라온 날 알려 드려요. 줍줍·주간 브리핑을 포함해 최대 6개.</small>
-      <div className="push-areas">{Array.isArray(areas.data) ? areas.data.map(area => <Chip key={area.slug} label={area.label} disabled={busy}
+      <div className="push-areas">{Array.isArray(areas.data) ? areas.data.map(area => <Chip key={area.slug} label={area.label} disabled={busy || (!scope.areas.includes(area.slug) && scope.areas.length >= 6)}
         color={scope.areas.includes(area.slug) ? 'primary' : 'default'} variant={scope.areas.includes(area.slug) ? 'filled' : 'outlined'} onClick={() => toggleArea(area.slug)} />) : areas.isLoading ? <CircularProgress size={18} /> : null}</div>
     </section>
     <section className="push-option">

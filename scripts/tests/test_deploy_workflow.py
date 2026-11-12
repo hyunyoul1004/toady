@@ -16,7 +16,7 @@ def server_script():
 
 
 class DeployWorkflowTest(unittest.TestCase):
-    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None):
+    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config=''):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             work = home / 'toady'
@@ -26,14 +26,19 @@ class DeployWorkflowTest(unittest.TestCase):
             log = home / 'calls.log'
             stubs = {
                 'docker-compose': '#!/bin/sh\necho "compose $IMAGE_TAG $*" >> "$CALL_LOG"\n'
-                                  'case "$*" in *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; esac\n',
+                                  'case "$*" in *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; esac\n',
                 'docker': '#!/bin/sh\necho "docker $*" >> "$CALL_LOG"\n',
             }
             for name, source in stubs.items():
                 (bin_dir / name).write_text(source)
                 (bin_dir / name).chmod(0o755)
-            (work / 'scripts' / 'check-deployment.sh').write_text(
-                '#!/bin/sh\necho "check $IMAGE_TAG" >> "$CALL_LOG"\n[ "$IMAGE_TAG" != "$CHECK_FAILS_FOR" ]\n')
+            check = '#!/bin/sh\necho "check $IMAGE_TAG" >> "$CALL_LOG"\n[ "$IMAGE_TAG" != "$CHECK_FAILS_FOR" ]\n'
+            (work / 'scripts' / 'check-deployment.sh').write_text(check)
+            (work / 'docker-compose.yml').write_text('old compose\n')
+            # scp가 받아 둔 새 파일(배포 스크립트가 이전 파일을 보관한 뒤 교체한다).
+            (work / '.incoming' / 'scripts').mkdir(parents=True)
+            (work / '.incoming' / 'docker-compose.yml').write_text('new compose\n')
+            (work / '.incoming' / 'scripts' / 'check-deployment.sh').write_text(check)
             if previous_tag:
                 (work / '.deployed-image-tag').write_text(previous_tag + '\n')
             if env_text is not None:
@@ -43,7 +48,8 @@ class DeployWorkflowTest(unittest.TestCase):
                                     env={**os.environ, 'HOME': str(home),
                                          'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
                                          'IMAGE_TAG': 'new', 'DOCKER_USERNAME': 'tester', 'CALL_LOG': str(log),
-                                         'FAIL_UP_FOR': fail_up_for, 'CHECK_FAILS_FOR': check_fails_for})
+                                         'FAIL_UP_FOR': fail_up_for, 'CHECK_FAILS_FOR': check_fails_for, 'FAIL_CONFIG': fail_config})
+            self.compose = (work / 'docker-compose.yml').read_text()
             env_file = work / '.env'
             return (result, log.read_text() if log.exists() else '',
                     (work / '.deployed-image-tag').read_text() if (work / '.deployed-image-tag').exists() else '',
@@ -58,7 +64,8 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertEqual('new\n', tag)
         self.assertEqual('OTHER=1\nIMAGE_TAG=new\n', env)
         self.assertEqual('0o640', mode)
-        self.assertEqual(['.deployed-image-tag', '.env', 'scripts'], files)
+        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts'], files)
+        self.assertEqual('new compose\n', self.compose)
 
     def test_up_failure_rolls_back_to_previous_tag(self):
         result, calls, tag, env, _, _ = self.run_deploy(fail_up_for='new', env_text='IMAGE_TAG=old\n')
@@ -68,6 +75,16 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn('ROLLBACK OK', result.stderr)
         self.assertEqual('old\n', tag)
         self.assertEqual('IMAGE_TAG=old\n', env)
+        self.assertEqual('old compose\n', self.compose, '롤백하면 compose 파일도 이전 것으로 되돌린다')
+
+    def test_invalid_compose_is_restored_without_touching_containers(self):
+        result, calls, tag, _, _, _ = self.run_deploy(fail_config='1')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('docker-compose.yml is invalid', result.stderr)
+        self.assertNotIn(' up ', calls)
+        self.assertNotIn(' pull ', calls)
+        self.assertEqual('old\n', tag)
+        self.assertEqual('old compose\n', self.compose)
 
     def test_rollback_up_failure_is_reported(self):
         result, _, _, _, _, _ = self.run_deploy(fail_up_for='', check_fails_for='new')

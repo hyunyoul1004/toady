@@ -249,6 +249,21 @@ class PushIntegrationTest {
         assertEquals(0, digest("2026-11-16T18:00").run().sent());
     }
 
+    @Test void lateSubscriberToIdleAreaDoesNotReceiveOldAnnouncementsAsNew() throws Exception {
+        // 구독자가 없어도 매 실행 생활권 기록을 갱신한다: 11일 기준 기록 → 12일에 올라온 공고를 12일에 처음 본 것으로 기록.
+        assertEquals(0, digest("2026-11-11T18:00").run().sent());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('Q1','N1','운정 조용한 단지','경기도 파주시 야당동 3','2026-11-25','2026-11-26')");
+        assertEquals(0, digest("2026-11-12T18:00").run().sent());
+        // 15일에 처음 구독한 사람에게는 구독 전에 올라온 공고를 '새 공고'로 보내지 않는다.
+        String endpoint = "https://fcm.googleapis.com/fcm/send/late";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favorites", false, "areas", List.of("unjeong")))).andExpect(status().isOk());
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-15 12:00:00"));
+        SENT.clear();
+        var report = digest("2026-11-15T18:00").run();
+        assertEquals(0, report.sent(), report.toString());
+        assertTrue(SENT.isEmpty());
+    }
+
     @Test void bundledMessageListsBothKindsWithActions() {
         var message = PushMessage.digest(List.of(
             new PushMessage.Line("FAVORITE", "apt/A/1", "가 단지", "접수 마감", null, null),

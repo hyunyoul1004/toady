@@ -58,7 +58,7 @@ public class NeighborhoodResearchService {
                 if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
                 TradeMonth data;
                 try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
-                catch(Exception failure) { failedMonths.put(key,Boolean.TRUE); throw failure; }
+                catch(Exception failure) { if(!deadlineExceeded(failure)) failedMonths.put(key,Boolean.TRUE); throw failure; }
                 all.addAll(data.trades());updated.add(data.fetchedAt());
             }
             String legalDong=bcode.substring(5);
@@ -71,7 +71,13 @@ public class NeighborhoodResearchService {
     /** 주택형 면적 하나의 실거래 요약. scope: DONG(같은 법정동) · DISTRICT(같은 시·군·구, 같은 동 거래가 적을 때). */
     public record AreaStat(BigDecimal area,String scope,int count,long median,long min,long max,long newMedian,int newCount) { }
     public record GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas) { }
-    static final int GAP_MONTHS=6, ENOUGH_TRADES=3, NEW_BUILD_YEARS=10;
+    static final int GAP_MONTHS=6, MIN_GAP_MONTHS=2, ENOUGH_TRADES=3, NEW_BUILD_YEARS=10;
+    /** 이 서비스가 정한 응답 시간 한도 초과(제공처 거절·오류와 구분). */
+    static final class DeadlineExceeded extends IllegalStateException { DeadlineExceeded() { super("Provider deadline"); } }
+    private static boolean deadlineExceeded(Throwable failure) {
+        for(Throwable cause=failure;cause!=null;cause=cause.getCause()) if(cause instanceof DeadlineExceeded) return true;
+        return false;
+    }
 
     /**
      * 분양가와 나란히 볼 면적별 실거래 중간값. 최근 6개월, 전용 ±5㎡.
@@ -84,15 +90,26 @@ public class NeighborhoodResearchService {
         try {
             List<Trade> all=new ArrayList<>();List<Instant> updated=new ArrayList<>();
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);
+            YearMonth earliest=end;
             for(int month=0;month<GAP_MONTHS;month++) {
                 String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
                 String key=bcode.substring(0,5)+"/"+ymd;
                 if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
-                TradeMonth data;
-                try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
-                catch(Exception failure) { failedMonths.put(key,Boolean.TRUE); throw failure; }
-                all.addAll(data.trades());updated.add(data.fetchedAt());
+                TradeMonth data=tradeCache.getIfPresent(key);
+                if(data==null) {
+                    // 응답 시간 한도를 넘기면 제공처 실패로 기록하지 않고, 이미 받은 달까지만으로 결과를 만든다.
+                    if(System.nanoTime()>deadline) break;
+                    try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                    catch(Exception failure) {
+                        if(deadlineExceeded(failure)) break;
+                        failedMonths.put(key,Boolean.TRUE); throw failure;
+                    }
+                }
+                all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
             }
+            // 최근 2개월도 받지 못했으면 비교하지 않는다.
+            if(updated.size()<MIN_GAP_MONTHS) return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());
+            start=earliest;
             String legalDong=bcode.substring(5);
             int thisYear=end.getYear();
             List<AreaStat> stats=new ArrayList<>();
@@ -117,7 +134,7 @@ public class NeighborhoodResearchService {
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
         List<Trade> result=new ArrayList<>();int expected=-1,read=0;
         for(int number=1;number<=5;number++) {
-            if(System.nanoTime()>deadline) throw new IllegalStateException("Provider deadline");
+            if(System.nanoTime()>deadline) throw new DeadlineExceeded();
             URI uri=URI.create("https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?LAWD_CD="+district+"&DEAL_YMD="+ymd+"&numOfRows=1000&pageNo="+number+"&serviceKey="+encode(molitKey));
             Page page=parseTrades(transport.get(uri,Map.of()));
             if(expected==-1) expected=page.total();

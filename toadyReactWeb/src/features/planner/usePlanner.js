@@ -40,7 +40,9 @@ export function usePlanner() {
     } else {
       const current = guest.getState().items;
       if (!current.some(x => x.id === item.id) && current.length >= 50) throw Error('관심 공고는 50개까지 저장할 수 있습니다.');
-      guest.getState().replace([{ ...item, emailEnabled: false }, ...current.filter(x => x.id !== item.id)]);
+      // 이미 저장한 공고는 제자리에서 바꾸고(단계·메모를 바꿀 때 카드가 맨 위로 튀지 않게), 새 공고만 맨 앞에 둔다.
+      const next = { ...item, emailEnabled: false };
+      guest.getState().replace(current.some(x => x.id === item.id) ? current.map(x => (x.id === item.id ? next : x)) : [next, ...current]);
     }
     if (!existing) trackAction('favorite_add',item.id);
     if (item.emailEnabled && !existing?.emailEnabled) trackAction('alert_enable',item.id);

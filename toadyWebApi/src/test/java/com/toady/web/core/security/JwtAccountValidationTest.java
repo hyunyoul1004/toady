@@ -30,6 +30,7 @@ class JwtAccountValidationTest {
         ReflectionTestUtils.setField(provider, "authoritiesKey", "auth");
         ReflectionTestUtils.setField(provider, "tokenCreatedAtKey", "tca");
         ReflectionTestUtils.setField(provider, "tokenExpireMs", 5400000L);
+        ReflectionTestUtils.setField(provider, "sessionMaxMs", 1209600000L);
         account = UserEntity.builder().userSeq(1L).userEmail("jwt@example.test")
                 .userPassword("bcrypt-hash-before").userNicName("member")
                 .emailCertifyYn("Y").lockYn("N").withdrawalYn("N").build();
@@ -52,6 +53,19 @@ class JwtAccountValidationTest {
         // A token never exposes the stored password hash.
         String claims = new String(java.util.Base64.getUrlDecoder().decode(renewed.split("\\.")[1]));
         assertFalse(claims.contains(account.getUserPassword()));
+    }
+
+    @Test void renewalKeepsTheFirstLoginTimeAndStopsAfterTheMaximumSession() {
+        var authentication = provider.getAuthentication(request);
+        String renewed = provider.renewToken(request, authentication);
+        String first = new String(java.util.Base64.getUrlDecoder().decode(request.getHeader("Authorization").substring(7).split("\\.")[1]));
+        String second = new String(java.util.Base64.getUrlDecoder().decode(renewed.split("\\.")[1]));
+        assertEquals(first.replaceAll(".*\"tca\":(\\d+).*", "$1"), second.replaceAll(".*\"tca\":(\\d+).*", "$1"), "갱신해도 최초 로그인 시각은 그대로");
+        // 최대 유지 기간이 지난 토큰은 아직 만료 전이라도 거부한다.
+        ReflectionTestUtils.setField(provider, "sessionMaxMs", -1L);
+        var next = new MockHttpServletRequest();
+        next.addHeader("Authorization", "Bearer " + renewed);
+        assertThrows(JwtException.class, () -> provider.getAuthentication(next));
     }
 
     @Test void rejectsLockedAccount() {

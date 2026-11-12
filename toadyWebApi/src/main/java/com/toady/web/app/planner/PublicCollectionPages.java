@@ -40,7 +40,7 @@ public class PublicCollectionPages {
     public ResponseEntity<String> zupzup() { return PublicHtml.cached("zupzup", this::renderZupzup); }
     private ResponseEntity<String> renderZupzup() {
         LocalDate today = today();
-        var groups = areas.groups(null, UNRANKED_TYPES, today, 60);
+        var groups = areas.groups(null, UNRANKED_TYPES, today, 60, Integer.MAX_VALUE);
         String title = "무순위·줍줍 청약 일정" + (groups.open().isEmpty() ? "" : " · 접수 중 " + groups.open().size() + "건") + " · TOADY";
         String description = "APT 무순위·잔여세대와 임의공급(줍줍) 청약 일정 · 접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size()
             + "건 · 공급금액·위치·동네 실거래가를 한 화면에서 확인하세요.";
@@ -52,7 +52,7 @@ public class PublicCollectionPages {
             + (groups.open().isEmpty() && groups.upcoming().isEmpty()
                 ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 접수 중이거나 예정된 무순위·임의공급 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : areas.section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : areas.section("접수 예정", groups.upcoming(), "")))
-            + areas.section("최근 마감", groups.closed(), "최근 2개월 안에 마감된 공고가 없습니다.")
+            + areas.section("최근 마감", groups.closed().subList(0, Math.min(12, groups.closed().size())), "최근 2개월 안에 마감된 공고가 없습니다.")
             + "<section class='card'><h2>신청 전에 확인하세요</h2><ul>"
             + "<li><strong>신청 자격</strong><span class='muted'>2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역 요건은 공고마다 달라요.</span></li>"
             + "<li><strong>재당첨 제한</strong><span class='muted'>당첨되면 다른 청약의 재당첨 제한·당첨자 관리 대상이 될 수 있어요.</span></li>"

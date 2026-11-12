@@ -32,6 +32,9 @@ test('거주지역: 같은 시·도, 수도권 기타지역, 지방 공고', () 
   assert.equal(regionFit(base, apt()).status, 'ok');
   assert.equal(regionFit({ ...base, sido: '인천' }, apt({ region: '경기', rank1Etc: '2026-11-12' })).status, 'ok');
   assert.equal(regionFit({ ...base, sido: '인천' }, apt({ region: '경기' })).status, 'no');
+  // 경기 거주자 접수(rank1Gg)만 있는 경기 공고는 서울·인천 거주자가 신청할 수 없다.
+  assert.equal(regionFit({ ...base, sido: '서울' }, apt({ region: '경기', rank1Gg: '2026-11-12' })).status, 'no');
+  assert.equal(regionFit({ ...base, sido: '경기' }, apt({ region: '경기', rank1Gg: '2026-11-12' })).status, 'ok');
   assert.equal(regionFit(base, apt({ region: '부산', rank1Etc: '2026-11-12' })).status, 'check');
   assert.equal(evaluate(base, apt({ region: '부산' }), today).best, 'no');
 });
@@ -63,6 +66,17 @@ test('특별공급 유형별 요건', () => {
   assert.equal(track(evaluate({ ...base, usedSpecial: true }, apt(), today), 'newlywed').status, 'no');
   const single = evaluate({ ...base, marriage: 'single', children: 0 }, apt(), today);
   assert.ok(track(single, 'firstLife').checks.some(text => text.includes('1인 가구')));
+});
+
+test('청년 특별공급: 본인 무주택 기준, 출생 연도 미입력·나이 경계는 확인 필요', () => {
+  const youthApt = apt({ national: true, special: { youth: 5 } });
+  const single = { ...base, marriage: 'single', children: 0, birthYear: 1995 };
+  assert.equal(track(evaluate(single, youthApt, today), 'youth').status, 'ok');
+  assert.equal(track(evaluate({ ...single, homeless: false, homes: 1 }, youthApt, today), 'youth').status, 'ok', '부모님 집에 사는 청년도 신청 대상');
+  assert.equal(track(evaluate({ ...single, birthYear: null }, youthApt, today), 'youth').status, 'check');
+  assert.equal(track(evaluate({ ...single, birthYear: 1986 }, youthApt, today), 'youth').status, 'check', '올해 40세가 되는 해는 생일 전이면 만 39세');
+  assert.equal(track(evaluate({ ...single, birthYear: 1980 }, youthApt, today), 'youth').status, 'no');
+  assert.equal(track(evaluate({ ...single, marriage: 'married' }, youthApt, today), 'youth').status, 'no');
 });
 
 test('무순위·임의공급', () => {

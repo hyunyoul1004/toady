@@ -48,8 +48,9 @@ export function regionFit(profile, item) {
   const mine = profile.sido, supply = shortSido(item.region);
   if (!mine || !supply) return { status: 'check', label: '거주지역 확인', reason: '공급 지역을 확인하지 못했어요.' };
   if (mine === supply) return { status: 'ok', label: '해당 지역 거주', reason: `${mine} 거주 · 해당지역으로 신청해요.` };
-  const wider = Boolean(item.rank1Gg || item.rank1Etc);
-  if (CAPITAL.has(mine) && CAPITAL.has(supply) && wider) return { status: 'ok', label: '수도권 기타지역', reason: '해당지역 우선 공급 뒤 남는 물량을 수도권 거주자가 신청해요.' };
+  // rank1Gg는 '경기 거주자' 접수(같은 시·도라 위에서 이미 통과), rank1Etc만 그 밖의 지역 거주자 접수다.
+  // 경기 대규모 택지처럼 경기 접수만 있는 공고는 서울·인천 거주자가 신청할 수 없다.
+  if (CAPITAL.has(mine) && CAPITAL.has(supply) && item.rank1Etc) return { status: 'ok', label: '수도권 기타지역', reason: '해당지역 우선 공급 뒤 남는 물량을 수도권 거주자가 신청해요.' };
   if (item.rank1Etc) return { status: 'check', label: '기타지역 범위 확인', reason: `${supply} 공급이라 ${mine} 거주자가 기타지역에 들어가는지 공고문에서 확인하세요.` };
   return { status: 'no', label: '거주지역 아님', reason: `${supply} 거주자만 신청하는 공고예요.` };
 }
@@ -90,13 +91,16 @@ function specialTracks(profile, item, region, today) {
   const rank1 = months >= rank1Months(item);
   const married = profile.marriage === 'married' || profile.marriage === 'engaged';
   const children = Number(profile.children) || 0;
-  const add = (key, label, conditions, checks = []) => {
+  const add = (key, label, conditions, checks = [], { ownHomeOnly = false, unsure = [] } = {}) => {
     if (!(special[key] > 0)) return;
     const failed = conditions.filter(([ok]) => !ok).map(([, reason]) => reason);
-    if (!homeless) failed.unshift('특별공급은 세대 전원이 무주택이어야 해요.');
+    // 청년 특별공급은 본인 무주택 기준이라 세대 무주택을 요구하지 않는다('본인 무주택'은 확인할 것으로 둔다).
+    if (!homeless && !ownHomeOnly) failed.unshift('특별공급은 세대 전원이 무주택이어야 해요.');
     if (profile.usedSpecial === true) failed.unshift('특별공급은 세대당 평생 한 번만 당첨될 수 있어요.');
     const ok = !failed.length;
-    out.push(track(key, `${label} 특별공급 ${special[key]}세대`, ok ? region.status : 'no', ok ? [region.reason].filter(Boolean) : failed, ok ? checks : []));
+    // 판단할 정보가 부족한 조건(예: 출생 연도 미입력·만 나이 경계)은 '확인 필요'로 둔다.
+    const status = !ok ? 'no' : unsure.length && region.status === 'ok' ? 'check' : region.status;
+    out.push(track(key, `${label} 특별공급 ${special[key]}세대`, status, ok ? [region.reason, ...unsure].filter(Boolean) : failed, ok ? checks : []));
   };
   add('newlywed', '신혼부부', [[married && (profile.marriage === 'engaged' || profile.marriedWithin7 === true), '혼인 7년 이내 또는 예비 신혼부부여야 해요.'], [months >= 6, '통장 가입 6개월 이상이 필요해요.']], [income]);
   add('firstLife', '생애최초', [[profile.everOwned === false, '세대원 모두 집을 가져 본 적이 없어야 해요.'], [rank1, `1순위(통장 ${rank1Months(item)}개월 이상)여야 해요.`]],
@@ -104,8 +108,12 @@ function specialTracks(profile, item, region, today) {
   add('multiChild', '다자녀', [[children >= 2, '미성년 자녀가 2명 이상이어야 해요(태아 포함).'], [months >= 6, '통장 가입 6개월 이상이 필요해요.']], ['자녀 수·소득 배점']);
   add('newborn', '신생아', [[profile.newborn === true, '2세 미만 자녀가 있거나 임신 중이어야 해요.'], [months >= 6, '통장 가입 6개월 이상이 필요해요.']], [income]);
   add('oldParents', '노부모부양', [[profile.parents === true, '만 65세 이상 직계존속을 3년 이상 부양해야 해요.'], [profile.householder === true, '세대주여야 해요.'], [rank1, '1순위 요건이 필요해요.']], ['부양 기간 3년 이상']);
+  // 출생 연도만 알면 만 나이는 (올해 − 출생 연도) 또는 그보다 1 적다. 범위를 확실히 벗어날 때만 '어려움'으로 본다.
   const years = age(profile, today);
-  add('youth', '청년', [[years !== null && years >= 19 && years <= 39, '만 19~39세여야 해요.'], [profile.marriage === 'single', '미혼이어야 해요.']], [income, '본인 무주택']);
+  const ageUnsure = years === null ? '출생 연도를 넣으면 나이 요건(만 19~39세)도 확인해 드려요.'
+    : years === 19 || years === 40 ? '생일에 따라 만 나이 요건(만 19~39세)이 달라져요.' : null;
+  add('youth', '청년', [[years === null || (years >= 19 && years <= 40), '만 19~39세여야 해요.'], [profile.marriage === 'single', '미혼이어야 해요.']],
+    [income, '본인 무주택'], { ownHomeOnly: true, unsure: ageUnsure ? [ageUnsure] : [] });
   if (special.institution > 0) out.push(track('institution', `기관추천 특별공급 ${special.institution}세대`, 'info', ['장애인·국가유공자 등 해당 기관의 추천을 받은 경우에만 신청해요.']));
   return out;
 }

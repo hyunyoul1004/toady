@@ -191,7 +191,7 @@ git diff --cached --stat
 
 서버에는 Docker Compose, `bash`, `curl`이 필요합니다. 배포 전에 GitHub Actions Secret `VITE_KAKAO_MAP_KEY`와 기존 EC2·Docker Hub Secrets를 설정합니다. 지도 키는 이미지 빌드 시 전달되며, 런타임 환경변수 변경만으로 정적 앱에 반영되지 않습니다.
 
-세 앱의 `DOCKER_USERNAME`, `IMAGE_TAG`를 동일하게 지정해 배포합니다. 새 CI는 커밋 SHA 태그를 사용하고 `latest`를 갱신하지 않습니다.
+세 앱의 `DOCKER_USERNAME`, `IMAGE_TAG`를 동일하게 지정해 배포합니다. 새 CI는 커밋 SHA 태그를 사용하고 `latest`를 갱신하지 않습니다. CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `~/toady/.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 컨테이너를 건드리지 않고 이전 파일로 되돌리며, 배포 확인에 실패해 이전 태그로 롤백할 때도 compose 파일을 함께 되돌립니다. 서버 SSH 키를 받는 배포 Action은 커밋 SHA로, certbot 이미지는 버전 태그로 고정합니다.
 
 ```bash
 cd ~/toady

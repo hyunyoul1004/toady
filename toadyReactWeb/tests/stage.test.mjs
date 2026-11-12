@@ -50,7 +50,11 @@ test('결과 요약: 경쟁률·당첨가점과 내 가점 비교', () => {
 test('가점이 오르는 다음 날짜와 캘린더 파일', async () => {
   const { nextRise, housingFromDates, accountFromDate, riseCalendarText, addMonths } = await import('../src/features/score/scoreRules.js');
   const today = '2026-11-13';
-  assert.equal(addMonths('2026-08-31', 6), '2027-03-03');
+  assert.equal(addMonths('2026-08-31', 6), '2027-03-01');
+  assert.equal(addMonths('2026-07-15', 6), '2027-01-15');
+  // 상승일 당일에 실제로 구간이 오른다.
+  assert.equal(accountFromDate('2026-08-31', '2027-03-01').index, 1);
+  assert.equal(accountFromDate('2026-08-31', '2027-02-28').index, 0);
   // 통장: 가입 4개월 → 6개월 되는 날 +1점, 3년 2개월 → 4년 되는 날 +1점
   const short = { joined: '2026-07-01' };
   assert.deepEqual(nextRise('account', short, accountFromDate(short.joined, today), today), { date: '2027-01-01', plus: 1, label: '청약통장 가입기간' });

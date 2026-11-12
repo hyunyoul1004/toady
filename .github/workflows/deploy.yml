@@ -119,15 +119,17 @@ jobs:
           docker push "$DOCKER_USERNAME/toady-web-api:$IMAGE_TAG"
           docker push "$DOCKER_USERNAME/toady-scheduler:$IMAGE_TAG"
       - name: Copy deployment files to EC2
-        uses: appleboy/scp-action@v0.1.7
+        # 서버 SSH 키를 받는 서드파티 Action은 태그가 옮겨져도 바뀌지 않도록 커밋 SHA로 고정한다(v0.1.7).
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: docker-compose.yml,scripts/check-deployment.sh
-          target: ~/toady/
+          # 바로 덮어쓰지 않고 받아 두었다가, 배포 스크립트가 이전 파일을 보관한 뒤 교체한다(롤백 때 함께 되돌린다).
+          target: ~/toady/.incoming/
       - name: Deploy and verify
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           IMAGE_TAG: ${{ github.sha }}
@@ -145,6 +147,17 @@ jobs:
             # 마지막으로 검증에 성공한 태그. 새 이미지가 확인을 통과하지 못하면 이 태그로 되돌린다.
             PREVIOUS_TAG=""
             if [ -f .deployed-image-tag ]; then PREVIOUS_TAG=$(tr -d '[:space:]' < .deployed-image-tag); fi
+            # 새 compose·확인 스크립트를 설치하기 전에 지금 파일을 보관한다. 배포가 실패하면 이미지 태그와 함께 되돌린다.
+            mkdir -p .rollback/scripts
+            [ ! -f docker-compose.yml ] || cp -p docker-compose.yml .rollback/docker-compose.yml
+            [ ! -f scripts/check-deployment.sh ] || cp -p scripts/check-deployment.sh .rollback/scripts/check-deployment.sh
+            restore_config() {
+              [ ! -f .rollback/docker-compose.yml ] || cp -p .rollback/docker-compose.yml docker-compose.yml
+              [ ! -f .rollback/scripts/check-deployment.sh ] || cp -p .rollback/scripts/check-deployment.sh scripts/check-deployment.sh
+            }
+            mkdir -p scripts
+            cp .incoming/docker-compose.yml docker-compose.yml
+            cp .incoming/scripts/check-deployment.sh scripts/check-deployment.sh
             # 앱 컨테이너만 바꾼다. --no-deps로 compose 설정이 바뀌어도 mariadb·nginx를 다시 만들지 않는다.
             start_apps() {
               # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
@@ -152,7 +165,12 @@ jobs:
             }
             # set -e는 if 조건 안에서 꺼지므로 pull·up·확인 중 어느 단계가 실패해도 같은 롤백 경로로 들어온다.
             deploy_failed=""
-            if ! docker-compose -p toady pull $APPS; then
+            if ! docker-compose -p toady config -q; then
+              # 새 설정 자체가 잘못됐으면 컨테이너를 건드리지 않고 이전 설정으로 되돌린 뒤 끝낸다.
+              restore_config
+              echo "DEPLOY FAILED: $NEW_TAG (docker-compose.yml is invalid). Previous configuration restored; containers unchanged." >&2
+              exit 1
+            elif ! docker-compose -p toady pull $APPS; then
               deploy_failed="image pull failed"
             elif ! start_apps; then
               deploy_failed="docker-compose up failed"
@@ -161,7 +179,8 @@ jobs:
             fi
             if [ -n "$deploy_failed" ]; then
               if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$NEW_TAG" ]; then
-                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed). Rolling back app containers to $PREVIOUS_TAG." >&2
+                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed). Rolling back app containers and compose files to $PREVIOUS_TAG." >&2
+                restore_config
                 export IMAGE_TAG="$PREVIOUS_TAG"
                 if ! start_apps; then
                   echo "ROLLBACK FAILED: docker-compose up for $PREVIOUS_TAG failed. Inspect the server manually." >&2
@@ -171,7 +190,8 @@ jobs:
                   echo "ROLLBACK CHECK FAILED: $PREVIOUS_TAG also failed checks. Inspect the server manually." >&2
                 fi
               else
-                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed) and no previous successful tag is recorded. Not rolled back." >&2
+                restore_config
+                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed) and no previous successful tag is recorded. Compose files restored; containers not rolled back." >&2
               fi
               exit 1
             fi

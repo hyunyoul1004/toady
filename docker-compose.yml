@@ -86,7 +86,8 @@ services:
   # 만료 30일 전까지는 다시 발급하지 않아 Let's Encrypt 발급 한도를 소모하지 않는다.
   certbot:
     container_name: certbot
-    image: certbot/certbot:latest
+    # 갱신 때마다 검증하지 않은 최신 이미지를 받지 않도록 버전을 고정한다.
+    image: certbot/certbot:v5.9.0
     depends_on:
       - nginx
     command: certonly --webroot --webroot-path=/var/www/certbot --email dbsgusduf@naver.com --agree-tos --no-eff-email --keep-until-expiring -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr

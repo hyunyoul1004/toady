@@ -45,6 +45,10 @@ public class JwtProviderImpl implements JwtProvider {
     @Value("${toady.security.token-created-at-key:tca}")
     private String tokenCreatedAtKey;
 
+    /** 최초 로그인부터 토큰 갱신으로 유지할 수 있는 최대 기간(기본 14일). */
+    @Value("${toady.security.session-max-ms:1209600000}")
+    private long sessionMaxMs;
+
     /** 인증이 불가능한 설정으로 배포 준비 상태가 성공하지 않도록 시작 시 검증한다. */
     @jakarta.annotation.PostConstruct
     void validateConfiguration() {
@@ -54,7 +58,7 @@ public class JwtProviderImpl implements JwtProvider {
         } catch (RuntimeException exception) {
             throw new IllegalStateException("JWT_SECRET must be valid Base64", exception);
         }
-        if (decoded.length < 64 || tokenExpireMs <= 0 || authoritiesKey.isBlank() || tokenCreatedAtKey.isBlank()) {
+        if (decoded.length < 64 || tokenExpireMs <= 0 || sessionMaxMs < tokenExpireMs || authoritiesKey.isBlank() || tokenCreatedAtKey.isBlank()) {
             throw new IllegalStateException("JWT_SECRET must contain at least 64 bytes and token settings must be valid");
         }
         signingKey();
@@ -63,12 +67,31 @@ public class JwtProviderImpl implements JwtProvider {
     @Override
     /** 사용자 식별자·권한과 만료 시각을 포함한 서명 토큰을 발급합니다. */
     public String generatorToken(Authentication authentication) {
+        return token(authentication, Instant.now());
+    }
+
+    /** 최초 로그인 시각(tca)을 이전 토큰에서 그대로 옮긴다. 값이 없던 예전 토큰은 발급 시각을 최초 시각으로 본다. */
+    @Override
+    public String renewToken(HttpServletRequest request, Authentication authentication) {
+        String header = request.getHeader(AUTHORIZATION_HEADER);
+        Claims claims = parse(header.substring(BEARER_PREFIX.length()));
+        return token(authentication, createdAt(claims));
+    }
+
+    private Instant createdAt(Claims claims) {
+        Date created = claims.get(tokenCreatedAtKey, Date.class);
+        if (created == null) created = claims.getIssuedAt();
+        if (created == null) throw new JwtException("Missing token creation time");
+        return created.toInstant();
+    }
+
+    private String token(Authentication authentication, Instant createdAt) {
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(authentication.getName())
                 .claim(authoritiesKey, SecUtils.getAuthorities(authentication.getAuthorities()))
-                .claim(tokenCreatedAtKey, Date.from(now))
+                .claim(tokenCreatedAtKey, Date.from(createdAt))
                 .claim("credentialVersion", credentialVersion(user.getPassword()))
                 .claim("userSeq", user.getUserSeq())
                 .claim("userNicName", user.getUserNicName())
@@ -87,6 +110,8 @@ public class JwtProviderImpl implements JwtProvider {
         }
 
         Claims claims = parse(header.substring(BEARER_PREFIX.length()));
+        // 토큰을 계속 갱신해도 최초 로그인부터 최대 유지 기간이 지나면 다시 로그인하게 한다(탈취 토큰의 무기한 연장 방지).
+        if (createdAt(claims).plusMillis(sessionMaxMs).isBefore(Instant.now())) throw new JwtException("Session expired");
         Object rawAuthorities = claims.get(authoritiesKey);
         if (!(rawAuthorities instanceof String authoritiesValue)) {
             return null;

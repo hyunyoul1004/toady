@@ -74,8 +74,6 @@ public class PushDigest {
         // 오래 쓰지 않은 구독 정리: 6개월 넘게 전달 성공도 없고 브라우저의 재등록(앱 방문 시 범위 저장)도 없는 행.
         // 보낼 내용이 없던 구독은 푸시 서비스의 404·410 응답을 받을 일이 없어 이렇게 따로 정리한다.
         store.removeStale(now.minusDays(STALE_DAYS));
-        List<PushSubscriptions.Row> pending = store.pending(today);
-        if (pending.isEmpty()) return new Report(0, 0, 0, 0);
         Map<String, List<Seen>> news = new HashMap<>();
         Map<Long, List<PlannerSummary.Summary>> members = new HashMap<>();
         Map<String, LocalDateTime> resultSeen = new HashMap<>();
@@ -84,6 +82,14 @@ public class PushDigest {
         PublicAreaPage.WeekCounts[] week = new PublicAreaPage.WeekCounts[1];
         Map<String, Optional<PlannerSummary.Summary>> guestSummaries = new HashMap<>();
         List<List<AnnouncementListItem>> unranked = new ArrayList<>();
+        // 새 공고·결과의 최초 확인 시각을 구독자 유무와 상관없이 매 실행 기록한다. 그래야 한동안 구독자가 없던 생활권이나
+        // 결과가 공개된 뒤 저장한 공고도 '실제로 처음 보인 시각' 기준으로 판정해, 지난 공고·결과를 새 소식으로 보내지 않는다.
+        for (var area : LivingAreas.ALL) news.put(area.slug(), safely("생활권 " + area.slug(), () -> refreshArea(area, today, now)));
+        for (var topic : PushTopics.ALL) news.put(topic.slug(), safely("주제 " + topic.slug(),
+            () -> refresh(topic.slug(), unranked(today, unranked).stream().filter(topic::includes).toList(), now)));
+        safely("결과 기록", () -> { trackResults(today, now, resultCache, resultSeen, startedResultKinds); return List.of(); });
+        List<PushSubscriptions.Row> pending = store.pending(today);
+        if (pending.isEmpty()) return new Report(0, 0, 0, 0);
         int sent = 0, removed = 0, retry = 0, empty = 0;
         for (PushSubscriptions.Row row : pending) {
             try {
@@ -91,10 +97,11 @@ public class PushDigest {
                 LocalDateTime since = row.lastDigestAt() != null ? row.lastDigestAt() : row.registeredAt();
                 if (row.favorites()) {
                     List<PlannerSummary.Summary> favorites = new ArrayList<>();
-                    if (row.userSeq() != null) favorites.addAll(members.computeIfAbsent(row.userSeq(), this::memberSummaries));
+                    if (row.userSeq() != null) favorites.addAll(members.computeIfAbsent(row.userSeq(), user -> memberSummaries(user, guestSummaries)));
                     else for (String id : row.favoriteIds()) guestSummary(id, guestSummaries).ifPresent(favorites::add);
                     for (PlannerSummary.Summary summary : favorites) lines.addAll(favoriteLines(summary, tomorrow));
-                    lines.addAll(resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds));
+                    // 결과 조회가 실패해도 내일 일정 줄은 보낸다.
+                    lines.addAll(safely("결과 알림", () -> resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds)));
                 }
                 Set<String> already = new HashSet<>();
                 lines.forEach(line -> already.add(line.announcementId()));
@@ -102,7 +109,10 @@ public class PushDigest {
                     // 주간 브리핑: 일요일 저녁 묶음에만 다음 주(월~일) 접수 시작 공고 수를 넣는다.
                     if (PushTopics.WEEKLY.equals(slug)) {
                         if (today.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) continue;
-                        if (week[0] == null) week[0] = areas.startingCounts(today.plusDays(1), today.plusDays(7));
+                        if (week[0] == null) {
+                            try { week[0] = areas.startingCounts(today.plusDays(1), today.plusDays(7)); }
+                            catch (RuntimeException failure) { log.warn("주간 브리핑 집계 실패: error={}", failure.getClass().getSimpleName()); week[0] = new PublicAreaPage.WeekCounts(0, 0, 0); }
+                        }
                         if (week[0].total() > 0) lines.add(new PushMessage.Line("WEEKLY", null, weeklyText(week[0]), "이번 주 청약", slug, "이번 주 청약"));
                         continue;
                     }
@@ -110,8 +120,7 @@ public class PushDigest {
                     var topic = PushTopics.bySlug(slug);
                     if (area.isEmpty() && topic.isEmpty()) continue;
                     String label = area.map(LivingAreas.Area::label).orElseGet(() -> topic.get().label());
-                    List<Seen> seenList = news.computeIfAbsent(slug, key -> area.isPresent() ? refreshArea(area.get(), today, now)
-                        : refresh(slug, unranked(today, unranked).stream().filter(topic.get()::includes).toList(), now));
+                    List<Seen> seenList = news.getOrDefault(slug, List.of());
                     for (Seen seen : seenList)
                         if (seen.firstSeen().isAfter(since) && already.add(seen.id()))
                             lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), "새 공고", slug, label));
@@ -134,10 +143,34 @@ public class PushDigest {
         return new Report(sent, removed, retry, empty);
     }
 
-    private List<PlannerSummary.Summary> memberSummaries(long user) {
+    /** 회원 관심 공고 요약. 공고 요약은 비회원과 같은 캐시로 공고 단위로 한 번만 만든다(회원마다 다시 만들지 않는다). */
+    private List<PlannerSummary.Summary> memberSummaries(long user, Map<String, Optional<PlannerSummary.Summary>> cache) {
         var account = users.findById(user).orElse(null);
         if (account == null || !"N".equals(account.getWithdrawalYn()) || !"N".equals(account.getLockYn())) return List.of();
-        return planner.list(user).stream().map(PlannerService.Favorite::summary).filter(summary -> !summary.unavailable()).toList();
+        List<PlannerSummary.Summary> out = new ArrayList<>();
+        for (String id : jdbc.queryForList("SELECT CONCAT(ANNOUNCEMENT_TYPE,'/',HOUSE_MANAGE_NO,'/',PBLANC_NO) FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", String.class, user))
+            guestSummary(id, cache).ifPresent(out::add);
+        return out;
+    }
+    /** 실패한 계산은 빈 결과로 이번 실행 동안 기억해, 같은 실패를 구독마다 되풀이하지 않고 다른 알림 줄은 계속 보낸다. */
+    private <T> List<T> safely(String what, java.util.function.Supplier<List<T>> work) {
+        try { return work.get(); }
+        catch (RuntimeException failure) { log.warn("웹 푸시 {} 계산 실패: error={}", what, failure.getClass().getSimpleName()); return List.of(); }
+    }
+    /** 접수 마감 30일 이내 APT 공고의 결과 공개 시각을 구독자와 무관하게 기록한다. */
+    void trackResults(LocalDate today, LocalDateTime now, Map<String, com.toady.web.app.planner.AnnouncementResults.Result> cache,
+            Map<String, LocalDateTime> seen, Set<String> started) {
+        List<String> ids = areas.aptEndedWithin(today, RESULT_FRESH_DAYS);
+        if (ids.isEmpty()) return;
+        for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
+        Map<String, com.toady.web.app.planner.AnnouncementResults.Result> found = results.forIds(ids);
+        for (String id : ids) {
+            var result = found.get(id);
+            cache.put(id, result);
+            if (result == null) continue;
+            if (result.ratePublished()) resultSeen(RATE_SLUG, id, now, seen, started);
+            if (result.scorePublished()) resultSeen(SCORE_SLUG, id, now, seen, started);
+        }
     }
     static String weeklyText(PublicAreaPage.WeekCounts counts) {
         List<String> parts = new ArrayList<>();

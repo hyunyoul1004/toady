@@ -6,6 +6,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** 요청 제한 키와 로그인 실패 제한 규칙. */
 class RateLimitUnitTest {
+    @Test void costlyAndAnonymousWriteEndpointsAreLimited() {
+        var rules = RequestLimitFilter.rules(3, 10);
+        java.util.function.BiFunction<String, String, String> rule = (method, path) -> rules.stream().filter(r -> r.matches(method, path)).map(r -> r.name()).findFirst().orElse(null);
+        assertEquals("gap", rule.apply("GET", "/api/v1/research/price-gap"));
+        assertEquals("trade", rule.apply("GET", "/api/v1/research/transactions"));
+        assertEquals("summary", rule.apply("POST", "/api/v1/planner/results"));
+        assertEquals("analytics", rule.apply("POST", "/api/v1/analytics/events"));
+        assertEquals("analytics", rule.apply("POST", "/api/v1/analytics/page-views"));
+        assertNull(rule.apply("GET", "/api/v1/public/eligibility/announcements"));
+    }
     @Test void ipv6AddressesInTheSame64AreOneKey() {
         assertEquals(RequestLimitFilter.limitKey("2001:db8:1:2:aaaa::1"), RequestLimitFilter.limitKey("2001:db8:1:2:ffff:1:2:3"));
         assertNotEquals(RequestLimitFilter.limitKey("2001:db8:1:2::1"), RequestLimitFilter.limitKey("2001:db8:1:3::1"));

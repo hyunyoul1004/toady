@@ -122,10 +122,15 @@ export function accountFromDate(joined, today) {
   return { index, months, reason: `가입일(${dot(joined)})부터 ${periodText(months)}` };
 }
 
-/** YYYY-MM-DD에 n개월을 더한다. 없는 날(예: 8월 31일 + 6개월)은 다음 달로 넘어간다(꽉 찬 개월 계산과 맞는다). */
+/**
+ * YYYY-MM-DD에 n개월을 더한다. 그 달에 없는 날(예: 8월 31일 + 6개월)은 다음 달 1일로 둔다.
+ * fullMonths가 그날부터 n개월을 꽉 찬 것으로 세므로 두 계산이 같은 날을 가리킨다.
+ */
 export function addMonths(value, months) {
   const [y, m, d] = value.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1 + months, d)).toISOString().slice(0, 10);
+  const date = new Date(Date.UTC(y, m - 1 + months, d));
+  if (date.getUTCDate() !== d) return new Date(Date.UTC(y, m - 1 + months + 1, 1)).toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
 }
 /**
  * 날짜 입력으로 계산한 구간이 다음에 오르는 날. 가점이 그대로 늘어나는 두 항목(무주택 기간 2점, 통장 가입기간 1점)만 본다.
