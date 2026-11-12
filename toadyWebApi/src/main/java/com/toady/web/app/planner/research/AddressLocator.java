@@ -57,7 +57,7 @@ public class AddressLocator {
     static List<String> municipality(String address) {
         List<String> tokens = new ArrayList<>(Arrays.asList(normalize(address).split(" ")));
         if (province(address) != null && !tokens.isEmpty()) tokens.remove(0);
-        return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구)$")).limit(2).toList();
+        return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구|도시)$")).limit(2).toList();
     }
     static boolean sameRegion(String address, String found) {
         String expected = province(address); List<String> cities = municipality(address);

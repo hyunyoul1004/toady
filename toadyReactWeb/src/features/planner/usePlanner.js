@@ -41,7 +41,9 @@ export function usePlanner() {
       const current = guest.getState().items;
       if (!current.some(x => x.id === item.id) && current.length >= 50) throw Error('관심 공고는 50개까지 저장할 수 있습니다.');
       // 이미 저장한 공고는 제자리에서 바꾸고(단계·메모를 바꿀 때 카드가 맨 위로 튀지 않게), 새 공고만 맨 앞에 둔다.
-      const next = { ...item, emailEnabled: false };
+      // 원본을 찾을 수 없게 된 공고는 처음 저장한 단지명·일정을 지키도록 기존 요약을 그대로 둔다.
+      const saved = current.find(x => x.id === item.id);
+      const next = { ...item, emailEnabled: false, ...(item.summary?.unavailable && saved?.summary ? { summary: saved.summary } : {}) };
       guest.getState().replace(current.some(x => x.id === item.id) ? current.map(x => (x.id === item.id ? next : x)) : [next, ...current]);
     }
     if (!existing) trackAction('favorite_add',item.id);
@@ -52,12 +54,24 @@ export function usePlanner() {
     if (userSeq) { await apiClient.delete(`/api/v1/me/favorites/${id}`); await client.invalidateQueries({ queryKey: key }); }
     else guest.getState().replace(guest.getState().items.filter(x => x.id !== id));
   }
+  /**
+   * 명시적 클릭으로만 가져온다. 계정 전환 시 비공개 메모가 자동 업로드되지 않는다.
+   * 원본이 사라진 공고·한도 초과로 한 건이 실패해도 나머지는 계속 가져오고 결과를 돌려준다.
+   */
   async function importGuest() {
-    // 명시적 클릭으로만 가져온다. 계정 전환 시 비공개 메모가 자동 업로드되지 않는다.
+    const result = { imported: 0, failed: 0, skipped: 0, lastError: null };
     for (const item of local) {
       if (useAuthStore.getState().user?.userSeq !== userSeq) throw Error('계정이 변경되었습니다. 다시 시도해 주세요.');
-      if (!items.some(x => x.id === item.id)) await save({ ...item, emailEnabled: false });
+      if (items.some(x => x.id === item.id)) continue;
+      if (item.summary?.unavailable) { result.skipped += 1; continue; }
+      try { await save({ ...item, emailEnabled: false }); result.imported += 1; }
+      catch (error) {
+        // 원본 공고가 사라진 항목(404)은 실패가 아니라 제외로 센다.
+        if (error.status === 404) result.skipped += 1;
+        else { result.failed += 1; result.lastError = error.message; }
+      }
     }
+    return result;
   }
   async function disableEmails() { if (useAuthStore.getState().user?.userSeq !== userSeq) throw Error('계정이 변경되었습니다. 다시 시도해 주세요.'); await apiClient.post('/api/v1/me/favorites/disable-emails', {}); await client.invalidateQueries({ queryKey: key }); }
   return { scope: userSeq || 'guest', items, guestCount: local.length, loggedIn: Boolean(userSeq), isLoading: Boolean(userSeq) && query.isLoading,

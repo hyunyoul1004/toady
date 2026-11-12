@@ -56,6 +56,9 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("image", Set.of("GET"), List.of("/api/v1/public/announcement-images/"), Set.of(), 120, 1500),
             new Rule("list", Set.of("GET"), List.of(), Set.of("/api/v1/announcements"), 300, 5000),
             new Rule("suggest", Set.of("GET"), List.of(), Set.of("/api/v1/announcements/suggestions"), 300, 5000),
+            // 유형별 목록(이전 API)도 통합 목록과 같은 한도를 둔다.
+            new Rule("type-list", Set.of("GET"), List.of(), Set.of(),
+                java.util.regex.Pattern.compile("^/api/v1/(apt|urban|remaining|public-rental|optional)/announcements$"), 300, 5000),
             new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
     }

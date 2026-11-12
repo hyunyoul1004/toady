@@ -9,7 +9,8 @@ function province(address) {const first=normalize(address).split(' ')[0];return 
 export function municipality(address) {
   const tokens=normalize(address).split(' ');
   if(province(address))tokens.shift();
-  return tokens.filter(x=>/^[가-힣]+[시군구]$/.test(x) && !/(지구|특구)$/.test(x)).slice(0,2);
+  // '검단신도시'·'혁신도시'·'○○지구'처럼 시·군·구로 끝나 보여도 행정구역이 아닌 이름은 뺀다(서버 AddressLocator와 같은 규칙).
+  return tokens.filter(x=>/^[가-힣]+[시군구]$/.test(x) && !/(지구|특구|도시)$/.test(x)).slice(0,2);
 }
 export function sameRegion(address,found) {
   const expected=province(address),cities=municipality(address);

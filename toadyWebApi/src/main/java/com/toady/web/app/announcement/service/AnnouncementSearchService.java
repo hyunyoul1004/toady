@@ -38,6 +38,10 @@ public class AnnouncementSearchService {
 
     public Page<?> search(AnnouncementType type, AnnouncementSearch search) {
         validateSearch(search);
+        // 아주 큰 페이지 번호로 무거운 OFFSET 조회를 반복하지 못하게 탐색 범위를 제한한다.
+        if (((long) search.page() + 1) * search.size() > 10_000) {
+            throw new IllegalArgumentException("공고 목록은 (page + 1) × size가 10000 이하인 범위에서 조회할 수 있습니다.");
+        }
         Pageable pageable = PageRequest.of(
                 search.page(),
                 search.size()

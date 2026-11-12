@@ -34,6 +34,14 @@ class AddressLocatorTest {
         assertTrue(locator("경기도 구리시 갈매동 400-7", new ArrayList<>()).locate(address).isEmpty(), "시·군이 다르면 확정하지 않는다");
         assertTrue(new AddressLocator((uri, h) -> { throw new AssertionError("키가 없으면 호출하지 않는다"); }, "").locate(address).isEmpty());
     }
+    @Test void newTownNamesAreNotTreatedAsMunicipalities() {
+        // '검단신도시'·'혁신도시'는 시·군·구가 아니므로 괄호 안 지번이 있으면 정확한 위치를 확인할 수 있어야 한다.
+        String address = "인천광역시 서구 검단신도시 AA21블록 (불로동 123)";
+        assertEquals(List.of("서구"), AddressLocator.municipality(address));
+        assertTrue(AddressLocator.parcelCandidates(address).contains("인천광역시 서구 불로동 123"));
+        assertTrue(AddressLocator.sameRegion(address, "인천 서구 불로동 123"));
+        assertTrue(AddressLocator.parcelCandidates("경기도 파주시 운정신도시 A1블록").isEmpty(), "지번이 없으면 여전히 확정하지 않는다");
+    }
     @Test void provinceAliasesMatchAndSameNamedCountiesDoNot() {
         assertTrue(AddressLocator.sameRegion("경기도 구리시 갈매동 100", "경기 구리시 갈매동 100"));
         assertFalse(AddressLocator.sameRegion("강원특별자치도 고성군 간성읍 100", "경남 고성군 고성읍 100"));

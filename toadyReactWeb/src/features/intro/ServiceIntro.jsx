@@ -2,13 +2,22 @@ import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { IconButton } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
+import { koreaToday } from '@/features/planner/plannerUtils';
 import './intro.css';
 
-const KEY = 'toady.introClosed';
-const read = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
+const KEY = 'toady.introClosed', FIRST = 'toady.introFirstSeen';
+/** 닫았거나, 처음 본 날이 지난 재방문이면 숨긴다. 처음 본 날은 기록해 둔다(저장소가 막히면 매번 보인다). */
+const read = () => {
+  try {
+    if (localStorage.getItem(KEY) === '1') return true;
+    const today = koreaToday(), first = localStorage.getItem(FIRST);
+    if (!first) { localStorage.setItem(FIRST, today); return false; }
+    return first !== today;
+  } catch { return false; }
+};
 
 /**
- * 처음 온 사람에게만 보이는 한 줄 소개. 닫으면 기억하고 다음부터는 화면에 보이지 않는 제목만 남긴다
+ * 처음 온 날에만 보이는 한 줄 소개(다음 날부터는 자동으로 숨김). 닫으면 바로 기억하고 다음부터는 화면에 보이지 않는 제목만 남긴다
  * (검색·화면 읽기 프로그램용). 기능 소개는 자주 묻는 질문의 'TOADY에서는 무엇을 할 수 있나요?'와 푸터에 둔다.
  */
 export default function ServiceIntro() {

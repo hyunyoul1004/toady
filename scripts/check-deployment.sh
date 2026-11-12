@@ -85,4 +85,16 @@ check_front() {
 }
 check_front / 200 || exit 1
 check_front /api/v1/planner/settings 200 || exit 1
+# 검색용 서버 페이지(사이트맵·이번 주 청약)가 앞단 nginx에서 SPA(index.html)로 잘못 넘어가지 않는지 본문 표식으로 확인한다.
+# 상태 코드는 SPA도 200이라 구분되지 않는다. 검색 노출 문제라 배포를 막지 않고 경고만 남긴다.
+check_server_page() {
+  path=$1
+  marker=$2
+  body=$(curl --silent --max-time 5 -H 'X-Toady-Check: server-page' --resolve "$public_host:443:127.0.0.1" "https://$public_host$path") || return 0
+  if ! printf '%s' "$body" | grep -q "$marker"; then
+    echo "WARNING: https://$public_host$path did not return the server-rendered page (marker missing). Check the nginx location for $path." >&2
+  fi
+}
+check_server_page /sitemap.xml 'sitemapindex'
+check_server_page /weekly "class='stats'"
 echo 'API, database connection, scheduler readiness, frontend, front nginx and container startup checks passed'

@@ -123,7 +123,8 @@ export const FindPassword = (props) => {
       setStatusMessage(null);
       const res = await authApi.confirmPasswordChange({
         userEmail,
-        certifyCode,
+        // 메일에서 복사할 때 섞이는 공백·줄바꿈·하이픈을 빼고 대문자로 맞춘다(코드는 영문 대문자·숫자).
+        certifyCode: String(certifyCode || '').replace(/[\s-]/g, '').toUpperCase(),
         userPassword,
         userPasswordConfirm
       });
@@ -278,7 +279,7 @@ export const FindPassword = (props) => {
             <TextField
               required
               fullWidth
-              placeholder="6자리 인증코드 입력"
+              placeholder="메일로 받은 인증코드 붙여넣기"
               value={inputData.certifyCode}
               onChange={(e) => setInputData((prev) => ({ ...prev, certifyCode: e.target.value }))}
               inputRef={codeRef}

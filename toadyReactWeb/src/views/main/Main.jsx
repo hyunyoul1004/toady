@@ -15,8 +15,8 @@ import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview'
 import AreaSubscribe from '@/features/planner/AreaSubscribe';
 import ServiceIntro from '@/features/intro/ServiceIntro';
 import '@/features/planner/planner.css';
-import { initialBrowseState, monthRange } from '@/features/planner/browseState';
-import { safeRead, isoDate } from '@/features/planner/plannerUtils';
+import { initialBrowseState, monthRange, readSupplyTypes, supplyTypesKey } from '@/features/planner/browseState';
+import { safeRead, isoDate, koreaToday } from '@/features/planner/plannerUtils';
 import { SubscriptionCalendar } from '@/views/main/calendar';
 import { SubscriptComment } from '@/views/main/subscriptComment';
 import SubscriptRate from '@/views/main/subscriptRate';
@@ -90,19 +90,15 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.regions', JSON.stringify(selectedRegions.map(r=>r.code))); } catch {} },[selectedRegions,detailOnly]);
 
   // 필터 파라미터 상태
+  // 공급유형 선택도 지역·검색어처럼 저장해 메뉴를 다녀와도 그대로 복원한다(8자리 Y/N, 잘못된 값은 모두 선택).
   const [paramInfo, setParamInfo] = useState(() => ({
-    rceptSe01: 'Y',
-    rceptSe02: 'Y',
-    rceptSe03: 'Y',
-    rceptSe04: 'Y',
-    rceptSe05: 'Y',
-    rceptSe06: 'Y',
-    rceptSe07: 'Y',
-    rceptSe08: 'Y',
+    ...readSupplyTypes({getItem:key=>localStorage.getItem(key)}),
     startStr: initialBrowse.startStr,
     endStr: initialBrowse.endStr,
     citys: readSearchTargets({getItem:key=>localStorage.getItem(key)},FLAT_CITY_OPTIONS)
   }));
+  const supplyFromEntry = useRef(false);
+  useEffect(() => { if(detailOnly || supplyFromEntry.current)return;try { localStorage.setItem('toady.supplyTypes',JSON.stringify(supplyTypesKey(paramInfo))); } catch {} },[paramInfo,detailOnly]);
   useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.searchAreas',JSON.stringify(normalizeSearchTargets(paramInfo.citys))); } catch {} },[paramInfo.citys,detailOnly]);
 
   // 캘린더 특정 날짜로 강제 이동 요청 (전체 기간 아파트 선택, 생활권·모음 페이지 진입 시 사용).
@@ -114,7 +110,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     const range = monthRange(calendarMonth);
     setParamInfo(previous => previous.startStr === range.startStr && previous.endStr === range.endStr ? previous : {...previous,...range});
     if(detailOnly)return;
-    try { localStorage.setItem('toady.calendarMonth',JSON.stringify(calendarMonth)); } catch {}
+    try { localStorage.setItem('toady.calendarMonth',JSON.stringify(calendarMonth)); localStorage.setItem('toady.calendarMonthDay',JSON.stringify(koreaToday())); } catch {}
   },[calendarMonth,detailOnly]);
   useEffect(() => { const date=isoDate(jumpToDate?.date); if (date) setCalendarMonth(date.slice(0,7)); },[jumpToDate]);
 
@@ -143,8 +139,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     const area = Array.isArray(livingAreaQuery.data) ? livingAreaQuery.data.find(item => item.slug === areaSlug) : null;
     const month = searchParams.get('month');
     if (area) {
-      setSelectedRegions(ALL_REGIONS);
-      setSearchInputValue('');
+      // 생활권 페이지에서 온 건수와 맞도록 저장된 유형·지역 조건 없이 그 생활권만 보여 준다.
+      resetForEntry();
       setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([{ type:'living_area', label:area.label, key:`area_${area.label}`, terms:area.terms }]) }));
       // 달력은 첫 표시 월만 받아 두므로, 검색 결과 이동과 같은 jumpToDate 경로로 월을 옮긴다.
       if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) requestJumpToDate(`${month}-01`);
@@ -160,31 +156,36 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   const entryMonth = detailOnly || areaSlug ? null : searchParams.get('month');
   // 검색엔진의 사이트 검색 상자(index.html SearchAction: /?search=검색어)로 들어오면 그 검색어로 한 번 검색한다.
   const entrySearch = detailOnly || areaSlug ? null : (searchParams.get('search') || '').trim().slice(0, 50);
+  // 진입 조건(검색어·유형·월)은 한 효과에서 함께 적용하고 주소에서 한 번에 지운다(따로 지우면 나중 호출이 앞의 삭제를 되돌린다).
   useEffect(() => {
-    if (!entrySearch) return;
-    setSelectedRegions(ALL_REGIONS);
-    setSearchInputValue('');
-    setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([entrySearch]) }));
-    const next = new URLSearchParams(searchParams);
-    next.delete('search');
-    setSearchParams(next, { replace:true, state:location.state });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entrySearch]);
-  useEffect(() => {
-    if (!entryFocus && !entryMonth) return;
+    if (!entrySearch && !entryFocus && !entryMonth) return;
+    if (entrySearch) {
+      // 지역별 청약·사이트 검색에서 온 검색은 저장된 유형·지역 조건 없이 그 검색어만으로 보여 준다(건수가 맞도록).
+      resetForEntry();
+      // '경기도 파주시'처럼 검색 목록의 지역 이름이면 지역 검색으로, 아니면 검색어로 적용한다.
+      setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([entrySearch], FLAT_CITY_OPTIONS) }));
+    }
+    // 이번 주 청약 등에서 '캘린더에서 보기'로 오면 예전에 저장한 검색 조건 대신 전체 공고로 보여 준다(건수가 맞도록).
+    if (entryFocus === 'all') resetForEntry();
     if (entryFocus === 'unranked') {
       setSelectedRegions(ALL_REGIONS);
       setSearchInputValue('');
+      // 진입으로 적용한 유형은 저장하지 않는다(다음에 그냥 열었을 때 무순위만 보이지 않게). 사용자가 직접 바꾸면 그때부터 저장한다.
+      supplyFromEntry.current = true;
       setParamInfo(previous => ({ ...previous, citys: [], ...Object.fromEntries(Array.from({length:8},(_,index)=>{const key=String(index+1).padStart(2,'0');return [`rceptSe${key}`,UNRANKED_RCEPT_SE.includes(key)?'Y':'N'];})) }));
     }
     if (/^\d{4}-(0[1-9]|1[0-2])$/.test(entryMonth || '')) requestJumpToDate(`${entryMonth}-01`);
     const next = new URLSearchParams(searchParams);
-    next.delete('focus'); next.delete('month');
+    next.delete('search'); next.delete('focus'); next.delete('month');
     setSearchParams(next, { replace:true, state:location.state });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryFocus, entryMonth]);
+  }, [entrySearch, entryFocus, entryMonth]);
 
+  // 진입 링크(지역별 청약·생활권·'캘린더에서 보기')로 조건을 비울 때는 이번 화면에만 적용하고,
+  // 사용자가 저장해 둔 공급유형 선택은 덮어쓰지 않는다(사용자가 유형을 직접 바꾸거나 '초기화'를 누를 때만 저장).
+  const resetForEntry = () => { resetBrowseFilters(); supplyFromEntry.current = true; };
   const resetBrowseFilters = () => {
+    supplyFromEntry.current = false;
     setSelectedRegions(ALL_REGIONS);
     setSearchInputValue('');
     setParamInfo(previous=>({...previous,citys:[],...Object.fromEntries(Array.from({length:8},(_,index)=>[`rceptSe${String(index+1).padStart(2,'0')}`,'Y']))}));
@@ -389,6 +390,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             <AnnouncementFilters
               paramInfo={paramInfo}
               setParamInfo={setParamInfo}
+              // 사용자가 공급유형을 직접 바꿨을 때만 진입으로 적용한 유형을 저장 대상으로 돌린다(검색어 변경은 해당 없음).
+              onSupplyTouched={() => { supplyFromEntry.current = false; }}
               selectedRegions={selectedRegions}
               setSelectedRegions={setSelectedRegions}
               allSearchOptions={allSearchOptions}

@@ -43,8 +43,8 @@ public final class PriceGapRules {
     /** 1천만원 단위 반올림: 12,345 → 1.2억, 4,800 → 5,000만원. */
     public static String roughEok(long manwon) {
         long value = Math.abs(Math.round(manwon / 1000.0) * 1000);
-        if (value < 10000) return value == 0 ? "0원" : String.format("%,d만원", value);
-        String eok = String.format("%.1f", value / 10000.0);
+        if (value < 10000) return value == 0 ? "0원" : String.format(Locale.ROOT, "%,d만원", value);
+        String eok = String.format(Locale.ROOT, "%.1f", value / 10000.0);
         return (eok.endsWith(".0") ? eok.substring(0, eok.length() - 2) : eok) + "억";
     }
     /**

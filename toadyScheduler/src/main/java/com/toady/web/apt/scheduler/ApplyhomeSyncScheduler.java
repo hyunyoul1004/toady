@@ -26,6 +26,9 @@ public class ApplyhomeSyncScheduler {
     private final ApplyhomeCompetitionSyncService competitionSyncService;
     private final int lookbackDays;
     private final Clock clock;
+    /** 관리자 기능을 끈 정적 모드에서 잠금에 걸린 경쟁률 수집을 한 번 더 돌리는 데 쓴다(없으면 재시도하지 않는다). */
+    @Autowired(required = false) private org.springframework.scheduling.TaskScheduler retryScheduler;
+    static final java.time.Duration BUSY_RETRY = java.time.Duration.ofMinutes(10);
 
     @Autowired
     public ApplyhomeSyncScheduler(ApplyhomeSyncService syncService,
@@ -52,10 +55,21 @@ public class ApplyhomeSyncScheduler {
     }
 
     @Scheduled(cron = "${applyhome.competition.scheduler.cron:0 15 4,20 * * *}", zone = "Asia/Seoul")
-    public void synchronizeCompetition() {
+    public void synchronizeCompetition() { runCompetition(true); }
+
+    void runCompetition(boolean retryWhenBusy) {
         LocalDate today = LocalDate.now(clock);
         log.info("Starting competition sync from {} through {} at {}", today.minusDays(lookbackDays), today, Instant.now(clock));
-        competitionSyncService.synchronize(today.minusDays(lookbackDays), today);
+        try {
+            competitionSyncService.synchronize(today.minusDays(lookbackDays), today);
+        } catch (com.toady.web.apt.service.ApplyhomeSyncBusyException busy) {
+            // 공고 수집이 길어져 잠금이 남아 있으면 이번 회차를 버리지 않고 한 번만 뒤에 다시 시도한다.
+            if (retryWhenBusy && retryScheduler != null) {
+                log.warn("Competition sync is busy; retrying once in {} minutes", BUSY_RETRY.toMinutes());
+                retryScheduler.schedule(() -> runCompetition(false), Instant.now().plus(BUSY_RETRY));
+            } else log.warn("Competition sync skipped because another sync holds the lock");
+            return;
+        }
         log.info("Completed competition sync at {}", Instant.now(clock));
     }
 }

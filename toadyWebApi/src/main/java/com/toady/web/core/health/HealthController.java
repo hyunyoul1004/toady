@@ -30,7 +30,10 @@ public class HealthController {
     /** API가 쓰는 운영 테이블(database.sql 구역 번호). 배포 확인 스크립트가 빠진 테이블을 경고로 알려 준다. */
     static final List<String> REQUIRED_TABLES = List.of(
             "TB_USER", "TB_CERTIFY", "TB_LTTOT_PBLANC_COMMENT", "TB_PAGE_VIEW", "TB_FAVORITE", "TB_MAIL_BUDGET", "TB_MAIL_ATTEMPT",
-            "TB_REMINDER_DELIVERY", "TB_USAGE_EVENT", "TB_CALENDAR_FEED", "TB_RATE_POLL", "TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN");
+            "TB_REMINDER_DELIVERY", "TB_USAGE_EVENT", "TB_CALENDAR_FEED", "TB_RATE_POLL", "TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN", "TB_PRICE_GAP");
+    /** 나중에 추가한 컬럼(database.sql 10·15·16번). 빠지면 'TB_X.COLUMN' 형태로 알린다. */
+    static final List<String[]> REQUIRED_COLUMNS = List.of(
+            new String[]{"TB_PAGE_VIEW", "REFERRER_HOST"}, new String[]{"TB_PUSH_AREA_SEEN", "LAST_SEEN_DT"}, new String[]{"TB_FAVORITE", "STAGE"});
 
     /**
      * 빠진 테이블 목록. 앞단 nginx가 /internal을 외부로 내보내지 않아 서버 안(127.0.0.1:8080)에서만 호출된다.
@@ -50,6 +53,16 @@ public class HealthController {
                         }
                     }
                     if (!found) absent.add(table);
+                }
+                for (String[] column : REQUIRED_COLUMNS) {
+                    if (absent.contains(column[0])) continue;
+                    boolean found = false;
+                    for (String[] name : List.of(column, new String[]{column[0].toLowerCase(java.util.Locale.ROOT), column[1].toLowerCase(java.util.Locale.ROOT)})) {
+                        try (var rows = meta.getColumns(connection.getCatalog(), connection.getSchema(), name[0], name[1])) {
+                            if (rows.next()) { found = true; break; }
+                        }
+                    }
+                    if (!found) absent.add(column[0] + "." + column[1]);
                 }
                 return absent;
             });

@@ -107,14 +107,13 @@ public class EligibilityFeed {
         // 미리 계산한 주변 시세 비교(database.sql 18번)를 붙인다. 없으면 null이고 화면은 뱃지를 숨긴다.
         Map<String, PriceGapStore.Gap> gaps = gapStore.forIds(built.stream().map(Item::id).toList());
         List<Item> items = built.stream().map(item -> {
-            PriceGapStore.Gap gap = gaps.get(item.id());
-            return item.withGap(gap != null && gap.matches(PriceGapSnapshots.supplies(item)) ? gap : null);
+            // 분양가가 바뀐 공고는 gapStore.forIds가 이미 빼고 돌려준다.
+            return item.withGap(gaps.get(item.id()));
         }).toList();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("checkedAt", clock.instant().toString());
         body.put("today", today.toString());
         body.put("items", items);
-        body.put("winnersThisWeek", winnersThisWeek(today));
         return body;
     }
 
@@ -165,14 +164,4 @@ public class EligibilityFeed {
         return digits.length() >= 6 ? digits.substring(0, 4) + "-" + digits.substring(4, 6) : null;
     }
 
-    /** 이번 주(월~일) 당첨자를 발표하는 아파트 공고 수. 메인 '오늘의 요약'에 쓰며 /weekly 페이지와 같은 기준(APT)이다. */
-    int winnersThisWeek(LocalDate today) {
-        LocalDate monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
-        var format = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
-        try {
-            Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_DETAIL WHERE REPLACE(PRZWNER_PRESNATN_DE,'-','') BETWEEN ? AND ?",
-                Integer.class, monday.format(format), monday.plusDays(6).format(format));
-            return count == null ? 0 : count;
-        } catch (org.springframework.dao.DataAccessException unavailable) { return 0; }
-    }
 }

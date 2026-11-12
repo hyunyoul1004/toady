@@ -156,7 +156,7 @@ test('FAQ 답 문장: 문단 나누기와 허용된 링크만 변환', async () 
   assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr', external: true });
   // 검색용 서버 페이지 경로는 같은 내용의 앱 화면으로 연다(사이드바·하단 탭 유지). 그 밖의 서버 경로는 일반 링크.
   assert.deepEqual(answerParts('[이번 주 청약](/weekly)')[0][0], { text: '이번 주 청약', to: '/this-week' });
-  assert.deepEqual(answerParts('[생활권별](/areas)')[0][0], { text: '생활권별', to: '/living-areas' });
+  assert.deepEqual(answerParts('[생활권별](/areas)')[0][0], { text: '생활권별', to: '/regions' });
   assert.deepEqual(answerParts('[운정](/areas/unjeong)')[0][0], { text: '운정', to: '/?area=unjeong' });
   assert.deepEqual(answerParts('[줍줍](/zupzup)')[0][0], { text: '줍줍', to: '/match/zupzup' });
   assert.deepEqual(answerParts('[FAQ](/help/faq)')[0][0], { text: 'FAQ', href: '/help/faq' });
@@ -190,8 +190,8 @@ test('시세 비교 방향: 서버와 같은 경계(0을 가로지르거나 1천
 test('메뉴: 공용 이름·활성 판정·같은 탭 다시 누르기', async () => {
   const { MAIN_NAV, MORE_NAV, isNavActive, isMoreActive, retapAction } = await import('../src/components/layout/navItems.js');
   assert.deepEqual(MAIN_NAV.map(item => item.label), ['청약 캘린더', '맞춤 청약', '가점 계산기', '나의 청약']);
-  assert.deepEqual(MORE_NAV.map(item => item.label), ['이번 주 청약', '생활권별 청약', '자주 묻는 질문', '알림 설정']);
-  assert.deepEqual(MORE_NAV.map(item => item.path), ['/this-week', '/living-areas', '/faq', '/my'], '더보기는 모두 앱 안 화면(서버 HTML로 전환하지 않음)');
+  assert.deepEqual(MORE_NAV.map(item => item.label), ['이번 주 청약', '지역별 청약', '자주 묻는 질문', '알림 설정']);
+  assert.deepEqual(MORE_NAV.map(item => item.path), ['/this-week', '/regions', '/faq', '/my'], '더보기는 모두 앱 안 화면(서버 HTML로 전환하지 않음)');
   assert.equal(isMoreActive('/this-week'), true);
   assert.equal(retapAction('/', { pathname: '/this-week', search: '?subscriptSeq=apt/1/1', state: { weeklyDetail: true } }), 'push');
   assert.equal(isNavActive('/', '/announcements/apt/1/2'), true, '공유 상세 주소는 캘린더 탭');
@@ -211,8 +211,11 @@ test('오늘의 요약 숫자', async () => {
   const { summaryNumbers } = await import('../src/features/planner/todaySummaryRules.js');
   const items = [{ type: 'apt', status: 'OPEN' }, { type: 'remaining', status: 'OPEN' }, { type: 'optional', status: 'UPCOMING' }];
   const ranked = [{ item: { status: 'OPEN' }, result: { best: 'ok' } }, { item: { status: 'UPCOMING' }, result: { best: 'check' } }, { item: { status: 'OPEN' }, result: { best: 'no' } }];
-  assert.deepEqual(summaryNumbers({ items, ranked, winners: 4 }), { winners: 4, zupzup: 2, zupzupOpen: 1, possible: 2, possibleOpen: 1 });
-  assert.equal(summaryNumbers({ winners: undefined }).winners, 0, '서버가 아직 값을 주지 않으면 0');
+  const weekly = { current: [{ status: 'OPEN' }, { status: 'CLOSED' }, { status: 'OPEN' }], winners: [{}, {}, {}, {}] };
+  assert.deepEqual(summaryNumbers({ items, ranked, weekly }), { openToday: 2, winners: 4, zupzup: 2, zupzupOpen: 1, possible: 2, possibleOpen: 1 });
+  assert.equal(summaryNumbers({}).winners, 0, '이번 주 데이터를 아직 받지 못하면 0');
+  const { todayLabel } = await import('../src/features/planner/todaySummaryRules.js');
+  assert.equal(todayLabel('2026-11-13'), '11월 13일 (금)', '기기 시간대와 상관없이 한국 날짜');
 });
 
 test('이번 주 청약 화면: 날짜·유형 이름·정렬', async () => {
@@ -224,4 +227,43 @@ test('이번 주 청약 화면: 날짜·유형 이름·정렬', async () => {
   assert.equal(TYPE_NAME.remaining, '무순위', '달력·공급유형 필터와 같은 이름');
   assert.deepEqual(byStatus([{ status: 'CLOSED', start: '2026-11-09' }, { status: 'UPCOMING', start: '2026-11-15' }, { status: 'OPEN', start: '2026-11-12' }, { status: 'OPEN', start: '2026-11-10' }]).map(item => item.start),
     ['2026-11-10', '2026-11-12', '2026-11-15', '2026-11-09']);
+});
+
+test('지역별 청약: 주소를 검색 목록과 같은 시·도/시·군·구로 묶기', async () => {
+  const { regionOf, groupByRegion, searchLabel } = await import('../src/features/explore/regionRules.js');
+  assert.deepEqual(regionOf('경기도 파주시 동패동 1'), { cityName: '경기도', districtName: '파주시' });
+  assert.deepEqual(regionOf('서울시 강동구 고덕동'), { cityName: '서울특별시', districtName: '강동구' }, '줄임말 시·도');
+  assert.deepEqual(regionOf('경상남도 창원시 성산구 상남동'), { cityName: '경상남도', districtName: '창원시 성산구' }, '긴 이름을 먼저');
+  assert.deepEqual(regionOf('충북 청주시 흥덕구 1'), regionOf('충청북도 청주시 흥덕구 1'));
+  assert.deepEqual(regionOf('세종특별자치시 산울동 1'), { cityName: '세종특별자치시', districtName: null }, '시·도와 같은 이름의 구분은 시·도로만');
+  assert.deepEqual(regionOf('고덕강일지구 3블록', '서울'), { cityName: '서울특별시', districtName: null }, '주소에 시·도가 없으면 공급지역명');
+  assert.equal(regionOf('', ''), null);
+  const grouped = groupByRegion([
+    { address: '경기도 파주시 1', status: 'OPEN' }, { address: '경기도 파주시 2', status: 'UPCOMING' }, { address: '경기도 화성시 1', status: 'OPEN' },
+    { address: '제주특별자치도 제주시 1', status: 'UPCOMING' }, { address: '알 수 없음', region: '' }
+  ]);
+  assert.deepEqual(grouped.cities.map(city => [city.cityName, city.total, city.open]), [['경기도', 3, 2], ['제주특별자치도', 1, 0]]);
+  assert.deepEqual(grouped.cities[0].districts.map(item => [item.districtName, item.total]), [['파주시', 2], ['화성시', 1]]);
+  assert.equal(grouped.other, 1);
+  assert.equal(searchLabel('경기도', '파주시'), '경기도 파주시');
+});
+
+test('지역별 청약: 캘린더에서 열 달과 시·도가 아닌 첫 낱말', async () => {
+  const { regionOf, groupByRegion } = await import('../src/features/explore/regionRules.js');
+  assert.equal(regionOf('광주시 오포읍 1', '경기').cityName, '경기도', "'광주시'를 광주광역시로 추정하지 않고 공급지역명을 먼저 본다");
+  const { cities } = groupByRegion([{ address: '경기도 파주시 1', status: 'UPCOMING', start: '2026-12-02' }, { address: '경기도 파주시 2', status: 'UPCOMING', start: '2027-01-05' }], '2026-11-13');
+  assert.equal(cities[0].month, '2026-12', '접수 예정만 있으면 가장 이른 접수 시작 달');
+  assert.equal(cities[0].districts[0].month, '2026-12');
+  assert.equal(groupByRegion([{ address: '경기도 파주시 1', status: 'OPEN', start: '2026-10-01', end: '2026-11-30' }], '2026-11-13').cities[0].month, '2026-10',
+    '지난달에 시작한 접수 중 공고는 시작 달로 연다(캘린더는 접수 시작일로 조회하므로 이번 달로 열면 보이지 않는다)');
+});
+
+test('캘린더 지역 검색: 같은 이름의 구·글자 포함으로 다른 지역이 섞이지 않음', async () => {
+  const { matchesRegionTarget } = await import('../src/features/explore/regionRules.js');
+  const busanNamgu = { cityName: '부산광역시', districtName: '남구' }, incheonJunggu = { cityName: '인천광역시', districtName: '중구' };
+  assert.equal(matchesRegionTarget({ hssplyAdres: '서울특별시 강남구 개포동 1' }, busanNamgu), false, "'강남구'는 '남구'가 아니다");
+  assert.equal(matchesRegionTarget({ hssplyAdres: '부산광역시 남구 대연동 1' }, busanNamgu), true);
+  assert.equal(matchesRegionTarget({ hssplyAdres: '서울특별시 중구 신당동 1' }, incheonJunggu), false, '다른 시·도의 같은 이름 구');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '경기 파주시 동패동 1' }, { cityName: '경기도' }), true, '줄임말 시·도');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '파주운정3지구 A1블록', regionName: '경기' }, { cityName: '경기도', districtName: '파주시' }), false, '주소에 구·시가 없으면 단정하지 않는다');
 });

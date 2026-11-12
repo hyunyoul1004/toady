@@ -200,3 +200,19 @@ export function summarizeRates(type,list=[]) {
     appLabel:type==='apt'?'1·2순위 접수 합계':'접수 건수'
   };
 }
+
+/**
+ * 주택형의 청약 결과 문구. APT 경쟁률 자료에는 결과 이름이 없어 접수 자료로만 판단하며, 확실하지 않으면 단정하지 않는다.
+ * - 2순위 행에 접수가 있으면 '2순위 접수'
+ * - 1순위 접수가 있고 어느 행에도 미달 표기가 없으면 '1순위 마감'
+ * - 1순위에 미달 표기가 있으면 '1순위 미달'
+ * - 그 밖에는 '-'
+ */
+export function resultLabel(itemsByRank = {}) {
+  const second = itemsByRank['2순위'] || [], first = itemsByRank['1순위'] || [];
+  if (second.some(row => toCount(row.reqCnt) > 0)) return '2순위 접수';
+  const firstApplied = first.some(row => toCount(row.reqCnt) > 0);
+  if (!firstApplied) return '-';
+  if (first.some(row => parseRate(row.cmpetRate, row.reqCnt).kind === 'shortage')) return '1순위 미달';
+  return '1순위 마감\n(청약 접수 종료)';
+}

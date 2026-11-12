@@ -19,7 +19,7 @@ function Copyright() {
         <RouterLink to="/score">가점 계산기</RouterLink>
         <RouterLink to="/match/zupzup">무순위·줍줍</RouterLink>
         <RouterLink to="/this-week">이번 주 청약</RouterLink>
-        <RouterLink to="/living-areas">생활권별 청약</RouterLink>
+        <RouterLink to="/regions">지역별 청약</RouterLink>
         <RouterLink to="/faq">자주 묻는 질문</RouterLink>
       </nav>
       <nav className="site-footer-links is-policy" aria-label="정책">

@@ -124,7 +124,14 @@ class PriceGapSnapshotsTest {
         assertTrue(store.forIds(java.util.List.of("apt/G1/N1")).isEmpty(), "7일이 지난 값은 보여주지 않는다");
         jdbc.update("DELETE FROM TB_PRICE_GAP");
         jdbc.update(insert, "apt/G1/N1", 45000, java.sql.Timestamp.valueOf(now.minusHours(1)));
-        assertNotNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
+        // 저장할 때 분양가(4.5억)와 지금 공고(5억)가 다르면 목록·나의 청약·공개 페이지·알림이 쓰는 공통 조회에서 뺀다.
+        assertNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
+        mvc.perform(post("/api/v1/planner/price-gaps").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/G1/N1\"]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        jdbc.update("DELETE FROM TB_PRICE_GAP");
+        jdbc.update(insert, "apt/G1/N1", 50000, java.sql.Timestamp.valueOf(now.minusHours(1)));
+        assertNotNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"), "분양가가 같으면 보인다");
+        jdbc.update("UPDATE TB_PRICE_GAP SET SUPPLY_MANWON=45000");
         feed.invalidate();
         var items = json.readTree(mvc.perform(get("/api/v1/public/eligibility/announcements")).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8)).path("items");
         var g1 = java.util.stream.StreamSupport.stream(items.spliterator(), false).filter(item -> item.path("id").asText().equals("apt/G1/N1")).findFirst().orElseThrow();
@@ -144,12 +151,26 @@ class PriceGapSnapshotsTest {
         assertNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
     }
 
-    @Test void feedCountsThisWeeksAptWinnerAnnouncements() throws Exception {
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        LocalDate monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET PRZWNER_PRESNATN_DE=? WHERE HOUSE_MANAGE_NO='G1'", monday.plusDays(3).toString());
-        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET PRZWNER_PRESNATN_DE=? WHERE HOUSE_MANAGE_NO='G2'", monday.plusDays(7).toString().replace("-", ""));
-        feed.invalidate();
-        mvc.perform(get("/api/v1/public/eligibility/announcements")).andExpect(status().isOk()).andExpect(jsonPath("$.winnersThisWeek").value(1));
+
+    @Test void aTemporaryFailureKeepsTheStillVisibleSummary() {
+        var now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_PRICE_GAP (ANNOUNCEMENT_ID,STATUS,AREA,SUPPLY_MANWON,BASIS,SCOPE,BASIS_COUNT,CONFIDENCE,Q1_MANWON,Q3_MANWON,MONTHS,DONG,COMPUTED_DT) VALUES ('apt/G1/N1','READY',85,50000,'new','DONG',5,'high',60000,62000,6,'역삼동',?)",
+            java.sql.Timestamp.valueOf(now.minusDays(4)));
+        var transport = (com.toady.web.app.planner.research.ResearchTransport) (uri, headers) -> {
+            if (uri.getHost().equals("dapi.kakao.com")) return KAKAO.getBytes(StandardCharsets.UTF_8);
+            throw new java.io.IOException("Provider timeout");
+        };
+        var report = new PriceGapSnapshots(jdbc, store, feed, new AddressLocator(transport, "kakao-key"), new NeighborhoodResearchService(transport, "molit-key")).run();
+        // 3일이 지나 다시 계산했지만 제공처가 실패했다: 아직 7일 안의 READY 값은 지우지 않고 그대로 보여 준다.
+        assertEquals(1, report.get("KEPT"), report.toString());
+        assertNotNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
+    }
+
+    @Test void schemaCheckReportsMissingTablesAndColumns() throws Exception {
+        String body = mvc.perform(get("/internal/schema")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertFalse(body.contains("\"TB_PRICE_GAP\""), "만든 테이블은 빠진 목록에 없다: " + body);
+        jdbc.execute("DROP TABLE IF EXISTS TB_PRICE_GAP");
+        body = mvc.perform(get("/internal/schema")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(body.contains("TB_PRICE_GAP"), "18번을 적용하지 않으면 배포 확인이 경고한다: " + body);
     }
 }

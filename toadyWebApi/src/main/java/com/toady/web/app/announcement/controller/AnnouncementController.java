@@ -72,7 +72,7 @@ public class AnnouncementController {
     )
     public ResponseEntity<ResData<List<AnnouncementSuggestionResponse>>> suggestions(
             @Parameter(description = "검색 키워드 (공백이면 빈 목록 반환)", example = "자이")
-            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @jakarta.validation.constraints.Size(max = 50) String keyword,
             @Parameter(description = "최대 반환 건수 (1~20)", example = "10")
             @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
     ) {

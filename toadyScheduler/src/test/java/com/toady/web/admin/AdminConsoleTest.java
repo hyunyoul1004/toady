@@ -224,6 +224,32 @@ class AdminConsoleTest {
         verify(competition, times(2)).synchronize(start, end);
     }
 
+    @Test void keepsAPartialAnnouncementFailureAcrossABusyCompetitionRetry() {
+        LocalDate start = LocalDate.of(2019, 3, 1), end = LocalDate.of(2019, 3, 2);
+        doThrow(new com.toady.web.apt.service.ApplyhomeSyncService.PartialFailureException("주택형 수집 중 1건 실패(나머지는 저장됨): A/1"))
+                .when(announcements).synchronize(start, end);
+        doThrow(new com.toady.web.apt.service.ApplyhomeSyncBusyException()).doNothing().when(competition).synchronize(start, end);
+        String id = jobs.submit(JobKind.ALL, start, end, "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(10)).until(() -> !repository.find(id).orElseThrow().isActive());
+        var job = repository.find(id).orElseThrow();
+        // 경쟁률을 잠금 대기 후 다시 돌려도 앞 단계의 일부 실패를 성공으로 덮지 않는다.
+        assertEquals("FAILED", job.status());
+        assertTrue(job.message().contains("일부 공고만 실패") && job.message().contains("A/1"), job.message());
+        verify(competition, times(2)).synchronize(start, end);
+    }
+
+    @Test void aPartialFailureInAnOldMonthDoesNotSkipLaterMonths() {
+        LocalDate start = LocalDate.of(2018, 1, 20), end = LocalDate.of(2018, 2, 3);
+        doThrow(new com.toady.web.apt.service.ApplyhomePartialFailureException("경쟁률 수집 중 1건 실패(나머지는 저장됨): B/2"))
+                .when(competition).synchronize(LocalDate.of(2018, 1, 20), LocalDate.of(2018, 1, 31));
+        String id = jobs.submit(JobKind.COMPETITION, start, end, "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(10)).until(() -> !repository.find(id).orElseThrow().isActive());
+        // 1월 구간이 일부 실패해도 2월 구간을 수집하고, 끝에서 실패를 알린다.
+        verify(competition).synchronize(LocalDate.of(2018, 2, 1), LocalDate.of(2018, 2, 3));
+        assertEquals("FAILED", repository.find(id).orElseThrow().status());
+        assertTrue(repository.find(id).orElseThrow().message().contains("2018-01-20~2018-01-31"));
+    }
+
     @Test void redirectsStayRelativeBehindTheHttpsProxy() throws Exception {
         var cookies = new java.net.CookieManager();
         var client = java.net.http.HttpClient.newBuilder().cookieHandler(cookies)

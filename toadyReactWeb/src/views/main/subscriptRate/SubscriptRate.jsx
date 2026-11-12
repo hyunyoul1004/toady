@@ -4,7 +4,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
-import { formatCount, formatUnit, normalizeRateRows, rankLabel, summarizeRates } from './rateFormat';
+import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, summarizeRates } from './rateFormat';
 /**
  * @file SubscriptRate.jsx
  * @description 청약 경쟁률, 당첨 가점 및 특별공급 신청 현황 테이블 컴포넌트
@@ -189,20 +189,8 @@ export function SubscriptRate({ subscriptDetail }) {
       );
 
       // 3) 청약 결과 문구 산출
-      let resultText = g.subscrptResultNm;
-      if (!resultText) {
-        const firstRankItems = g.itemsByRank['1순위'] || [];
-        const totalReqFirst = firstRankItems.reduce((acc, cur) => acc + (Number(cur.reqCnt) || 0), 0);
-        const suply = Number(g.suplyHshldco) || 0;
-
-        if (totalReqFirst >= suply && suply > 0) {
-          resultText = '1순위 마감\n(청약 접수 종료)';
-        } else if (totalReqFirst > 0) {
-          resultText = '2순위 접수';
-        } else {
-          resultText = '-';
-        }
-      }
+      // 접수 건수가 공급 세대수를 넘어도 예비입주자 몫이 모자라 2순위가 열릴 수 있어, 접수 자료로만 판단한다(rateFormat.resultLabel).
+      const resultText = g.subscrptResultNm || resultLabel(g.itemsByRank);
 
       return {
         ...g,

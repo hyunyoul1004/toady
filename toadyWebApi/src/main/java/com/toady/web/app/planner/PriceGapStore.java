@@ -37,8 +37,37 @@ public class PriceGapStore {
                         PriceGapRules.tone(low, high), PriceGapRules.text(low, high), r.getTimestamp("COMPUTED_DT").toLocalDateTime().toLocalDate().toString()));
                 }, java.util.stream.Stream.concat(java.util.stream.Stream.of((Object) java.sql.Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(SHOW_DAYS))), chunk.stream()).toArray());
             }
+            // 정정 공고로 분양가가 바뀌었으면 다시 계산할 때까지 숨긴다. 목록·공개 페이지·나의 청약·알림이 모두 이 경로를 쓴다.
+            Map<String, Map<Integer, Long>> current = currentSupplies(out.keySet());
+            out.values().removeIf(gap -> !gap.matches(current.getOrDefault(gap.id(), Map.of())));
             return out;
         } catch (DataAccessException unavailable) { return Map.of(); }
+    }
+
+    static final Map<String, String> MODEL_TABLES = Map.of("apt", "TB_APT_LTTOT_PBLANC_MDL", "remaining", "TB_REMNDR_LTTOT_PBLANC_MDL", "optional", "TB_OPT_LTTOT_PBLANC_MDL");
+    /** 공고별 지금의 '전용면적(반올림) → 최고 공급금액'. 계산할 때와 같은 규칙(PriceGapSnapshots.supplies, 10㎡ 미만 제외)이다. */
+    Map<String, Map<Integer, Long>> currentSupplies(Collection<String> ids) {
+        Map<String, List<String[]>> byType = new HashMap<>();
+        for (String id : ids) {
+            String[] parts = id.split("/");
+            if (parts.length == 3 && MODEL_TABLES.containsKey(parts[0])) byType.computeIfAbsent(parts[0], key -> new ArrayList<>()).add(parts);
+        }
+        Map<String, Map<Integer, Long>> out = new HashMap<>();
+        byType.forEach((type, keys) -> {
+            for (int from = 0; from < keys.size(); from += 200) {
+                List<String[]> chunk = keys.subList(from, Math.min(keys.size(), from + 200));
+                String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
+                jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_TY,LTTOT_TOP_AMOUNT FROM " + MODEL_TABLES.get(type) + " WHERE HOUSE_MANAGE_NO IN (" + marks + ")",
+                    (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+                        var area = EligibilityFeed.area(r.getString(3));
+                        Integer amount = EligibilityFeed.number(r.getString(4));
+                        if (area == null || area.doubleValue() < 10 || amount == null || amount <= 0) return;
+                        out.computeIfAbsent(type + "/" + r.getString(1) + "/" + r.getString(2), key -> new HashMap<>())
+                            .merge((int) Math.round(area.doubleValue()), amount.longValue(), Math::max);
+                    }, chunk.stream().map(key -> (Object) key[1]).toArray());
+            }
+        });
+        return out;
     }
 
 }

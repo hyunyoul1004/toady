@@ -10,8 +10,12 @@ export function monthRange(month) {
 }
 export function initialBrowseState(storage, today = koreaToday(), preferredView = 'calendar') {
   const savedMonth = safeRead(storage, 'toady.calendarMonth', null);
-  const month = typeof savedMonth === 'string' && /^\d{4}-\d{2}$/.test(savedMonth) && isoDate(`${savedMonth}-01`)
-    ? savedMonth : today.slice(0,7);
+  const valid = typeof savedMonth === 'string' && /^\d{4}-\d{2}$/.test(savedMonth) && isoDate(`${savedMonth}-01`);
+  // 같은 날 메뉴를 오가면 보던 달을 그대로 복원하고, 다른 날 다시 오면 지난 달 대신 이번 달부터 보여 준다
+  // ('오늘 접수'처럼 오늘 기준 정보가 예전 달 조회 범위에 묶이지 않게).
+  const savedOn = safeRead(storage, 'toady.calendarMonthDay', null);
+  const stale = valid && savedMonth < today.slice(0,7) && savedOn !== today;
+  const month = valid && !stale ? savedMonth : today.slice(0,7);
   const savedView=safeRead(storage,'toady.viewMode',null);
   const viewMode=['calendar','list'].includes(savedView)?savedView:preferredView==='list'?'list':'calendar';
   return { month, viewMode, ...monthRange(month) };
@@ -36,4 +40,15 @@ export function calendarSelection(month,eventDates,today=koreaToday(),previous='
 /** 고른 달(YYYY-MM)에 일정(inDate)이 있는 공고를 공고 단위로 한 번씩. 목록 보기의 건수·목록이 쓴다. */
 export function uniqueInMonth(items = [], month = '') {
   return [...new Map(items.filter(x => String(x.inDate || '').startsWith(month)).map(x => [x.subscriptSeq, x])).values()];
+}
+
+const SUPPLY_CODES = ['01', '02', '03', '04', '05', '06', '07', '08'];
+/** 공급유형 선택 저장값('YYNY…' 8자리) → { rceptSe01: 'Y', … }. 없거나 잘못됐거나 모두 꺼져 있으면 모두 선택. */
+export function readSupplyTypes(storage) {
+  const saved = safeRead(storage, 'toady.supplyTypes', null);
+  const valid = typeof saved === 'string' && /^[YN]{8}$/.test(saved) && saved.includes('Y');
+  return Object.fromEntries(SUPPLY_CODES.map((code, index) => [`rceptSe${code}`, valid ? saved[index] : 'Y']));
+}
+export function supplyTypesKey(paramInfo) {
+  return SUPPLY_CODES.map(code => (paramInfo[`rceptSe${code}`] === 'N' ? 'N' : 'Y')).join('');
 }

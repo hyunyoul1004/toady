@@ -9,7 +9,7 @@ import './kakao.css';
 export default function Kakaomap({subscriptDetail:detail={}}) {
   const container=useRef(null),generation=useRef(0);
   const location=useAnnouncementLocation(detail);
-  const [manual,setManual]=useState(''),[manualResult,setManualResult]=useState(null),[manualError,setManualError]=useState(''),[searching,setSearching]=useState(false),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState('');
+  const [manual,setManual]=useState(''),[manualResult,setManualResult]=useState(null),[manualError,setManualError]=useState(''),[searching,setSearching]=useState(false),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState(''),[attempt,setAttempt]=useState(0);
   const result=manualResult || location.data;
   const precise=result?.status==='ADDRESS';
   const visible=precise || (showCandidate && result?.status==='CANDIDATE');
@@ -26,7 +26,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       if(typeof ResizeObserver!=='undefined'){observer=new ResizeObserver(()=>{map.relayout();map.setCenter(coords);});observer.observe(container.current);}
     }).catch(()=>{if(active)setMapError('지도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');});
     return()=>{active=false;observer?.disconnect();marker?.setMap(null);};
-  },[visible,result,precise]);
+  },[visible,result,precise,attempt]);
   useEffect(()=>()=>{generation.current++;},[]);
   async function search(e) {
     e.preventDefault();if(!manual.trim())return;
@@ -49,7 +49,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:2}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}
     {visible && <>
       <Alert severity={precise?'info':'warning'} sx={{mb:1}}>{manualResult?'직접 검색한 주소 · 공고의 확정 위치가 아닙니다':result.label} · {result.address}</Alert>
-      {mapError?<Alert severity="error">{mapError}</Alert>:<div ref={container} aria-label={precise?'공급 주소 기준 지도':'미확인 위치 검색 후보 지도'} style={{height:420,width:'100%',border:'1px solid #e2e8f0',borderRadius:8}}/>}
+      {/* 일시적인 네트워크 오류 뒤에도 탭을 나갔다 오지 않고 다시 불러올 수 있게 한다. */}
+      {mapError?<Alert severity="error" action={<Button color="inherit" size="small" onClick={()=>{setMapError('');setAttempt(value=>value+1);}}>다시 시도</Button>}>{mapError}</Alert>:<div ref={container} aria-label={precise?'공급 주소 기준 지도':'미확인 위치 검색 후보 지도'} style={{height:420,width:'100%',border:'1px solid #e2e8f0',borderRadius:8}}/>}
       <Typography variant="caption" color="text.secondary">표시 지점은 부지 경계·출입구를 뜻하지 않습니다.</Typography>
     </>}
     <Box component="form" onSubmit={search} sx={{mt:2,display:'flex',gap:1}}><TextField fullWidth size="small" label="지번·도로명으로 직접 확인" placeholder="예: 경기도 파주시 동패동 400-7" value={manual} onChange={e=>setManual(e.target.value)}/><Button type="submit" variant="outlined" disabled={searching || !manual.trim()} sx={{flexShrink:0}}>검색</Button></Box>

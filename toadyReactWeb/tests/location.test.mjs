@@ -13,6 +13,12 @@ test('block-only addresses never resolve to city, station or model-house markers
   assert.equal(result.status,'UNRESOLVED');assert.equal(sdk.calls.filter(x=>x[0]==='address').length,0);
  }
 });
+test('new-town names are not municipalities, so a bracketed parcel still resolves',()=>{
+ const address='인천광역시 서구 검단신도시 AA21블록 (불로동 123)';
+ assert.ok(parcelCandidates(address).includes('인천광역시 서구 불로동 123'));
+ assert.equal(sameRegion(address,'인천 서구 불로동 123'),true);
+ assert.deepEqual(parcelCandidates('경기도 파주시 운정신도시 A1블록'),[],'지번이 없으면 확정하지 않는다');
+});
 test('precise parcel, parentheses and municipality are validated together',async()=>{
  const detail={hssplyAdres:'경기도 파주시 운정3지구 (동패동 400-7번지 일원)',houseNm:'운정 단지'};
  assert.ok(parcelCandidates(detail.hssplyAdres).includes('경기도 파주시 동패동 400-7'));

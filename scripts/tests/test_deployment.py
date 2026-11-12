@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'check-deployment.sh'
 
 class DeploymentReadinessTest(unittest.TestCase):
     def run_check(self, scheduler_fails, capabilities='{"tradesEnabled":true}', schema='',
-                  public_code='200', public_exit=0, api_code='200', api_exit=0, restarting_service=''):
+                  public_code='200', public_exit=0, api_code='200', api_exit=0, restarting_service='', server_pages=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stubs = {
@@ -19,6 +19,11 @@ case "$*" in
   *research/capabilities*) printf '%s' "$CAPABILITIES" ;;
   *internal/schema*) [ -n "$SCHEMA" ] || exit 22; printf '%s' "$SCHEMA" ;;
   *planner/settings*) printf '%s' "$API_CODE"; exit "$API_EXIT" ;;
+  *X-Toady-Check*)
+    case "$*" in
+      *sitemap.xml*) printf '%s' "${SITEMAP_BODY-<sitemapindex>}" ;;
+      *) printf '%s' "${WEEKLY_BODY-<div class='stats'>}" ;;
+    esac ;;
   *--resolve*) printf '%s' "$PUBLIC_CODE"; exit "$PUBLIC_EXIT" ;;
   *8082*)
     count=0
@@ -51,7 +56,7 @@ esac
                                          'CAPABILITIES': capabilities, 'SCHEMA': schema,
                                          'PUBLIC_CODE': public_code, 'PUBLIC_EXIT': str(public_exit),
                                          'API_CODE': api_code, 'API_EXIT': str(api_exit),
-                                         'RESTARTING_SERVICE': restarting_service})
+                                         'RESTARTING_SERVICE': restarting_service, **(server_pages or {})})
             return result, int(state.read_text())
 
     def test_waits_until_scheduler_is_ready(self):
@@ -110,6 +115,13 @@ esac
         self.assertNotEqual(0, result.returncode)
         self.assertIn('Container check failed: toadyScheduler', result.stderr)
 
+
+    def test_warns_when_server_pages_fall_back_to_the_spa(self):
+        spa = '<div id="root"></div>'
+        result, _ = self.run_check(False, server_pages={'SITEMAP_BODY': spa, 'WEEKLY_BODY': spa})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('/sitemap.xml did not return the server-rendered page', result.stderr)
+        self.assertIn('/weekly did not return the server-rendered page', result.stderr)
 
 if __name__ == '__main__':
     unittest.main()

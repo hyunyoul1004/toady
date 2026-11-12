@@ -30,10 +30,13 @@ public class PublicAreaPage {
         String id() { return source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo(); }
     }
     record Groups(List<Item> open, List<Item> upcoming, List<Item> closed) {
-        /** 앱에서 처음 보여줄 달: 접수 중·예정 공고 중 가장 이른 접수월, 없으면 이번 달. */
+        /**
+         * 앱에서 처음 보여줄 달: 접수 중·예정 공고 중 가장 이른 접수 시작월, 없으면 이번 달.
+         * 캘린더는 접수 시작일이 그 달 조회 범위에 있는 공고만 가져오므로, 지난달에 시작한 접수 중 공고도 시작월로 연다.
+         */
         String month(LocalDate today) {
             return java.util.stream.Stream.concat(open.stream(), upcoming.stream()).map(Item::start).filter(java.util.Objects::nonNull)
-                .min(Comparator.naturalOrder()).map(date -> date.isBefore(today.withDayOfMonth(1)) ? today : date).orElse(today).toString().substring(0, 7);
+                .min(Comparator.naturalOrder()).orElse(today).toString().substring(0, 7);
         }
     }
 
@@ -133,9 +136,9 @@ public class PublicAreaPage {
     private final com.google.common.cache.Cache<String, List<AreaSummary>> areaSummaryCache = com.google.common.cache.CacheBuilder.newBuilder()
         .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
     @GetMapping("/api/v1/public/area-summaries")
-    public ResponseEntity<List<AreaSummary>> areaSummaries() throws java.util.concurrent.ExecutionException {
+    public ResponseEntity<List<AreaSummary>> areaSummaries() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        List<AreaSummary> body = areaSummaryCache.get(today.toString(), () -> LivingAreas.ALL.stream().map(area -> {
+        List<AreaSummary> body = PublicHtml.load(areaSummaryCache, today.toString(), () -> LivingAreas.ALL.stream().map(area -> {
             Groups groups = groups(area, today);
             return new AreaSummary(area.slug(), area.label(), area.description(), groups.open().size(), groups.upcoming().size(), groups.month(today));
         }).toList());

@@ -5,7 +5,7 @@
  * - 모바일/태블릿: 햄버거 메뉴 버튼 클릭 시 좌측에서 슬라이드되는 임시 Drawer
  * - 상단 로고, 주요 메뉴 리스트, 하단 로그인/회원가입/로그아웃 인증 영역 포함
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
@@ -32,7 +32,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
-import { MAIN_NAV, MORE_NAV, isNavActive } from './navItems';
+import { MAIN_NAV, MORE_NAV, isNavActive, retapAction } from './navItems';
 
 const MAIN_ICONS = { calendar: <CalendarMonthIcon />, match: <FactCheckOutlinedIcon />, score: <CalculateOutlinedIcon />, my: <BookmarkBorderIcon /> };
 const MORE_ICONS = { weekly: <EventNoteOutlinedIcon />, areas: <PlaceOutlinedIcon />, faq: <HelpOutlineIcon />, push: <NotificationsNoneOutlinedIcon /> };
@@ -49,6 +49,26 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   const nickname = user?.userNicName || user?.sub || '회원';
 
   const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
+  /**
+   * 하단 탭과 같은 '다시 누르기' 규칙. 모바일 메뉴(드로어)는 히스토리 한 단계(layout 레이어)로 열려 있으므로
+   * 판정에서는 그 레이어를 빼고, 같은 화면이면 먼저 메뉴를 닫은 뒤(뒤로 한 단계) 상세 닫기·처음 화면·맨 위로를 적용한다.
+   */
+  const going = useRef(false);
+  function go(path, state = null) {
+    // 메뉴가 닫히는 동안 다시 눌러 두 단계 뒤로 가지 않게 한 번만 처리한다.
+    if (going.current) return;
+    const layers = (location.state?.overlayLayers || []).filter(layer => layer.id !== 'layout');
+    const action = retapAction(path, { ...location, state: { ...location.state, overlayLayers: layers } });
+    if (action === 'push') { navigate(path, { replace: mobileOpen, state }); return; }
+    const apply = () => {
+      if (action === 'back') navigate(-1);
+      else { if (action === 'replace' || state) navigate(path, { replace: true, state }); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    };
+    if (!mobileOpen) { apply(); return; }
+    going.current = true;
+    window.addEventListener('popstate', () => setTimeout(() => { going.current = false; apply(); }, 0), { once: true });
+    navigate(-1);
+  }
   function openMore(item) {
     if (item.overlay) {
       // 나의 청약을 한 단계 쌓은 뒤 알림 설정 창을 연다(닫으면 나의 청약에 머문다).
@@ -56,7 +76,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
       navigate(item.path, { replace: mobileOpen && location.pathname === item.path, state: { overlayLayers: [{ id: item.overlay, value: true }] } });
       return;
     }
-    navigate(item.path, { replace: mobileOpen });
+    go(item.path);
   }
 
   const drawerContent = (
@@ -120,7 +140,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
                   aria-current={isSelected?'page':undefined}
                   selected={isSelected}
                   onClick={() => {
-                    navigate(item.path, { replace: mobileOpen, state: item.path === '/' ? { browseView: 'calendar' } : null });
+                    go(item.path, item.path === '/' ? { browseView: 'calendar' } : null);
                   }}
                   sx={{
                     borderRadius: 1.5,

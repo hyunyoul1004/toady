@@ -53,7 +53,10 @@ export async function handleResponse(response, requestToken = null) {
       response.statusText ||
       `HTTP Error ${response.status}`;
 
-    return Promise.reject(new Error(errorMessage));
+    // 호출하는 쪽이 상태별로 다르게 다룰 수 있게 HTTP 상태를 함께 넘긴다(예: 404 원본 없음).
+    const error = new Error(errorMessage);
+    error.status = response.status;
+    return Promise.reject(error);
   }
 
   const authorization = response.headers.get('Authorization');

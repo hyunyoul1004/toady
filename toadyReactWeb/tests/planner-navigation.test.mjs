@@ -233,11 +233,14 @@ test('actual app prioritizes application details, restores detail tabs and retai
     const regionOption=[...document.querySelectorAll('[role=option]')].find(option=>option.textContent.includes('경기도 파주시'));
     await act(async()=>regionOption.dispatchEvent(new win.MouseEvent('click',{bubbles:true})));
     await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','mobile calendar selects a matching date when today has no results');
-    const beforeReturnCount=findButton('조회된 공고 1').textContent;
+    // '조회된 공고' 칩은 이제 누르는 버튼이 아니라 건수 표시다.
+    const countLabel=()=>[...document.querySelectorAll('.MuiChip-label')].find(label=>label.textContent.startsWith('조회된 공고'))?.textContent;
+    const beforeReturnCount=countLabel();
+    assert.equal(beforeReturnCount,'조회된 공고 1');
     await click('나의 청약');
     await click('청약 캘린더');
     await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','Paju search survives planner round trip and selects a populated date');
-    assert.equal(findButton('조회된 공고 1').textContent,beforeReturnCount);
+    assert.equal(countLabel(),beforeReturnCount);
     assert.equal(JSON.parse(localStorage.getItem('toady.searchAreas'))[0].districtName,'파주시');
     assert.ok(document.querySelector('[aria-label="모바일 청약 달력"]').textContent.includes('회귀검증 운정 단지'));
 

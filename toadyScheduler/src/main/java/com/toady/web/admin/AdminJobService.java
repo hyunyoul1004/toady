@@ -2,6 +2,7 @@ package com.toady.web.admin;
 
 import com.toady.web.apt.service.ApplyhomeCompetitionSyncService;
 import com.toady.web.apt.service.ApplyhomeSyncBusyException;
+import com.toady.web.apt.service.ApplyhomePartialFailureException;
 import com.toady.web.apt.service.ApplyhomeSyncService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -107,12 +108,17 @@ public class AdminJobService {
     private void run(String id) {
         int completed = 0;
         long scoreRows = 0;
+        // 일부 공고만 실패한 구간: 나머지는 저장됐으므로 다음 구간을 계속 수집하고 끝에서 함께 알린다.
+        // (오래된 달의 공고 하나가 계속 실패해도 이번 달 구간이 막히지 않게)
+        List<String> partialFailures = new ArrayList<>();
         try {
             AdminJob job = repository.find(id).orElseThrow();
             for (DateRange chunk : chunks(job.startDate(), job.endDate())) {
                 boolean done = false;
                 // 전체 수집에서 경쟁률 단계만 잠금 대기로 재시도할 때 이미 끝난 공고 단계를 다시 실행하지 않는다.
                 boolean announcementsDone = false;
+                // 잠금 대기로 경쟁률 단계만 다시 돌 때도 앞 단계의 일부 실패를 잃지 않도록 루프 밖에 둔다.
+                ApplyhomePartialFailureException partial = null;
                 while (!done) {
                     AdminJob current = repository.find(id).orElseThrow();
                     // 오래된 작업이 이미 중단 상태로 정리되었다면 이후 구간을 더 실행하지 않는다.
@@ -129,23 +135,27 @@ public class AdminJobService {
                         switch (job.kind()) {
                             case ALL -> {
                                 // 전체 수집은 공고·주택형을 먼저 반영한 뒤 같은 기간의 결과 데이터를 가져온다.
-                                ApplyhomeSyncService.PartialFailureException partial = null;
                                 if (!announcementsDone) {
                                     try {
                                         announcements.synchronize(chunk.start(), chunk.end());
-                                    } catch (ApplyhomeSyncService.PartialFailureException failure) {
+                                    } catch (ApplyhomePartialFailureException failure) {
                                         // 일부 주택형만 실패했으면 나머지는 저장됐으므로 결과 데이터 수집까지 마친 뒤 실패를 알린다.
                                         partial = failure;
                                     }
                                     announcementsDone = true;
                                 }
                                 competition.synchronize(chunk.start(), chunk.end());
-                                if (partial != null) throw partial;
                             }
                             case ANNOUNCEMENTS -> announcements.synchronize(chunk.start(), chunk.end());
                             case COMPETITION -> competition.synchronize(chunk.start(), chunk.end());
                             case SCORES -> scoreRows += competition.synchronizeScores(chunk.start(), chunk.end());
                         }
+                        done = true;
+                    } catch (ApplyhomePartialFailureException failure) {
+                        // 가점 수집은 실패 전까지 반영한 건수도 더한다(일부 실패해도 저장된 행이 0건처럼 보이지 않게).
+                        if (job.kind() == JobKind.SCORES) scoreRows += failure.savedRows();
+                        // 공고 단계와 경쟁률 단계가 모두 일부 실패하면 둘 다 남긴다.
+                        partial = partial == null ? failure : new ApplyhomePartialFailureException(partial.getMessage() + " / " + failure.getMessage());
                         done = true;
                     } catch (ApplyhomeSyncBusyException exception) {
                         // 관리자 테이블을 사용하지 않는 기존 자동 수집이나 다른 인스턴스가 잠금을 가진 경우다.
@@ -153,6 +163,10 @@ public class AdminJobService {
                         repository.update(id, "WAITING", completed, "자동 또는 다른 인스턴스의 수집이 끝나기를 기다립니다.", now());
                         TimeUnit.MILLISECONDS.sleep(busyWait.toMillis());
                     }
+                }
+                if (partial != null) {
+                    log.warn("Manual scheduler job partially failed: id={}, range={}~{}, {}", id, chunk.start(), chunk.end(), partial.getMessage());
+                    partialFailures.add(chunk.start() + "~" + chunk.end() + ": " + partial.getMessage());
                 }
                 // 모든 하위 수집이 끝난 구간만 진행률에 포함한다. 개별 API 행 수와는 다른 지표다.
                 completed++;
@@ -162,6 +176,12 @@ public class AdminJobService {
             String message = job.kind() == JobKind.SCORES
                     ? "가점 " + scoreRows + "건 반영 완료. 0건인 경우 모집공고일 범위와 원본 공개 여부를 확인하세요."
                     : "선택한 전체 기간을 수집했습니다. 같은 키의 기존 데이터는 갱신됩니다.";
+            if (!partialFailures.isEmpty()) {
+                // 일부 실패는 전체 실패와 구분해 어느 기간·공고가 빠졌는지 남긴다(키와 건수만, 응답 원문 없음).
+                String detail = (job.kind() == JobKind.SCORES ? "가점 " + scoreRows + "건 반영. " : "") + String.join(" / ", partialFailures);
+                repository.finish(id, "FAILED", "일부 공고만 실패했습니다(나머지는 저장됨). " + (detail.length() > 400 ? detail.substring(0, 400) + "…" : detail), now());
+                return;
+            }
             repository.finish(id, "SUCCEEDED", message, now());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -175,7 +195,9 @@ public class AdminJobService {
             }
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
             log.error("Manual scheduler job failed: id={}", id, exception);
-            repository.finish(id, "FAILED", "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요.", now());
+            String earlier = partialFailures.isEmpty() ? "" : " 앞 기간의 일부 실패: " + String.join(" / ", partialFailures);
+            String message = "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요." + earlier;
+            repository.finish(id, "FAILED", message.length() > 900 ? message.substring(0, 900) + "…" : message, now());
         } finally {
             localJob.compareAndSet(id, null);
         }

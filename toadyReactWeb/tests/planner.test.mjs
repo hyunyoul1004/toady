@@ -64,6 +64,20 @@ test('list mode restores a valid query period without mounting a calendar and mo
   data.set('toady.calendarMonth','"2026-99"');data.set('toady.viewMode','"broken"');
   assert.equal(initialBrowseState(storage,'2026-11-12').month,'2026-11');
   assert.equal(initialBrowseState(storage,'2026-11-12').viewMode,'calendar');
+  // 지난 달은 같은 날 메뉴 왕복이면 복원하고, 다른 날 다시 오면 이번 달로 연다.
+  data.set('toady.calendarMonth','"2026-10"');data.set('toady.calendarMonthDay','"2026-11-12"');
+  assert.equal(initialBrowseState(storage,'2026-11-12').month,'2026-10');
+  assert.equal(initialBrowseState(storage,'2026-12-03').month,'2026-12');
+  data.set('toady.calendarMonth','"2027-01"');
+  assert.equal(initialBrowseState(storage,'2026-12-03').month,'2027-01','앞으로의 달은 그대로 둔다');
+});
+
+test('supply type selection survives menu round trips and broken values fall back to all', async () => {
+  const { readSupplyTypes, supplyTypesKey } = await import('../src/features/planner/browseState.js');
+  const read = value => readSupplyTypes({ getItem: () => (value === undefined ? null : JSON.stringify(value)) });
+  assert.equal(supplyTypesKey(read('YYYNNYYN')), 'YYYNNYYN');
+  assert.equal(read('YYYNNYYN').rceptSe04, 'N');
+  for (const broken of [undefined, 'YY', 'NNNNNNNN', 'ABCDEFGH']) assert.equal(supplyTypesKey(read(broken)), 'YYYYYYYY');
 });
 
 test('new mobile visitors start with listings while explicit viewing preferences are retained',()=>{

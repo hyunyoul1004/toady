@@ -29,7 +29,7 @@ public class PublicAnnouncementPage {
         if(result.scorePublished()) out.append("<li><strong>공개 당첨가점</strong><span>").append(PublicHtml.esc((result.scoreLow().isEmpty()?"":"최저 "+result.scoreLow()+"점")+(!result.scoreLow().isEmpty() && !result.scoreHigh().isEmpty()?" · ":"")+(result.scoreHigh().isEmpty()?"":"최고 "+result.scoreHigh()+"점"))).append("</span></li>");
         return out.append("</ul><p class='muted' style='margin-top:8px'>주택형·거주지역 전체 중 공개된 값의 최고·최저예요. 주택형별 경쟁률과 내 가점 비교는 앱에서 확인하세요.</p></section>").toString();
     }
-    static String rate(double value) { return value>=100?String.format("%,d",Math.round(value)):java.math.BigDecimal.valueOf(value).setScale(2,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(); }
+    static String rate(double value) { return value>=100?String.format(java.util.Locale.ROOT,"%,d",Math.round(value)):java.math.BigDecimal.valueOf(value).setScale(2,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(); }
     static String section(String value) {return java.util.Set.of("detail","rate","map","comment").contains(value)?value:"detail";}
     static String label(String value) {return switch(value){case "rate" -> "청약 경쟁률";case "map" -> "위치·입지";case "comment" -> "청약 이야기";default -> "청약 일정·분양 정보";};}
     private static boolean valid(String type,String house,String notice) {return type.matches("apt|urban|remaining|public-rental|optional") && house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}");}

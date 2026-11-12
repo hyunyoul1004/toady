@@ -15,8 +15,9 @@ final class PublicHtml {
     /** 만원 단위 금액을 4억 2,000만원 형식으로 표시한다. */
     static String manwon(long amount) {
         long eok = amount / 10000, rest = amount % 10000;
-        if (eok == 0) return "%,d만원".formatted(rest);
-        return rest == 0 ? "%,d억원".formatted(eok) : "%,d억 %,d만원".formatted(eok, rest);
+        // 서버 기본 로캘과 상관없이 1,000 단위 쉼표를 쓴다.
+        if (eok == 0) return String.format(java.util.Locale.ROOT, "%,d만원", rest);
+        return rest == 0 ? String.format(java.util.Locale.ROOT, "%,d억원", eok) : String.format(java.util.Locale.ROOT, "%,d억 %,d만원", eok, rest);
     }
     static String priceRange(Long min, Long max) {
         if (min == null || max == null) return "";
@@ -33,6 +34,15 @@ final class PublicHtml {
             .maximumSize(200).expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
     static ResponseEntity<String> cached(String key, java.util.function.Supplier<ResponseEntity<String>> render) {
         try { return PAGES.get(key, render::get); }
+        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
+            Throwable cause = failed.getCause();
+            if (cause instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException(cause);
+        }
+    }
+    /** Guava 캐시가 감싼 예외를 풀어 다시 던진다(DB 오류가 공통 처리기에서 503으로 바뀌도록). */
+    static <K, V> V load(com.google.common.cache.Cache<K, V> cache, K key, java.util.concurrent.Callable<V> loader) {
+        try { return cache.get(key, loader); }
         catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
             Throwable cause = failed.getCause();
             if (cause instanceof RuntimeException runtime) throw runtime;

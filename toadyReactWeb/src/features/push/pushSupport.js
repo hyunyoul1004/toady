@@ -52,7 +52,7 @@ export function appPath(url, origin) {
  * React 앱(SPA)이 그리는 경로. 나머지(/areas, /announcements, /zupzup, /weekly, /calendar 등)는 서버가 HTML을 직접 그려
  * 앱 라우터로 이동하면 첫 화면으로 떨어지므로 전체 페이지 이동이 필요하다. public/sw.js의 목록과 같아야 한다.
  */
-export const SPA_PATHS = ['/', '/my', '/score', '/certify', '/login', '/showSubscriptDetail'];
+export const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail'];
 
 /** 같은 출처의 SPA 경로인지(끝 슬래시는 무시). */
 export function isSpaPath(url, origin) {
@@ -75,3 +75,11 @@ export const PUSH_HELP = {
   'in-app': '카카오톡·네이버 등 앱 안의 브라우저에서는 알림을 받을 수 없어요. Chrome이나 Safari로 열어 주세요.',
   unsupported: '이 브라우저는 알림을 지원하지 않아요. Chrome, Edge, Safari 최신 버전에서 이용해 주세요.'
 };
+
+/** 알림으로 연 공고 상세만 '앱 안 상세'로 표시한다(그 화면의 표식 하나). 상세가 없는 화면에 표식을 붙이면 탭 다시 누르기가 이전 화면으로 빠져나간다. */
+export function detailMarker(path) {
+  const url = new URL(path, 'https://toady.invalid');
+  if (!url.searchParams.get('subscriptSeq')) return null;
+  const marker = { '/': 'detailOverlay', '/my': 'plannerDetail', '/score': 'scoreDetail', '/match': 'matchDetail', '/match/zupzup': 'matchDetail', '/this-week': 'weeklyDetail' }[url.pathname];
+  return marker ? { [marker]: true } : null;
+}

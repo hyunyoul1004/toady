@@ -83,6 +83,17 @@ export default function MyPlanner() {
   const compared=planner.items.filter(item=>selected.includes(item.id));
   const completed=planner.items.reduce((total,item)=>total+CHECKS.filter((_,i)=>item.checklist & (1<<i)).length,0);
   async function action(callback,success) {setMenu(null);setBusy(true);try{await callback();report(success,false);}catch(e){report(e.message,true);}finally{setBusy(false);}}
+  // 가져오기는 한 건이 실패해도 나머지를 가져오고, 몇 건을 가져왔고 몇 건이 빠졌는지 알려 준다.
+  async function importGuest() {
+    setMenu(null);setBusy(true);
+    try {
+      const result=await planner.importGuest();
+      const missed=result.failed+result.skipped;
+      if(!missed && !result.imported) report('가져올 새 공고가 없어요. 기기의 관심 공고가 이미 계정에 있어요.',false);
+      else if(!missed) report(`기기 공고 ${result.imported}개를 가져왔습니다. 계정의 기존 메모는 유지합니다.`,false);
+      else report(`${result.imported}개를 가져왔고 ${missed}개는 가져오지 못했어요.${result.skipped?' 원본이 사라진 공고는 제외했어요.':''}${result.lastError?` (${result.lastError})`:''}`,true);
+    } catch(e){report(e.message,true);} finally{setBusy(false);}
+  }
   function select(id) {
     if(!selected.includes(id) && selected.length>=3) {report('한 번에 3개 공고까지 비교할 수 있어요.',true);return;}
     if(!selected.includes(id)) trackAction('compare',id);
@@ -107,7 +118,7 @@ export default function MyPlanner() {
     <PushSettingsDialog open={Boolean(pushOpen)} onClose={()=>setPushOpen(false)} testAnnouncementId={planner.items[0]?.id} loggedIn={planner.loggedIn} />
     <CalendarConnect open={Boolean(calendarOpen)} onClose={()=>setCalendarOpen(false)} loggedIn={planner.loggedIn} summaries={planner.items.map(item=>item.summary)} onLogin={openLoginForCalendar} />
     <Menu anchorEl={()=>menuButtonRef.current} open={Boolean(menuOpen)} onClose={()=>setMenu(null)}>
-      {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>action(planner.importGuest,'기기 공고를 가져왔습니다. 계정의 기존 메모는 유지합니다.')}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
+      {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>importGuest()}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
       {planner.loggedIn && <MenuItem disabled={busy} onClick={()=>action(planner.disableEmails,'모든 이메일 알림을 해제했습니다.')}>이메일 알림 전체 해제</MenuItem>}
       <MenuItem onClick={()=>{const layers=(location.state?.overlayLayers || []).filter(layer=>layer.id!=='planner-settings');navigate(location.pathname+location.search+location.hash,{replace:true,state:{...location.state,overlayLayers:[...layers,{id:'push-settings',value:true}]}});}}>알림 설정</MenuItem>
       <MenuItem component={Link} to="/" replace state={{browseView:'calendar'}}>청약캘린더로 이동</MenuItem>

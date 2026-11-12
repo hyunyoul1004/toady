@@ -406,8 +406,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
               {(() => { const { tag, body } = splitTag(row.content); return <>{tag && <span className="story-tag">{tag}</span>}{formatServerMessage(body)}</>; })()}
             </Typography>
 
-            {/* 하단 답글 달기 버튼 (루트 댓글에만 제공) */}
-            {!isChild && (
+            {/* 하단 답글 달기 버튼 (루트 댓글에만 제공). 원댓글이 다른 페이지에 있어 위로 올라온 답글에는 달지 않는다(답글은 한 단계). */}
+            {!isChild && !row.parentSubscriptCommentSeq && (
               <Box sx={{ pl: 5.8, mt: 1 }}>
                 <Button
                   size="small"

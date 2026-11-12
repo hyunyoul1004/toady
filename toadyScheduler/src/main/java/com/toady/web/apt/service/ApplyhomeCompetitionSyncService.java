@@ -111,7 +111,7 @@ public class ApplyhomeCompetitionSyncService {
 		List<String> failures = new ArrayList<>();
 		syncLock.execute(() -> count.set(syncForAnnouncements(APT_SCORE,
 				discover("getAPTLttotPblancDetail", startDate, endDate, false), failures)));
-		if (!failures.isEmpty()) throw new IllegalStateException("가점 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): " + String.join(", ", failures.subList(0, Math.min(5, failures.size()))));
+		if (!failures.isEmpty()) throw new ApplyhomePartialFailureException("가점 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): " + String.join(", ", failures.subList(0, Math.min(5, failures.size()))), count.get());
 		return count.get();
 	}
 
@@ -138,7 +138,7 @@ public class ApplyhomeCompetitionSyncService {
 		syncForAnnouncements(PRIVATE_RENT_RATE, privateRentAnnouncements, failures);
 		syncForAnnouncements(OPTIONAL_RATE, optionalAnnouncements, failures);
 		if (!failures.isEmpty()) {
-			throw new IllegalStateException("경쟁률 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+			throw new ApplyhomePartialFailureException("경쟁률 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
 					+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
 		}
 	}

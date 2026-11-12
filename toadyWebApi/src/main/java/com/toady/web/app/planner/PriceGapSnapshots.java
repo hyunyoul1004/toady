@@ -64,7 +64,7 @@ public class PriceGapSnapshots {
         if (!locator.enabled() || !research.tradesEnabled()) return;
         try {
             var report = run();
-            log.info("주변 시세 비교 미리 계산: ready={}, noLocation={}, noTrades={}, unavailable={}", report.get("READY"), report.get("NO_LOCATION"), report.get("NO_TRADES"), report.get("UNAVAILABLE"));
+            log.info("주변 시세 비교 미리 계산: ready={}, noLocation={}, noTrades={}, unavailable={}, kept={}", report.get("READY"), report.get("NO_LOCATION"), report.get("NO_TRADES"), report.get("UNAVAILABLE"), report.get("KEPT"));
         } catch (org.springframework.jdbc.BadSqlGrammarException missing) {
             log.warn("TB_PRICE_GAP을 사용할 수 없어 주변 시세 비교를 미리 계산하지 않습니다. database.sql 18번을 적용하세요.");
         } catch (DataAccessException failure) {
@@ -76,7 +76,7 @@ public class PriceGapSnapshots {
     public Map<String, Integer> run() {
         LocalDate today = LocalDate.now(clock);
         LocalDateTime now = LocalDateTime.now(clock);
-        Map<String, Integer> report = new LinkedHashMap<>(Map.of("READY", 0, "NO_LOCATION", 0, "NO_TRADES", 0, "UNAVAILABLE", 0));
+        Map<String, Integer> report = new LinkedHashMap<>(Map.of("READY", 0, "NO_LOCATION", 0, "NO_TRADES", 0, "UNAVAILABLE", 0, "KEPT", 0));
         @SuppressWarnings("unchecked")
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.load(today).get("items");
         Map<String, Object[]> previous = new HashMap<>();
@@ -96,7 +96,10 @@ public class PriceGapSnapshots {
             boolean changed = before != null && "READY".equals(before[0]) && !Objects.equals(supplies.get((Integer) before[2]), before[3]);
             if (before != null && !changed && fresh((String) before[0], (LocalDateTime) before[1], now)) continue;
             processed++;
-            String status = compute(item, supplies, now);
+            // 아직 보여 주는 READY 값(분양가 그대로·7일 이내)은 이번 재계산이 일시 실패해도 지우지 않고 다음 날 다시 시도한다.
+            boolean keep = before != null && "READY".equals(before[0]) && !changed
+                && !((LocalDateTime) before[1]).isBefore(now.minusDays(PriceGapStore.SHOW_DAYS));
+            String status = compute(item, supplies, now, keep);
             report.merge(status, 1, Integer::sum);
         }
         jdbc.update("DELETE FROM TB_PRICE_GAP WHERE COMPUTED_DT < ?", Timestamp.valueOf(now.minusDays(KEEP_DAYS)));
@@ -119,14 +122,16 @@ public class PriceGapSnapshots {
         return out;
     }
 
-    private String compute(EligibilityFeed.Item item, Map<Integer, Long> supplies, LocalDateTime now) {
+    private String compute(EligibilityFeed.Item item, Map<Integer, Long> supplies, LocalDateTime now, boolean keepPrevious) {
         try {
             var location = locator.locate(item.address());
             if (location.isEmpty()) { save(item.id(), "NO_LOCATION", null, null, null, now); return "NO_LOCATION"; }
             List<BigDecimal> areas = supplies.keySet().stream().limit(8).map(BigDecimal::valueOf).toList();
             var gap = research.priceGap(location.get().bcode(), location.get().dong(), areas);
-            // 응답 시간 한도로 일부 달만 받은 결과는 저장하지 않고 다음 날 다시 계산한다(며칠씩 고정하지 않게).
-            if ("UNAVAILABLE".equals(gap.status()) || "NOT_CONFIGURED".equals(gap.status()) || gap.partial()) { save(item.id(), "UNAVAILABLE", location.get(), null, null, now); return "UNAVAILABLE"; }
+            // 응답 시간 한도로 일부 달만 받았으면 한 번 더 부른다. 받은 달은 캐시에 있어 나머지 달만 새 한도 안에서 받는다.
+            if (gap.partial()) gap = research.priceGap(location.get().bcode(), location.get().dong(), areas);
+            // 그래도 일부 달뿐이면 저장하지 않고 다음 날 다시 계산한다(며칠씩 고정하지 않게).
+            if ("UNAVAILABLE".equals(gap.status()) || "NOT_CONFIGURED".equals(gap.status()) || gap.partial()) return unavailable(item.id(), location.get(), now, keepPrevious);
             var row = PriceGapRules.representative(PriceGapRules.rows(supplies, gap.areas()));
             if (row.isEmpty()) { save(item.id(), "NO_TRADES", location.get(), null, null, now); return "NO_TRADES"; }
             save(item.id(), "READY", location.get(), row.get(), gap.months(), now);
@@ -135,9 +140,13 @@ public class PriceGapSnapshots {
             throw storage;
         } catch (Exception failure) {
             log.warn("주변 시세 비교 계산 실패: id={}, error={}", item.id(), failure.getClass().getSimpleName());
-            save(item.id(), "UNAVAILABLE", null, null, null, now);
-            return "UNAVAILABLE";
+            return unavailable(item.id(), null, now, keepPrevious);
         }
+    }
+    private String unavailable(String id, AddressLocator.Location location, LocalDateTime now, boolean keepPrevious) {
+        if (keepPrevious) return "KEPT";
+        save(id, "UNAVAILABLE", location, null, null, now);
+        return "UNAVAILABLE";
     }
 
     /** 지우고 다시 넣는 두 문장을 한 트랜잭션으로 묶어, 넣기가 실패해도 기존 값이 사라지지 않게 한다. */

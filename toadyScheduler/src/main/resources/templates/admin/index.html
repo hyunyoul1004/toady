@@ -23,7 +23,7 @@
         <section class="panel schedules"><div class="section-title"><span class="section-number">02</span><div><h2>자동 스케줄</h2><p>실행 여부 · cron · 재조회 기간 설정</p></div></div>
             <form class="schedule-item" th:each="schedule : ${schedules}" th:action="@{/admin/schedules/{kind}(kind=${schedule.kind})}" method="post">
                 <div class="schedule-heading"><h3 th:text="${schedule.kind.label}"></h3><label class="toggle"><input type="checkbox" name="enabled" value="true" th:checked="${schedule.enabled}"><span>자동 실행</span></label></div>
-                <div class="schedule-fields"><label>실행 시각 · cron<input name="cron" th:value="${schedule.cronExpression}" maxlength="100" required class="mono"></label><label>재조회 일수<input name="lookbackDays" type="number" min="1" max="3660" th:value="${schedule.lookbackDays}" required></label><button class="secondary" type="submit">저장</button></div>
+                <div class="schedule-fields"><label>실행 시각 · cron<input name="cron" th:value="${schedule.cronExpression}" maxlength="100" required class="mono"></label><label>재조회 일수<input name="lookbackDays" type="number" min="1" max="366" th:value="${schedule.lookbackDays}" required></label><button class="secondary" type="submit">저장</button></div>
                 <p class="next-run" th:text="${schedule.nextRun != null ? '다음 실행 · ' + #temporals.format(schedule.nextRun, 'yyyy.MM.dd HH:mm') : '자동 실행 꺼짐'}"></p>
             </form>
             <p class="hint cron-help">cron은 초·분·시·일·월·요일 순서입니다. <code>0 15 3 * * *</code> 매일 03:15 / <code>0 15 4,20 * * *</code> 매일 04:15·20:15. API 공개 시각을 보장하는 설정은 아닙니다.</p>

@@ -116,7 +116,15 @@ class ApplicationFlowRegressionTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("content", "수정 댓글"))))
                 .andExpect(status().isOk());
         mvc.perform(get(endpoint)).andExpect(jsonPath("$.data.content[0].content").value("수정 댓글"));
+        // 답글은 한 단계만: 답글에 다시 답글을 달 수 없다.
+        String reply = mvc.perform(post(endpoint).header("Authorization", "Bearer " + otherToken).contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("content", "답글", "parentCommentSeq", id)))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long replyId = json.readTree(reply).path("data").path("commentSeq").asLong();
+        mvc.perform(post(endpoint).header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("content", "답글의 답글", "parentCommentSeq", replyId)))).andExpect(status().isBadRequest());
+        // 부모 댓글을 지우면 답글도 함께 지워져 맥락 없는 답글이 남지 않는다(댓글 수 0).
         mvc.perform(delete(endpoint + "/" + id).header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=?", String.class, replyId));
         mvc.perform(get("/api/v1/announcements").param("keyword", "통합검증"))
                 .andExpect(jsonPath("$.data.content[0].commentCount").value(0));
         mvc.perform(post("/webApi/certify/find-password-request-certify").contentType(MediaType.APPLICATION_JSON)

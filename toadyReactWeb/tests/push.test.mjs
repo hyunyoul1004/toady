@@ -122,3 +122,11 @@ test('manifest declares same-origin 192/512 PNG icons and standalone display', a
     assert.equal(png.readUInt32BE(16) + 'x' + png.readUInt32BE(20), icon.sizes);
   }
 });
+
+test('push click marks only an opened detail, with the marker of that screen', async () => {
+  const { detailMarker } = await import('../src/features/push/pushSupport.js');
+  assert.equal(detailMarker('/match/zupzup'), null, '상세 없는 화면에는 표식을 붙이지 않는다(탭 다시 누르기가 이전 화면으로 빠지지 않게)');
+  assert.deepEqual(detailMarker('/?subscriptSeq=apt%2F1%2F1'), { detailOverlay: true });
+  assert.deepEqual(detailMarker('/my?subscriptSeq=apt%2F1%2F1'), { plannerDetail: true });
+  assert.equal(detailMarker('/faq?subscriptSeq=x'), null);
+});

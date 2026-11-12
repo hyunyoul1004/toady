@@ -96,7 +96,7 @@ public class PublicCollectionPages {
             + "<p class='muted'>이번 주 접수하는 공고와 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영됩니다.</p>"
             + "<div class='stats'><div><strong>" + current.size() + "</strong><span>이번 주 접수</span></div><div><strong>" + winners.size()
             + "</strong><span>당첨자 발표</span></div><div><strong>" + nextStarts.size() + "</strong><span>다음 주 시작</span></div></div>"
-            + "<a class='cta' data-app href='" + esc(domain + "/?month=" + today.toString().substring(0, 7)) + "'>청약 캘린더에서 보기</a></section>"
+            + "<a class='cta' data-app href='" + esc(domain + "/?focus=all&month=" + today.toString().substring(0, 7)) + "'>청약 캘린더에서 보기</a></section>"
             + areas.section("이번 주 접수", current, "이번 주 접수하는 공고가 없어요.")
             + winnerList
             + areas.section("다음 주 접수 시작 (" + next.label() + ")", nextStarts, "다음 주에 접수를 시작하는 공고가 아직 없어요.")
@@ -106,11 +106,11 @@ public class PublicCollectionPages {
     }
 
     /** 앱 '이번 주 청약' 화면용 목록 한 줄. status: OPEN·UPCOMING·CLOSED. */
-    public record WeeklyItem(String id, String type, String houseNm, String houseKind, String address, String start, String end, String status) {
+    public record WeeklyItem(String id, String type, String houseNm, String houseKind, String address, String start, String end, String status, String region) {
         static WeeklyItem of(PublicAreaPage.Item item) {
             var source = item.source();
             return new WeeklyItem(item.id(), source.type(), source.houseNm(), source.houseSecdNm(), source.hssplyAdres(),
-                item.start() == null ? null : item.start().toString(), item.end() == null ? null : item.end().toString(), item.status().name());
+                item.start() == null ? null : item.start().toString(), item.end() == null ? null : item.end().toString(), item.status().name(), source.regionName());
         }
     }
     public record WeeklyWinner(String id, String houseNm, String address, String date) { }
@@ -121,14 +121,33 @@ public class PublicCollectionPages {
 
     /** 앱 안 '이번 주 청약' 화면 데이터. 서버 HTML(/weekly)과 같은 기준이며 10분 캐시한다. */
     @GetMapping("/api/v1/public/weekly-summary")
-    public ResponseEntity<WeeklySummary> weeklySummary() throws java.util.concurrent.ExecutionException {
+    public ResponseEntity<WeeklySummary> weeklySummary() {
         LocalDate today = today();
-        WeeklySummary body = weeklyCache.get(today.toString(), () -> {
+        WeeklySummary body = PublicHtml.load(weeklyCache, today.toString(), () -> {
             Weekly data = weeklyData(today);
             return new WeeklySummary(data.week().monday().toString(), data.week().sunday().toString(), data.next().monday().toString(), data.next().sunday().toString(), today.toString(),
                 data.current().stream().map(WeeklyItem::of).toList(),
                 data.winners().stream().map(w -> new WeeklyWinner(w.id(), w.houseNm(), w.address(), w.date() == null ? null : w.date().toString())).toList(),
                 data.nextWeek().stream().map(WeeklyItem::of).toList());
+        });
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+    }
+
+    private final com.google.common.cache.Cache<String, List<WeeklyItem>> activeCache = com.google.common.cache.CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+    /**
+     * 앱 '지역별 청약' 화면용: 전국 접수 중·예정 공고(전 유형). 화면이 주소로 시·도/시·군·구를 묶는다(캘린더 검색과 같은 지역 목록).
+     * 접수 기간이 긴 공고도 넣도록 시작일을 넉넉히 거슬러 올라간다. 10분 캐시.
+     */
+    @GetMapping("/api/v1/public/active-announcements")
+    public ResponseEntity<List<WeeklyItem>> activeAnnouncements() {
+        LocalDate today = today();
+        List<WeeklyItem> body = PublicHtml.load(activeCache, today.toString(), () -> {
+            var groups = PublicAreaPage.classify(startingBetween(today.minusDays(LOOKBACK_DAYS), today.plusDays(60)), today, 0);
+            List<WeeklyItem> items = new java.util.ArrayList<>();
+            groups.open().forEach(item -> items.add(WeeklyItem.of(item)));
+            groups.upcoming().forEach(item -> items.add(WeeklyItem.of(item)));
+            return items;
         });
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
     }
@@ -163,10 +182,12 @@ public class PublicCollectionPages {
         return result.getContent();
     }
 
-    List<Winner> winners(Week week) {
+    List<Winner> winners(Week week) { return winners(jdbc, week); }
+    /** 이번 주 APT 당첨자 발표. 서버 /weekly 페이지와 앱 weekly-summary(오늘의 요약 숫자·이번 주 청약 목록)가 같은 결과를 쓴다. */
+    static List<Winner> winners(JdbcTemplate jdbc, Week week) {
         String from = week.monday().format(DateTimeFormatter.BASIC_ISO_DATE), to = week.sunday().format(DateTimeFormatter.BASIC_ISO_DATE);
         return jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,PRZWNER_PRESNATN_DE FROM TB_APT_LTTOT_PBLANC_DETAIL "
-                + "WHERE REPLACE(PRZWNER_PRESNATN_DE,'-','') BETWEEN ? AND ? ORDER BY PRZWNER_PRESNATN_DE,HOUSE_NM LIMIT 60",
+                + "WHERE REPLACE(PRZWNER_PRESNATN_DE,'-','') BETWEEN ? AND ? ORDER BY PRZWNER_PRESNATN_DE,HOUSE_NM LIMIT 200",
             (r, n) -> new Winner("apt/" + r.getString(1) + "/" + r.getString(2), r.getString(3), r.getString(4), PlannerSummary.date(nz(r.getString(5)))), from, to)
             .stream().filter(w -> w.id().matches("apt/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}")).toList();
     }

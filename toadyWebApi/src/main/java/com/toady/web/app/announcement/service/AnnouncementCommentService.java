@@ -61,7 +61,7 @@ public class AnnouncementCommentService {
         requireAnnouncement(type, houseManageNo, pblancNo);
 
         if (request.parentCommentSeq() != null) {
-            AnnouncementCommentEntity parent = commentRepository.findById(request.parentCommentSeq())
+            AnnouncementCommentEntity parent = commentRepository.findForUpdate(request.parentCommentSeq())
                     .orElseThrow(() -> new EntityNotFoundException("부모 댓글을 찾을 수 없습니다."));
             if (!"N".equals(parent.getDeleteYn())
                     || !type.name().equals(parent.getAnnouncementType())
@@ -69,6 +69,8 @@ public class AnnouncementCommentService {
                     || !pblancNo.equals(parent.getPblancNo())) {
                 throw new EntityNotFoundException("부모 댓글을 찾을 수 없습니다.");
             }
+            // 답글은 한 단계만 둔다(화면이 한 단계 트리만 그린다).
+            if (parent.getParentCommentSeq() != null) throw new IllegalArgumentException("답글에는 다시 답글을 달 수 없어요.");
         }
 
         AnnouncementCommentEntity saved = commentRepository.save(new AnnouncementCommentEntity(
@@ -106,9 +108,12 @@ public class AnnouncementCommentService {
         AnnouncementCommentEntity comment = ownedComment(
                 commentSeq, userSeq, type, houseManageNo, pblancNo
         );
+        LocalDateTime now = LocalDateTime.now();
         comment.setDeleteYn("Y");
-        comment.setUpdateDt(LocalDateTime.now());
+        comment.setUpdateDt(now);
         comment.setUpdateUserSeq(userSeq);
+        // 답글이 있는 댓글을 지우면 답글도 함께 지운다(부모 없는 답글이 일반 댓글처럼 보이지 않게).
+        if (comment.getParentCommentSeq() == null) commentRepository.deleteReplies(comment.getCommentSeq(), userSeq, now);
     }
 
     private AnnouncementCommentEntity ownedComment(

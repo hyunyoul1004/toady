@@ -2,14 +2,14 @@
  * FAQ 답 문장의 [문구](경로) 표기를 조각으로 나눈다. 같은 사이트 경로와 청약홈만 링크로 인정한다(서버 PublicFaqPage와 같은 규칙).
  * 반환: 문단 배열, 각 문단은 { text } 또는 { text, to(앱 경로) | href(서버 페이지·외부) } 조각 배열.
  * 서버 HTML(검색용)과 같은 답을 쓰므로, 검색용 공개 페이지 경로는 같은 내용의 앱 화면으로 바꿔 연다
- * (/weekly → /this-week, /areas → /living-areas, /areas/운정 → 캘린더 생활권 검색, /zupzup → 맞춤 청약 줍줍 탭).
+ * (/weekly → /this-week, /areas → /regions, /areas/운정 → 캘린더 생활권 검색, /zupzup → 맞춤 청약 줍줍 탭).
  * 그 밖의 서버 전용 경로(/help 등)는 앱 라우터가 아닌 일반 링크(href, 같은 창)로 연다.
  */
 const SERVER_PAGE = /^\/(weekly|zupzup|areas|help)(\/|$)/;
 export function appPath(path) {
   if (/^\/weekly\/?$/.test(path)) return '/this-week';
   if (/^\/zupzup\/?$/.test(path)) return '/match/zupzup';
-  if (/^\/areas\/?$/.test(path)) return '/living-areas';
+  if (/^\/areas\/?$/.test(path)) return '/regions';
   const area = path.match(/^\/areas\/([a-z0-9-]+)\/?$/);
   return area ? `/?area=${area[1]}` : null;
 }

@@ -3,7 +3,7 @@ import { Alert, Box, Button, Chip, Paper, Stack, ToggleButton, ToggleButtonGroup
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { shiftMonth, uniqueInMonth } from './browseState';
-import { koreaToday, safeRead, ID_PATTERN } from './plannerUtils';
+import { safeRead, ID_PATTERN } from './plannerUtils';
 import { usePlanner } from './usePlanner';
 import TodaySummary from './TodaySummary';
 
@@ -19,23 +19,17 @@ export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month
   const planner=usePlanner();
   const [recent,setRecent]=useState(() => safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));
   useEffect(() => { const refresh=()=>setRecent(safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));window.addEventListener('toady-recent',refresh);return()=>window.removeEventListener('toady-recent',refresh); },[]);
-  const today=koreaToday();
   // 조회 범위는 달력 앞뒤 칸 때문에 이전·다음 달 일부를 포함한다. 건수와 목록은 고른 달의 일정만 센다(달마다 같은 공고가 겹치지 않게).
   const unique=uniqueInMonth(items,month);
-  const all=[...new Map(items.map(x=>[x.subscriptSeq,x])).values()];
-  const current=all.filter(x => x.rceptBgnde && x.rceptEndde && x.rceptBgnde <= today && x.rceptEndde >= today);
-  const [filter,setFilter]=useState('all');
-  const list=filter==='active' ? current : unique;
-  const showToday=()=>{onMonthChange(today.slice(0,7));setFilter('active');setViewMode('list');};
+  const list=unique;
   return <>
-  <TodaySummary todayCount={current.length} loading={isLoading} savedCount={planner.items.length} onShowToday={showToday} />
+  <TodaySummary savedCount={planner.items.length} />
   <Paper variant="outlined" sx={{p:1.5,mt:1.5,borderRadius:2}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
       <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
-      <Chip disabled={isLoading} label={isLoading?'공고 불러오는 중…':`조회된 공고 ${unique.length}`} onClick={()=>setFilter('all')} color={filter==='all'?'primary':'default'} />
-      {filter==='active' && <Chip label={`오늘 접수 중 ${current.length}`} color="primary" onDelete={()=>setFilter('all')} />}
+      <Chip disabled={isLoading} label={isLoading?'공고 불러오는 중…':`조회된 공고 ${unique.length}`} color="primary" />
       </Stack>
-      <ToggleButtonGroup size="small" exclusive value={viewMode} onChange={(_,v)=>{if(v){setViewMode(v);if(v==='calendar')setFilter('all');}}} aria-label="청약 보기 방식"><ToggleButton value="calendar">달력</ToggleButton><ToggleButton value="list">목록</ToggleButton></ToggleButtonGroup>
+      <ToggleButtonGroup size="small" exclusive value={viewMode} onChange={(_,v)=>{if(v)setViewMode(v);}} aria-label="청약 보기 방식"><ToggleButton value="calendar">달력</ToggleButton><ToggleButton value="list">목록</ToggleButton></ToggleButtonGroup>
     </Stack>
     {Array.isArray(recent) && recent.length>0 && <Box component="details" sx={{mt:1,'& summary':{cursor:'pointer',fontSize:12,color:'text.secondary',py:.5},'&[open] summary':{mb:.5}}}><Box component="summary">최근 본 공고 {recent.filter(x=>ID_PATTERN.test(x?.id || '')).length}개</Box><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="caption" color="text.secondary">최근 본 공고</Typography><Button size="small" color="inherit" onClick={()=>{try{localStorage.removeItem('toady.recent');}catch{}setRecent([]);}}>기록 지우기</Button></Stack><Stack direction="row" gap={1} sx={{overflowX:'auto',pb:.5}}>{recent.filter(x=>ID_PATTERN.test(x?.id || '')).map(x=><Button size="small" key={x.id} sx={{flexShrink:0,maxWidth:240,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} onClick={()=>onOpen(x.id)}>{x.houseNm}</Button>)}</Stack></Box>}
     {viewMode==='list' && <Stack direction="row" alignItems="center" justifyContent="center" gap={1} sx={{mt:2,mb:2}}>
@@ -43,7 +37,7 @@ export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month
       <TextField type="month" size="small" value={month} inputProps={{'aria-label':'목록 조회 월',min:'1900-01',max:'2200-12'}} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))onMonthChange(e.target.value);}} />
       <IconButton aria-label="목록 다음달" onClick={()=>onMonthChange(shiftMonth(month,1))}><ChevronRightRounded /></IconButton>
     </Stack>}
-    {viewMode==='list' && <Stack gap={1}>{isLoading ? <Skeleton variant="rounded" height={100} /> : list.map(item=><Paper key={item.subscriptSeq} variant="outlined" sx={{p:2,borderRadius:2}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Box sx={{minWidth:0}}><Typography component="h3" sx={{fontSize:16,margin:0,overflowWrap:'anywhere'}} fontWeight={750}>{item.houseNm}</Typography><Typography variant="body2" color="text.secondary">{item.hssplyAdres || item.supplyLocation}</Typography><Typography variant="caption">접수 {item.rceptBgnde || '미제공'} ~ {item.rceptEndde || '미제공'}</Typography></Box><Button aria-label={`${item.houseNm} 자세히 보기`} sx={{flexShrink:0}} onClick={()=>onOpen(item.subscriptSeq)}>자세히 보기</Button></Stack></Paper>)}{!isLoading && !list.length && <Alert severity="info" action={<Button size="small" onClick={()=>{setFilter('all');onResetFilters?.();}}>필터 초기화</Button>}>선택한 조건의 공고가 없습니다. 날짜를 바꾸거나 필터를 초기화해 보세요.</Alert>}</Stack>}
+    {viewMode==='list' && <Stack gap={1}>{isLoading ? <Skeleton variant="rounded" height={100} /> : list.map(item=><Paper key={item.subscriptSeq} variant="outlined" sx={{p:2,borderRadius:2}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Box sx={{minWidth:0}}><Typography component="h3" sx={{fontSize:16,margin:0,overflowWrap:'anywhere'}} fontWeight={750}>{item.houseNm}</Typography><Typography variant="body2" color="text.secondary">{item.hssplyAdres || item.supplyLocation}</Typography><Typography variant="caption">접수 {item.rceptBgnde || '미제공'} ~ {item.rceptEndde || '미제공'}</Typography></Box><Button aria-label={`${item.houseNm} 자세히 보기`} sx={{flexShrink:0}} onClick={()=>onOpen(item.subscriptSeq)}>자세히 보기</Button></Stack></Paper>)}{!isLoading && !list.length && <Alert severity="info" action={<Button size="small" onClick={()=>onResetFilters?.()}>필터 초기화</Button>}>선택한 조건의 공고가 없습니다. 날짜를 바꾸거나 필터를 초기화해 보세요.</Alert>}</Stack>}
   </Paper>
   </>;
 }

@@ -34,10 +34,13 @@ public class AdminMetrics {
         }
     }
 
+    /** 재방문 판정에 보는 이전 기간(주). TB_PAGE_VIEW 보관 90일 안에서 모든 주가 같은 기간을 보도록 4주로 둔다. */
+    static final int RETURN_WEEKS = 4;
     static LocalDate weekStart(LocalDate day) { return day.with(DayOfWeek.MONDAY); }
 
     public Report report(LocalDate today) {
-        LocalDate first = weekStart(today).minusWeeks(WEEKS - 1), windowStart = first.minusWeeks(1);
+        // 재방문은 주마다 같은 기간(그 주 시작 전 RETURN_WEEKS주 + 그 주)만 보고 판정한다(오래된 주일수록 낮게 집계되지 않게).
+        LocalDate first = weekStart(today).minusWeeks(WEEKS - 1), windowStart = first.minusWeeks(RETURN_WEEKS);
         try {
             Map<String, NavigableSet<LocalDate>> visitorDays = new HashMap<>();
             jdbc.query("SELECT DISTINCT VISITOR_ID,VISIT_DATE FROM TB_PAGE_VIEW WHERE VISIT_DATE BETWEEN ? AND ?",
@@ -65,8 +68,9 @@ public class AdminMetrics {
                     LocalDate last = days.floor(end);
                     if (last == null || last.isBefore(start)) continue;
                     visitors++;
-                    // 이번 주 마지막 방문 이전에 다른 날 방문이 있으면 다시 온 방문자다.
-                    if (days.lower(last) != null) returning++;
+                    // 이번 주 마지막 방문 이전(그 주 시작 전 RETURN_WEEKS주 안)에 다른 날 방문이 있으면 다시 온 방문자다.
+                    LocalDate earlier = days.lower(last);
+                    if (earlier != null && !earlier.isBefore(start.minusWeeks(RETURN_WEEKS))) returning++;
                 }
                 String key = start.toString();
                 Map<String, Set<String>> weekActions = actions.getOrDefault(key, Map.of());

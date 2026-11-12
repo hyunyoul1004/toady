@@ -81,8 +81,19 @@ public class CertifyService {
     /** 해시로 찾고, 배포 전에 발급된 평문 코드(최대 24시간 유효)도 받아 준다. */
     private CertifyEntity findCode(String type, String code, Long userSeq) {
         if (code == null || code.startsWith(HASH_PREFIX)) return null;
-        CertifyEntity hashed = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", hashCode(code), userSeq);
-        return hashed != null ? hashed : certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", code, userSeq);
+        // 메일에서 복사하며 섞인 공백·줄바꿈을 빼고, 비밀번호 찾기 코드(하이픈 없이 대문자로 발급)는 하이픈을 빼고 대문자로 맞춘 값도 찾아본다.
+        String trimmed = code.replaceAll("\\s", "");
+        String normalized = "FIND_PW".equals(type) ? trimmed.replace("-", "").toUpperCase(java.util.Locale.ROOT) : trimmed;
+        for (String candidate : new java.util.LinkedHashSet<>(java.util.List.of(trimmed, normalized))) {
+            // 저장된 해시값을 그대로 입력하는 경우는 정리한 값에서도 막는다.
+            if (candidate.startsWith(HASH_PREFIX) || candidate.toLowerCase(java.util.Locale.ROOT).startsWith(HASH_PREFIX)) return null;
+            CertifyEntity hashed = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", hashCode(candidate), userSeq);
+            if (hashed != null) return hashed;
+            // 배포 전에 발급된 평문 코드(최대 24시간 유효)도 받아 준다.
+            CertifyEntity plain = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", candidate, userSeq);
+            if (plain != null) return plain;
+        }
+        return null;
     }
 
     /** 가입 인증 코드를 저장하고 인증 메일을 발송합니다. */

@@ -4,6 +4,7 @@ import apiClient from '@/api/client';
 import { matchesArea } from '@/features/planner/plannerUtils';
 import announcementApi from '@/features/announcement/api/announcementApi';
 import { ALL_REGIONS, FLAT_CITY_OPTIONS } from '../announcementFilters';
+import { matchesRegionTarget } from '@/features/explore/regionRules';
 
 export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions) {
   const { data: livingAreas = [] } = useQuery({ queryKey:['livingAreas'], queryFn:() => apiClient.get('/api/v1/living-areas'), staleTime:3600000 });
@@ -140,17 +141,10 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
           }
 
           // C. 구/군 검색인 경우 (예: '파주시' 또는 '경기도 파주시')
-          if (target.districtName) {
-            return (
-              supplyLoc.includes(target.districtName) ||
-              hssplyAdres.includes(target.districtName) ||
-              houseNm.includes(target.districtName) ||
-              houseNm.includes(target.label)
-            );
-          }
-
-          // D. 시/도 전체 검색인 경우 (예: '서울특별시', '경기도')
-          const query = target.cityName || target.label;
+          // C·D. 구/군·시/도 검색: 같은 시·도 안에서 낱말 단위로 비교한다('남구'가 '강남구'에 걸리지 않게).
+          // 주소가 줄임말·옛 이름이어도 지역별 청약 건수와 같은 규칙(regionOf)으로 묶는다. 단지명에 지역 이름 전체가 들어간 경우도 찾는다.
+          if (target.cityName) return matchesRegionTarget(item, target) || houseNm.includes(target.label);
+          const query = target.label || '';
           return supplyLoc.includes(query) || hssplyAdres.includes(query) || houseNm.includes(query);
         })
       );

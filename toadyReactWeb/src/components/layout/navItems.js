@@ -11,11 +11,11 @@ export const MAIN_NAV = [
 
 /**
  * 더보기 묶음. 모두 앱 안 화면이라 사이드바·하단 탭이 그대로 유지된다.
- * (검색용 서버 페이지 /weekly·/areas·/help/faq는 같은 내용을 따로 둔다.)
+ * (검색용 서버 페이지 /weekly·/areas·/help/faq는 같은 내용을 따로 둔다. /areas의 앱 화면은 /regions)
  */
 export const MORE_NAV = [
   { key: 'weekly', path: '/this-week', label: '이번 주 청약' },
-  { key: 'areas', path: '/living-areas', label: '생활권별 청약' },
+  { key: 'areas', path: '/regions', label: '지역별 청약' },
   { key: 'faq', path: '/faq', label: '자주 묻는 질문' },
   { key: 'push', path: '/my', label: '알림 설정', overlay: 'push-settings' }
 ];

@@ -225,6 +225,11 @@ class PlannerIntegrationTest {
         assertTrue(ids.contains("remaining/R1/N1") && ids.contains("apt/K0/N1"),ids.toString());
         assertEquals("apt/W1/N1",summary.path("winners").get(0).path("id").asText());
         assertEquals(today.toString(),summary.path("winners").get(0).path("date").asText());
+        // 앱 '지역별 청약'은 전국 접수 중·예정 공고를 받아 화면에서 지역으로 묶는다(마감 공고는 넣지 않는다).
+        var active=json.readTree(html(mvc.perform(get("/api/v1/public/active-announcements")).andExpect(status().isOk())));
+        var activeIds=new java.util.ArrayList<String>(); active.forEach(item->activeIds.add(item.path("id").asText()));
+        assertTrue(activeIds.contains("remaining/R1/N1") && !activeIds.contains("apt/W1/N1"),activeIds.toString());
+        assertTrue(active.get(0).has("address") && active.get(0).has("region"));
         var areas=json.readTree(html(mvc.perform(get("/api/v1/public/area-summaries")).andExpect(status().isOk())));
         assertEquals(com.toady.web.app.planner.LivingAreas.ALL.size(),areas.size());
         assertEquals("unjeong",areas.get(0).path("slug").asText());
@@ -249,6 +254,10 @@ class PlannerIntegrationTest {
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('V1','N1','01','1','01','45.2'),('V1','N1','02','1','01','(△3)'),('V1','N1','01','2','01','300')");
         mvc.perform(get("/api/v1/polls/rate/apt/V1/N1").param("visitorId",a)).andExpect(status().isOk()).andExpect(jsonPath("$.open").value(false))
                 .andExpect(jsonPath("$.actualRate").value(45.2)).andExpect(jsonPath("$.actualChoice").value(4)).andExpect(jsonPath("$.myChoice").value(4));
+        // 1순위가 모두 미달(△)로만 공개되면 숫자 경쟁률이 없어도 투표를 닫고 정답을 '미달'로 보여 준다.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('V2','N2','01','1','01','(△5)')");
+        mvc.perform(get("/api/v1/polls/rate/apt/V2/N2")).andExpect(status().isOk()).andExpect(jsonPath("$.open").value(false))
+                .andExpect(jsonPath("$.actualChoice").value(0)).andExpect(jsonPath("$.actualRate").doesNotExist());
         mvc.perform(get("/api/v1/polls/rate/apt/NOPE/N1")).andExpect(status().isNotFound());
     }
     @Test void favoriteStageIsKeptWhenOmittedAndIgnoredUntilColumnExists() throws Exception {

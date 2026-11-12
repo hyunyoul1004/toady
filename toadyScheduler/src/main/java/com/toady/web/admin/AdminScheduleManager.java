@@ -114,7 +114,8 @@ public class AdminScheduleManager {
         if (cron == null || cron.length() > 100 || !CronExpression.isValidExpression(cron)) {
             throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요.");
         }
-        if (lookback < 1 || lookback > 3660) throw new IllegalArgumentException("조회 일수는 1~3660일 사이여야 합니다.");
+        // 자동 실행도 수동 실행과 같은 최대 기간을 둔다(외부 API 일일 한도 보호, '다시 실행'도 같은 제한 안에서 동작).
+        if (lookback < 1 || lookback > AdminJobService.MANUAL_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.MANUAL_MAX_DAYS + "일 사이여야 합니다.");
         var expression = CronExpression.parse(cron);
         LocalDateTime previous = LocalDateTime.now(ZONE).withSecond(0).withNano(0);
         for (int i = 0; i < 20; i++) {

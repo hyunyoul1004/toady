@@ -9,7 +9,7 @@ import ScoreCalculator from '@/features/score/ScoreCalculator';
 import MatchPage from '@/features/match/MatchPage';
 import FaqPage from '@/features/faq/FaqPage';
 import ThisWeekPage from '@/features/explore/ThisWeekPage';
-import LivingAreasPage from '@/features/explore/LivingAreasPage';
+import RegionsPage from '@/features/explore/RegionsPage';
 import LegalPage from '@/features/legal/LegalPage';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
@@ -45,7 +45,9 @@ export const AppRoutes = () => {
         <Route path="match/zupzup" element={<MatchPage key="zupzup" tab="zupzup" />} />
         <Route path="faq" element={<FaqPage />} />
         <Route path="this-week" element={<ThisWeekPage />} />
-        <Route path="living-areas" element={<LivingAreasPage />} />
+        <Route path="regions" element={<RegionsPage />} />
+        {/* 이전 주소(생활권별 청약)는 지역별 청약으로 옮긴다. */}
+        <Route path="living-areas" element={<Navigate to="/regions" replace />} />
         <Route path="privacy" element={<LegalPage kind="privacy" />} />
         <Route path="terms" element={<LegalPage kind="terms" />} />
         <Route path="certify" element={<SignUpCertify />} />

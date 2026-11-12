@@ -79,6 +79,7 @@ class PublicPagesUnitTest {
         assertEquals(0, RatePoll.bucket(0.4)); assertEquals(1, RatePoll.bucket(1)); assertEquals(3, RatePoll.bucket(29.99)); assertEquals(5, RatePoll.bucket(512.3));
         assertEquals(12.5, RatePoll.topRate(List.of("3.1", "12.5", "(△2)", "", "1,000a")));
         assertNull(RatePoll.topRate(List.of("-", "(△1)")));
+        assertTrue(RatePoll.shortage("(△1)") && RatePoll.shortage("△12") && RatePoll.shortage("(3)") && !RatePoll.shortage("3.1") && !RatePoll.shortage("-"));
         assertEquals(6, RatePoll.LABELS.size());
     }
     @Test void weekRangeUsesMondayToSundayInKorea() {

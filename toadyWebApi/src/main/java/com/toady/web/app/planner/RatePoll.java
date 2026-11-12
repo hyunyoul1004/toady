@@ -59,6 +59,11 @@ public class RatePoll {
             catch (NumberFormatException invalid) { return null; }
         }).filter(Objects::nonNull).max(Double::compare).orElse(null);
     }
+    /** 청약홈 미달 표기: (△3)·△3·▲3·(3). 화면 rateFormat.js parseRate와 같은 규칙. */
+    static boolean shortage(String value) {
+        String text = value == null ? "" : value.replace(",", "").trim();
+        return text.matches("^\\(?\\s*[△▲]\\s*[0-9]+\\s*\\)?$") || text.matches("^\\(\\s*[0-9]+\\s*\\)$");
+    }
     private static boolean valid(String house, String notice) { return house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}"); }
 
     private LocalDate today() { return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))); }
@@ -98,9 +103,12 @@ public class RatePoll {
 
     Map<String, Object> view(PlannerSummary.Summary s, String house, String notice, UUID visitorId) {
         String id = "apt/" + house + "/" + notice;
-        Double actual = topRate(jdbc.queryForList("SELECT CMPET_RATE FROM TB_APT_LTTOT_PBLANC_CMPET WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND SUBSCRPT_RANK_CODE='1'", String.class, house, notice));
+        List<String> firstRank = jdbc.queryForList("SELECT CMPET_RATE FROM TB_APT_LTTOT_PBLANC_CMPET WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND SUBSCRPT_RANK_CODE='1'", String.class, house, notice);
+        Double actual = topRate(firstRank);
+        // 모든 주택형이 미달(△)로만 공개되면 숫자 경쟁률이 없어도 결과가 나온 것이다. 이때 정답은 '미달'(0번 선택지).
+        boolean allShort = actual == null && firstRank.stream().anyMatch(RatePoll::shortage);
         LocalDate last = s.endDate() != null ? s.endDate() : s.startDate();
-        boolean open = actual == null && last != null && !today().isAfter(last);
+        boolean open = actual == null && !allShort && last != null && !today().isAfter(last);
         long[] counts = new long[LABELS.size()];
         jdbc.query("SELECT CHOICE,COUNT(*) FROM TB_RATE_POLL WHERE ANNOUNCEMENT_ID=? GROUP BY CHOICE", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
             int choice = r.getInt(1); if (choice >= 0 && choice < counts.length) counts[choice] = r.getLong(2);
@@ -114,7 +122,7 @@ public class RatePoll {
         body.put("total", Arrays.stream(counts).sum());
         body.put("myChoice", mine);
         body.put("actualRate", actual);
-        body.put("actualChoice", actual == null ? null : bucket(actual));
+        body.put("actualChoice", actual != null ? Integer.valueOf(bucket(actual)) : allShort ? Integer.valueOf(0) : null);
         return body;
     }
 }

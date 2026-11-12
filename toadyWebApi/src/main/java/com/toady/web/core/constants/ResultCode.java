@@ -44,7 +44,8 @@ public enum ResultCode {
     COMMENT_CONTENT_ERROR("ERR-209","댓글 내용을 작성해 주세요."),
     CURRENT_USER_CAN_MANAGE_COMMENT_ERROR("ERR-210","댓글은 작성자만 처리 할 수 있습니다."),
     ALREADY_EMAIL_ERROR("ERR-211","이미 등록된 email 입니다."),
-    ALREADY_NIC_NAME("ERR-212","이미 등록된 닉네임 입니다.")
+    ALREADY_NIC_NAME("ERR-212","이미 등록된 닉네임 입니다."),
+    SIGNUP_BUSY_ERROR("ERR-213","가입 요청이 겹쳐 처리하지 못했어요.<br/>잠시 후 다시 시도해 주세요.")
 
 
     ;

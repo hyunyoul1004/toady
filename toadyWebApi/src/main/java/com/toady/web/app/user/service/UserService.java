@@ -171,6 +171,11 @@ public class UserService {
 
         } catch (EmailDeliveryException e) {
             throw e;
+        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+            // 거의 동시에 들어온 가입(버튼 두 번 누름, 같은 범위의 다른 새 이메일)은 MariaDB 갭 잠금 교착으로 한쪽이 되돌려진다.
+            // 이메일이 정말 쓰였는지 단정할 수 없으므로 '이미 등록됨' 대신 다시 시도하라고 안내한다.
+            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.ok().body(ResData.of(ResultCode.SIGNUP_BUSY_ERROR.getCode(), ResultCode.SIGNUP_BUSY_ERROR.getMessage()));
         } catch (EmailTakenException e) {
             org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));

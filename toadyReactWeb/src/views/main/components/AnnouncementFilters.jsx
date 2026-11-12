@@ -5,7 +5,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import TuneRounded from '@mui/icons-material/TuneRounded';
 import { REGION_SEOUL, REGION_METRO, REGION_PROVINCE, ALL_REGIONS, SUPPLY_FILTER_ITEMS } from '../announcementFilters';
 
-export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
+export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyTouched, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
   // 첫 화면은 검색창 한 줄만 보여 주고, 유형·지역 필터는 필터 버튼으로 펼친다.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -40,6 +40,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
 
   // 공급유형 칩/체크박스 토글
   const handleRceptSeToggle = (rceptSe) => {
+    onSupplyTouched?.();
     setParamInfo((prev) => {
       const next = { ...prev };
       if (rceptSe === '01ALL') {
@@ -172,9 +173,10 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                             districtName: ''
                           };
 
+                          // 같은 단지를 다시 골라도 칩이 두 번 생기지 않게 key로 중복을 뺀다.
                           const updated = newSelected.map((item) =>
                             item === lastItem ? convertedItem : item
-                          );
+                          ).filter((item, index, all) => typeof item === 'string' || all.findIndex(other => typeof other !== 'string' && other.key === item.key) === index);
                           setParamInfo((prev) => ({ ...prev, citys: updated }));
                           return;
                         }

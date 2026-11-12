@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUnit, parseRate, formatRate, formatCount, hasDistinctValues, normalizeRateRows, summarizeRates, remainingTypeLabel } from '../src/views/main/subscriptRate/rateFormat.js';
+import { formatUnit, parseRate, formatRate, formatCount, hasDistinctValues, normalizeRateRows, summarizeRates, remainingTypeLabel, resultLabel } from '../src/views/main/subscriptRate/rateFormat.js';
 
 test('house types drop padded zeros and keep the suffix letter',()=>{
   assert.equal(formatUnit('074.0000A'),'74㎡ · A');
@@ -75,4 +75,11 @@ test('non-apt summary works without numeric rates or counts',()=>{
   assert.equal(single.top.text,'11,292.00 : 1');
   assert.equal(single.top.context,'');
   assert.equal(single.top.unit,'96.788㎡');
+});
+
+test('APT result label does not claim a first-rank close when the second rank was opened or short', () => {
+  assert.equal(resultLabel({ '1순위': [{ reqCnt: '150', cmpetRate: '1.5' }], '2순위': [{ reqCnt: '30', cmpetRate: '0.3' }] }), '2순위 접수', '1순위 접수가 공급보다 많아도 2순위가 열렸으면');
+  assert.equal(resultLabel({ '1순위': [{ reqCnt: '150', cmpetRate: '1.5' }] }), '1순위 마감\n(청약 접수 종료)');
+  assert.equal(resultLabel({ '1순위': [{ reqCnt: '10', cmpetRate: '(△5)' }] }), '1순위 미달');
+  assert.equal(resultLabel({}), '-');
 });

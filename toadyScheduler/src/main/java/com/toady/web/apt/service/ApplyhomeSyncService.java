@@ -193,8 +193,8 @@ public class ApplyhomeSyncService {
 		ResponseMismatchException(String message) { super(message); }
 	}
 
-	/** 일부 공고의 주택형만 실패했고 나머지는 저장된 경우. 호출하는 쪽은 이어지는 수집(결과 데이터)을 계속한 뒤 알린다. */
-	public static class PartialFailureException extends IllegalStateException {
+	/** 일부 공고의 주택형만 실패했고 나머지는 저장된 경우(공통 ApplyhomePartialFailureException). */
+	public static class PartialFailureException extends ApplyhomePartialFailureException {
 		public PartialFailureException(String message) { super(message); }
 	}
 }

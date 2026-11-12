@@ -38,8 +38,9 @@ public class PlannerService {
     public void save(long user,String type,String house,String notice,String note,int checklist,boolean email,Integer stage) {
         var account=users.findById(user).orElseThrow(EntityNotFoundException::new);
         users.findByEmailForUpdate(account.getUserEmail()); // 수량 제한과 동시 저장을 계정 단위로 직렬화한다.
-        summaries.get(type,house,notice);
         boolean exists=jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",Integer.class,user,type,house,notice)>0;
+        // 원본 공고 확인은 새로 추가할 때만 한다. 이미 저장한 공고는 원본이 사라져도 준비 노트·단계를 계속 고칠 수 있다.
+        if(!exists) summaries.get(type,house,notice);
         boolean withStage=stage!=null && stageColumn();
         if(exists) {
             jdbc.update("UPDATE TB_FAVORITE SET NOTE=?,CHECKLIST=?,EMAIL_ENABLED=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",note,checklist,email,user,type,house,notice);
