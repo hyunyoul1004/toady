@@ -197,10 +197,12 @@ public class AnnouncementController {
             @Parameter(description = "조회할 페이지(0부터 시작)", example = "0")
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "페이지당 댓글 수(1~100)", example = "20")
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @Parameter(description = "이 댓글 번호보다 이전 댓글 조회. 커서 사용 시 page=0")
+            @RequestParam(required = false) Long beforeCommentSeq
     ) {
         Page<AnnouncementCommentResponse> result = commentService.list(
-                AnnouncementType.fromPath(type), houseManageNo, pblancNo, page, size
+                AnnouncementType.fromPath(type), houseManageNo, pblancNo, page, size, beforeCommentSeq
         );
         return ResponseEntity.ok(ResData.of(pageData(result), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }

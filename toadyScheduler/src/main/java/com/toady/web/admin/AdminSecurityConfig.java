@@ -33,14 +33,16 @@ public class AdminSecurityConfig {
     SecurityFilterChain adminSecurity(HttpSecurity http,
             @Value("${applyhome.admin.enabled:false}") boolean enabled) throws Exception {
         if (!enabled) {
-            http.authorizeHttpRequests(authorize -> authorize.anyRequest().denyAll());
+            http.authorizeHttpRequests(authorize -> authorize
+                    .requestMatchers("/internal/health").permitAll().anyRequest().denyAll());
         } else {
             http.authorizeHttpRequests(authorize -> authorize
+                            .requestMatchers("/internal/health").permitAll()
                             .requestMatchers("/admin/login", "/admin/style.css", "/error").permitAll()
                             .requestMatchers("/admin/**", "/").hasRole("ADMIN")
                             .anyRequest().denyAll())
                     .formLogin(form -> form.loginPage("/admin/login").loginProcessingUrl("/admin/login")
-                            .defaultSuccessUrl("/admin", true).permitAll())
+                            .defaultSuccessUrl("/admin/", true).permitAll())
                     .logout(logout -> logout.logoutUrl("/admin/logout").logoutSuccessUrl("/admin/login?logout"));
         }
         // 로그인·로그아웃·수집 실행·설정 변경 모두 CSRF 보호를 유지한다. 템플릿의 POST 폼이 토큰을 전달한다.

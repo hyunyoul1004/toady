@@ -82,7 +82,7 @@ class AdminConsoleTest {
         when(competition.synchronizeScores(any(), any())).thenReturn(3L);
         mvc.perform(post("/admin/jobs").with(csrf()).param("kind", "SCORES")
                         .param("startDate", "2020-01-30").param("endDate", "2020-02-02"))
-                .andExpect(redirectedUrl("/admin"));
+                .andExpect(redirectedUrl("/admin/"));
         await().atMost(Duration.ofSeconds(5)).until(() -> repository.recent().size() == 1
                 && !repository.recent().getFirst().isActive());
         AdminJob job = repository.recent().getFirst();
@@ -140,7 +140,7 @@ class AdminConsoleTest {
     void persistsScheduleSettingsAndRejectsExcessivelyFrequentCron() throws Exception {
         mvc.perform(post("/admin/schedules/SCORES").with(csrf())
                         .param("cron", "0 30 6 * * *").param("lookbackDays", "365"))
-                .andExpect(redirectedUrl("/admin"));
+                .andExpect(redirectedUrl("/admin/"));
         var score = schedules.list().stream().filter(s -> s.kind() == JobKind.SCORES).findFirst().orElseThrow();
         assertFalse(score.enabled());
         assertEquals("0 30 6 * * *", score.cronExpression());
@@ -167,4 +167,23 @@ class AdminConsoleTest {
                 AdminScheduleManager.scheduleStart(LocalDate.of(2026, 11, 12), 1));
     }
 
+
+    @Test void readinessIsPublicAfterAdminInitialization() throws Exception {
+        mvc.perform(get("/internal/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test void loginRedirectAndBothDashboardPathsWorkWithTheSameSession() throws Exception {
+        mvc.perform(get("/admin/")).andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrlPattern("**/admin/login"));
+        var login = mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
+                .andExpect(authenticated().withUsername("operator"))
+                .andExpect(redirectedUrl("/admin/"))
+                .andReturn();
+        var session = (org.springframework.mock.web.MockHttpSession) login.getRequest().getSession(false);
+        for (String path : java.util.List.of("/admin", "/admin/")) {
+            mvc.perform(get(path).session(session)).andExpect(status().isOk())
+                    .andExpect(view().name("admin/index"))
+                    .andExpect(content().string(containsString("href=\"/admin/\"")));
+        }
+    }
 }

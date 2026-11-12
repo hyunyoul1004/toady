@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 
 /** 공고 댓글을 저장하고 공개 대상 댓글을 페이지 단위로 조회합니다. */
 public interface AnnouncementCommentRepository extends JpaRepository<AnnouncementCommentEntity, Long> {
-    /** 삭제되지 않은 공고 댓글을 작성일 내림차순으로 조회하며 작성자 닉네임을 함께 반환합니다. */
+    /** 삭제되지 않은 공고 댓글을 등록 번호 내림차순으로 조회하며 작성자 닉네임을 함께 반환합니다. */
     @Query("""
             select new com.toady.web.app.announcement.dto.AnnouncementCommentResponse(
                 c.commentSeq, c.announcementType, c.houseManageNo, c.pblancNo,
@@ -23,12 +23,14 @@ public interface AnnouncementCommentRepository extends JpaRepository<Announcemen
               and c.houseManageNo = :houseManageNo
               and c.pblancNo = :pblancNo
               and c.deleteYn = 'N'
-            order by c.regDt desc
+              and (:beforeCommentSeq is null or c.commentSeq < :beforeCommentSeq)
+            order by c.commentSeq desc
             """)
     Page<AnnouncementCommentResponse> findVisibleComments(
             @Param("announcementType") String announcementType,
             @Param("houseManageNo") String houseManageNo,
             @Param("pblancNo") String pblancNo,
+            @Param("beforeCommentSeq") Long beforeCommentSeq,
             Pageable pageable
     );
 

@@ -450,4 +450,25 @@ class MainApplicationTests {
                 .andExpect(jsonPath("$.data[0].houseManageNo").value("DATE-A"));
     }
 
+
+    @Test void unifiedListCountsVisibleCommentsAndRepliesByExactAnnouncementType() throws Exception {
+        jdbcTemplate.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,RCEPT_BGNDE) VALUES ('COUNT-HOUSE','COUNT-NOTICE','COMMENT_COUNT_TEST','2026-11-02'),('COUNT-EMPTY','COUNT-EMPTY','COMMENT_COUNT_TEST','2026-11-01')");
+        jdbcTemplate.update("INSERT INTO TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,SUBSCRPT_RCEPT_BGNDE) VALUES ('COUNT-HOUSE','COUNT-NOTICE','COMMENT_COUNT_TEST','2026-11-03')");
+        for (String type : List.of("APT", "URBAN")) {
+            for (int n = 0; n < 3; n++) {
+                jdbcTemplate.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT,PARENT_COMMENT_SEQ) VALUES (?,'COUNT-HOUSE','COUNT-NOTICE',?,0,0,?,1,CURRENT_TIMESTAMP,?)",
+                        type, "count-" + type + "-" + n, "APT".equals(type) && n == 2 ? "Y" : "N", n == 1 ? 999L : null);
+            }
+        }
+        mockMvc.perform(get("/api/v1/announcements").queryParam("types", "apt").queryParam("keyword", "COMMENT_COUNT_TEST").queryParam("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content[0].commentCount").value(2));
+        mockMvc.perform(get("/api/v1/announcements").queryParam("types", "apt").queryParam("keyword", "COMMENT_COUNT_TEST").queryParam("page", "1").queryParam("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].commentCount").value(0));
+        mockMvc.perform(get("/api/v1/announcements").queryParam("types", "urban").queryParam("keyword", "COMMENT_COUNT_TEST"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].commentCount").value(3));
+        jdbcTemplate.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y' WHERE ANNOUNCEMENT_TYPE='APT' AND HOUSE_MANAGE_NO='COUNT-HOUSE'");
+        mockMvc.perform(get("/api/v1/announcements").queryParam("types", "apt").queryParam("keyword", "COMMENT_COUNT_TEST").queryParam("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].commentCount").value(0));
+    }
 }

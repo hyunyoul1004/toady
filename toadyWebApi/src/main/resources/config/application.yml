@@ -40,6 +40,15 @@ server:
   port: ${SERVER_PORT:8080}
 
 toady:
+  research:
+    molit-service-key: ${MOLIT_TRADE_SERVICE_KEY:}
+  planner:
+    # 테이블 적용과 기존 Gmail 설정 확인 후 활성화한다. 외부 메일 업체를 사용하지 않는다.
+    reminders-enabled: ${PLANNER_REMINDERS_ENABLED:false}
+    mail-limit: ${GMAIL_ROLLING_LIMIT:400}
+    auth-reserve: ${GMAIL_AUTH_RESERVE:100}
+  analytics:
+    enabled: ${ANALYTICS_ENABLED:true}
   security:
     secret-key: ${JWT_SECRET}
     authorities-key: auth

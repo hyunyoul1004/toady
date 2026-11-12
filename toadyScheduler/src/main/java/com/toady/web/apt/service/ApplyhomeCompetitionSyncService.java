@@ -166,7 +166,7 @@ public class ApplyhomeCompetitionSyncService {
 			Map<String, String> filters = Map.of(
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
 					"cond[PBLANC_NO::EQ]", key.pblancNo());
-			List<JsonNode> rows = fetchAllPages(competitionApiClient, table.endpoint(), filters);
+			List<JsonNode> rows = fetchAllPages(competitionApiClient, table, filters);
 			persistenceService.replace(table.table(), table.columns(), table.keys(),
                     key.houseManageNo(), key.pblancNo(), rows);
 			totalRows += rows.size();
@@ -177,11 +177,12 @@ public class ApplyhomeCompetitionSyncService {
 	}
 
 	private List<JsonNode> fetchAllPages(ApplyhomeApiClient client, String endpoint, Map<String, String> filters) {
-		return ApplyhomePageCollector.fetchAll(endpoint, page -> client.getPage(endpoint, page, filters));
+		return ApplyhomePageCollector.fetchAll(endpoint, page -> client.getPage(endpoint, page, filters),
+                List.of("HOUSE_MANAGE_NO", "PBLANC_NO"));
 	}
 
-	private List<JsonNode> fetchAllPages(ApplyhomeCompetitionApiClient client, String endpoint, Map<String, String> filters) {
-		return ApplyhomePageCollector.fetchAll(endpoint, page -> client.getPage(endpoint, page, filters));
+	private List<JsonNode> fetchAllPages(ApplyhomeCompetitionApiClient client, TableSpec table, Map<String, String> filters) {
+		return ApplyhomePageCollector.fetchAll(table.endpoint(), page -> client.getPage(table.endpoint(), page, filters), table.keys());
 	}
 
 	private JsonNode field(JsonNode row, String name) {

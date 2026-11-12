@@ -26,6 +26,13 @@ public class BoardService {
                     builder.equal(root.get("useYn"), "Y"),
                     builder.equal(root.get("deleteYn"), "N")
             );
+            // 예약 게시글은 시작 전·종료 후에 공개 목록에 나타나지 않는다. null 경계는 제한 없음이다.
+            var now = java.time.LocalDateTime.now();
+            predicates = builder.and(predicates, builder.or(
+                    builder.equal(root.get("boardTargetDateYn"), "N"),
+                    builder.and(builder.equal(root.get("boardTargetDateYn"), "Y"),
+                            builder.or(builder.isNull(root.get("boardStartDate")), builder.lessThanOrEqualTo(root.get("boardStartDate"), now)),
+                            builder.or(builder.isNull(root.get("boardEndDate")), builder.greaterThanOrEqualTo(root.get("boardEndDate"), now)))));
             if (search.getBoardType() != null && !search.getBoardType().isBlank()) {
                 predicates = builder.and(predicates, builder.equal(root.get("boardType"), search.getBoardType()));
             }
@@ -38,7 +45,7 @@ public class BoardService {
                 predicates = builder.and(
                         predicates,
                         builder.like(builder.lower(root.get("boardTitle")),
-                                "%" + search.getBoardTitle().trim().toLowerCase() + "%")
+                                "%" + search.getBoardTitle().trim().toLowerCase(java.util.Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\')
                 );
             }
             return predicates;

@@ -27,6 +27,7 @@ public class UserDTO {
     public static class Login {
 
         @Email(message = "이메일 형식에 맞지 않습니다.")
+        @Size(max = 100)
         @NotBlank(message = "이메일을 입력해 주세요.")
         private String userEmail;
 
@@ -62,7 +63,8 @@ public class UserDTO {
     public static class RegUser {
 
         @NotBlank(message = "이메일을 입력해 주세요.")
-        @Pattern(regexp = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+.[A-Za-z]{2,6}$", message = "이메일 형식에 맞지 않습니다.")
+        @Email(message = "이메일 형식에 맞지 않습니다.")
+        @Size(max = 100, message = "이메일은 100자 이하로 입력해 주세요.")
         private String userEmail;
 
         @NotBlank(message = "비밀번호를 입력해 주세요.")

@@ -25,19 +25,22 @@ public class BoardRequestDto {
     @Getter
     @Builder
     @AllArgsConstructor
-    @NoArgsConstructor(access = AccessLevel.PROTECTED)
+    @NoArgsConstructor(access = AccessLevel.PUBLIC)
     public static class Search{
 
+        @jakarta.validation.constraints.NotBlank
         private String boardLocation;
 
         @Builder.Default
         private String boardTitle = "";
 
+        @jakarta.validation.constraints.NotBlank
         private String boardType;
 
         @NotNull
         @Min(1)
-        private int pageNumber;
+        @Builder.Default
+        private int pageNumber = 1;
 
         @Getter
         @NotNull

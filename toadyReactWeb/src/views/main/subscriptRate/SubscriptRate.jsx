@@ -1,8 +1,11 @@
+import useMediaQuery from '@mui/material/useMediaQuery';
+import {MobileCompetitionCards,MobileSpecialSupplyCards} from './MobileCompetitionCards';
 /**
  * @file SubscriptRate.jsx
  * @description 청약 경쟁률, 당첨 가점 및 특별공급 신청 현황 테이블 컴포넌트
  */
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
+import Button from '@mui/material/Button';
 import React, { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -69,6 +72,7 @@ const headerCellStyle = {
 };
 
 export function SubscriptRate({ subscriptDetail }) {
+  const isSmallScreen=useMediaQuery('(max-width:599px)');
   const type = getCompetitionType(subscriptDetail);
   const houseManageNo = subscriptDetail?.houseManageNo;
   const pblancNo = subscriptDetail?.pblancNo || houseManageNo;
@@ -79,19 +83,25 @@ export function SubscriptRate({ subscriptDetail }) {
   // 1. 청약 경쟁률 쿼리
   const {
     data: compRes,
-    isLoading: isCompLoading
+    isLoading: isCompLoading,
+    isError: isCompError,
+    refetch: refetchCompetition
   } = useCompetitionRatesQuery(idKey, Boolean(houseManageNo));
 
   // 2. APT 당첨 가점 쿼리 (APT인 경우만)
   const {
     data: scoresRes,
-    isLoading: isScoresLoading
+    isLoading: isScoresLoading,
+    isError: isScoresError,
+    refetch: refetchScores
   } = useAptScoresQuery(idKey, Boolean(houseManageNo && isApt));
 
   // 3. APT 특별공급 신청현황 쿼리 (APT인 경우만)
   const {
     data: specialRes,
-    isLoading: isSpecialLoading
+    isLoading: isSpecialLoading,
+    isError: isSpecialError,
+    refetch: refetchSpecial
   } = useAptSpecialSupplyStatusQuery(idKey, Boolean(houseManageNo && isApt));
 
   const competitionList = useMemo(() => compRes?.data || [], [compRes]);
@@ -187,6 +197,12 @@ export function SubscriptRate({ subscriptDetail }) {
       );
     }
 
+    if (isCompError || isScoresError) {
+      return <Alert severity="error" action={<Button color="inherit" onClick={() => { refetchCompetition(); refetchScores(); }}>다시 시도</Button>}>
+        경쟁률·당첨가점 정보를 불러오지 못했습니다.
+      </Alert>;
+    }
+
     if (!groupedAptData || groupedAptData.length === 0) {
       return (
         <Alert severity="info" sx={{ borderRadius: 1.5, fontSize: '0.82rem' }}>
@@ -195,8 +211,10 @@ export function SubscriptRate({ subscriptDetail }) {
       );
     }
 
+    if(isSmallScreen)return <MobileCompetitionCards groups={groupedAptData}/>;
+
     return (
-      <TableContainer
+      <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤"
         component={Paper}
         variant="outlined"
         sx={{
@@ -386,6 +404,12 @@ export function SubscriptRate({ subscriptDetail }) {
       );
     }
 
+    if (isCompError) {
+      return <Alert severity="error" action={<Button color="inherit" onClick={() => refetchCompetition()}>다시 시도</Button>}>
+        경쟁률 정보를 불러오지 못했습니다.
+      </Alert>;
+    }
+
     if (!competitionList || competitionList.length === 0) {
       return (
         <Alert severity="info" sx={{ borderRadius: 1.5, fontSize: '0.82rem' }}>
@@ -397,7 +421,7 @@ export function SubscriptRate({ subscriptDetail }) {
     // urban (오피스텔/도시형)
     if (type === 'urban') {
       return (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
+        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -429,7 +453,7 @@ export function SubscriptRate({ subscriptDetail }) {
     // public-rental (공공지원민간임대)
     if (type === 'public-rental') {
       return (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
+        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -461,7 +485,7 @@ export function SubscriptRate({ subscriptDetail }) {
     // cancel-resupply (취소후재공급)
     if (type === 'cancel-resupply') {
       return (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
+        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -494,7 +518,7 @@ export function SubscriptRate({ subscriptDetail }) {
 
     // 기타 (remaining / optional)
     return (
-      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
+      <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -542,6 +566,7 @@ export function SubscriptRate({ subscriptDetail }) {
           </Box>
         </Box>
 
+        {(!isApt || !isSmallScreen) && competitionList.length>0 && <Typography variant="caption" sx={{display:'block',color:'#607995',mb:1}}>표를 좌우로 스크롤하면 전체 항목을 확인할 수 있어요.</Typography>}
         {isApt ? renderAptIntegratedTable() : renderNonAptTable()}
       </Box>
 
@@ -575,12 +600,16 @@ export function SubscriptRate({ subscriptDetail }) {
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                 <CircularProgress size={26} />
               </Box>
+            ) : isSpecialError ? (
+              <Alert severity="error" action={<Button color="inherit" onClick={() => refetchSpecial()}>다시 시도</Button>}>
+                특별공급 신청현황을 불러오지 못했습니다.
+              </Alert>
             ) : specialList.length === 0 ? (
               <Alert severity="info" sx={{ borderRadius: 1.5, fontSize: '0.82rem' }}>
                 특별공급 신청현황 데이터가 등록되지 않았습니다.
               </Alert>
-            ) : (
-              <TableContainer
+            ) : isSmallScreen ? <MobileSpecialSupplyCards items={specialList}/> : (
+              <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤"
                 component={Paper}
                 variant="outlined"
                 sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1', overflowX: 'auto' }}

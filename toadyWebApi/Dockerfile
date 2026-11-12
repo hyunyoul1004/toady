@@ -18,6 +18,10 @@ FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system spring \
 	&& useradd --system --gid spring --create-home spring \
 	&& mkdir -p /app/logs \

@@ -60,7 +60,7 @@ public class UserService {
     /** 이메일과 비밀번호를 확인하고 로그인 토큰을 반환합니다. */
     public Map<String, Object> getUser(UserDTO.Login param) throws Exception {
 
-        CustomUserDetails userInfo = (CustomUserDetails) simpleUserDetailsService.loadUserByUsername(param.getUserEmail().toLowerCase());
+        CustomUserDetails userInfo = (CustomUserDetails) simpleUserDetailsService.loadUserByUsername(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
         if (passwordEncoder.matches(param.getUserPassword() , userInfo.getPassword()) == false) { //비밀번호 체크
             throw new BadCredentialsException(ResultCode.BAD_CREDENTIALS_ERROR.getMessage());
@@ -88,7 +88,7 @@ public class UserService {
 
         try {
 
-            param.setUserEmail(param.getUserEmail().toLowerCase());
+            param.setUserEmail(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
             if(userRepository.findByUserEmail(param.getUserEmail() ) != null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
@@ -135,7 +135,7 @@ public class UserService {
             throw e;
         } catch (Exception e) {
             log.error("회원가입 처리에 실패했습니다.", e);
-            return ResponseEntity.ok().body(ResData.of(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage()));
+            throw new IllegalStateException("회원가입 처리에 실패했습니다.", e);
         }
 
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/> 인증 후 로그인 가능하며, <br/>인증 링크는 발급 후 24시간 동안 유효합니다."));

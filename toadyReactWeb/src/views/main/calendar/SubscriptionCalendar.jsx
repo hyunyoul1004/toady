@@ -67,8 +67,8 @@ export function SubscriptionCalendar(props) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const calendarRef = useRef(null);
-  const [currentTitle, setCurrentTitle] = useState(() => dayjs().format('YYYY-MM'));
-  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [currentTitle, setCurrentTitle] = useState(() => props.initialMonth || dayjs().format('YYYY-MM'));
+  const [currentDate, setCurrentDate] = useState(() => props.initialMonth ? new Date(`${props.initialMonth}-01T12:00:00`) : new Date());
 
   // 마운트 시 초기 날짜 범위 세팅 (모바일 환경에서도 즉각적인 API 페칭 보장)
   React.useEffect(() => {
@@ -79,7 +79,7 @@ export function SubscriptionCalendar(props) {
         return {
           ...prev,
           startStr: d.startOf('month').subtract(7, 'day').format('YYYY-MM-DD'),
-          endStr: d.endOf('month').add(7, 'day').format('YYYY-MM-DD')
+          endStr: d.endOf('month').add(14, 'day').format('YYYY-MM-DD')
         };
       });
     }
@@ -122,6 +122,7 @@ export function SubscriptionCalendar(props) {
       const newDate = d.toDate();
       setCurrentDate(newDate);
       setCurrentTitle(d.format('YYYY-MM'));
+      props.onMonthChange?.(d.format('YYYY-MM'));
 
       const api = calendarRef.current?.getApi();
       if (api) {
@@ -132,11 +133,11 @@ export function SubscriptionCalendar(props) {
         props.setParamInfo((prev) => ({
           ...prev,
           startStr: d.startOf('month').subtract(7, 'day').format('YYYY-MM-DD'),
-          endStr: d.endOf('month').add(7, 'day').format('YYYY-MM-DD')
+          endStr: d.endOf('month').add(14, 'day').format('YYYY-MM-DD')
         }));
       }
     },
-    [props.setParamInfo]
+    [props.setParamInfo, props.onMonthChange]
   );
 
   // 외부(Main)에서 전달된 특정 날짜로 캘린더 화면 및 월 강제 이동
@@ -154,17 +155,17 @@ export function SubscriptionCalendar(props) {
         const viewDate = api.getDate();
         setCurrentDate(viewDate);
         setCurrentTitle(dayjs(viewDate).format('YYYY-MM'));
+        props.onMonthChange?.(dayjs(viewDate).format('YYYY-MM'));
       }
 
       if (props.setParamInfo) {
-        props.setParamInfo((prev) => ({
-          ...prev,
-          startStr: dayjs(dateInfo.start).format('YYYY-MM-DD'),
-          endStr: dayjs(dateInfo.end).subtract(1, 'day').format('YYYY-MM-DD')
-        }));
+        const view = dayjs(api?.getDate() || currentDate);
+        const startStr = view.startOf('month').subtract(7,'day').format('YYYY-MM-DD');
+        const endStr = view.endOf('month').add(14,'day').format('YYYY-MM-DD');
+        props.setParamInfo(previous => previous.startStr === startStr && previous.endStr === endStr ? previous : {...previous,startStr,endStr});
       }
     },
-    [props.setParamInfo]
+    [props.setParamInfo, props.onMonthChange]
   );
 
   // 3. 네비게이션 버튼 동작
@@ -374,6 +375,7 @@ export function SubscriptionCalendar(props) {
       ) : (
         <Box className="subscription-calendar-wrapper">
           <FullCalendar
+            initialDate={currentDate}
             ref={calendarRef}
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"

@@ -21,6 +21,8 @@ bin/
 coverage/
 .vite/
 .cache/
+__pycache__/
+*.py[cod]
 !**/src/main/**/build/
 !**/src/test/**/build/
 

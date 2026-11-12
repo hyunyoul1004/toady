@@ -45,6 +45,21 @@ public class JwtProviderImpl implements JwtProvider {
     @Value("${toady.security.token-created-at-key:tca}")
     private String tokenCreatedAtKey;
 
+    /** 인증이 불가능한 설정으로 배포 준비 상태가 성공하지 않도록 시작 시 검증한다. */
+    @jakarta.annotation.PostConstruct
+    void validateConfiguration() {
+        byte[] decoded;
+        try {
+            decoded = Decoders.BASE64.decode(secretKey);
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("JWT_SECRET must be valid Base64", exception);
+        }
+        if (decoded.length < 64 || tokenExpireMs <= 0 || authoritiesKey.isBlank() || tokenCreatedAtKey.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET must contain at least 64 bytes and token settings must be valid");
+        }
+        signingKey();
+    }
+
     @Override
     /** 사용자 식별자·권한과 만료 시각을 포함한 서명 토큰을 발급합니다. */
     public String generatorToken(Authentication authentication) {

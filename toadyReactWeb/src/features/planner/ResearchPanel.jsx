@@ -1,0 +1,94 @@
+import { useState, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Alert, Button, Chip, Skeleton, Tab, Tabs, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
+import BookmarkRounded from '@mui/icons-material/BookmarkRounded';
+import FolderOpenOutlined from '@mui/icons-material/FolderOpenOutlined';
+import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
+import EventAvailableOutlined from '@mui/icons-material/EventAvailableOutlined';
+import ApartmentRounded from '@mui/icons-material/ApartmentRounded';
+import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
+import { summaryOf, downloadCalendar, koreaToday, daysUntil } from './plannerUtils';
+import { formatManwon } from './researchUtils';
+import { usePlanner } from './usePlanner';
+import { useNeighborhoodResearch } from './useNeighborhoodResearch';
+import './research.css';
+
+function DataState({kind,onRetry}) {
+  const copy={NOT_CONFIGURED:['정보 서비스를 준비하고 있어요','연동이 완료되면 이 화면에서 데이터를 바로 확인할 수 있어요.'],EMPTY:['조건에 맞는 공개 자료가 없어요','조회 기간과 공개 범위에 따라 결과가 없을 수 있어요.'],UNAVAILABLE:['지금은 정보를 불러오지 못했어요','제공처 응답이 지연되고 있어요. 잠시 후 다시 확인해 주세요.']};
+  const [title,description]=copy[kind] || copy.UNAVAILABLE;
+  return <div className="research-data-state"><ApartmentRounded /><strong>{title}</strong><p>{description}</p>{kind==='UNAVAILABLE' && onRetry && <Button size="small" onClick={onRetry}>다시 불러오기</Button>}</div>;
+}
+function LoadingData(){return <div className="research-loading"><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/></div>;}
+const shortDate=date=>date?date.slice(5).replace('-','.'):'미제공';
+const checkedAt=value=>value?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'';
+
+export function AnnouncementActions({detail}) {
+  const planner=usePlanner(),navigate=useNavigate();
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null);
+  const summary=summaryOf(detail),saved=planner.items.some(x=>x.id===summary.id);
+  async function save(){if(saved){navigate('/my');return;}setBusy(true);setMessage(null);try{await planner.save({id:summary.id,summary,note:'',checklist:0,emailEnabled:false});}catch(e){setMessage(e.message);}finally{setBusy(false);}}
+  return <>
+    <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={save}>{saved?'저장한 공고 관리':busy?'저장 중…':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
+    {!planner.loggedIn && <p className="research-storage-note">로그인 없이 저장하고, 이 브라우저에서 이어볼 수 있어요.</p>}
+    </div>    {message && <Alert severity="error" sx={{my:1}}>{message}</Alert>}
+    {planner.error && <Alert severity="error" sx={{my:1}} action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>저장한 공고를 확인하지 못했습니다.</Alert>}
+  </>;
+}
+
+export function ResearchTabs({value,onChange}) {
+  const tab=value;
+  return <Tabs value={tab} onChange={(_,value)=>onChange(value)} variant="fullWidth" className="research-tabs" aria-label="청약 조사 정보"><Tab value="info" label="청약 정보"/><Tab value="trades" label="동네 실거래"/></Tabs>;
+}
+
+export default function ResearchPanel({detail,children,tab:controlledTab,onTabChange,showTabs=true}) {
+  const unitSection=useRef(null);
+  const [localTab,setLocalTab]=useState('info'),[area,setArea]=useState('');
+  const tab=controlledTab ?? localTab, setTab=onTabChange || setLocalTab;
+  const summary=summaryOf(detail),today=koreaToday();
+  const research=useNeighborhoodResearch(detail,tab,area);
+  const units=detail.unitPrices || [];
+  const supply=Number(summary.supply);
+  const hasSupply=Number.isFinite(supply) && supply>0;
+  const amounts=units.map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
+  const min=amounts.length?Math.min(...amounts):null,max=amounts.length?Math.max(...amounts):null;
+  const areas=[...new Set(units.map(unit=>Math.round(unit.area)).filter(Number.isFinite))].slice(0,6);
+  const closing=daysUntil(summary.endDate,today),start=daysUntil(summary.startDate,today);
+  const status=start>0?`접수 D-${start}`:closing>=0 && closing!==null?'접수 중':summary.endDate?'접수 종료':'일정 확인';
+  const trades=research.trades.data;
+
+  return <section className="research-panel" aria-label="공고 핵심 정보와 동네 조사">
+    <header className="research-heading"><span className="research-eyebrow">모집공고 핵심 요약</span><Chip size="small" label={status} variant="outlined" /></header>
+    <div className="research-metrics">
+      <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
+      <div className="research-metric"><span><EventAvailableOutlined />당첨자 발표</span><strong>{shortDate(summary.winnerDate)}</strong><small>{summary.winnerDate?`${summary.winnerDate.slice(0,4)}년`:'일정 미제공'} · 공식 발표 기준</small></div>
+      <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{hasSupply?supply.toLocaleString('ko-KR'):'미제공'}{hasSupply && <em>세대</em>}</strong><small>{summary.housingType || '모집공고 기준'}</small></div>
+    </div>
+    {showTabs && <ResearchTabs value={tab} onChange={setTab}/>}
+    <div className="research-tab-content" role="tabpanel" aria-label={tab==='info'?'청약 정보':tab==='prices'?'주택형과 공급금액':'같은 법정동의 실제 매매 거래'}>
+      {tab==='info' && <>
+        {amounts.length>0 && <div className="announcement-price-highlight"><span>주택형별 최고 공급금액</span><strong>{formatManwon(min)}{min!==max && <> ~ {formatManwon(max)}</>}</strong><div><span>{units.length}개 주택형 · 층·타입별 금액은 원문 확인</span><Button size="small" onClick={()=>unitSection.current?.scrollIntoView({behavior:'smooth',block:'start'})}>주택형별 보기 ↓</Button></div></div>}
+        {children}
+        <section ref={unitSection} className="announcement-unit-section" aria-label="주택형과 분양가"><h3>주택형·분양가</h3>
+        <div className="research-section-caption"><span>주택형별 최고 공급금액</span><span>청약홈 공개 자료</span></div>
+
+        {units.length ? <div className="research-price-list">{units.map(unit=><div className="research-price-row" key={unit.id}><div><strong>{unit.label}</strong><span>전용면적{unit.general || unit.special?` · 일반 ${unit.general} / 특별 ${unit.special}세대`:''}</span></div><div><strong>{unit.amountManwon?formatManwon(unit.amountManwon):'금액 미제공'}</strong><span>최고 공급금액</span></div></div>)}</div>:<p className="research-explanation">이 공급 유형의 금액과 납부 조건은 청약 정보 탭의 모집공고 원문에서 확인해 주세요.</p>}
+        <p className="research-footnote">실제 층·타입별 금액과 추가 옵션 비용은 모집공고를 확인해 주세요. 표시 범위는 각 주택형의 최고 금액을 모은 것으로, 최저 분양가를 의미하지 않습니다.</p>
+        </section>
+      </>}
+      {tab==='trades' && <>
+        <div className="research-section-caption"><span>{research.location.data?.dong || '같은 법정동'} 아파트 매매</span><span>국토교통부 신고 자료</span></div>
+        <ToggleButtonGroup size="small" exclusive value={area} onChange={(_,value)=>{if(value!==null)setArea(value);}} className="research-area-filter" aria-label="실거래 전용면적 필터"><ToggleButton value="">전체 면적</ToggleButton>{areas.map(value=><ToggleButton key={value} value={String(value)}>{value}㎡ 안팎</ToggleButton>)}</ToggleButtonGroup>
+        {area && <p className="research-explanation">전용 {area}㎡에서 ±5㎡ 이내 거래를 조회합니다.</p>}
+        {research.capabilities.isLoading || research.location.isLoading || research.location.isFetching || research.trades.isFetching ? <LoadingData/> : research.capabilities.error || research.trades.error ? <DataState kind="UNAVAILABLE" onRetry={()=>{research.capabilities.refetch();research.trades.refetch();}}/> : !research.capabilities.data?.tradesEnabled ? <DataState kind="NOT_CONFIGURED"/> : research.location.error ? <div className="research-data-state"><PlaceOutlined/><strong>거래를 조회할 위치를 확인하지 못했어요</strong><p>{research.location.error.message}</p><Button onClick={()=>research.location.refetch()}>위치 다시 확인</Button></div> : trades?.status==='READY' ? <>
+          <p className="research-explanation">{trades.fromMonth} ~ {trades.toMonth} · 조건에 맞는 거래 {trades.total}건 중 최근 {trades.items.length}건</p>
+          <div className="research-trade-list">{trades.items.map((trade,index)=><article key={`${trade.apartment}/${trade.date}/${index}`}><div><h3>{trade.apartment}</h3><span>전용 {Number(trade.area).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡ · {trade.floor}층{trade.buildYear?` · ${trade.buildYear}년 준공`:''}</span></div><div><strong>{formatManwon(trade.amountManwon)}</strong><time dateTime={trade.date}>{trade.date} 계약</time></div></article>)}</div>
+          <p className="research-footnote">데이터 확인 {checkedAt(trades.checkedAt)} · 취소 표시가 있는 거래 제외</p>
+        </> : <DataState kind={trades?.status} onRetry={()=>research.trades.refetch()}/>}
+        <p className="research-footnote">같은 법정동의 신고 거래이며 거리순·동일 조건 비교나 현재 호가가 아닙니다. 신고 지연·정정·해제로 원본과 차이가 생길 수 있습니다.</p>
+      </>}
+    </div>
+
+
+  </section>;
+}

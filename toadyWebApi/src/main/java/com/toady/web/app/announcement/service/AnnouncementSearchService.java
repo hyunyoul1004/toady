@@ -29,6 +29,7 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AnnouncementSearchService {
+    private final AnnouncementCommentCountService commentCounts;
     private final AptAnnouncementRepository aptRepository;
     private final UrbanAnnouncementRepository urbanRepository;
     private final RemainingAnnouncementRepository remainingRepository;
@@ -125,23 +126,20 @@ public class AnnouncementSearchService {
             int limit,
             Function<T, AnnouncementSuggestionResponse> mapper
     ) {
-        String pattern = "%" + keyword.replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_") + "%";
         Specification<T> specification = (root, query, builder) -> {
-            var nameMatches = builder.like(
-                    builder.lower(root.get("houseNm")), pattern, '\\'
-            );
-            var addressMatches = builder.like(
-                    builder.lower(root.get(addressProperty)), pattern, '\\'
-            );
+            var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
+            for (String term : com.toady.web.app.planner.LivingAreas.terms(keyword)) {
+                String pattern = "%" + term.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+                matches.add(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'));
+                matches.add(builder.like(builder.lower(root.get(addressProperty)), pattern, '\\'));
+            }
             var date = builder.function("replace", String.class,
                     root.get(receptionStartDateProperty), builder.literal("-"), builder.literal(""));
             query.orderBy(
                     builder.asc(builder.<Integer>selectCase().when(builder.isNull(date), 1).otherwise(0)),
                     builder.desc(date), builder.asc(root.get("houseManageNo")), builder.asc(root.get("pblancNo"))
             );
-            return builder.or(nameMatches, addressMatches);
+            return builder.or(matches.toArray(jakarta.persistence.criteria.Predicate[]::new));
         };
         return repository.findBy(specification, query -> query.limit(limit).all())
                 .stream()
@@ -198,7 +196,7 @@ public class AnnouncementSearchService {
         int toIndex = Math.min(fromIndex + search.size(), candidates.size());
         Pageable resultPage = PageRequest.of(search.page(), search.size());
         List<AnnouncementListItem> content = List.copyOf(candidates.subList(fromIndex, toIndex));
-        return new PageImpl<>(content, resultPage, totalElements);
+        return new PageImpl<>(commentCounts.enrich(content), resultPage, totalElements);
     }
 
     private static <T> Specification<T> searchSpecification(AnnouncementSearch search) {
@@ -208,10 +206,14 @@ public class AnnouncementSearchService {
                 predicates = builder.and(predicates, builder.equal(root.get("subscrptAreaCode"), search.regionCode()));
             }
             if (search.keyword() != null && !search.keyword().isBlank()) {
-                predicates = builder.and(
-                        predicates,
-                        builder.like(builder.lower(root.get("houseNm")), "%" + search.keyword().trim().toLowerCase() + "%")
-                );
+                var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
+                String address = root.getJavaType() == UrbanAnnouncementEntity.class ? "hssplyHshldco" : "hssplyAdres";
+                for (String term : com.toady.web.app.planner.LivingAreas.terms(search.keyword())) {
+                    String pattern = "%" + term.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+                    matches.add(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'));
+                    matches.add(builder.like(builder.lower(root.get(address)), pattern, '\\'));
+                }
+                predicates = builder.and(predicates, builder.or(matches.toArray(jakarta.persistence.criteria.Predicate[]::new)));
             }
 
             // 날짜 조건은 모집공고일이 아닌 청약접수 시작일을 대상으로 적용합니다.

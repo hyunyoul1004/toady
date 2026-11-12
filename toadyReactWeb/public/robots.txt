@@ -16,5 +16,6 @@ User-agent: Bingbot
 Allow: /
 
 # 사이트맵 경로
-Sitemap: https://toady.co.kr/sitemap.xml
+Sitemap: https://www.toady.co.kr/sitemap.xml
+Sitemap: https://www.toady.co.kr/announcement-sitemap.xml
 

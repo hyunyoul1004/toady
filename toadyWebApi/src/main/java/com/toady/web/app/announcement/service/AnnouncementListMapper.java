@@ -22,7 +22,7 @@ final class AnnouncementListMapper {
                 item.getGnrlRnk2CrspareaRcptde(), item.getGnrlRnk2CrspareaEndde(),
                 item.getGnrlRnk2EtcGgRcptde(), item.getGnrlRnk2EtcGgEndde(),
                 item.getGnrlRnk2EtcAreaRcptde(), item.getGnrlRnk2EtcAreaEndde(),
-                item.getTotSuplyHshldco()
+                item.getTotSuplyHshldco(), 0L
         );
     }
 
@@ -34,7 +34,7 @@ final class AnnouncementListMapper {
                 item.getHssplyHshldco(), item.getHssplyZip(),
                 item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde(),
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                item.getTotSuplyHshldco()
+                item.getTotSuplyHshldco(), 0L
         );
     }
 
@@ -46,7 +46,7 @@ final class AnnouncementListMapper {
                 item.getHssplyAdres(), item.getHssplyZip(),
                 item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde(),
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                item.getTotSuplyHshldco()
+                item.getTotSuplyHshldco(), 0L
         );
     }
 
@@ -58,7 +58,7 @@ final class AnnouncementListMapper {
                 item.getHssplyAdres(), item.getHssplyZip(),
                 item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde(),
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                item.getTotSuplyHshldco()
+                item.getTotSuplyHshldco(), 0L
         );
     }
 
@@ -70,7 +70,7 @@ final class AnnouncementListMapper {
                 item.getHssplyAdres(), item.getHssplyZip(),
                 item.getSubscrptRceptBgnde(), item.getSubscrptRceptEndde(),
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                item.getTotSuplyHshldco()
+                item.getTotSuplyHshldco(), 0L
         );
     }
 }

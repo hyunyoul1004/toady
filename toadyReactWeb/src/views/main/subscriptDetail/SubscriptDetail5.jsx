@@ -1,3 +1,4 @@
+import { formatServerMessage } from '@/utils/text.util';
 /**
  * SubscriptDetail1.jsx
  * 공공지원민간임대
@@ -116,7 +117,7 @@ function SubscriptDetail5(props) {
 
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">사업주체 전화번호</TableCell>
-                          <TableCell align="left"><div dangerouslySetInnerHTML={ {__html: subscriptDetail.businessPhoneNumber} }></div></TableCell>
+                          <TableCell align="left"><div>{formatServerMessage(subscriptDetail.businessPhoneNumber)}</div></TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">입주예정월</TableCell>
@@ -161,7 +162,7 @@ function SubscriptDetail5(props) {
                         </TableRow>
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">당첨자 발표일</TableCell>
-                          <TableCell align="left"><div dangerouslySetInnerHTML={ {__html: subscriptDetail.winnerAnnouncementDate} }></div></TableCell>
+                          <TableCell align="left"><div>{formatServerMessage(subscriptDetail.winnerAnnouncementDate)}</div></TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">계약일</TableCell>

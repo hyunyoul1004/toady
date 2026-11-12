@@ -10,6 +10,7 @@ import announcementApi, { parseSubscriptId } from '../api/announcementApi';
 /** Query Keys */
 export const announcementKeys = {
   all: ['announcements'],
+  lists: ['announcements', 'list'],
   list: (params) => ['announcements', 'list', params],
   detail: (id) => ['announcements', 'detail', id],
   comments: (id) => ['announcements', 'comments', id],
@@ -22,12 +23,12 @@ export const announcementKeys = {
  * 분양 공고 목록 조회 훅
  * @param {Record<string, any>} params 검색/필터/페이징 조건
  */
-export function useAnnouncementsQuery(params) {
+export function useAnnouncementsQuery(params, enabled = true) {
   return useQuery({
     queryKey: announcementKeys.list(params),
     queryFn: () => announcementApi.getAnnouncements(params),
     // 달력에서 날짜 범위가 세팅되기 전(초기값 '')에는 요청하지 않음 → 중복 호출 방지
-    enabled: Boolean(params?.startStr && params?.endStr),
+    enabled: enabled && Boolean(params?.startStr && params?.endStr),
     staleTime: 1000 * 60 * 3, // 3분간 캐시 유지
     refetchOnWindowFocus: false
   });
@@ -83,6 +84,7 @@ export function useAddCommentMutation() {
       // 해당 공고의 댓글 목록 캐시 무효화 (즉시 재조회)
       queryClient.invalidateQueries({ queryKey: announcementKeys.comments(idKey) });
       queryClient.invalidateQueries({ queryKey: announcementKeys.detail(idKey) });
+      queryClient.invalidateQueries({ queryKey: announcementKeys.lists });
     }
   });
 }
@@ -118,6 +120,7 @@ export function useDeleteCommentMutation() {
       const idKey = `${type}/${houseManageNo}/${pblancNo}`;
       queryClient.invalidateQueries({ queryKey: announcementKeys.comments(idKey) });
       queryClient.invalidateQueries({ queryKey: announcementKeys.detail(idKey) });
+      queryClient.invalidateQueries({ queryKey: announcementKeys.lists });
     }
   });
 }

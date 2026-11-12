@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { create } from 'zustand';
 import { jwtDecode } from 'jwt-decode';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 
 function token(exp, sub = 'member@example.test', userSeq = 1) {
   return `e30.${Buffer.from(JSON.stringify({ sub, userSeq, exp })).toString('base64url')}.signature`;
@@ -50,7 +51,14 @@ async function harness(fetch) {
   const api = await load('@/features/announcement/api/announcementApi');
   await api.link(load);
   await api.evaluate();
+  const auth = await load('@/features/auth/api/authApi');
+  await auth.link(load); await auth.evaluate();
+  const binding = await load('@/features/auth/store/bindAuthQueryCache');
+  await binding.link(load); await binding.evaluate();
   return {
+    auth: auth.namespace.default,
+    bindCache: binding.namespace.bindAuthQueryCache,
+    dispatchStorage: key => listeners.get('storage')?.({ key }),
     api: api.namespace.default,
     getCompetitionType: api.namespace.getCompetitionType,
     client: cache.get('@/api/client').namespace,
@@ -133,15 +141,15 @@ test('stale unauthorized response does not clear a newer session', async () => {
 });
 
 
-test('comments collect older parents and report the server total', async () => {
-  const pages = [];
+test('comments collect older parents with a monotonic cursor', async () => {
+  const cursors = [];
   const h = await harness(async url => {
-    const page = Number(new URL(url, 'http://localhost').searchParams.get('page'));
-    pages.push(page);
-    return response({ data: { content: page ? [{ commentSeq: 1, parentCommentSeq: null }] : Array.from({ length: 100 }, (_, i) => ({ commentSeq: i + 2, parentCommentSeq: 1 })), totalPages: 2, totalElements: 101 } });
+    const before = new URL(url, 'http://localhost').searchParams.get('beforeCommentSeq');
+    cursors.push(before);
+    return response({ data: { content: before ? [{ commentSeq: 1, parentCommentSeq: null }] : Array.from({ length: 100 }, (_, i) => ({ commentSeq: 101 - i, parentCommentSeq: 1 })), totalPages: before ? 1 : 2, totalElements: before ? 1 : 101 } });
   });
   const result = await h.api.getComments({ type: 'apt', houseManageNo: '1', pblancNo: '1' });
-  assert.deepEqual(pages, [0, 1]);
+  assert.deepEqual(cursors, [null, '2']);
   assert.equal(result.data.subscriptCommentList.length, 101);
   assert.equal(result.data.totalElements, 101);
 });
@@ -150,7 +158,7 @@ test('comments reject partial results when an older page fails', async () => {
   let calls = 0;
   const h = await harness(async () => {
     if (++calls > 1) throw new Error('comments unavailable');
-    return response({ data: { content: [], totalPages: 2 } });
+    return response({ data: { content: [{ commentSeq: 10 }], totalPages: 2 } });
   });
   await assert.rejects(h.api.getComments({ type: 'apt', houseManageNo: '1', pblancNo: '1' }), /comments unavailable/);
 });
@@ -196,4 +204,108 @@ test('cancelled resupply uses its competition endpoint while keeping remaining d
   assert.equal(detail.type, 'remaining');
   assert.equal(h.getCompetitionType({ type: 'remaining', houseSecd: '04' }), 'remaining');
   assert.equal(h.getCompetitionType({ type: 'apt' }), 'apt');
+});
+
+
+test('public authentication calls omit expired JWT and preserve the current session', async () => {
+  const requests = [];
+  const h = await harness(async (url, options) => { requests.push({ url, headers: options.headers }); return response({ resultCode: 'SUCCESS' }); });
+  const old = token(1); h.store.getState().login(old);
+  await h.auth.login({ userEmail: 'member@example.test', userPassword: 'pass' });
+  await h.auth.register({}); await h.auth.verifyEmail({});
+  await h.auth.resendAccountVerification('member@example.test');
+  await h.auth.requestPasswordReset({}); await h.auth.confirmPasswordChange({});
+  assert.equal(requests.length, 6);
+  for (const request of requests) {
+    assert.equal(request.headers.Authorization, undefined);
+    assert.equal(request.headers['X-Requested-With'],'XMLHttpRequest');
+  }
+  assert.equal(h.store.getState().accessToken, old);
+  await h.client.apiClient.post('/protected', {});
+  assert.equal(requests.at(-1).headers.Authorization, `Bearer ${old}`);
+});
+
+test('verification errors keep the original failure without posting to a missing legacy endpoint', async () => {
+  const urls = [];
+  const h = await harness(async url => { urls.push(url); return new Response(JSON.stringify({ resultMessage: 'temporary outage' }), { status: 503 }); });
+  await assert.rejects(h.auth.verifyEmail({}), /temporary outage/);
+  assert.deepEqual(urls, ['/webApi/certify/certify-check']);
+});
+
+test('storage account changes synchronize UI, request headers and cached query data', async () => {
+  const requests = [];
+  const h = await harness(async (url, options) => { requests.push(options.headers.Authorization); return response({}); });
+  const cache = new QueryClient();
+  const old = token(1000), next = token(2000, 'other@example.test', 2);
+  h.store.getState().login(old);
+  const unbind = h.bindCache(cache);
+  cache.setQueryData(['profile'], { name: 'old account' });
+  h.storage.set('user', JSON.stringify({ accessToken: next })); h.dispatchStorage('user');
+  assert.equal(h.store.getState().user.userSeq, 2);
+  assert.equal(cache.getQueryData(['profile']), undefined);
+  await h.client.apiClient.post('/protected', {});
+  assert.equal(requests[0], `Bearer ${next}`);
+  cache.setQueryData(['profile'], { name: 'new account' });
+  const renewed = token(3000, 'other@example.test', 2);
+  h.storage.set('user', JSON.stringify({ accessToken: renewed })); h.dispatchStorage('user');
+  assert.equal(cache.getQueryData(['profile']).name, 'new account');
+  h.storage.delete('user'); h.dispatchStorage('user');
+  assert.equal(h.store.getState().isAuthenticated, false);
+  assert.equal(cache.getQueryData(['profile']), undefined);
+  unbind(); cache.clear();
+});
+
+test('a late response cannot overwrite another tabs session before its storage event arrives', async () => {
+  const h = await harness(async () => response({}));
+  const old = token(1000), next = token(2000, 'other@example.test', 2);
+  h.store.getState().login(old);
+  h.storage.set('user', JSON.stringify({ accessToken: next }));
+  await h.client.handleResponse(response({}, token(3000)), old);
+  assert.equal(h.store.getState().accessToken, next);
+  assert.equal(JSON.parse(h.storage.get('user')).accessToken, next);
+  await assert.rejects(h.client.handleResponse(new Response('{}', { status: 401 }), old));
+  assert.equal(h.store.getState().accessToken, next);
+});
+
+
+test('account switch cancels old cached queries so a late result cannot replace the new profile', async () => {
+  const h = await harness(async () => response({}));
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  h.store.getState().login(token(1000));
+  const unbind = h.bindCache(cache);
+  let finishOld;
+  const observer = new QueryObserver(cache, { queryKey: ['profile'], queryFn: () => {
+    const userSeq = h.store.getState().user.userSeq;
+    return userSeq === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve({ userSeq });
+  } });
+  const unsubscribe = observer.subscribe(() => {});
+  assert.equal(typeof finishOld, 'function');
+  h.storage.set('user', JSON.stringify({ accessToken: token(2000, 'other@example.test', 2) }));
+  h.dispatchStorage('user');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cache.getQueryData(['profile']).userSeq, 2);
+  finishOld({ userSeq: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cache.getQueryData(['profile']).userSeq, 2);
+  unsubscribe(); unbind(); cache.clear();
+});
+
+
+test('map SDK loading has a deadline even after the delayed load function appears', async () => {
+  const source = await fs.readFile(new URL('../src/config/ensureKakaoLoaded.js', import.meta.url), 'utf8');
+  const { ensureKakaoLoaded } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const target = {};
+  let called = false;
+  const result = assert.rejects(ensureKakaoLoaded(target, 150), /지연/);
+  setTimeout(() => { target.kakao = { maps: { load: () => { called = true; } } }; }, 10);
+  await result;
+  assert.equal(called, true);
+});
+
+test('map SDK success resolves after initialization', async () => {
+  const source = await fs.readFile(new URL('../src/config/ensureKakaoLoaded.js', import.meta.url), 'utf8');
+  const { ensureKakaoLoaded } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const maps = { load: callback => { maps.Map = function Map() {}; callback(); } };
+  const kakao = { maps };
+  assert.equal(await ensureKakaoLoaded({ kakao }, 100), kakao);
 });

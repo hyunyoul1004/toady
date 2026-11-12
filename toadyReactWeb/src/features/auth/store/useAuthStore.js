@@ -22,6 +22,7 @@ function getInitialAuthState() {
         } catch (e) {
           console.warn('[useAuthStore] JWT 토큰 디코딩 실패:', e);
         }
+        if (!userProfile?.sub || userProfile.userSeq == null) throw new Error('유효하지 않은 저장된 로그인 정보');
         return {
           accessToken: parsed.accessToken,
           user: userProfile,
@@ -47,6 +48,8 @@ export const useAuthStore = create((set) => ({
    * 로그인 성공 시 토큰과 프로필 정보를 저장합니다.
    * @param {string} accessToken JWT 액세스 토큰
    */
+  syncFromStorage: () => set(getInitialAuthState()),
+
   login: (accessToken) => {
     let userProfile = null;
     try {
@@ -55,6 +58,7 @@ export const useAuthStore = create((set) => ({
       console.warn('[useAuthStore] 로그인 JWT 디코딩 실패:', e);
     }
 
+    if (!userProfile?.sub || userProfile.userSeq == null) throw new Error('유효하지 않은 로그인 응답입니다. 다시 로그인해 주세요.');
     localStorage.setItem('user', JSON.stringify({ accessToken }));
     set({
       accessToken,
@@ -68,6 +72,7 @@ export const useAuthStore = create((set) => ({
    */
   renewToken: (requestToken, accessToken) => {
     // Ignore late responses after logout, another login or a newer renewal.
+    useAuthStore.getState().syncFromStorage();
     if (useAuthStore.getState().accessToken !== requestToken) return;
     let user;
     try {
@@ -94,6 +99,9 @@ export const useAuthStore = create((set) => ({
 
 // 401 이벤트 리스너 등록
 if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'user' || event.key === null) useAuthStore.getState().syncFromStorage();
+  });
   window.addEventListener('auth-logout', () => {
     useAuthStore.getState().logout();
   });

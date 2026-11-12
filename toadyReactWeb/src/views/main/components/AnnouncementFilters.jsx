@@ -267,6 +267,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                   <Box sx={{ width: { xs: '100%', sm: 380, md: 440 }, flexShrink: 0 }}>
                     <Autocomplete
                       multiple
+                      value={paramInfo.citys || []}
                       freeSolo
                       size="small"
                       id="tags-outlined"
@@ -440,7 +441,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                         <TextField
                           {...params}
                           size="small"
-                          placeholder="지역, 구/군, 아파트명 검색..."
+                          placeholder="운정·동탄·지역·아파트명 검색..."
                           InputProps={{
                             ...params.InputProps,
                             startAdornment: (

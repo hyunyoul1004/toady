@@ -1,0 +1,152 @@
+package com.toady.web;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.toady.web.app.user.dto.UserDTO;
+import com.toady.web.app.user.service.UserService;
+import com.toady.web.app.certify.service.CertifyService;
+import com.toady.web.core.util.email.EmailUtilService;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
+import java.time.LocalDateTime;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/** 개별 메서드가 아니라 가입→인증→로그인→댓글→비밀번호 변경의 실제 API 연결을 검증한다. */
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:h2:mem:flowaudit;MODE=MariaDB;DB_CLOSE_DELAY=-1",
+    "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
+    "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect", "spring.jpa.hibernate.ddl-auto=create-drop",
+    "toady.security.secret-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+})
+@AutoConfigureMockMvc
+class ApplicationFlowRegressionTest {
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired ObjectMapper json;
+    @Autowired UserService users;
+    @Autowired CertifyService certify;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
+    @MockitoBean EmailUtilService email;
+    static final String EMAIL = "audit@example.technology";
+    static final String PASSWORD = "Password123!";
+
+    @BeforeEach void clear() {
+        for (String table : new String[]{"TB_CERTIFY", "TB_LTTOT_PBLANC_COMMENT", "TB_USER", "TB_BOARD", "TB_APT_LTTOT_PBLANC_DETAIL"}) jdbc.update("DELETE FROM " + table);
+        org.mockito.Mockito.reset(email);
+    }
+    String body(Object value) throws Exception { return json.writeValueAsString(value); }
+    void announcement() {
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,RCEPT_BGNDE) VALUES ('FLOW','FLOW','통합검증','2026-11-01')");
+    }
+    void register() throws Exception {
+        mvc.perform(post("/webApi/user/regUser").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", EMAIL, "userPassword", PASSWORD, "userPasswordConfirm", PASSWORD, "userNicName", "검증회원"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+    }
+    String login(String password) throws Exception {
+        String response = mvc.perform(post("/webApi/user/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("userEmail", EMAIL, "userPassword", password))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"))
+                .andReturn().getResponse().getContentAsString();
+        return json.readTree(response).path("data").path("accessToken").asText();
+    }
+    @Test void registrationTemplateFailureRollsBackTheMember() throws Exception {
+        Object target = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(certify);
+        Object original = org.springframework.test.util.ReflectionTestUtils.getField(target, "DOMAIN");
+        try {
+            org.springframework.test.util.ReflectionTestUtils.setField(target, "DOMAIN", "https://example.test/{unexpected}");
+            var request = UserDTO.RegUser.builder().userEmail(EMAIL).userNicName("검증회원")
+                    .userPassword(PASSWORD).userPasswordConfirm(PASSWORD).build();
+            assertThrows(IllegalStateException.class, () -> users.regUser(request));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER", Integer.class));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_CERTIFY", Integer.class));
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(target, "DOMAIN", original);
+        }
+    }
+    @Test void fullAccountAndCommentLifecycle() throws Exception {
+        register();
+        String code = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='ACCOUNT'", String.class);
+        mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", code))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        String token = login(PASSWORD);
+        announcement();
+        String endpoint = "/api/v1/apt/announcements/FLOW/FLOW/comments";
+        mvc.perform(post(endpoint).contentType(MediaType.APPLICATION_JSON).content(body(Map.of("content", "무인증"))))
+                .andExpect(status().isForbidden());
+        String created = mvc.perform(post(endpoint).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("content", "처음 댓글"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long id = json.readTree(created).path("data").path("commentSeq").asLong();
+        jdbc.update("INSERT INTO TB_USER (USER_EMAIL,USER_PASSWORD,USER_NIC_NAME,EMAIL_CERTIFY_YN,LOCK_YN,WITHDRAWAL_YN) VALUES ('other@example.test',?,'다른회원','Y','N','N')", passwords.encode(PASSWORD));
+        String otherLogin = mvc.perform(post("/webApi/user/login").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", "other@example.test", "userPassword", PASSWORD))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String otherToken = json.readTree(otherLogin).path("data").path("accessToken").asText();
+        mvc.perform(patch(endpoint + "/" + id).header("Authorization", "Bearer " + otherToken).contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("content", "다른 회원의 수정")))).andExpect(status().isForbidden());
+        mvc.perform(delete(endpoint + "/" + id).header("Authorization", "Bearer " + otherToken)).andExpect(status().isForbidden());
+
+        mvc.perform(get("/api/v1/announcements").param("keyword", "통합검증"))
+                .andExpect(jsonPath("$.data.content[0].commentCount").value(1));
+        mvc.perform(patch(endpoint + "/" + id).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("content", "수정 댓글"))))
+                .andExpect(status().isOk());
+        mvc.perform(get(endpoint)).andExpect(jsonPath("$.data.content[0].content").value("수정 댓글"));
+        mvc.perform(delete(endpoint + "/" + id).header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/announcements").param("keyword", "통합검증"))
+                .andExpect(jsonPath("$.data.content[0].commentCount").value(0));
+        mvc.perform(post("/webApi/certify/find-password-request-certify").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL)))).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        String reset = jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_TYPE='FIND_PW'", String.class);
+        mvc.perform(post("/webApi/certify/certify-confrim-and-password-change").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL, "certifyCode", reset, "userPassword", "Newpass123!", "userPasswordConfirm", "Newpass123!"))))
+                .andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        mvc.perform(post(endpoint).header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("content", "이전 토큰")))).andExpect(status().isUnauthorized());
+        assertFalse(login("Newpass123!").isBlank());
+    }
+    @Test void invalidInputsReturnBadRequestInsteadOfServerErrors() throws Exception {
+        for (String payload : new String[]{"{}", "{\"userEmail\":null,\"certifyCode\":null}", "{\"userEmail\":\"bad\",\"certifyCode\":\"x\"}"}) {
+            mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON).content(payload))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.resultCode").value("ERR-401"));
+        }
+        mvc.perform(get("/webApi/boards/board-list")).andExpect(status().isBadRequest());
+        mvc.perform(get("/webApi/boards/board-list").param("boardType", "NOTICE").param("boardLocation", "ALL").param("pageNumber", "0"))
+                .andExpect(status().isBadRequest());
+    }
+    @Test void cursorPagingSurvivesNewCommentsAndDeletesWithIdenticalTimestamps() throws Exception {
+        announcement();
+        for (int n = 0; n < 4; n++) jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('APT','FLOW','FLOW',?,0,0,'N',1,'2026-11-12 09:00:00')", "row" + n);
+        String endpoint = "/api/v1/apt/announcements/FLOW/FLOW/comments";
+        var first = json.readTree(mvc.perform(get(endpoint).param("size", "2")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").path("content");
+        long cursor = first.get(1).path("commentSeq").asLong();
+        jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y' WHERE CONTENT='row1'");
+        jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('APT','FLOW','FLOW','new',0,0,'N',1,CURRENT_TIMESTAMP)");
+        mvc.perform(get(endpoint).param("size", "2").param("beforeCommentSeq", Long.toString(cursor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].content").value("row0"));
+        mvc.perform(get(endpoint).param("page", "1").param("beforeCommentSeq", Long.toString(cursor))).andExpect(status().isBadRequest());
+        mvc.perform(get(endpoint).param("page", "bad")).andExpect(status().isBadRequest());
+    }
+    @Test void boardPublicationWindowsAndLocationCodesAreApplied() throws Exception {
+        for (String name : new String[]{"visible", "future", "expired"}) {
+            LocalDateTime start = LocalDateTime.now().minusDays(1), end = LocalDateTime.now().plusDays(1);
+            if (name.equals("future")) start = LocalDateTime.now().plusHours(1);
+            if (name.equals("expired")) end = LocalDateTime.now().minusHours(1);
+            jdbc.update("INSERT INTO TB_BOARD (BOARD_TYPE,BOARD_LOCATION,BOARD_TITLE,BOARD_CONTENTS,USE_YN,DELETE_YN,BOARD_TARGET_DATE_YN,BOARD_START_DATE,BOARD_END_DATE,CREATE_DT,CREATE_USER_SEQ) VALUES ('NOTICE','PAJU',?,'본문','Y','N','Y',?,?,CURRENT_TIMESTAMP,1)", name, start, end);
+        }
+        for (String location : new String[]{"PAJU", "PAJUSI"}) mvc.perform(get("/webApi/boards/board-list").param("boardType", "NOTICE").param("boardLocation", location))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.resultList.totalElements").value(1))
+                .andExpect(jsonPath("$.data.resultList.content[0].boardTitle").value("visible"));
+    }
+}

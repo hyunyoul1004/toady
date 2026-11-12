@@ -4,6 +4,9 @@
  */
 import apiClient from '@/api/client';
 
+// 로그인·가입·메일 인증은 기존 세션 토큰 없이 처리한다.
+const publicPost = (endpoint, body) => apiClient.post(endpoint, body, { auth: false });
+
 export const authApi = {
   /**
    * 로그인 API
@@ -11,7 +14,7 @@ export const authApi = {
    * @param {{ userEmail: string, userPassword: string }} credentials
    */
   async login({ userEmail, userPassword }) {
-    return apiClient.post('/webApi/user/login', { userEmail, userPassword });
+    return publicPost('/webApi/user/login', { userEmail, userPassword });
   },
 
   /**
@@ -19,7 +22,7 @@ export const authApi = {
    * POST /webApi/user/regUser
    */
   async register(params) {
-    return apiClient.post('/webApi/user/regUser', params);
+    return publicPost('/webApi/user/regUser', params);
   },
 
   /**
@@ -27,16 +30,11 @@ export const authApi = {
    * POST /webApi/certify/certify-check
    */
   async verifyEmail(params) {
-    // 신규/기존 엔드포인트 호환
-    try {
-      return await apiClient.post('/webApi/certify/certify-check', params);
-    } catch {
-      return await apiClient.post('/webApi/certify/certifyCheck', params);
-    }
+    return publicPost('/webApi/certify/certify-check', params);
   },
 
   async resendAccountVerification(userEmail) {
-    return apiClient.post('/webApi/certify/resend-account-verification', { userEmail });
+    return publicPost('/webApi/certify/resend-account-verification', { userEmail });
   },
 
   /**
@@ -44,7 +42,7 @@ export const authApi = {
    * POST /webApi/certify/find-password-request-certify
    */
   async requestPasswordReset(params) {
-    return apiClient.post('/webApi/certify/find-password-request-certify', params);
+    return publicPost('/webApi/certify/find-password-request-certify', params);
   },
 
   /**
@@ -52,7 +50,7 @@ export const authApi = {
    * POST /webApi/certify/certify-confrim-and-password-change
    */
   async confirmPasswordChange(params) {
-    return apiClient.post('/webApi/certify/certify-confrim-and-password-change', params);
+    return publicPost('/webApi/certify/certify-confrim-and-password-change', params);
   }
 };
 

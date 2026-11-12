@@ -2,7 +2,7 @@
 
 **유형별로 나뉜 청약홈 공공데이터를 모아, 청약 일정부터 경쟁률·당첨 가점까지 한 화면에서 확인하는 웹 서비스입니다.**
 
-월별 일정 조회, 지역·공급유형 필터, 전체 기간 공고 검색, 공고 상세와 커뮤니티 기능을 제공합니다. 프론트엔드·API·데이터 수집기를 별도 애플리케이션으로 구성하고 Docker Compose로 배포합니다.
+월별 일정 조회, 생활권·지역 검색, 관심 공고와 나의 청약 일정, 준비 체크리스트·메모·비교, 지도·동네 실거래 조회 동선을 제공합니다. 프론트엔드·API·데이터 수집기를 별도 애플리케이션으로 구성하고 Docker Compose로 배포합니다.
 
 [서비스 바로가기](https://www.toady.co.kr) · [API 문서](https://www.toady.co.kr/swagger-ui/index.html)
 
@@ -97,7 +97,7 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 ## 검증과 배포
 
-PR과 `master` push에서 API·수집기의 단위 및 H2 회귀 테스트, 프론트 회귀 테스트·빌드와 격리된 MariaDB 검증을 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
+PR과 `master` push에서 API·수집기의 단위 및 H2 회귀 테스트, 프론트 회귀 테스트·빌드와 격리된 MariaDB 검증을 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·스케줄러의 준비 상태와 DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
 
 ```mermaid
 flowchart LR
@@ -110,12 +110,18 @@ flowchart LR
 | 검증 범위 | 근거 |
 | --- | --- |
 | 통합 공고 조회·날짜 필터·자동완성·인증 등 | [API 통합 테스트](toadyWebApi/src/test/java/com/toady/web/MainApplicationTests.java) |
+| 가입 → 이메일 인증 → 로그인 → 댓글 CRUD·소유권 → 비밀번호 변경·기존 JWT 거부 | [사용 흐름 통합 테스트](toadyWebApi/src/test/java/com/toady/web/ApplicationFlowRegressionTest.java) |
+| 가입 실패 롤백·인증 코드 동시 사용·재발송 | [인증 트랜잭션 테스트](toadyWebApi/src/test/java/com/toady/web/CertifyTransactionTest.java) |
+| 댓글 커서·신규 등록/삭제·동일 시각 정렬·게시글 공개 기간·잘못된 입력 | [사용 흐름 회귀 테스트](toadyWebApi/src/test/java/com/toady/web/ApplicationFlowRegressionTest.java) |
+| 탭 간 계정 변경·이전 응답 차단·캐시 취소·지도 SDK 타임아웃 | [프론트 회귀 테스트](toadyReactWeb/tests/announcement-auth.test.mjs) |
 | DB 연결 성공·실패 시 준비 상태 응답 | [준비 상태 테스트](toadyWebApi/src/test/java/com/toady/web/core/health/HealthControllerTest.java) |
 | 외부 API 요청 구성·매핑·수집 흐름 | [수집기 테스트](toadyScheduler/src/test/java/com/toady/web/apt) |
 | 배포 전 검증·커밋별 이미지 배포 | [GitHub Actions](.github/workflows/deploy.yml) |
-| 배포 후 준비 상태 | [확인 스크립트](scripts/check-deployment.sh) |
+| 배포 후 준비 상태 대기·실패 처리 | [확인 스크립트](scripts/check-deployment.sh), [격리된 배포 검증 테스트](scripts/tests/test_deployment.py) |
 
 H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 테스트는 전체 페이지 조회·토큰 갱신·늦은 인증 응답 처리를 검증합니다. 별도 `mariadbTest`로 개발 DB의 실제 PK·SQL·DML도 확인할 수 있습니다. 테스트 결과는 운영 부하나 가용성을 측정한 수치가 아니며, 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
+
+전체 흐름 점검은 개별 기능 테스트와 함께 위 통합 시나리오를 실행합니다. 공유 공고·주택형 10개 테이블의 API/수집기 매핑과 경쟁률 관련 8개 테이블의 SQL/수집 복합키도 대조했습니다. 실제 운영 DB의 스키마, 외부 API의 최신 응답, 운영 Nginx·DNS·TLS와 실제 기기/메일 클라이언트의 동작은 이 로컬 검증과 별도로 확인해야 합니다. 로컬 점검 중 실제 메일을 발송하거나 운영 DB 데이터를 변경하지 않습니다.
 
 추가한 배포 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·TLS·수집 완료를 보장하지 않으며, 무중단 배포와 자동 롤백은 구현하지 않았습니다.
 
@@ -195,6 +201,8 @@ bash scripts/check-deployment.sh
 
 상태 검사는 API `/internal/health`와 DB 연결, 웹 컨테이너의 정적 페이지 응답, 세 앱 컨테이너의 실행·재시작 상태를 확인합니다. 수집 작업의 완료나 외부 DNS·TLS·Nginx 경로를 검증하지는 않습니다.
 
+배포 검증은 API와 스케줄러의 `/internal/health` 응답을 기다립니다. 스케줄러는 Spring 초기화·자동 스케줄 등록과 DB 연결이 완료되어야 준비 완료를 반환합니다.
+
 CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 기록합니다. 이전 커밋 태그를 지정하면 앱 이미지를 롤백할 수 있습니다. 배포 실패 시 현재 컨테이너 이미지와 마지막 성공 태그가 다를 수 있으므로 실제 상태를 확인합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
 
 
@@ -219,3 +227,14 @@ mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
 `CREATE TABLE IF NOT EXISTS`는 기존 테이블의 열·인덱스 차이를 보정하지 않습니다. 기존 도시형 PK 변경은 이미 반영한 DB에서 재실행하면 안 되므로 자동 실행문에 포함하지 않습니다. 권한 변경 역시 DB 관리 계정에서 확인 후 적용합니다.
 
 전체 초기 스키마는 제공하지 않으므로 새 DB에는 공고·주택형·회원 등의 스키마를 별도로 준비해야 합니다. 기존 테이블을 변경할 때는 실제 구조와 백업을 확인하고 두 앱의 호환성을 검증한 뒤 필요한 구역을 적용합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
+
+## 청약 조사와 나의 일정
+
+- 생활권 검색: 운정·동탄·다산·검단·위례·광교와 일부 역/신도시 별칭을 단지명·주소 검색으로 연결합니다. 행정 경계의 정확한 공간 검색은 아니며, 지역별 보조 키워드는 API `LivingAreas`에서 관리합니다.
+- 공고 조사: 기존 지도·경쟁률·가점에 접수/발표 요약, APT 주택형별 최고 공급금액, 주변 법정동의 국토교통부 실거래 조회와 지도·실거래가 원문 링크를 연결합니다. 네이버 검색 API는 사용하지 않으며 신고 거래를 현재 시세로 계산하지 않습니다.
+- 재방문: 관심 공고 최대 50개, 준비 체크리스트 5개, 비공개 메모, 최대 3개 공고 비교, 최근 본 공고 8개, 광역지역/검색 조건/보기 방식 기억, 전체/개별 ICS 캘린더 내려받기를 제공합니다.
+- 비회원 관심 공고는 기기에 저장하며 최신 공고 요약을 재조회합니다. 로그인 회원은 DB에 저장합니다. 기기 공고 가져오기는 사용자가 직접 선택할 때만 실행하고 계정의 기존 메모를 덮어쓰지 않습니다.
+- `/my`에서 나의 일정과 이메일 알림 설정/전체 해제를 관리합니다. Gmail 하나로 오늘·내일 일정을 일별 한 통에 묶고 최근 24시간 공통 발송량을 제한합니다. 서버가 전송 결과를 확신할 수 없는 경우 자동 재발송하지 않습니다.
+- `/announcements/{type}/{house}/{notice}`는 운영 프론트 Nginx에서 API의 HTML 요약으로 연결합니다. 검색·공유용 메타와 본문을 서버에서 제공하며, 전체 기능 버튼은 기존 React 상세로 연결합니다. React 내부에서도 같은 경로로 상세를 열 수 있습니다. 동적 공고 사이트맵은 `/announcement-sitemap.xml`입니다.
+
+**배포 전 필수:** `database.sql` 8번(관심 공고·메일 발송량·알림 이력)과 9번(행동 집계)을 먼저 생성합니다. 기존 7번 방문 로그가 없으면 함께 생성합니다. Gmail 한도 관리가 기존 인증 메일에도 적용되므로 8번 생성은 이메일 알림 활성화 여부와 관계없이 필요합니다. `TB_MAIL_BUDGET` 초기 행 INSERT도 실행해야 합니다. 새 테이블에 API 계정의 SELECT/INSERT/UPDATE/DELETE 권한을 확인합니다. 기존 Gmail SMTP 설정을 유지하고, 준비 후 API 환경변수 `PLANNER_REMINDERS_ENABLED=true`로 일정 알림을 활성화합니다. 자세한 동작과 검증 범위는 API/웹 README에 있습니다.

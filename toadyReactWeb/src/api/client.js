@@ -9,24 +9,15 @@ import config from 'config';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 
 /**
- * 로컬 스토리지에서 인증 토큰을 읽어 Authorization 헤더를 생성합니다.
+ * 화면과 동일한 인증 스토어의 토큰으로 Authorization 헤더를 생성합니다.
  * @returns {Record<string, string>} HTTP Headers 객체
  */
 export function getAuthHeaders() {
-  try {
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user && user.accessToken) {
-      return {
-        'Authorization': `Bearer ${user.accessToken}`,
-        'Content-Type': 'application/json'
-      };
-    }
-  } catch (error) {
-    console.error('[AuthHeader] 토큰 파싱 에러:', error);
-  }
-
+  // 화면과 요청이 같은 인증 상태를 사용한다. 다른 탭의 변경은 storage 이벤트로 반영한다.
+  const accessToken = useAuthStore.getState().accessToken;
   return {
-    'Content-Type': 'application/json'
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'
   };
 }
 
@@ -37,6 +28,8 @@ export function getAuthHeaders() {
  */
 export async function handleResponse(response, requestToken = null) {
   const text = await response.text();
+  // 다른 탭에서 계정이 바뀐 뒤 도착한 이전 응답은 새 세션을 변경하지 못한다.
+  useAuthStore.getState().syncFromStorage();
   let data;
 
   if (text) {
@@ -48,7 +41,7 @@ export async function handleResponse(response, requestToken = null) {
   }
 
   if (!response.ok) {
-    if (response.status === 401 && useAuthStore.getState().accessToken === requestToken) {
+    if (response.status === 401 && requestToken && useAuthStore.getState().accessToken === requestToken) {
       // 401 Unauthorized 시 토큰 만료 처리
       localStorage.removeItem('user');
       window.dispatchEvent(new Event('auth-logout'));
@@ -108,9 +101,9 @@ export const apiClient = {
    * @param {string} endpoint 엔드포인트 경로
    * @param {any} body 요청 바디 데이터
    */
-  async post(endpoint, body) {
+  async post(endpoint, body, { auth = true } = {}) {
     const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
-    const headers = getAuthHeaders();
+    const headers = auth ? getAuthHeaders() : { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
     const res = await fetch(url, {
       method: 'POST',
       headers,

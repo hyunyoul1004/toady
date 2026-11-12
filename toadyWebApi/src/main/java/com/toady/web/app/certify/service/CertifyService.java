@@ -55,64 +55,36 @@ public class CertifyService {
     private PasswordEncoder passwordEncoder;
 
 
+    @jakarta.annotation.PostConstruct
+    void validateDomain() {
+        try {
+            var uri = java.net.URI.create(DOMAIN);
+            if (uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException("Invalid service domain");
+            }
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("TOADY_WEB_DOMAIN must be an absolute HTTP(S) URL without credentials, query or fragment", exception);
+        }
+    }
+
     /** 가입 인증 코드를 저장하고 인증 메일을 발송합니다. */
     public void saveCertify(CertifyDTO.Save param){
 
         try {
             String certifyCode = StrUtils.createCode();
 
-            StringBuilder sendMessage = new StringBuilder();
             String url = org.springframework.web.util.UriComponentsBuilder.fromUriString(DOMAIN)
                     .path("/certify").queryParam("userEmail", "{email}").queryParam("certifyCode", "{code}")
                     .encode().buildAndExpand(param.getUserEmail(), certifyCode).toUriString();
-
-            sendMessage
-                .append("<html>")
-                .append("<body>")
-                .append("<table style='min-width: 350px; margin:0 auto; text-align:center; border:1px solid #000; margin-top:30px;'>")
-                .append("    <tbody>")
-                .append("    <tr>")
-                .append("        <td style='padding-top:30px;'>")
-                .append("            <img src='https://www.toady.co.kr/cont/images/logo/logo.png' style='height:150px; margin-top:30px; margin-bottom:3px; '></img>")
-                .append("            <h2>두껍아</h2>")
-                .append("            <br/>")
-                .append("            <hr style='width:70%; border-color:#000;'>")
-                .append("        </td>")
-                .append("    </tr>")
-                .append("    <tr>")
-                .append("        <td><h2 style='font-weight:400;'>안녕하세요 두껍아 입니다.<br/>"+param.getUserNicName()+"님의 회원가입을 완료 하려면 아래 URL을 클릭 해 주세요.</h2></td>")
-                .append("    </tr>")
-                .append("    <tr>")
-                .append("        <td>")
-                .append("            <p style='width:60%; margin:0 auto; background-color:#efefef; padding:30px;'>")
-                .append("                    URL : <a  style='cursor:point' href='"+url+"'>"+url+"</a>")
-                .append("            </p>")
-                .append("        </td>")
-                .append("    </tr>")
-                .append("    <tr>")
-                .append("        <td>")
-                .append("            <hr style='width:70%; border-color:#000;'>")
-                .append("            <p style='font-size:8pt; color:#a2a2a2; margin-bottom:30px;'><br><br>")
-                .append("                    For questions about our services contact us by email("+DOMAIN+").")
-                .append("            </p></td>")
-                .append("    </tr>")
-                .append("    <tr>")
-                .append("        <td>")
-                .append("            <p style='background-color:#efefef; min-height:10px; color:#444; padding:20px; margin:0;'>")
-                .append("                <strong>Email.</strong> dukkeoba@gmail.com")
-                .append("                &nbsp;&nbsp;&nbsp;<strong>Homepage.</strong> "+DOMAIN)
-                .append("            </p></td>")
-                .append("    </tr>")
-                .append("    </tbody>")
-                .append("</table>")
-                .append("</body>")
-                .append("</html>");
+            String sendMessage = com.toady.web.core.util.email.EmailTemplates.accountVerification(
+                    param.getUserNicName(), url, DOMAIN);
 
             CertifyEntity certifyParam = CertifyEntity.builder()
                     .certifyType(param.getCertifyType())
                     .certifySendType(param.getSendType())
                     .certifyCode(certifyCode)
-                    .certifyMessage(sendMessage.toString())
+                    .certifyMessage(sendMessage)
                     .certifyYn("N")
                     .createUserSeq(param.getUserSeq())
                     .createDt(LocalDateTime.now())
@@ -124,7 +96,7 @@ public class CertifyService {
                 emailUtilService.sendEmail(
                         param.getUserEmail(),
                         "[Toady] 두껍아 회원가입 인증 요청",
-                        sendMessage.toString()
+                        sendMessage
                 );
             } catch (Exception e) {
                 throw new EmailDeliveryException("회원가입 인증 이메일 발송에 실패했습니다.", e);
@@ -233,55 +205,14 @@ public class CertifyService {
             String certifyCode = StrUtils.createCode();
             certifyCode = certifyCode.replaceAll("-","");
 
-            StringBuilder sendMessage = new StringBuilder();
-
-            sendMessage
-                    .append("<html>")
-                    .append("<body>")
-                    .append("<table style='min-width: 350px; margin:0 auto; text-align:center; border:1px solid #000; margin-top:30px;'>")
-                    .append("    <tbody>")
-                    .append("    <tr>")
-                    .append("        <td style='padding-top:30px;'>")
-                    .append("            <img src='https://www.toady.co.kr/cont/images/logo/logo.png' style='height:150px; margin-top:30px; margin-bottom:3px; '></img>")
-                    .append("            <h2>두껍아</h2>")
-                    .append("            <br/>")
-                    .append("            <hr style='width:70%; border-color:#000;'>")
-                    .append("        </td>")
-                    .append("    </tr>")
-                    .append("    <tr>")
-                    .append("        <td><h2 style='font-weight:400;'>안녕하세요 두껍아 입니다.<br/>"+userEntity.getUserNicName()+"님의 비밀번호 변경을 원하시면 아래의 코드를 복사 후 사이트에 입력 해 주세요.<br/>인증 번호는 10분간 유효합니다.</h2></td>")
-                    .append("    </tr>")
-                    .append("    <tr>")
-                    .append("        <td>")
-                    .append("            <p style='width:60%; margin:0 auto; background-color:#efefef; padding:30px;'>")
-                    .append("                    인증코드 : "+certifyCode)
-                    .append("            </p>")
-                    .append("        </td>")
-                    .append("    </tr>")
-                    .append("    <tr>")
-                    .append("        <td>")
-                    .append("            <hr style='width:70%; border-color:#000;'>")
-                    .append("            <p style='font-size:8pt; color:#a2a2a2; margin-bottom:30px;'><br><br>")
-                    .append("                    For questions about our services contact us by email("+DOMAIN+").")
-                    .append("            </p></td>")
-                    .append("    </tr>")
-                    .append("    <tr>")
-                    .append("        <td>")
-                    .append("            <p style='background-color:#efefef; min-height:10px; color:#444; padding:20px; margin:0;'>")
-                    .append("                <strong>Email.</strong> dukkeoba@gmail.com")
-                    .append("                &nbsp;&nbsp;&nbsp;<strong>Homepage.</strong> "+DOMAIN)
-                    .append("            </p></td>")
-                    .append("    </tr>")
-                    .append("    </tbody>")
-                    .append("</table>")
-                    .append("</body>")
-                    .append("</html>");
+            String sendMessage = com.toady.web.core.util.email.EmailTemplates.passwordReset(
+                    userEntity.getUserNicName(), certifyCode, DOMAIN);
 
             CertifyEntity certifyParam = CertifyEntity.builder()
                     .certifyType("FIND_PW")
                     .certifySendType("EMAIL")
                     .certifyCode(certifyCode)
-                    .certifyMessage(sendMessage.toString())
+                    .certifyMessage(sendMessage)
                     .certifyYn("N")
                     .createUserSeq(userEntity.getUserSeq())
                     .createDt(LocalDateTime.now())
@@ -290,7 +221,7 @@ public class CertifyService {
             certifyRepository.save(certifyParam);
 
             try {
-                emailUtilService.sendEmail(param.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage.toString());
+                emailUtilService.sendEmail(param.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage);
             } catch (Exception exception) {
                 // 발송 실패 시 새 코드와 요청 시각을 롤백해 즉시 재요청할 수 있게 한다.
                 throw new EmailDeliveryException("비밀번호 재설정 이메일 발송에 실패했습니다.", exception);

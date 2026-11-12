@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '@/api/client';
+import { matchesArea } from '@/features/planner/plannerUtils';
 import announcementApi from '@/features/announcement/api/announcementApi';
 import { ALL_REGIONS, FLAT_CITY_OPTIONS } from '../announcementFilters';
 
 export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions) {
+  const { data: livingAreas = [] } = useQuery({ queryKey:['livingAreas'], queryFn:() => apiClient.get('/api/v1/living-areas'), staleTime:3600000 });
   // 검색창 입력 텍스트 및 전체 기간 공고 자동완성 목록
   const [searchInputValue, setSearchInputValue] = useState('');
   const [globalSuggestions, setGlobalSuggestions] = useState([]);
@@ -80,11 +84,12 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
     // 2순위: 현재 월에 표시되는 아파트
     // 3순위: 과거 및 전체 기간 공고 (해당 월로 이동)
     return [
+      ...livingAreas.map(area => ({ ...area, key:`area_${area.label}`, type:'living_area', subText:area.description, searchText:[...area.aliases,...area.terms].join(' ') })),
       ...FLAT_CITY_OPTIONS,
       ...Array.from(currentMonthApts.values()),
       ...globalOptions
     ];
-  }, [rawSubscriptList, globalSuggestions]);
+  }, [rawSubscriptList, globalSuggestions, livingAreas]);
 
   // 검색어/지역 + 체크박스(특별공급/1순위/2순위 등) + 공급지역 체크박스 필터 적용된 목록
   const subscriptList = useMemo(() => {
@@ -123,12 +128,10 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
           if (typeof target === 'string') {
             const query = target.trim().toLowerCase();
             if (!query) return true;
-            return (
-              houseNm.toLowerCase().includes(query) ||
-              supplyLoc.toLowerCase().includes(query) ||
-              hssplyAdres.toLowerCase().includes(query)
-            );
+            return matchesArea(`${houseNm} ${supplyLoc} ${hssplyAdres}`, target, livingAreas);
           }
+
+          if (target.type === 'living_area') return matchesArea(`${houseNm} ${supplyLoc} ${hssplyAdres}`, target, livingAreas);
 
           // B. 아파트 단지명(apartment) 옵션을 선택한 경우
           if (target.type === 'apartment') {
@@ -154,7 +157,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
     }
 
     return list;
-  }, [rawSubscriptList, paramInfo, selectedRegions]);
+  }, [rawSubscriptList, paramInfo, selectedRegions, livingAreas]);
 
   return { searchInputValue, setSearchInputValue, allSearchOptions, subscriptList };
 }

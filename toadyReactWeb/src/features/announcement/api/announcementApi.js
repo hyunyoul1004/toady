@@ -6,6 +6,7 @@
  * - 공고 댓글 CRUD API (GET, POST, PATCH, DELETE)
  */
 import apiClient from '@/api/client';
+import { modelPrices } from '@/features/planner/researchUtils';
 import { formatDate, formatDateRange } from '@/utils/date.util';
 
 export const TYPE_TO_RCEPT_SE = {
@@ -312,6 +313,8 @@ export const announcementApi = {
       rceptSe,
       hssplyAdres: anno.hssplyAdres || anno.hssplyHshldco || anno.hssply_adres || anno.supplyLocation || '',
       supplyLocation: anno.hssplyAdres || anno.hssplyHshldco || anno.hssply_adres || anno.subscrptAreaCodeNm || '-',
+      unitPrices: modelPrices(models,type),
+      priceSummary: type === 'apt' ? models.filter(m => m.lttotTopAmount).slice(0,5).map(m => `${m.houseTy || m.modelNo}: ${m.lttotTopAmount}만원 (최고가)`).join(' / ') : '',
       supplyScale: anno.totSuplyHshldco ? `${anno.totSuplyHshldco} 세대` : '-',
       developer: anno.bsnsMbyNm || anno.developer || '-',
       contractor: anno.cnstrctEntrpsNm || anno.contractor || '-',
@@ -341,7 +344,7 @@ export const announcementApi = {
       const normalCnt = Number(m.suplyHshldco || m.gnsplyHshldco) || 0;
       const specialCnt = Number(m.spsplyHshldco) || 0;
       return {
-        subscriptSupplySeq: m.modelNo || idx + 1,
+        subscriptSupplySeq: m.id ?? m.modelNo ?? (idx + 1),
         housingType: m.houseTy || m.tp || '-',
         housingSupplyArea: m.suplyAr || m.supplyAr || m.excluseAr || m.houseTy || '-',
         supplyNormalCnt: normalCnt,
@@ -353,7 +356,7 @@ export const announcementApi = {
     });
 
     const subscriptNumberTwo = models.map((m, idx) => ({
-      subscriptNumberTwoSeq: m.modelNo || idx + 1,
+      subscriptNumberTwoSeq: m.id ?? m.modelNo ?? (idx + 1),
       twoHousingType: m.houseTy || m.tp || '-',
       twoSupplyAmount: m.lttotTopAmount || m.suplyAmount || '-'
     }));
@@ -399,12 +402,19 @@ export const announcementApi = {
 
     const res = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page, size });
     const content = [...(res.data?.content || (Array.isArray(res.data) ? res.data : []))];
-    // 부모와 답글을 같은 목록에서 조립하므로 기본 조회는 전체 페이지를 모은다.
-    // 명시적으로 page를 지정한 호출은 서버의 페이지 계약을 유지한다.
+    // 번호 커서로 이전 댓글을 조회해 신규 등록·삭제가 페이지 경계를 이동시키지 않게 한다.
     if (params.page == null) {
-      for (let nextPage = 1; nextPage < (res.data?.totalPages || 1); nextPage += 1) {
-        const next = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page: nextPage, size });
-        content.push(...(next.data?.content || []));
+      let current = res.data;
+      let previousCursor = Infinity;
+      while ((current?.totalPages || 1) > 1) {
+        const beforeCommentSeq = current.content?.at(-1)?.commentSeq;
+        if (!Number.isSafeInteger(beforeCommentSeq) || beforeCommentSeq <= 0 || beforeCommentSeq >= previousCursor) {
+          throw new Error('댓글 페이지 정보를 확인할 수 없습니다. 다시 조회해 주세요.');
+        }
+        previousCursor = beforeCommentSeq;
+        const next = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page: 0, size, beforeCommentSeq });
+        current = next.data;
+        content.push(...(current?.content || []));
       }
     }
 

@@ -46,12 +46,15 @@ public class CertifyDTO {
     @Getter
     @AllArgsConstructor
     @NoArgsConstructor(access = AccessLevel.PUBLIC)
-    public class CheckParam {
+    public static class CheckParam {
 
         @NotBlank(message = "사용자 EMAIL을 넣어주세요.")
+        @jakarta.validation.constraints.Email
+        @Size(max = 100)
         private String userEmail;
 
         @NotBlank(message = "인증코드를 넣어주세요.")
+        @Size(max = 50)
         private String certifyCode;
 
     }
@@ -68,6 +71,7 @@ public class CertifyDTO {
 
         @NotBlank(message = "이메일을 입력해 주세요.")
         @jakarta.validation.constraints.Email(message = "올바른 이메일을 입력해 주세요.")
+        @Size(max = 100)
         private String userEmail;
 
     }
@@ -83,6 +87,8 @@ public class CertifyDTO {
     public static class PasswordChange {
 
         @NotBlank(message = "이메일을 입력해 주세요.")
+        @jakarta.validation.constraints.Email
+        @Size(max = 100)
         private String userEmail;
 
         @NotBlank(message = "비밀번호를 입력해 주세요.")
@@ -93,6 +99,7 @@ public class CertifyDTO {
         private String userPasswordConfirm;
 
         @NotBlank(message = "인증코드를 넣어주세요.")
+        @Size(max = 50)
         private String certifyCode;
 
     }

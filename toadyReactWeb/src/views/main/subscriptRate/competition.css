@@ -1,0 +1,22 @@
+.competition-mobile-cards{display:flex;flex-direction:column;gap:14px;min-width:0}
+.competition-mobile-card{border:1px solid #dfe7f2;background:#fff;border-radius:14px;padding:17px 15px;color:#243c59;min-width:0}
+.competition-mobile-card header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.competition-mobile-card h3{font-size:17px;margin:0;font-weight:750;letter-spacing:-.3px}
+.competition-mobile-card header>span{font-size:11px;color:#627891}
+.competition-card-result{font-size:11px;line-height:1.8;color:#637b97;white-space:pre-line;margin:10px 0}
+.competition-rank-group{margin-top:14px}
+.competition-rank-group h4{font-size:12px;margin:0 0 8px;font-weight:700}
+.competition-card-columns,.competition-card-row{display:grid;grid-template-columns:1fr .8fr 1fr;gap:7px;align-items:center;font-size:12px;line-height:1.7}
+.competition-card-columns{font-size:10px;color:#73869d;background:#f3f6fb;padding:7px 8px;border-radius:6px}
+.competition-card-row{padding:10px 8px;border-bottom:1px solid #eef2f7}
+.competition-card-columns>*:nth-child(n+2),.competition-card-row>*:nth-child(n+2){text-align:right}
+.competition-card-row strong{font-size:14px;color:#245e9d;font-variant-numeric:tabular-nums}
+.competition-scores{margin-top:16px;color:#506d8e;font-size:11px}
+.competition-scores summary{cursor:pointer;padding:8px 0;font-weight:650}
+.competition-scores p{line-height:1.8}
+.competition-scores dl{margin:0}.competition-scores dl>div{padding:7px 0}.competition-scores dt{font-weight:700}.competition-scores dd{margin:5px 0 0;line-height:1.8}
+.special-supply-counts{margin:14px 0 0;font-size:12px}
+.special-supply-counts>div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
+.special-supply-counts dt{color:#647a93}.special-supply-counts dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+
+.competition-card-row>*{min-width:0;overflow-wrap:anywhere}

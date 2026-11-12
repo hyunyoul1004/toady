@@ -33,7 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Authentication authentication = jwtProvider.getAuthentication(request);
                 if (authentication == null) {
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                    com.toady.web.core.security.ApiSecurityError.unauthorized(response);
                     return;
                 }
                 SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -44,7 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             } catch (JwtException | IllegalArgumentException exception) {
                 SecurityContextHolder.clearContext();
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                com.toady.web.core.security.ApiSecurityError.unauthorized(response);
                 return;
             }
         }

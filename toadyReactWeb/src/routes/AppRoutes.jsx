@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import MyPlanner from '@/features/planner/MyPlanner';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
 import { LoginPage } from '@/views/login/LoginPage';
@@ -16,6 +17,8 @@ export const AppRoutes = () => {
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Main />} />
         <Route path="showSubscriptDetail" element={<Main />} />
+        <Route path="announcements/:type/:house/:notice" element={<Main />} />
+        <Route path="my" element={<MyPlanner />} />
         <Route path="certify" element={<SignUpCertify />} />
       </Route>
 

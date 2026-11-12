@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 /** 애플리케이션을 시작하고 JPA 감사 기능을 활성화하는 진입점입니다. */
+@org.springframework.context.annotation.Import(com.toady.web.config.SecurityConfig.class)
 @SpringBootApplication
 @EnableJpaAuditing
 public class MainApplication {

@@ -6,7 +6,7 @@
  * - 계정 관련 모달(로그인, 회원가입, 비밀번호 찾기) 관리
  */
 import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
@@ -52,14 +52,14 @@ export function MainLayout() {
         <Toolbar sx={{ minHeight: '56px !important', px: 2 }}>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label="메뉴 열기"
             edge="start"
             onClick={handleDrawerToggle}
             sx={{ mr: 1.5 }}
           >
             <MenuIcon />
           </IconButton>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box component={Link} to="/" aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
             <img
               alt="TOADY Logo"
               src="https://www.toady.co.kr/cont/images/logo/logo.png"
@@ -85,15 +85,17 @@ export function MainLayout() {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
+          maxWidth:'100%',
           p: { xs: 1.5, sm: 2.5 },
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          width: { xs:'100%',md: `calc(100% - ${DRAWER_WIDTH}px)` },
           mt: { xs: '56px', md: 0 }, // 모바일 상단 바 높이만큼 여백 확보
           display: 'flex',
           flexDirection: 'column',
           minHeight: '100vh'
         }}
       >
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ flexGrow: 1,minWidth:0,maxWidth:'100%' }}>
           <Outlet />
         </Box>
         <Box component="footer" sx={{ py: 3, mt: 4, borderTop: '1px solid #f1f5f9' }}>
@@ -124,6 +126,7 @@ export function MainLayout() {
         }}
       >
         <IconButton
+          aria-label="로그인 닫기"
           onClick={() => setLoginModalOpen(false)}
           size="small"
           sx={{
@@ -175,6 +178,7 @@ export function MainLayout() {
         }}
       >
         <IconButton
+          aria-label="회원가입 닫기"
           onClick={() => setSignUpModalOpen(false)}
           size="small"
           sx={{
@@ -222,6 +226,7 @@ export function MainLayout() {
         }}
       >
         <IconButton
+          aria-label="비밀번호 찾기 닫기"
           onClick={() => setFindPwModalOpen(false)}
           size="small"
           sx={{

@@ -1,6 +1,5 @@
 package com.toady.web.app.board.controller;
 
-import com.google.common.base.Enums;
 import com.toady.web.app.board.dto.BoardRequestDto;
 import com.toady.web.app.board.dto.BoardResponseDto;
 import com.toady.web.app.board.entity.BoardEntity;
@@ -52,20 +51,24 @@ public class BoardController extends BaseController {
     @GetMapping("/board-list")
     public ResponseEntity<ResData> getBoardList(@Valid BoardRequestDto.Search search, BindingResult result){
 
-        if(!Enums.getIfPresent(BoardType.class, search.getBoardType()).isPresent() ||
-           !Enums.getIfPresent(BoardLocation.class, search.getBoardLocation()).isPresent()){
-            //Enum에 정의된 boardType 또는 BoardLocation이 없으면.
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ResData.of(ResultCode.VALID_ERROR.getCode(), ResultCode.VALID_ERROR.getMessage()));
-        }
-
         if (result.hasErrors()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ResData.of(ResultCode.VALID_ERROR.getCode(), CmnUtils.getErrMsg(result, '\n')));
         }
 
+        var type = java.util.Arrays.stream(BoardType.values())
+                .filter(value -> value.name().equals(search.getBoardType()) || value.getCode().equals(search.getBoardType())).findFirst();
+        var location = java.util.Arrays.stream(BoardLocation.values())
+                .filter(value -> value.name().equals(search.getBoardLocation()) || value.getCode().equals(search.getBoardLocation())).findFirst();
+        if (type.isEmpty() || location.isEmpty()) {
+            return ResponseEntity.badRequest().body(ResData.of(ResultCode.VALID_ERROR.getCode(), ResultCode.VALID_ERROR.getMessage()));
+        }
+        search.setBoardType(type.get().getCode());
+        search.setBoardLocation(location.get().getCode());
+
         Map<String, Object> rtnMap = new HashMap<>();
 
         //regDt를 기준으로 DESC 정렬
-        Sort sort = Sort.by(Sort.Direction.DESC, "createDt");
+        Sort sort = Sort.by(Sort.Direction.DESC, "createDt", "boardSeq");
 
         //10건씩 조회
         Pageable pageable = PageRequest.of(search.getPageNumber(), search.getRecordPerCount(), sort);

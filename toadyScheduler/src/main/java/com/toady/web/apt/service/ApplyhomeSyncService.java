@@ -112,6 +112,10 @@ public class ApplyhomeSyncService {
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
 					"cond[PBLANC_NO::EQ]", key.pblancNo());
 			for (JsonNode row : fetchAllPages(modelEndpoint, filters)) {
+                if (!key.houseManageNo().equals(textValue(row, "HOUSE_MANAGE_NO"))
+                        || !key.pblancNo().equals(textValue(row, "PBLANC_NO"))) {
+                    throw new IllegalStateException("Applyhome model response does not match the requested announcement: " + modelEndpoint);
+                }
 				// 도시형 응답에는 동일 주택형이 반복될 수 있어 원본 JSON 기준으로 한 번만 적재한다.
 				if (urbanModel && !distinctUrbanRows.add(row)) {
 					continue;
@@ -136,7 +140,10 @@ public class ApplyhomeSyncService {
 	 * matchCount에 도달할 때까지 페이지를 읽는다. 전체 건수가 바뀌거나 페이지가 비어 조기 종료되면 실패 처리한다.
 	 */
 	private List<JsonNode> fetchAllPages(String endpoint, Map<String, String> filters) {
-		return ApplyhomePageCollector.fetchAll(endpoint, page -> apiClient.getPage(endpoint, page, filters));
+		List<String> keys = endpoint.equals("getUrbtyOfctlLttotPblancMdl") ? null
+                : endpoint.endsWith("Mdl") ? List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO")
+                : List.of("HOUSE_MANAGE_NO", "PBLANC_NO");
+        return ApplyhomePageCollector.fetchAll(endpoint, page -> apiClient.getPage(endpoint, page, filters), keys);
 	}
 
 	/**

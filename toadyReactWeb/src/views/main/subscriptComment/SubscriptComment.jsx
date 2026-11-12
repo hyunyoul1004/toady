@@ -55,7 +55,7 @@ const getAvatarColor = (name = '') => {
   return colors[index];
 };
 
-export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
+const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const { user, isAuthenticated } = useAuthStore();
   const currentSubscriptSeq = subscriptSeq || subscriptDetail?.subscriptSeq;
 
@@ -751,6 +751,13 @@ export const SubscriptComment = ({ subscriptDetail, subscriptSeq }) => {
       )}
     </Box>
   );
+};
+
+// 공고 또는 계정이 바뀌면 이전 작성 중 내용·답글·수정 상태를 함께 비운다.
+export const SubscriptComment = (props) => {
+  const userSeq = useAuthStore(state => state.user?.userSeq ?? 'guest');
+  const announcement = props.subscriptSeq || props.subscriptDetail?.subscriptSeq || '';
+  return <CommentContent key={`${announcement}:${userSeq}`} {...props} />;
 };
 
 export default SubscriptComment;

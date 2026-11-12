@@ -15,6 +15,9 @@ import jakarta.mail.MessagingException;
  */
 public interface EmailUtilService {
 
+    /** 관심 일정 알림도 같은 Gmail을 사용하며 별도 할당량을 적용한다. */
+    default void sendReminder(String toAddress, String subject, String body) throws MessagingException { sendEmail(toAddress, subject, body); }
+
     void sendEmail(String toAddress, String subject, String body) throws MessagingException;
 
 }

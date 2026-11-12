@@ -12,6 +12,8 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import AppRoutes from '@/routes/AppRoutes';
+import { bindAuthQueryCache } from '@/features/auth/store/bindAuthQueryCache';
+import PageViewTracker from '@/features/analytics/PageViewTracker';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +24,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const unbindAuthCache = bindAuthQueryCache(queryClient);
+if (import.meta.hot) import.meta.hot.dispose(unbindAuthCache);
 
 const theme = createTheme({
   palette: {
@@ -54,6 +59,7 @@ export const App = () => {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <BrowserRouter>
+          <PageViewTracker />
           <AppRoutes />
         </BrowserRouter>
       </ThemeProvider>

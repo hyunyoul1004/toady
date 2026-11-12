@@ -54,6 +54,19 @@ public record AnnouncementListItem(
         @Schema(description = "2순위 기타지역 접수종료일")
         String gnrlRnk2EtcAreaEndde,
         @Schema(description = "공급규모")
-        String totalSupplyHouseholds
+        String totalSupplyHouseholds,
+        @Schema(description = "삭제되지 않은 댓글과 답글 수")
+        long commentCount
 ) {
+    public AnnouncementListItem withCommentCount(long count) {
+        return new AnnouncementListItem(
+                type, houseManageNo, pblancNo, houseNm,
+                houseSecd, houseSecdNm, regionCode, regionName,
+                hssplyAdres, hssplyZip, rceptBgnde, rceptEndde,
+                gnrlRnk1CrspareaRcptde, gnrlRnk1CrspareaEndde, gnrlRnk1EtcGgRcptde, gnrlRnk1EtcGgEndde,
+                gnrlRnk1EtcAreaRcptde, gnrlRnk1EtcAreaEndde, gnrlRnk2CrspareaRcptde, gnrlRnk2CrspareaEndde,
+                gnrlRnk2EtcGgRcptde, gnrlRnk2EtcGgEndde, gnrlRnk2EtcAreaRcptde, gnrlRnk2EtcAreaEndde,
+                totalSupplyHouseholds, count
+        );
+    }
 }

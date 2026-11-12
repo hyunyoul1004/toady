@@ -73,4 +73,10 @@ class JwtAccountValidationTest {
         when(repository.findById(1L)).thenReturn(Optional.empty());
         assertThrows(JwtException.class, () -> provider.getAuthentication(request));
     }
+
+    @Test void rejectsInvalidSigningConfigurationBeforeServingTraffic() {
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(provider, "validateConfiguration");
+        ReflectionTestUtils.setField(provider, "secretKey", java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        assertThrows(IllegalStateException.class, () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(provider, "validateConfiguration"));
+    }
 }

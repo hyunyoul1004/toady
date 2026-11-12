@@ -1,116 +1,35 @@
-import { Box, Typography, Button } from '@mui/material';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { SubscriptDetail1, SubscriptDetail2, SubscriptDetail3, SubscriptDetail4, SubscriptDetail5 } from '@/views/main/subscriptDetail';
+import { useState } from 'react';
+import { Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
+import CloseRounded from '@mui/icons-material/CloseRounded';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
+import { trackAction } from '@/features/analytics/trackAction';
+import { normalizeScheduleEvents, summaryOf } from '@/features/planner/plannerUtils';
 
+function officialUrl(value) {
+  try { const url=new URL(value);return ['https:','http:'].includes(url.protocol)?url.href:''; } catch {return '';}
+}
+
+/** 공개된 일정과 사업 정보를 먼저 보여주고, 자격 세부 조건은 공식 원문에서 확인한다. */
 export default function AnnouncementNotice({ mainDetail }) {
-  // 주택 유형별 상세 컴포넌트 분기
-  const renderDetailComponent = () => {
-    if (!mainDetail.subscriptDetail) return null;
-    const rceptSe = mainDetail.subscriptDetail.rceptSe;
-    const detailProp = { mainDetail1: { detail: mainDetail } };
-
-    if (rceptSe === '06') return <SubscriptDetail2 {...detailProp} />;
-    if (rceptSe === '07') return <SubscriptDetail3 {...detailProp} />;
-    if (rceptSe === '05') return <SubscriptDetail4 {...detailProp} />;
-    if (rceptSe === '04') return <SubscriptDetail5 {...detailProp} />;
-    return <SubscriptDetail1 {...detailProp} />;
-  };
-
-  // URL 유효성 검사 (http:// 또는 https:// 로 시작하는 정상 웹 URL 여부)
-  const isValidWebUrl = (url) => {
-    if (!url || typeof url !== 'string') return false;
-    const trimmed = url.trim();
-    if (trimmed === '' || trimmed === '#' || trimmed === 'about:blank') return false;
-    return trimmed.startsWith('http://') || trimmed.startsWith('https://');
-  };
-
-  // 상세 탭 본문 렌더링 (pblancUrl이 유효하면 상단 안내 네모박스 + 새 창 열기 버튼 + iframe 표시, 유효하지 않으면 기존 구현 상세 컴포넌트 표시)
-  const renderDetailTabContent = () => {
-    if (!mainDetail.subscriptDetail) return null;
-
-    const detail = mainDetail.subscriptDetail;
-    // 1순위: pblancUrl, 2순위: recruitmentNoticeFileUrl
-    const webUrl = (detail.pblancUrl && isValidWebUrl(detail.pblancUrl))
-      ? detail.pblancUrl.trim()
-      : (isValidWebUrl(detail.recruitmentNoticeFileUrl) ? detail.recruitmentNoticeFileUrl.trim() : '');
-
-    // URL이 유효하지 않은 경우 기존에 구현된 상세 컴포넌트 표시
-    if (!webUrl) {
-      return renderDetailComponent();
-    }
-
-    // URL이 유효한 경우: 상단 네모박스(안내문 + 새 창 열기 버튼) + iframe 표시
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: { xs: 550, sm: 650 } }}>
-        {/* 상단 네모박스: 페이지 안내문 + 새 창 열기 버튼 */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            px: 1.5,
-            py: 0.8,
-            mb: 1,
-            bgcolor: '#f8fafc',
-            borderRadius: 1.5,
-            border: '1px solid #e2e8f0',
-            gap: 1
-          }}
-        >
-          <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 500 }}>
-            페이지가 정상 표시되지 않을 경우 새 창으로 열어보세요.
-          </Typography>
-
-          <Button
-            size="small"
-            variant="outlined"
-            href={webUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            startIcon={<OpenInNewIcon fontSize="small" />}
-            sx={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              minWidth: 0,
-              py: 0.3,
-              px: 1.2,
-              borderRadius: 1,
-              flexShrink: 0
-            }}
-          >
-            새 창 열기
-          </Button>
-        </Box>
-
-        {/* iframe 본문 영역 */}
-        <Box
-          sx={{
-            flex: 1,
-            width: '100%',
-            minHeight: { xs: 520, sm: 620 },
-            borderRadius: 2,
-            overflow: 'hidden',
-            border: '1px solid #e2e8f0',
-            bgcolor: '#ffffff',
-            position: 'relative'
-          }}
-        >
-          <iframe
-            src={webUrl}
-            title="모집공고 상세 웹페이지"
-            style={{
-              width: '100%',
-              height: '100%',
-              minHeight: '620px',
-              border: 'none',
-              display: 'block'
-            }}
-            loading="lazy"
-          />
-        </Box>
-      </Box>
-    );
-  };
-
-  return renderDetailTabContent();
+  const [originalOpen,setOriginalOpen]=useState(false);
+  const detail=mainDetail.subscriptDetail;
+  if(!detail) return null;
+  const summary=summaryOf(detail);
+  const events=normalizeScheduleEvents(summary.events);
+  const url=officialUrl(detail.pblancUrl) || officialUrl(detail.recruitmentNoticeFileUrl);
+  const facts=[['공급 위치',summary.address],['주택 구분',detail.housingDivision],['모집공고일',detail.applicationDate],
+    ['입주 예정',detail.upcomingMonth],['시행사',detail.developer],['시공사',detail.contractor],['문의',detail.businessPhoneNumber]];
+  return <div className="announcement-info">
+    <section aria-labelledby="announcement-schedule-title">
+      <h3 id="announcement-schedule-title">청약 일정</h3>
+      {events.length ? <ol className="announcement-schedule">{events.map(event=><li key={event.date}><time dateTime={event.date}>{event.date}</time><span>{event.label}</span></li>)}</ol>:<p className="research-explanation">공개된 접수 일정이 없습니다. 모집공고 원문을 확인해 주세요.</p>}
+    </section>
+    <section aria-labelledby="announcement-facts-title"><h3 id="announcement-facts-title">공고 기본 정보</h3><dl className="announcement-facts">{facts.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value && value!=='-'?value:'미제공'}</dd></div>)}</dl></section>
+    <section className="announcement-eligibility" aria-labelledby="announcement-eligibility-title"><h3 id="announcement-eligibility-title">신청 전 확인해 주세요</h3><p>거주지역·무주택 여부·청약통장·재당첨 제한 등 신청 자격은 공급 유형과 공고에 따라 달라집니다. 정확한 자격과 제출 서류는 모집공고 원문에서 확인하세요.</p>{url && <Button variant="outlined" endIcon={<OpenInNewRounded/>} onClick={()=>{trackAction('official_click',detail.subscriptSeq);setOriginalOpen(true);}}>모집공고 원문 확인</Button>}</section>
+    <Dialog open={originalOpen} onClose={()=>setOriginalOpen(false)} fullWidth maxWidth="md" aria-labelledby="official-notice-title" PaperProps={{sx:{height:'min(780px, 88dvh)',maxHeight:'88dvh',m:{xs:1,sm:3},width:{xs:'calc(100% - 16px)',sm:'100%'},borderRadius:2}}}>
+      <DialogTitle id="official-notice-title" sx={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:1,fontSize:16,py:1.5}}>모집공고 원문<IconButton aria-label="모집공고 원문 닫기" onClick={()=>setOriginalOpen(false)}><CloseRounded/></IconButton></DialogTitle>
+      <div className="official-notice-help"><span>원문이 표시되지 않으면 새 창에서 확인해 주세요.</span><Button size="small" href={url} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewRounded/>}>새 창에서 보기</Button></div>
+      <DialogContent sx={{p:0,display:'flex',minHeight:0}}>{originalOpen && url && <iframe src={url} title="모집공고 원문" style={{width:'100%',height:'100%',border:0,flex:1}}/>}</DialogContent>
+    </Dialog>
+  </div>;
 }

@@ -25,8 +25,17 @@ public class EmailUtilImpl implements EmailUtilService {
     @Autowired
     private JavaMailSender sender;
 
+    @Autowired
+    private com.toady.web.app.planner.MailBudget budget;
+
     @Override
-    public void sendEmail(String toAddress, String subject, String body) {
+    public void sendEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, false); }
+
+    @Override
+    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, true); }
+
+    private void send(String toAddress, String subject, String body, boolean reminder) {
+        if (!budget.reserve(reminder)) throw new com.toady.web.app.planner.MailQuotaException();
 
         MimeMessage message = sender.createMimeMessage();
         //MimeMessageHelper helper = new MimeMessageHelper(message);

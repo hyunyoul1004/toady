@@ -37,7 +37,7 @@ class CertifyTransactionTest {
         Long id = jdbc.queryForObject("SELECT USER_SEQ FROM TB_USER", Long.class);
         jdbc.update("INSERT INTO TB_CERTIFY (CERTIFY_TYPE,CERTIFY_SEND_TYPE,CERTIFY_CODE,CERTIFY_MESSAGE,CERTIFY_YN,CREATE_USER_SEQ,CREATE_DT) VALUES (?,'EMAIL','code','test','N',?,?)", type, id, created);
     }
-    CertifyDTO.CheckParam check() { return new CertifyDTO().new CheckParam("verify@example.test", "code"); }
+    CertifyDTO.CheckParam check() { return new CertifyDTO.CheckParam("verify@example.test", "code"); }
     CertifyDTO.PasswordChange password() { return new CertifyDTO.PasswordChange("verify@example.test", "Newpass123!", "Newpass123!", "code"); }
     String flag() { return jdbc.queryForObject("SELECT CERTIFY_YN FROM TB_CERTIFY", String.class); }
     @Test void accountFailureRollsBackConsumedCode() {

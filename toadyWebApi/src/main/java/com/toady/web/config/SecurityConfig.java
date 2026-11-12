@@ -51,10 +51,19 @@ public class SecurityConfig {
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
+                // 일반 회원은 Bearer JWT로 인증한다. Basic challenge는 브라우저 자체 로그인 창을 띄운다.
+                .httpBasic(basic -> basic.disable())
+                .formLogin(form -> form.disable())
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                com.toady.web.core.security.ApiSecurityError.unauthorized(response))
+                        .accessDeniedHandler((request, response, exception) ->
+                                com.toady.web.core.security.ApiSecurityError.forbidden(response)))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .userDetailsService(userDetailsService)
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/api/v1/me/**").authenticated()
                         .requestMatchers("/webApi/user/login", "/webApi/user/regUser",
                                 "/webApi/certify/**", "/api/v1/**", "/swagger-ui/**",
                                 "/v3/api-docs/**").permitAll()

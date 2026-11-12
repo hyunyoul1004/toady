@@ -39,6 +39,9 @@ public class AnnouncementApiExceptionHandler {
     }
 
     @ExceptionHandler({
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
             MethodArgumentNotValidException.class,
             ConstraintViolationException.class,
             HandlerMethodValidationException.class

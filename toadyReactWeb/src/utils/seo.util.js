@@ -1,3 +1,4 @@
+import { announcementShareUrl, announcementShareImage, shareLabel } from '@/features/planner/shareUtils';
 /**
  * @file seo.util.js
  * @description 구글 및 네이버 검색 로봇(SEO) 및 SNS 공유(OG/Twitter)를 위한 동적 메타 태그 & 구조화 데이터 제어 유틸리티
@@ -31,7 +32,7 @@ function setLinkHref(selector, href) {
  * 특정 공고 상세 열람 시 검색엔진 메타 태그 & Schema.org 구조화 데이터 동적 갱신
  * @param {object} detailData subscriptDetail 객체
  */
-export function updateAnnouncementSeo(detailData) {
+export function updateAnnouncementSeo(detailData,tab='detail') {
   if (!detailData || !detailData.houseNm) return;
 
   const houseNm = detailData.houseNm || '분양 공고';
@@ -39,14 +40,17 @@ export function updateAnnouncementSeo(detailData) {
   const scale = detailData.supplyScale || '';
   const date = detailData.subscriptDate || detailData.applicationDate || '';
   const seq = detailData.subscriptSeq || '';
-  const fullUrl = `https://toady.co.kr/?subscriptSeq=${encodeURIComponent(seq)}`;
+  const fullUrl = announcementShareUrl(seq,tab);
+  const canonicalUrl=announcementShareUrl(seq);
+  const imageUrl=announcementShareImage(seq,tab);
+  const title=`${houseNm} | ${shareLabel(tab)} · TOADY`;
 
   // 1. 브라우저 탭 타이틀
-  const pageTitle = `[청약] ${houseNm} - 분양가, 일정, 위치, 경쟁률 | TOADY`;
+  const pageTitle = title;
   document.title = pageTitle;
 
   // 2. 검색 요약 설명문 (Description)
-  const pageDescription = `${houseNm} 청약 상세 안내. 위치: ${location}, 규모: ${scale}, 청약접수일: ${date}. 분양가, 특별공급/1순위 경쟁률 및 주변 시세 실시간 확인.`;
+  const pageDescription = `${houseNm} 청약 상세 안내. 위치: ${location}, 규모: ${scale}, 청약접수일: ${date}. 공고 일정과 공개된 경쟁률·당첨가점 확인.`;
   setMetaContent('#meta-description', pageDescription);
   setMetaContent('meta[name="description"]', pageDescription);
 
@@ -55,18 +59,21 @@ export function updateAnnouncementSeo(detailData) {
   setMetaContent('#meta-keywords', pageKeywords);
 
   // 4. OpenGraph (카카오톡, 네이버 카페/블로그 공유 시 카드)
-  setMetaContent('#og-title', `[청약] ${houseNm}`);
+  setMetaContent('#og-title', title);
+  setMetaContent('#og-image',imageUrl);
+  setMetaContent('meta[property="og:image"]',imageUrl);
+  setMetaContent('meta[name="twitter:image"]',imageUrl);
   setMetaContent('#og-description', `${location} | ${scale} | 접수: ${date}`);
   setMetaContent('#og-url', fullUrl);
   setMetaContent('meta[property="og:url"]', fullUrl);
 
   // 5. Twitter Card
-  setMetaContent('#twitter-title', `[청약] ${houseNm}`);
+  setMetaContent('#twitter-title', title);
   setMetaContent('#twitter-description', `${location} | ${scale} | 접수: ${date}`);
 
   // 6. 검색엔진 캐노니컬 URL
-  setLinkHref('#canonical-url', fullUrl);
-  setLinkHref('link[rel="canonical"]', fullUrl);
+  setLinkHref('#canonical-url', canonicalUrl);
+  setLinkHref('link[rel="canonical"]', canonicalUrl);
 
   // 7. 구글/네이버 리치 검색 결과용 JSON-LD 구조화 데이터 주입
   const ldScript = document.getElementById('structured-data-script');
@@ -99,6 +106,8 @@ export function resetDefaultSeo() {
   setMetaContent('#meta-keywords', DEFAULT_SEO.keywords);
 
   setMetaContent('#og-title', DEFAULT_SEO.title);
+  setMetaContent('meta[property="og:image"]',DEFAULT_SEO.image);
+  setMetaContent('meta[name="twitter:image"]',DEFAULT_SEO.image);
   setMetaContent('#og-description', DEFAULT_SEO.description);
   setMetaContent('#og-url', DEFAULT_SEO.url);
   setMetaContent('meta[property="og:url"]', DEFAULT_SEO.url);

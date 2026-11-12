@@ -32,11 +32,15 @@ public class AnnouncementCommentService {
             String houseManageNo,
             String pblancNo,
             int page,
-            int size
+            int size,
+            Long beforeCommentSeq
     ) {
+        if (beforeCommentSeq != null && (beforeCommentSeq <= 0 || page != 0)) {
+            throw new IllegalArgumentException("댓글 커서 조회는 양수 댓글 번호와 page=0을 사용하세요.");
+        }
         requireAnnouncement(type, houseManageNo, pblancNo);
         return commentRepository.findVisibleComments(
-                type.name(), houseManageNo, pblancNo, PageRequest.of(page, size)
+                type.name(), houseManageNo, pblancNo, beforeCommentSeq, PageRequest.of(page, size)
         );
     }
 

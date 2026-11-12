@@ -1,3 +1,4 @@
+import { formatServerMessage } from '@/utils/text.util';
 /**
  * SubscriptDetail2.jsx
  * APT 상세
@@ -149,7 +150,7 @@ function SubscriptDetail2(props) {
                         </TableRow>
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">당첨자 발표일</TableCell>
-                          <TableCell align="left"><div dangerouslySetInnerHTML={ {__html: subscriptDetail.winnerAnnouncementDate} }></div></TableCell>
+                          <TableCell align="left"><div>{formatServerMessage(subscriptDetail.winnerAnnouncementDate)}</div></TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell align="center" component="th" scope="row">계약일</TableCell>
@@ -182,7 +183,7 @@ function SubscriptDetail2(props) {
                               <TableCell align="center">{row.housingType}</TableCell>
                               <TableCell align="center">{row.supplyTotalCnt}</TableCell>
                               {
-                                index == 0? <TableCell align='left' component="th" scope="row" rowSpan={subscriptSupply.length} ><div dangerouslySetInnerHTML={ {__html: row.note} }></div></TableCell>:""
+                                index == 0? <TableCell align='left' component="th" scope="row" rowSpan={subscriptSupply.length} ><div>{formatServerMessage(row.note)}</div></TableCell>:""
                               }
                             </TableRow>
                           ))

@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
-import java.util.Map;
 
 /**
  * packageName    : com.toady.web.app.certify.controller
@@ -40,18 +39,13 @@ public class CertifyController {
 
     /**
      * 인증
-     * @param map
+     * @param param
      * @return 결과.
      */
     @Operation(summary = "회원 가입 후 회원 이메일 인증", description = "회원 가입 후 회원 이메일 인증", tags = "인증 API")
     @PostMapping("/certify-check")
-    public ResponseEntity<ResData> certifyCheck(@RequestBody Map<String, Object> map){
-
-        CertifyDTO.CheckParam certifyParam = new CertifyDTO().new CheckParam();
-        certifyParam.setCertifyCode(map.getOrDefault("certifyCode", "").toString());
-        certifyParam.setUserEmail(map.getOrDefault("userEmail", "").toString());
-
-        return certifyService.certifyCheck(certifyParam);
+    public ResponseEntity<ResData> certifyCheck(@Valid @RequestBody CertifyDTO.CheckParam param) {
+        return certifyService.certifyCheck(param);
     }
 
 

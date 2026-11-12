@@ -6,7 +6,7 @@
  * - 상단 로고, 주요 메뉴 리스트, 하단 로그인/회원가입/로그아웃 인증 영역 포함
  */
 import React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
 import List from '@mui/material/List';
@@ -17,6 +17,7 @@ import ListItemText from '@mui/material/ListItemText';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import Button from '@mui/material/Button';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -36,7 +37,8 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   const nickname = user?.userNicName || user?.sub || '회원';
 
   const menuItems = [
-    { text: '청약캘린더', icon: <CalendarMonthIcon />, path: '/' }
+    { text: '청약캘린더', icon: <CalendarMonthIcon />, path: '/' },
+    { text: '나의 청약', icon: <BookmarkBorderIcon />, path: '/my' }
   ];
 
   const drawerContent = (
@@ -52,12 +54,11 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
           borderBottom: '1px solid #f1f5f9'
         }}
       >
-        <Box
+        <Box component={Link} to="/" aria-label="TOADY 홈으로"
           onClick={() => {
-            navigate('/');
             if (mobileOpen) onMobileClose();
           }}
-          sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1 }}
+          sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
           <img
             alt="TOADY Logo"
@@ -79,6 +80,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         {/* 모바일 화면에서만 닫기 버튼 노출 */}
         <IconButton
           onClick={onMobileClose}
+          aria-label="메뉴 닫기"
           sx={{ display: { xs: 'flex', md: 'none' }, color: '#64748b' }}
           size="small"
         >
@@ -96,10 +98,12 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         </Typography>
         <List disablePadding>
           {menuItems.map((item) => {
-            const isSelected = location.pathname === item.path;
+            const isSelected = item.path==='/'?location.pathname==='/' || location.pathname.startsWith('/announcements/') || location.pathname==='/showSubscriptDetail':location.pathname===item.path;
             return (
               <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
+                  aria-current={isSelected?'page':undefined}
+                  selected={isSelected}
                   onClick={() => {
                     navigate(item.path);
                     if (mobileOpen) onMobileClose();
