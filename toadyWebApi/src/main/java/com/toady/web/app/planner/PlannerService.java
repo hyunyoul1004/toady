@@ -45,7 +45,7 @@ public class PlannerService {
             jdbc.update("UPDATE TB_FAVORITE SET NOTE=?,CHECKLIST=?,EMAIL_ENABLED=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",note,checklist,email,user,type,house,notice);
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         } else {
-            if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?",Integer.class,user)>=50) throw new IllegalArgumentException("관심 공고는 50개까지 저장할 수 있습니다.");
+            if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?",Integer.class,user)>=50) throw new PlannerLimitException("관심 공고는 50개까지 저장할 수 있어요. 지난 공고를 정리한 뒤 다시 저장해 주세요.");
             jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,CHECKLIST,EMAIL_ENABLED,REG_DT) VALUES (?,?,?,?,?,?,?,?)",user,type,house,notice,note,checklist,email,java.sql.Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"))));
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         }

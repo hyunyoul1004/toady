@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 public class PublicRentalCompetitionEntity {
     @Id @Column(name = "HOUSE_MANAGE_NO", length = 40) private String houseManageNo;
     @Id @Column(name = "PBLANC_NO", length = 40) private String pblancNo;
-    @Id @Column(name = "MODEL_NO", length = 2) private String modelNo;
+    @Id @Column(name = "MODEL_NO", length = 4) private String modelNo;
     @Id @Column(name = "SPSPLY_KND_CODE", length = 2) private String spsplyKndCode;
     @Column(name = "HOUSE_TY", length = 17) private String houseTy;
     @Column(name = "SUPLY_HSHLDCO", length = 10) private String suplyHshldco;

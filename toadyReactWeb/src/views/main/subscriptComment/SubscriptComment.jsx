@@ -2,7 +2,7 @@
  * @file SubscriptComment.jsx
  * @description 청약 공고 상세 댓글 및 답글(대댓글) 컴포넌트
  */
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { summaryOf, koreaToday } from '@/features/planner/plannerUtils';
 import StoryPrompts from '@/features/story/StoryPrompts';
@@ -87,6 +87,10 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const [replyState, setReplyState] = useState({ parentCommentSeq: null, content: '', show: false });
   const [modifyState, setModifyState] = useState({ commentSeq: null, content: '', show: false });
   const [feedback, setFeedback] = useState(null);
+  // 안내 문구는 마지막 메시지 기준으로 3.5초 뒤에 지운다(이전 타이머가 새 메시지를 일찍 지우지 않게).
+  const feedbackTimer = useRef(null);
+  const hideFeedbackLater = () => { clearTimeout(feedbackTimer.current); feedbackTimer.current = setTimeout(() => setFeedback(null), 3500); };
+  useEffect(() => () => clearTimeout(feedbackTimer.current), []);
 
   // 계층형 댓글 트리 생성
   const treeCommentList = useMemo(() => {
@@ -135,7 +139,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       });
       setRootContent('');
       setFeedback({ severity: 'success', text: '댓글이 성공적으로 등록되었습니다.' });
-      setTimeout(() => setFeedback(null), 3500);
+      hideFeedbackLater();
     } catch (err) {
       setFeedback({ severity: 'error', text: err.message || '댓글 등록에 실패했습니다.' });
     }
@@ -164,7 +168,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       });
       setReplyState({ parentCommentSeq: null, content: '', show: false });
       setFeedback({ severity: 'success', text: '답글이 성공적으로 등록되었습니다.' });
-      setTimeout(() => setFeedback(null), 3500);
+      hideFeedbackLater();
     } catch (err) {
       alert(err.message || '답글 등록에 실패했습니다.');
     }
@@ -189,7 +193,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       });
       setModifyState({ commentSeq: null, content: '', show: false });
       setFeedback({ severity: 'success', text: '댓글이 수정되었습니다.' });
-      setTimeout(() => setFeedback(null), 3500);
+      hideFeedbackLater();
     } catch (err) {
       alert(err.message || '댓글 수정에 실패했습니다.');
     }
@@ -208,7 +212,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         commentSeq
       });
       setFeedback({ severity: 'info', text: '댓글이 삭제되었습니다.' });
-      setTimeout(() => setFeedback(null), 3500);
+      hideFeedbackLater();
     } catch (err) {
       alert(err.message || '댓글 삭제에 실패했습니다.');
     }

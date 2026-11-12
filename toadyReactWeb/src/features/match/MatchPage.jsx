@@ -196,7 +196,7 @@ export default function MatchPage({ tab = 'match' }) {
               <div>{filter !== 'all' && ranked.length > 0 && <Button size="small" onClick={() => setFilter('all')}>전체 공고 보기</Button>}
                 <Button size="small" component={Link} to="/match/zupzup">무순위·줍줍 보기</Button></div>
             </div>}
-          <p className="match-disclaimer">공통 요건만 단순화해 본 신청 가능성이에요. 소득·자산·예치금·거주기간 등 세부 자격은 모집공고 원문과 청약홈에서 꼭 확인하세요. 카드를 누르면 공고별 판정 이유를 볼 수 있어요. 기준이 궁금하면 <a href="/faq">청약 자주 묻는 질문</a>을 참고하세요.</p>
+          <p className="match-disclaimer">공통 요건만 단순화해 본 신청 가능성이에요. 소득·자산·예치금·거주기간 등 세부 자격은 모집공고 원문과 청약홈에서 꼭 확인하세요. 카드를 누르면 공고별 판정 이유를 볼 수 있어요. 기준이 궁금하면 <Link to="/faq">청약 자주 묻는 질문</Link>을 참고하세요.</p>
           <Button size="small" color="inherit" className="match-reset" onClick={() => clearProfile()}>진단 기록 지우기</Button>
         </>}
       </>}
@@ -208,7 +208,7 @@ export default function MatchPage({ tab = 'match' }) {
       {feed.isLoading ? <FeedSkeleton /> : feed.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => feed.refetch()}>다시 시도</Button>}>공고를 불러오지 못했어요.</Alert>
         : zupzup.length ? <ul className="match-list">{zupzup.map(item => <FeedCard key={item.id} item={item} result={complete ? evaluate(profile, item, today) : null} today={today} onOpen={openDetail} />)}</ul>
           : <div className="match-empty"><p>지금 접수 중이거나 예정된 무순위·줍줍 공고가 없어요. 새 공고는 매일 반영돼요.</p></div>}
-      <p className="match-disclaimer">2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역·재당첨 제한은 공고마다 달라 원문을 확인하세요(<a href="/faq#zupzup-who">무순위 자주 묻는 질문</a>).{!complete && <> <Link to="/match">자격 진단</Link>을 하면 공고마다 신청 가능성을 함께 보여 드려요.</>}</p>
+      <p className="match-disclaimer">2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역·재당첨 제한은 공고마다 달라 원문을 확인하세요(<Link to="/faq#zupzup-who">무순위 자주 묻는 질문</Link>).{!complete && <> <Link to="/match">자격 진단</Link>을 하면 공고마다 신청 가능성을 함께 보여 드려요.</>}</p>
     </>}
 
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}

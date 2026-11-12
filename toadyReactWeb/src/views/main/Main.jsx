@@ -159,6 +159,18 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   // 공개 모음 페이지(/zupzup, /weekly)에서 넘어온 유형·월 조건도 한 번만 적용하고 주소에서 지운다.
   const entryFocus = detailOnly || areaSlug ? null : searchParams.get('focus');
   const entryMonth = detailOnly || areaSlug ? null : searchParams.get('month');
+  // 검색엔진의 사이트 검색 상자(index.html SearchAction: /?search=검색어)로 들어오면 그 검색어로 한 번 검색한다.
+  const entrySearch = detailOnly || areaSlug ? null : (searchParams.get('search') || '').trim().slice(0, 50);
+  useEffect(() => {
+    if (!entrySearch) return;
+    setSelectedRegions(ALL_REGIONS);
+    setSearchInputValue('');
+    setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([entrySearch]) }));
+    const next = new URLSearchParams(searchParams);
+    next.delete('search');
+    setSearchParams(next, { replace:true, state:location.state });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entrySearch]);
   useEffect(() => {
     if (!entryFocus && !entryMonth) return;
     if (entryFocus === 'unranked') {
@@ -260,13 +272,17 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     if (subscriptSeq) {
       setSelectedSubscriptSeq(subscriptSeq);
       // 탭 전환(setSearchParams)으로 이 효과가 다시 돌 때는 조사 탭을 유지하고, 공고가 바뀔 때만 처음 탭으로 돌린다.
-      if (routeSeqRef.current !== subscriptSeq) setResearchTab('info');
+      const changedSeq = routeSeqRef.current !== subscriptSeq;
+      if (changedSeq) setResearchTab('info');
       routeSeqRef.current = subscriptSeq;
       setModalOpen(true);
 
       const tabMap = { detail: 0, rate: 1, map: 2, comment: 3 };
       if (tabType && tabMap[tabType] !== undefined) {
         setDetailTabValue(tabMap[tabType]);
+      } else if (changedSeq) {
+        // 알림·공유 링크처럼 탭 지정 없이 다른 공고를 열면, 직전에 보던 탭이 아니라 '상세'로 연다.
+        setDetailTabValue(0);
       }
     } else {
       routeSeqRef.current = null;
@@ -390,7 +406,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
         <AreaSubscribe targets={paramInfo.citys} />
         <MatchStrip />
-        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={announcementsRes == null && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
+        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
           {isListError && <Alert severity="error" sx={{ mb: 2 }}

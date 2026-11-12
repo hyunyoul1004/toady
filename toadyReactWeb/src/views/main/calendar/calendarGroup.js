@@ -5,17 +5,19 @@
  * - 공고 전체 단계(특 → 1 → 2)를 함께 담아, 칸마다 같은 단지가 반복돼도 어느 단계인지 한눈에 보이게 한다.
  */
 
-// 공급 유형별 표시 정보. 색 의미(특별공급=자주, 1순위=빨강, 2순위=주황…)는 유지하고 채도만 낮춘다.
+// 공급 유형별 표시 정보(색·이름의 단일 기준). 공급유형 필터 칩·PC 달력·모바일 달력이 모두 이 값을 쓴다.
+// 색 의미(특별공급=자주, 1순위=빨강, 2순위=주황…)는 청약홈과 같게 두고 채도만 낮춘다.
+// order: 필터 칩·달력 범례·같은 날 일정 정렬이 모두 쓰는 순서(청약 단계 → 무순위·줍줍 → 기타 유형).
 // accent: 왼쪽 띠·뱃지 채움, tint: 줄 배경, text: 진한 글자색(배경 대비 확보)
 export const RCEPT_SE_META = {
   '01': { short: '특', label: '특별공급', order: 1, accent: '#a3557a', tint: '#f8eef3', text: '#6e2a4b' },
   '02': { short: '1', label: '1순위', order: 2, accent: '#d9485c', tint: '#fdeef0', text: '#9b1c30' },
   '03': { short: '2', label: '2순위', order: 3, accent: '#d98a3a', tint: '#fdf3e7', text: '#8a4a0f' },
-  '04': { short: '민', label: '민간임대', order: 4, accent: '#7d5a5b', tint: '#f4eeee', text: '#553637' },
-  '05': { short: '오', label: '오피스텔', order: 5, accent: '#4f9a94', tint: '#eaf4f3', text: '#23625d' },
-  '06': { short: '무', label: '무순위', order: 6, accent: '#6474a0', tint: '#eef0f7', text: '#3a4569' },
-  '07': { short: '임', label: '임의공급', order: 7, accent: '#8b97a8', tint: '#f2f4f7', text: '#465264' },
-  '08': { short: '재', label: '불법행위재공급', order: 8, accent: '#2fa898', tint: '#e8f6f4', text: '#0f665c' }
+  '04': { short: '민', label: '민간임대', order: 8, accent: '#7d5a5b', tint: '#f4eeee', text: '#553637' },
+  '05': { short: '오', label: '오피스텔/도시형', order: 7, accent: '#4f9a94', tint: '#eaf4f3', text: '#23625d' },
+  '06': { short: '무', label: '무순위', order: 4, accent: '#6474a0', tint: '#eef0f7', text: '#3a4569' },
+  '07': { short: '임', label: '임의공급', order: 5, accent: '#8b97a8', tint: '#f2f4f7', text: '#465264' },
+  '08': { short: '재', label: '불법행위재공급', order: 6, accent: '#2fa898', tint: '#e8f6f4', text: '#0f665c' }
 };
 
 const FALLBACK_META = { short: '공', label: '청약', order: 99, accent: '#94a3b8', tint: '#f1f5f9', text: '#334155' };

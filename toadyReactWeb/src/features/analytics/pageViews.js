@@ -1,4 +1,4 @@
-const PATHS = new Set(['/', '/my', '/score', '/announcements', '/login', '/certify', '/showSubscriptDetail']);
+const PATHS = new Set(['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/announcements', '/login', '/certify', '/showSubscriptDetail']);
 const VISITOR_KEY = 'toady.analytics.visitor';
 const SESSION_KEY = 'toady.analytics.session';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

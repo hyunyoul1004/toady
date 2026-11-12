@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** 계정·인증·게시판의 예상하지 못한 예외도 일관된 응답으로 처리하며 내부 정보를 노출하지 않는다. */
 @Slf4j
-@RestControllerAdvice(basePackages = {"com.toady.web.app.user", "com.toady.web.app.certify", "com.toady.web.app.board", "com.toady.web.app.analytics"})
+@RestControllerAdvice(basePackages = {"com.toady.web.app.user", "com.toady.web.app.certify", "com.toady.web.app.analytics"})
 public class ApiExceptionHandler {
     @ExceptionHandler({org.springframework.web.bind.MethodArgumentNotValidException.class,
             org.springframework.web.method.annotation.HandlerMethodValidationException.class,

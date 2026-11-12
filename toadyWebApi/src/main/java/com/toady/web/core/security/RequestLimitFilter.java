@@ -31,9 +31,14 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class RequestLimitFilter extends OncePerRequestFilter {
-    record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, int shortLimit, int dailyLimit) {
+    /** pattern: 경로 중간에 변수가 있는 규칙(예: 공고별 댓글)용. 없으면 null. */
+    record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, java.util.regex.Pattern pattern, int shortLimit, int dailyLimit) {
+        Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, int shortLimit, int dailyLimit) {
+            this(name, methods, prefixes, exact, null, shortLimit, dailyLimit);
+        }
         boolean matches(String method, String path) {
-            return methods.contains(method) && (exact.contains(path) || prefixes.stream().anyMatch(path::startsWith));
+            return methods.contains(method) && (exact.contains(path) || prefixes.stream().anyMatch(path::startsWith)
+                || (pattern != null && pattern.matcher(path).matches()));
         }
     }
     static List<Rule> rules(int mailShort, int mailDaily) {
@@ -44,6 +49,12 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("gap", Set.of("GET"), List.of("/api/v1/research/price-gap"), Set.of(), 20, 150),
             new Rule("summary", Set.of("POST"), List.of(), Set.of("/api/v1/planner/summaries", "/api/v1/planner/results"), 60, 1000),
             new Rule("analytics", Set.of("POST"), List.of("/api/v1/analytics/"), Set.of(), 300, 3000),
+            // 댓글 작성·수정: 도배와 저장소 증가를 막는다(회원만 쓸 수 있어 넉넉하지 않게).
+            new Rule("comment", Set.of("POST", "PATCH"), List.of(), Set.of(),
+                java.util.regex.Pattern.compile("^/api/v1/[a-z-]+/announcements/[^/]+/[^/]+/comments(/[^/]+)?$"), 20, 200),
+            // 공유 이미지(PNG 렌더링)와 통합 목록 조회는 요청 한 번의 서버 비용이 커서 반복 호출을 제한한다.
+            new Rule("image", Set.of("GET"), List.of("/api/v1/public/announcement-images/"), Set.of(), 120, 1500),
+            new Rule("list", Set.of("GET"), List.of(), Set.of("/api/v1/announcements"), 300, 5000),
             new Rule("suggest", Set.of("GET"), List.of(), Set.of("/api/v1/announcements/suggestions"), 300, 5000),
             new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));

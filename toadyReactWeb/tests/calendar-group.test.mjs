@@ -48,7 +48,7 @@ test('잘못된 행은 건너뛰고, 범례·설명·기본 색 정보가 일관
     row('apt/6/6', '마단지', '02', '2026-02-30')
   ]);
   assert.equal(groups.length, 2);
-  assert.deepEqual(usedRceptSes(groups), ['05', '06']);
+  assert.deepEqual(usedRceptSes(groups), ['06', '05'], '필터 칩과 같은 순서: 무순위 → 오피스텔');
   assert.equal(describeGroup(groups.find((g) => g.subscriptSeq === 'apt/4/4')), '다단지 · 무순위 · 이야기 3');
   assert.equal(groupCalendarSchedules(null).length, 0);
   assert.equal(rceptSeMeta('99').short, '공');
@@ -59,4 +59,25 @@ test('잘못된 행은 건너뛰고, 범례·설명·기본 색 정보가 일관
 test('공급 유형 약어는 서로 겹치지 않는다', () => {
   const shorts = ['01', '02', '03', '04', '05', '06', '07', '08'].map((c) => rceptSeMeta(c).short);
   assert.equal(new Set(shorts).size, shorts.length);
+});
+
+test('공급유형 필터 칩·달력·모바일 달력이 같은 색과 이름을 쓴다', async () => {
+  const { SUPPLY_FILTER_ITEMS } = await import('../src/views/main/announcementFilters.js');
+  for (const item of SUPPLY_FILTER_ITEMS) {
+    assert.equal(item.color, rceptSeMeta(item.id).accent, `${item.label} 색`);
+    assert.equal(item.label, rceptSeMeta(item.id).label, `${item.id} 이름`);
+  }
+  assert.equal(SUPPLY_FILTER_ITEMS.length, 8);
+  // 필터 칩 순서와 달력 범례 순서(order)가 같다.
+  assert.deepEqual(SUPPLY_FILTER_ITEMS.map(item => item.id), ['01', '02', '03', '06', '07', '08', '05', '04']);
+  assert.deepEqual(usedRceptSes([{ stages: [{ rceptSe: '04' }, { rceptSe: '06' }, { rceptSe: '02' }] }]), ['02', '06', '04'], '범례도 같은 순서');
+});
+
+test('목록 보기 건수는 고른 달의 일정만, 공고 단위로 한 번씩 센다', async () => {
+  const { uniqueInMonth } = await import('../src/features/planner/browseState.js');
+  const items = [
+    { subscriptSeq: 'a', inDate: '2026-11-02' }, { subscriptSeq: 'a', inDate: '2026-11-03' },
+    { subscriptSeq: 'b', inDate: '2026-12-01' }, { subscriptSeq: 'c', inDate: '2026-10-30' }
+  ];
+  assert.deepEqual(uniqueInMonth(items, '2026-11').map(x => x.subscriptSeq), ['a']);
 });

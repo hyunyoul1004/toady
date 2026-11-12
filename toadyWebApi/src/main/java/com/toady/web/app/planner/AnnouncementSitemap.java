@@ -42,7 +42,7 @@ public class AnnouncementSitemap {
         xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
         for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
         // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기
-        for(String path:java.util.List.of("/zupzup","/weekly","/score","/match","/match/zupzup","/faq")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
+        for(String path:java.util.List.of("/zupzup","/weekly","/score","/match","/match/zupzup","/help/faq")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
         xml.append("</urlset>");return response(xml.toString());
     }
     private static String esc(String value) { return HtmlUtils.htmlEscape(value); }

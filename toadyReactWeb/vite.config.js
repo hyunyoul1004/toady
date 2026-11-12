@@ -50,10 +50,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/areas\/?([a-z0-9-]*)\/?/, (_, slug) => `/api/v1/public/areas${slug ? `/${slug}` : ''}`)
       },
-      '^/(zupzup|weekly|faq)/?(\\?.*)?$': {
+      '^/(zupzup|weekly)/?(\\?.*)?$': {
         target: 'http://localhost:8081',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/(zupzup|weekly|faq)\/?/, '/api/v1/public/$1')
+        rewrite: path => path.replace(/^\/(zupzup|weekly)\/?/, '/api/v1/public/$1')
+      },
+      '^/help/faq/?(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/help\/faq\/?/, '/api/v1/public/faq')
       },
       '^/calendar/areas/[a-z0-9-]+\\.ics(\\?.*)?$': {
         target: 'http://localhost:8081',

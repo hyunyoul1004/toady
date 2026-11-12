@@ -236,8 +236,23 @@ CREATE TABLE IF NOT EXISTS TB_APT_SPSPLY_REQST_STUS (
 -- 아래는 기존 파일의 내용이며 DB 범위·구문을 확인하고 관리 계정으로 별도 적용해야 합니다.
 -- DB 전체 권한은 DB명.* 형태로 대상을 명시합니다. 앱 계정에는 필요한 권한만 부여하세요.
 -- ============================================================================
+-- 아래 원래 줄은 DB가 아니라 'toady'라는 테이블에 권한을 주는 구문이라 쓰지 않는다(참고용으로만 남김).
 -- GRANT DELETE ON toady TO 'toady_sources'@'%';
--- FLUSH PRIVILEGES;
+-- 수집기(toady_sources)는 공고별 결과·주택형을 교체하면서 아래 테이블에서 DELETE를 실행한다. DB명을 실제 값으로 바꿔 확인한다.
+-- 권한 확인: SHOW GRANTS FOR 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_APT_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_APT_LTTOT_PBLANC_SCORE TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_APT_SPSPLY_REQST_STUS TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_CANC_RESPL_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_REMNDR_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_OPT_LTTOT_PBLANC_CMPET TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_APT_LTTOT_PBLANC_MDL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_URBTY_OFCTL_LTTOT_PBLANC_MDL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_REMNDR_LTTOT_PBLANC_MDL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_PBL_PVT_RENT_LTTOT_PBLANC_MDL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_OPT_LTTOT_PBLANC_MDL TO 'toady_sources'@'%';
 
 -- 6. 인증 이메일 본문 컬럼 확장 (운영 DB 적용 완료, 미적용 DB에만 수동 실행)
 -- ALTER TABLE TB_CERTIFY MODIFY COLUMN CERTIFY_MESSAGE TEXT NOT NULL COMMENT '인증 이메일 본문';
@@ -408,3 +423,9 @@ UPDATE TB_PUSH_AREA_SEEN SET LAST_SEEN_DT = CURRENT_TIMESTAMP(6) WHERE LAST_SEEN
 -- 관심 공고마다 '관심 → 신청 예정 → 신청 완료 → 당첨/미당첨 → 계약 완료'를 기록해 단계별 다음 할 일과 결과 확인을 안내한다.
 -- 0 관심, 1 신청 예정, 2 신청 완료, 3 당첨, 4 미당첨, 5 계약 완료. 미적용이면 회원의 단계 저장만 건너뛴다(비회원은 브라우저에 저장).
 ALTER TABLE TB_FAVORITE ADD COLUMN IF NOT EXISTS STAGE TINYINT NOT NULL DEFAULT 0 COMMENT '청약 진행 단계 0~5';
+
+-- 17. 오피스텔·공공지원민간임대 경쟁률의 모델번호 길이 (스케줄러 배포 전 실행 권장)
+-- 같은 유형의 주택형 테이블은 MODEL_NO가 4자리인데 경쟁률 테이블만 2자리라, 3~4자리 모델번호가 오면 MariaDB(STRICT)에서 저장이 실패한다.
+-- 늘리기만 하므로 기존 값은 그대로이며 다시 실행해도 된다.
+ALTER TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET MODIFY MODEL_NO VARCHAR(4) NOT NULL COMMENT '모델번호';
+ALTER TABLE TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET MODIFY MODEL_NO VARCHAR(4) NOT NULL COMMENT '모델번호';

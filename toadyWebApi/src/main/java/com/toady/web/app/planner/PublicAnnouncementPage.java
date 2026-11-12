@@ -16,6 +16,8 @@ public class PublicAnnouncementPage {
     private final ShareScores shareScores;
     private final String domain;
     private final AnnouncementResults results;
+    private final com.google.common.cache.Cache<String,byte[]> images=com.google.common.cache.CacheBuilder.newBuilder()
+        .maximumWeight(64L*1024*1024).weigher((String key,byte[] value)->value.length).expireAfterWrite(Duration.ofMinutes(10)).build();
     public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain,AnnouncementResults results) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");this.results=results;}
     /** APT 공고의 공개 결과 카드(1순위 최고 경쟁률·당첨가점). 공개 전이면 비운다. */
     String resultCard(String id) {
@@ -75,8 +77,17 @@ public class PublicAnnouncementPage {
     @GetMapping(value="/api/v1/public/announcement-images/{type}/{house}/{notice}.png",produces=MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> image(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) throws java.io.IOException {
         if(!valid(type,house,notice))return ResponseEntity.notFound().build();
-        try{return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(AnnouncementShareCard.png(summaries.get(type,house,notice),section(tabType),section(tabType).equals("rate")?shareScores.get(type,house,notice):new ShareScores.Range("", "")));}
-        catch(EntityNotFoundException missing){return ResponseEntity.notFound().build();}
+        String section=section(tabType);
+        ShareScores.Range scores=section.equals("rate")?shareScores.get(type,house,notice):new ShareScores.Range("", "");
+        // 렌더링 비용이 커서 같은 공고·탭·공개 가점의 이미지는 10분간 다시 쓴다(쿼리 값을 바꿔도 같은 키, 가점이 공개되면 새로 그린다).
+        String key=type+"/"+house+"/"+notice+"/"+section+"/"+scores.minimum()+"/"+scores.maximum();
+        try{return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(images.get(key,()->AnnouncementShareCard.png(summaries.get(type,house,notice),section,scores)));}
+        catch(java.util.concurrent.ExecutionException|com.google.common.util.concurrent.UncheckedExecutionException failed){
+            if(failed.getCause() instanceof EntityNotFoundException) return ResponseEntity.notFound().build();
+            if(failed.getCause() instanceof java.io.IOException io) throw io;
+            if(failed.getCause() instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException(failed.getCause());
+        }
     }
     private static String esc(String value){return PublicHtml.esc(value);}
 }

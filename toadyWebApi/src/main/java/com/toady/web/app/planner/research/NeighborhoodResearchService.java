@@ -69,8 +69,12 @@ public class NeighborhoodResearchService {
         } catch(Exception failure) {return new TradeResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,0,List.of());}
     }
     /** 주택형 면적 하나의 실거래 요약. scope: DONG(같은 법정동) · DISTRICT(같은 시·군·구, 같은 동 거래가 적을 때). */
-    public record AreaStat(BigDecimal area,String scope,int count,long median,long min,long max,long newMedian,int newCount) { }
-    public record GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas) { }
+    /** q1·q3: 1·3사분위(가운데 절반 범위). new*: 준공 10년 이내 거래만의 값(거래가 없으면 0). */
+    public record AreaStat(BigDecimal area,String scope,int count,long median,long min,long max,long q1,long q3,long newMedian,int newCount,long newQ1,long newQ3) { }
+    /** months: 실제로 반영한 개월 수. partial: 응답 시간 한도로 6개월을 다 받지 못했음(화면은 짧게 캐시한다). */
+    public record GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas,int months,boolean partial) {
+        GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas) { this(status,bcode,dong,fromMonth,toMonth,checkedAt,areas,0,false); }
+    }
     static final int GAP_MONTHS=6, MIN_GAP_MONTHS=2, ENOUGH_TRADES=3, NEW_BUILD_YEARS=10;
     /** 이 서비스가 정한 응답 시간 한도 초과(제공처 거절·오류와 구분). */
     static final class DeadlineExceeded extends IllegalStateException { DeadlineExceeded() { super("Provider deadline"); } }
@@ -118,14 +122,21 @@ public class NeighborhoodResearchService {
                 List<Trade> sameDong=near.stream().filter(t -> t.dongCode().isBlank()? t.dong().equals(dong):t.dongCode().equals(legalDong)).toList();
                 String scope=sameDong.size()>=ENOUGH_TRADES?"DONG":"DISTRICT";
                 List<Trade> chosen="DONG".equals(scope)?sameDong:near;
-                if(chosen.isEmpty()) { stats.add(new AreaStat(area,scope,0,0,0,0,0,0)); continue; }
+                if(chosen.isEmpty()) { stats.add(new AreaStat(area,scope,0,0,0,0,0,0,0,0,0,0)); continue; }
                 List<Long> amounts=chosen.stream().map(Trade::amountManwon).sorted().toList();
                 List<Long> fresh=chosen.stream().filter(t -> t.buildYear().matches("\\d{4}") && thisYear-Integer.parseInt(t.buildYear())<=NEW_BUILD_YEARS).map(Trade::amountManwon).sorted().toList();
-                stats.add(new AreaStat(area,scope,amounts.size(),median(amounts),amounts.get(0),amounts.get(amounts.size()-1),fresh.isEmpty()?0:median(fresh),fresh.size()));
+                stats.add(new AreaStat(area,scope,amounts.size(),median(amounts),amounts.get(0),amounts.get(amounts.size()-1),quantile(amounts,0.25),quantile(amounts,0.75),
+                    fresh.isEmpty()?0:median(fresh),fresh.size(),fresh.isEmpty()?0:quantile(fresh,0.25),fresh.isEmpty()?0:quantile(fresh,0.75)));
             }
             boolean any=stats.stream().anyMatch(stat -> stat.count()>0);
-            return new GapResult(any?"READY":"EMPTY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),stats);
+            return new GapResult(any?"READY":"EMPTY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),stats,updated.size(),updated.size()<GAP_MONTHS);
         } catch(Exception failure) {return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());}
+    }
+    /** 정렬된 값의 p 분위(선형 보간, 만원 반올림). */
+    static long quantile(List<Long> sorted,double p) {
+        if(sorted.size()==1) return sorted.get(0);
+        double index=p*(sorted.size()-1);int low=(int)Math.floor(index),high=(int)Math.ceil(index);
+        return Math.round(sorted.get(low)+(sorted.get(high)-sorted.get(low))*(index-low));
     }
     static long median(List<Long> sorted) {
         int middle=sorted.size()/2;

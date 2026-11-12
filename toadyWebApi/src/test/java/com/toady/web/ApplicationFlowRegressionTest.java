@@ -40,7 +40,7 @@ class ApplicationFlowRegressionTest {
     static final String PASSWORD = "Password123!";
 
     @BeforeEach void clear() {
-        for (String table : new String[]{"TB_CERTIFY", "TB_LTTOT_PBLANC_COMMENT", "TB_USER", "TB_BOARD", "TB_APT_LTTOT_PBLANC_DETAIL"}) jdbc.update("DELETE FROM " + table);
+        for (String table : new String[]{"TB_CERTIFY", "TB_LTTOT_PBLANC_COMMENT", "TB_USER", "TB_APT_LTTOT_PBLANC_DETAIL"}) jdbc.update("DELETE FROM " + table);
         org.mockito.Mockito.reset(email);
     }
     String body(Object value) throws Exception { return json.writeValueAsString(value); }
@@ -176,14 +176,28 @@ class ApplicationFlowRegressionTest {
         mvc.perform(post("/webApi/certify/find-password-request-certify").header("X-Real-IP", "203.0.113.10").contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("userEmail", "nobody@example.test")))).andExpect(status().isOk());
     }
+    @Test void nonAsciiEmailsCannotReachAnotherMailbox() throws Exception {
+        // 켈빈 기호(U+212A)는 소문자로 바꾸면 'k'가 된다. 가입은 거절하고, 비밀번호 찾기는 계정을 찾지 않는다.
+        mvc.perform(post("/webApi/user/regUser").header("X-Real-IP", "203.0.113.91").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", "\u212Aim@example.test", "userPassword", PASSWORD, "userPasswordConfirm", PASSWORD, "userNicName", "유니코드"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("ERR-401"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER", Integer.class));
+        mvc.perform(post("/webApi/user/regUser").header("X-Real-IP", "203.0.113.91").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", EMAIL, "userPassword", PASSWORD, "userPasswordConfirm", PASSWORD, "userNicName", "검증회원"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        org.mockito.Mockito.clearInvocations(email);
+        mvc.perform(post("/webApi/certify/find-password-request-certify").header("X-Real-IP", "203.0.113.91").contentType(MediaType.APPLICATION_JSON)
+                .content(body(Map.of("userEmail", EMAIL.replace("t", "\u0442")))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultCode").value("SUCCESS"));
+        org.mockito.Mockito.verify(email, org.mockito.Mockito.never()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
     @Test void invalidInputsReturnBadRequestInsteadOfServerErrors() throws Exception {
         for (String payload : new String[]{"{}", "{\"userEmail\":null,\"certifyCode\":null}", "{\"userEmail\":\"bad\",\"certifyCode\":\"x\"}"}) {
             mvc.perform(post("/webApi/certify/certify-check").contentType(MediaType.APPLICATION_JSON).content(payload))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.resultCode").value("ERR-401"));
         }
-        mvc.perform(get("/webApi/boards/board-list")).andExpect(status().isBadRequest());
-        mvc.perform(get("/webApi/boards/board-list").param("boardType", "NOTICE").param("boardLocation", "ALL").param("pageNumber", "0"))
-                .andExpect(status().isBadRequest());
+        // 화면에서 쓰지 않던 게시판 API는 제거했다.
+        mvc.perform(get("/webApi/boards/board-list")).andExpect(status().isNotFound());
     }
     @Test void cursorPagingSurvivesNewCommentsAndDeletesWithIdenticalTimestamps() throws Exception {
         announcement();
@@ -198,16 +212,5 @@ class ApplicationFlowRegressionTest {
                 .andExpect(jsonPath("$.data.content[0].content").value("row0"));
         mvc.perform(get(endpoint).param("page", "1").param("beforeCommentSeq", Long.toString(cursor))).andExpect(status().isBadRequest());
         mvc.perform(get(endpoint).param("page", "bad")).andExpect(status().isBadRequest());
-    }
-    @Test void boardPublicationWindowsAndLocationCodesAreApplied() throws Exception {
-        for (String name : new String[]{"visible", "future", "expired"}) {
-            LocalDateTime start = LocalDateTime.now().minusDays(1), end = LocalDateTime.now().plusDays(1);
-            if (name.equals("future")) start = LocalDateTime.now().plusHours(1);
-            if (name.equals("expired")) end = LocalDateTime.now().minusHours(1);
-            jdbc.update("INSERT INTO TB_BOARD (BOARD_TYPE,BOARD_LOCATION,BOARD_TITLE,BOARD_CONTENTS,USE_YN,DELETE_YN,BOARD_TARGET_DATE_YN,BOARD_START_DATE,BOARD_END_DATE,CREATE_DT,CREATE_USER_SEQ) VALUES ('NOTICE','PAJU',?,'본문','Y','N','Y',?,?,CURRENT_TIMESTAMP,1)", name, start, end);
-        }
-        for (String location : new String[]{"PAJU", "PAJUSI"}) mvc.perform(get("/webApi/boards/board-list").param("boardType", "NOTICE").param("boardLocation", location))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.resultList.totalElements").value(1))
-                .andExpect(jsonPath("$.data.resultList.content[0].boardTitle").value("visible"));
     }
 }

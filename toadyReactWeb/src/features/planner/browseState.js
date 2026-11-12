@@ -32,3 +32,8 @@ export function calendarSelection(month,eventDates,today=koreaToday(),previous='
   if(month===today.slice(0,7))return dates.find(date=>date>=today) || dates.at(-1) || fallback;
   return dates[0] || fallback;
 }
+
+/** 고른 달(YYYY-MM)에 일정(inDate)이 있는 공고를 공고 단위로 한 번씩. 목록 보기의 건수·목록이 쓴다. */
+export function uniqueInMonth(items = [], month = '') {
+  return [...new Map(items.filter(x => String(x.inDate || '').startsWith(month)).map(x => [x.subscriptSeq, x])).values()];
+}

@@ -1,4 +1,5 @@
-import Citys from './Citys';
+import Citys from './Citys.js';
+import { RCEPT_SE_META } from './calendar/calendarGroup.js';
 
 // 청약 순위 텍스트 매핑
 export function subscriptTypeName(item) {
@@ -6,16 +7,8 @@ export function subscriptTypeName(item) {
     return item.houseSecdNm;
   }
 
-  const map = {
-    '01': '특별공급',
-    '02': '1순위',
-    '03': '2순위',
-    '04': '민간임대',
-    '05': '오피스텔',
-    '06': '무순위',
-    '07': '임의공급',
-    '08': '불법행위재공급'
-  };
+  // 이름은 달력·필터와 같은 기준(RCEPT_SE_META)을 쓴다.
+  const map = Object.fromEntries(Object.entries(RCEPT_SE_META).map(([code, meta]) => [code, meta.label]));
   return map[item.rceptSe] || '일반공급';
 }
 
@@ -87,14 +80,6 @@ export const FLAT_CITY_OPTIONS = Citys.flatMap((c) => {
   return [cityItem, ...districtItems];
 });
 
-// 공급 유형 필터 칩 목록 정의
-export const SUPPLY_FILTER_ITEMS = [
-  { id: '01', label: '특별공급', color: '#8b5cf6' },
-  { id: '02', label: '1순위', color: '#ef4444' },
-  { id: '03', label: '2순위', color: '#16a34a' },
-  { id: '06', label: '무순위', color: '#3b82f6' },
-  { id: '07', label: '임의공급', color: '#ea580c' },
-  { id: '08', label: '취소재공급', color: '#0d9488' },
-  { id: '05', label: '오피스텔/도시형', color: '#0284c7' },
-  { id: '04', label: '민간임대', color: '#64748b' }
-];
+// 공급 유형 필터 칩 목록. 색·이름은 달력과 같은 RCEPT_SE_META를 그대로 쓴다(필터 색과 달력 일정 색이 어긋나지 않게).
+export const SUPPLY_FILTER_ITEMS = Object.keys(RCEPT_SE_META).sort((a, b) => RCEPT_SE_META[a].order - RCEPT_SE_META[b].order)
+  .map(id => ({ id, label: RCEPT_SE_META[id].label, color: RCEPT_SE_META[id].accent }));

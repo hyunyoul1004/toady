@@ -44,7 +44,12 @@ class NeighborhoodResearchServiceTest {
         var other=service.priceGap("4148012900","다른동",java.util.List.of(new BigDecimal("84")));
         assertEquals("DISTRICT",other.areas().get(0).scope(),"같은 동 거래가 부족하면 시·군·구로 넓힌다");
         assertEquals(6,calls.get(),"같은 시·군·구·월은 캐시를 다시 쓴다");
+        assertEquals(6,gap.months());assertFalse(gap.partial(),"6개월을 모두 받으면 부분 결과가 아니다");
+        assertEquals(58900,area84.q1());assertEquals(58900,area84.q3());
         assertEquals(58900,NeighborhoodResearchService.median(java.util.List.of(58900L)));
+        assertEquals(20,NeighborhoodResearchService.quantile(java.util.List.of(10L,20L,30L,40L,50L),0.25));
+        assertEquals(40,NeighborhoodResearchService.quantile(java.util.List.of(10L,20L,30L,40L,50L),0.75));
+        assertEquals(18,NeighborhoodResearchService.quantile(java.util.List.of(10L,20L,30L,40L),0.25));
         assertEquals(15,NeighborhoodResearchService.median(java.util.List.of(10L,20L)));
     }
     @Test void cancelledTradesCountForPaginationButAreNotDisplayed() throws Exception {

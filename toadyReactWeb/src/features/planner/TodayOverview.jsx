@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Alert, Box, Button, Chip, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography, TextField, IconButton, Skeleton } from '@mui/material';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
-import { shiftMonth } from './browseState';
+import { shiftMonth, uniqueInMonth } from './browseState';
 import { Link } from 'react-router-dom';
 import { koreaToday, safeRead, ID_PATTERN } from './plannerUtils';
 import { usePlanner } from './usePlanner';
@@ -20,8 +20,10 @@ export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month
   const [recent,setRecent]=useState(() => safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));
   useEffect(() => { const refresh=()=>setRecent(safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));window.addEventListener('toady-recent',refresh);return()=>window.removeEventListener('toady-recent',refresh); },[]);
   const today=koreaToday();
-  const unique=[...new Map(items.map(x=>[x.subscriptSeq,x])).values()];
-  const current=unique.filter(x => x.rceptBgnde && x.rceptEndde && x.rceptBgnde <= today && x.rceptEndde >= today);
+  // 조회 범위는 달력 앞뒤 칸 때문에 이전·다음 달 일부를 포함한다. 건수와 목록은 고른 달의 일정만 센다(달마다 같은 공고가 겹치지 않게).
+  const unique=uniqueInMonth(items,month);
+  const all=[...new Map(items.map(x=>[x.subscriptSeq,x])).values()];
+  const current=all.filter(x => x.rceptBgnde && x.rceptEndde && x.rceptBgnde <= today && x.rceptEndde >= today);
   const [filter,setFilter]=useState('all');
   const list=filter==='active' ? current : unique;
   return <Paper variant="outlined" sx={{p:1.5,mt:1.5,borderRadius:2}}>

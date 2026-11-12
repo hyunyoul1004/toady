@@ -196,13 +196,16 @@ public class PushDigest {
             Map<String, com.toady.web.app.planner.AnnouncementResults.Result> found = results.forIds(missing);
             for (String id : missing) cache.put(id, found.get(id));
         }
+        // 결과는 '최근 하루 안에 처음 공개된 것'만 새 소식으로 본다. 오래 알림을 받지 않아 since가 몇 주 전이어도
+        // 그 사이 공개된 결과를 나중에 저장한 공고에서 한꺼번에 보내지 않는다.
+        LocalDateTime cutoff = since.isAfter(now.minusDays(1)) ? since : now.minusDays(1);
         List<PushMessage.Line> lines = new ArrayList<>();
         for (PlannerSummary.Summary summary : fresh) {
             var result = cache.get(summary.id());
             if (result == null) continue;
-            if (result.ratePublished() && resultSeen(RATE_SLUG, summary.id(), now, seen, started).isAfter(since))
+            if (result.ratePublished() && resultSeen(RATE_SLUG, summary.id(), now, seen, started).isAfter(cutoff))
                 lines.add(new PushMessage.Line("RESULT", summary.id(), summary.houseNm(), "경쟁률 발표", null, null));
-            if (result.scorePublished() && resultSeen(SCORE_SLUG, summary.id(), now, seen, started).isAfter(since))
+            if (result.scorePublished() && resultSeen(SCORE_SLUG, summary.id(), now, seen, started).isAfter(cutoff))
                 lines.add(new PushMessage.Line("RESULT", summary.id(), summary.houseNm(), "당첨가점 공개", null, null));
         }
         return lines;

@@ -13,6 +13,7 @@ public class AnnouncementSearch {
     private String regionCode;
 
     @Schema(description = "주택명 검색어", example = "자이")
+    @jakarta.validation.constraints.Size(max = 50)
     private String keyword;
 
     @Schema(description = "청약접수 시작일 조회 시작일(YYYY-MM-DD)", example = "2026-10-01")
@@ -23,7 +24,7 @@ public class AnnouncementSearch {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate endDate;
 
-    @Schema(description = "조회할 페이지(0부터 시작, 통합 목록은 (page+1)×size 최대 10000)", minimum = "0", example = "0")
+    @Schema(description = "조회할 페이지(0부터 시작, 통합 목록은 (page+1)×size 최대 1000)", minimum = "0", example = "0")
     @Min(0)
     private int page;
 

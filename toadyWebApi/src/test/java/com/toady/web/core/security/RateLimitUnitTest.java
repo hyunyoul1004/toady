@@ -15,6 +15,11 @@ class RateLimitUnitTest {
         assertEquals("analytics", rule.apply("POST", "/api/v1/analytics/events"));
         assertEquals("analytics", rule.apply("POST", "/api/v1/analytics/page-views"));
         assertNull(rule.apply("GET", "/api/v1/public/eligibility/announcements"));
+        assertEquals("comment", rule.apply("POST", "/api/v1/apt/announcements/H1/N1/comments"));
+        assertEquals("comment", rule.apply("PATCH", "/api/v1/remaining/announcements/H1/N1/comments/15"));
+        assertNull(rule.apply("GET", "/api/v1/apt/announcements/H1/N1/comments"), "댓글 읽기는 제한하지 않는다");
+        assertEquals("image", rule.apply("GET", "/api/v1/public/announcement-images/apt/H1/N1.png"));
+        assertEquals("list", rule.apply("GET", "/api/v1/announcements"));
     }
     @Test void ipv6AddressesInTheSame64AreOneKey() {
         assertEquals(RequestLimitFilter.limitKey("2001:db8:1:2:aaaa::1"), RequestLimitFilter.limitKey("2001:db8:1:2:ffff:1:2:3"));

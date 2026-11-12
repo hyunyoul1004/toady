@@ -111,6 +111,12 @@ class AdminConsoleTest {
         verify(competition, never()).synchronizeScores(any(), any());
     }
 
+    @Test void manualRunsAreLimitedToAboutOneYear() {
+        var refused = assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), "operator", "MANUAL"));
+        assertTrue(refused.getMessage().contains("나눠 실행"), refused.getMessage());
+        assertTrue(repository.active().isEmpty(), "거절된 실행은 이력을 남기지 않는다");
+    }
+
     @Test void recordsFailureAndAllowsALaterJob() {
         doThrow(new IllegalStateException("upstream unavailable")).when(announcements).synchronize(any(), any());
         String id = jobs.submit(JobKind.ANNOUNCEMENTS, LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2), "operator", "MANUAL");

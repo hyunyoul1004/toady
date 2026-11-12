@@ -17,14 +17,15 @@ import java.util.regex.Pattern;
 import static com.toady.web.app.planner.PublicHtml.esc;
 
 /**
- * 청약 자주 묻는 질문(/faq). 검색으로 들어오는 질문형 유입을 받고, 자격 진단의 '확인할 것'을 풀어 설명한다.
+ * 청약 자주 묻는 질문. 앱 화면(/faq)은 /api/v1/public/faq-items의 JSON으로 그리고,
+ * 검색 봇은 같은 문장을 서버 HTML(/help/faq, FAQPage 구조화 데이터 포함)로 읽는다. 대표 주소는 /help/faq다.
  * 제도는 바뀔 수 있으므로 답마다 기준과 확인할 곳을 함께 적고, 화면과 FAQPage 구조화 데이터가 같은 문장을 쓴다.
  * 답의 [문구](/경로)는 같은 사이트 링크로 바꾼다(외부 링크는 청약홈만 허용).
  */
 @RestController
 public class PublicFaqPage {
-    record Faq(String id, String question, String answer) { }
-    record Group(String id, String title, List<Faq> items) { }
+    public record Faq(String id, String question, String answer) { }
+    public record Group(String id, String title, List<Faq> items) { }
 
     static final List<Group> GROUPS = List.of(
         new Group("basics", "청약 기초", List.of(
@@ -116,6 +117,12 @@ public class PublicFaqPage {
     @GetMapping(value = "/api/v1/public/faq", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> faq() { return PublicHtml.cached("faq", this::render); }
 
+    /** 앱의 자주 묻는 질문 화면용. 답의 [문구](경로) 표기는 앱이 링크로 바꾼다. */
+    @GetMapping("/api/v1/public/faq-items")
+    public ResponseEntity<List<Group>> items() {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePublic()).body(GROUPS);
+    }
+
     /** 답을 문단(줄바꿈 기준)별 &lt;p&gt;로 만든다. */
     String answerHtml(String answer) {
         StringBuilder out = new StringBuilder();
@@ -158,7 +165,7 @@ public class PublicFaqPage {
 
     private ResponseEntity<String> render() {
         int count = GROUPS.stream().mapToInt(group -> group.items().size()).sum();
-        StringBuilder body = new StringBuilder("<nav aria-label='현재 위치'><a href='").append(esc(domain)).append("/'>TOADY</a><span>›</span><span>자주 묻는 질문</span></nav>")
+        StringBuilder body = new StringBuilder("<nav aria-label='현재 위치'><a href='").append(esc(domain)).append("/'>TOADY</a><span>›</span><a data-app href='").append(esc(domain + "/faq")).append("'>자주 묻는 질문</a></nav>")
             .append("<section class='card'><span class='chip'>청약 자주 묻는 질문 ").append(count).append("개</span><h1>청약, 이것부터 확인하세요</h1>")
             .append("<p class='muted'>1순위 조건, 예치금, 특별공급, 무순위·줍줍, 당첨 후 자금까지 청약을 준비할 때 가장 많이 묻는 질문을 모았어요. 제도는 바뀔 수 있으니 신청 전에는 공식 모집공고를 함께 확인하세요.</p>")
             .append("<div class='chips faq-toc'>");
@@ -176,9 +183,9 @@ public class PublicFaqPage {
         body.append(PublicHtml.explore(domain, "/faq"))
             .append("<small>이 페이지는 이해를 돕기 위한 안내이며 법령·공고 해석의 기준이 아니에요. 문의: dukkeoba@gmail.com</small>");
         String head = STYLE + jsonLd();
-        return PublicHtml.page(domain, "/faq", "청약 자주 묻는 질문 · 1순위·예치금·특별공급·무순위 · TOADY",
+        return PublicHtml.page(domain, "/help/faq", "청약 자주 묻는 질문 · 1순위·예치금·특별공급·무순위 · TOADY",
             "청약 1순위 조건, 지역별 예치금, 세대주 요건, 신혼·생애최초·다자녀·신생아 특별공급, 무순위·줍줍 자격, 계약금·중도금·취득세까지 자주 묻는 질문을 정리했어요.",
-            domain + "/faq", body.toString(), head);
+            domain + "/help/faq", body.toString(), head);
     }
 
     /** 질문을 펼치는 형태. 주소의 #질문으로 들어오면 그 질문을 열어 보여준다. */

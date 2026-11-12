@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -107,8 +108,10 @@ public class ApplyhomeCompetitionSyncService {
 			throw new IllegalArgumentException("A valid start and end date range is required");
 		}
 		var count = new java.util.concurrent.atomic.AtomicLong();
+		List<String> failures = new ArrayList<>();
 		syncLock.execute(() -> count.set(syncForAnnouncements(APT_SCORE,
-				discover("getAPTLttotPblancDetail", startDate, endDate, false))));
+				discover("getAPTLttotPblancDetail", startDate, endDate, false), failures)));
+		if (!failures.isEmpty()) throw new IllegalStateException("가점 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): " + String.join(", ", failures.subList(0, Math.min(5, failures.size()))));
 		return count.get();
 	}
 
@@ -124,15 +127,23 @@ public class ApplyhomeCompetitionSyncService {
 				"getPblPvtRentLttotPblancDetail", startDate, endDate, true);
 		List<AnnouncementKey> optionalAnnouncements = discover("getOPTLttotPblancDetail", startDate, endDate, true);
 
-		syncForAnnouncements(APT_RATE, aptAnnouncements);
-		syncForAnnouncements(CANCELLED_RATE, cancelledAnnouncements);
-		syncForAnnouncements(APT_SCORE, aptAnnouncements);
-		syncForAnnouncements(SPECIAL_SUPPLY_STATUS, aptAnnouncements);
-		syncForAnnouncements(URBAN_RATE, urbanAnnouncements);
-		syncForAnnouncements(REMNANT_RATE, remnantAnnouncements);
-		syncForAnnouncements(PRIVATE_RENT_RATE, privateRentAnnouncements);
-		syncForAnnouncements(OPTIONAL_RATE, optionalAnnouncements);
+		// 공고 하나의 실패(키 누락·중복·일시 오류)가 나머지 공고·유형의 수집을 막지 않게 끝까지 진행하고, 실패는 모아서 알린다.
+		List<String> failures = new ArrayList<>();
+		syncForAnnouncements(APT_RATE, aptAnnouncements, failures);
+		syncForAnnouncements(CANCELLED_RATE, cancelledAnnouncements, failures);
+		syncForAnnouncements(APT_SCORE, aptAnnouncements, failures);
+		syncForAnnouncements(SPECIAL_SUPPLY_STATUS, aptAnnouncements, failures);
+		syncForAnnouncements(URBAN_RATE, urbanAnnouncements, failures);
+		syncForAnnouncements(REMNANT_RATE, remnantAnnouncements, failures);
+		syncForAnnouncements(PRIVATE_RENT_RATE, privateRentAnnouncements, failures);
+		syncForAnnouncements(OPTIONAL_RATE, optionalAnnouncements, failures);
+		if (!failures.isEmpty()) {
+			throw new IllegalStateException("경쟁률 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+					+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
+		}
 	}
+	/** 이보다 많이 실패하면 인증·쿼터 같은 공통 장애로 보고 나머지 호출을 멈춘다. */
+	static final int MAX_FAILURES = 20;
 
 	private List<AnnouncementKey> discover(
 			String endpoint, LocalDate startDate, LocalDate endDate, boolean compactDate) {
@@ -160,16 +171,25 @@ public class ApplyhomeCompetitionSyncService {
 		return List.copyOf(keys);
 	}
 
-	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements) {
+	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements, List<String> failures) {
 		long totalRows = 0;
 		for (AnnouncementKey key : announcements) {
 			Map<String, String> filters = Map.of(
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
 					"cond[PBLANC_NO::EQ]", key.pblancNo());
-			List<JsonNode> rows = fetchAllPages(competitionApiClient, table, filters);
-			persistenceService.replace(table.table(), table.columns(), table.keys(),
-                    key.houseManageNo(), key.pblancNo(), rows);
-			totalRows += rows.size();
+			try {
+				List<JsonNode> rows = fetchAllPages(competitionApiClient, table, filters);
+				persistenceService.replace(table.table(), table.columns(), table.keys(),
+	                    key.houseManageNo(), key.pblancNo(), rows);
+				totalRows += rows.size();
+			} catch (RuntimeException failure) {
+				// 중단 요청(배포·관리자 중지)은 그대로 멈춘다.
+				if (Thread.currentThread().isInterrupted()) throw failure;
+				failures.add(table.table() + ":" + key.houseManageNo() + "/" + key.pblancNo());
+				log.warn("Applyhome competition sync failed for one announcement table={} key={}/{} error={}",
+						table.table(), key.houseManageNo(), key.pblancNo(), failure.getMessage());
+				if (failures.size() >= MAX_FAILURES) throw new IllegalStateException("경쟁률 수집 실패가 " + MAX_FAILURES + "건을 넘어 중단했습니다: " + failure.getMessage(), failure);
+			}
 		}
 		log.info("Synchronized Applyhome endpoint={} announcements={} rows={}",
 				table.endpoint(), announcements.size(), totalRows);

@@ -1,3 +1,4 @@
+import { RCEPT_SE_META } from './calendar/calendarGroup.js';
 
 
 /**
@@ -24,7 +25,8 @@
 * @returns 
 */
 function fn_rceptSeBgColor(rceptSe){
-
+  // 달력·필터와 같은 색 기준(RCEPT_SE_META)을 먼저 쓴다. 민간사전청약(09·10)처럼 정의가 없는 코드만 아래 값을 쓴다.
+  if (RCEPT_SE_META[rceptSe]) return RCEPT_SE_META[rceptSe].accent;
   var bgColor;
   if(rceptSe == "01"){ //특별공급
     bgColor = "#9F496E";

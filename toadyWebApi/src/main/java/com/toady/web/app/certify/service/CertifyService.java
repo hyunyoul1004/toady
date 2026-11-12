@@ -221,6 +221,8 @@ public class CertifyService {
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> findPasswordRequestCertify(CertifyDTO.UserInfo param){
+        // ASCII가 아닌 주소(예: 켈빈 기호 K)는 소문자로 바꾸면 다른 계정 주소와 같아질 수 있어 계정을 찾지 않는다.
+        if (!EmailRules.ascii(param.getUserEmail())) return passwordRequestAccepted();
         UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
         // 가입 여부·계정 상태·재요청 간격과 상관없이 같은 응답을 돌려 이메일 존재 여부를 알아낼 수 없게 한다.
@@ -259,7 +261,8 @@ public class CertifyService {
             certifyRepository.save(certifyParam);
 
             try {
-                emailUtilService.sendEmail(param.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage);
+                // 요청에 적힌 문자열이 아니라 저장된 계정 주소로 보낸다(대소문자·유니코드 변형 주소로 다른 메일함에 코드가 가지 않게).
+                emailUtilService.sendEmail(userEntity.getUserEmail(), "[Toady] 두껍아 비밀번호 찾기 인증번호 요청", sendMessage);
             } catch (Exception exception) {
                 // 발송 실패 시 새 코드와 요청 시각을 롤백해 즉시 재요청할 수 있게 한다.
                 throw new EmailDeliveryException("비밀번호 재설정 이메일 발송에 실패했습니다.", exception);
@@ -285,8 +288,8 @@ public class CertifyService {
 
         try {
             UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
-            // 없는 계정도 '코드가 맞지 않음'과 같은 응답으로 돌려 가입 여부를 숨긴다.
-            if(userEntity == null){
+            // 없는 계정·잠금·탈퇴 계정도 '코드가 맞지 않음'과 같은 응답으로 돌린다(잠기기 전에 받은 코드로 비밀번호를 바꾸지 못하게).
+            if(userEntity == null || !"N".equals(userEntity.getLockYn()) || !"N".equals(userEntity.getWithdrawalYn())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
             }
 

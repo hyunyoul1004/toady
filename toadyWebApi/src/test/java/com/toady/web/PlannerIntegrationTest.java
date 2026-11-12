@@ -187,8 +187,14 @@ class PlannerIntegrationTest {
         assertEquals("FAQPage",ld.path("@type").asText());
         assertEquals(com.toady.web.app.planner.PublicFaqPageAccess.count(),ld.path("mainEntity").size());
         assertFalse(ld.toString().contains("](/"),"구조화 데이터에는 링크 표기 없이 문장만 넣는다");
+        assertTrue(html.contains("<link rel='canonical' href='") && html.contains("/help/faq'>"),"검색용 서버 HTML의 대표 주소는 /help/faq");
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
-        assertTrue(sitemap.contains("/faq</loc>") && sitemap.contains("/match</loc>"),sitemap);
+        assertTrue(sitemap.contains("/help/faq</loc>") && sitemap.contains("/match</loc>"),sitemap);
+        // 앱 화면(/faq)은 같은 문장을 JSON으로 받는다.
+        var items=json.readTree(html(mvc.perform(get("/api/v1/public/faq-items")).andExpect(status().isOk())));
+        assertEquals(com.toady.web.app.planner.PublicFaqPageAccess.count(),java.util.stream.StreamSupport.stream(items.spliterator(),false).mapToInt(group->group.path("items").size()).sum());
+        assertEquals("basics",items.get(0).path("id").asText());
+        assertFalse(items.get(0).path("items").get(0).path("question").asText().isBlank());
     }
     @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));

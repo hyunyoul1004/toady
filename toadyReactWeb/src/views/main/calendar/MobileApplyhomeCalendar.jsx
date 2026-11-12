@@ -13,18 +13,12 @@ import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import { formatDate, dayjs } from '@/utils/date.util';
+import { RCEPT_SE_META } from './calendarGroup';
 
-// 청약홈 벤치마킹: 공급 유형별 뱃지 스타일
-const RCEPT_SE_STYLE = {
-  '01': { label: '특별공급', bg: '#8b5cf6', color: '#ffffff', border: 'transparent' }, // 보라
-  '02': { label: '1순위', bg: '#ef4444', color: '#ffffff', border: 'transparent' },    // 빨강
-  '03': { label: '2순위', bg: '#16a34a', color: '#ffffff', border: 'transparent' },    // 초록 (청약홈 2순위)
-  '04': { label: '민간임대', bg: '#64748b', color: '#ffffff', border: 'transparent' },
-  '05': { label: '오피스텔', bg: '#0284c7', color: '#ffffff', border: 'transparent' },
-  '06': { label: '무순위', bg: '#3b82f6', color: '#ffffff', border: 'transparent' },
-  '07': { label: '임의공', bg: '#ffffff', color: '#ea580c', border: '#f97316' },       // 주황 테두리 (청약홈 임의공)
-  '08': { label: '취소재공', bg: '#0d9488', color: '#ffffff', border: 'transparent' }
-};
+// 공급 유형별 뱃지: PC 달력·공급유형 필터와 같은 색(RCEPT_SE_META)을 쓴다. 좁은 화면이라 이름만 짧게 줄인다.
+const SHORT_LABEL = { '07': '임의공급', '08': '재공급', '05': '오피스텔' };
+const RCEPT_SE_STYLE = Object.fromEntries(Object.entries(RCEPT_SE_META).map(([code, meta]) =>
+  [code, { label: SHORT_LABEL[code] || meta.label, bg: meta.tint, color: meta.text, border: meta.accent }]));
 
 // 정렬 우선순위
 const RCEPT_SE_ORDER = {

@@ -1,46 +1,64 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Button, Skeleton } from '@mui/material';
+import { useState } from 'react';
+import { Button, Skeleton, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
-import apiClient from '@/api/client';
-import { useAnnouncementLocation } from '@/features/announcement/location/useAnnouncementLocation';
+import TrendingDownRounded from '@mui/icons-material/TrendingDownRounded';
 import { formatManwon } from '@/features/planner/researchUtils';
-import { gapRows } from './priceGapRules';
+import { CONFIDENCE_TEXT, gapRows, gapText, representative } from './priceGapRules';
+import { usePriceGap } from './usePriceGap';
 import './match.css';
 
+const periodText = data => `최근 ${data.months || 6}개월(${data.fromMonth.replace('-', '.')} ~ ${data.toMonth.replace('-', '.')})`;
+const basisText = row => (row.basis === 'new' ? '준공 10년 이내' : '전체 연식');
+const scopeText = (row, dong) => (row.scope === 'DONG' ? dong : '같은 시·군·구');
+
 /**
- * 주택형별 최고 공급금액과 주변 실거래 중간값(최근 6개월, 전용 ±5㎡)을 나란히 놓고 차이를 보여준다.
- * 위치가 정확한 주소로 확인된 공고만 조회한다(지구·블록 후보 위치로는 비교하지 않는다).
+ * 상세 화면 맨 위의 한 줄 요약: "주변 신축 시세 대비 약 1.0억~1.4억 낮아요 · 전용 84㎡ · 신뢰도 높음".
+ * 신뢰도가 '참고'뿐이거나 비교할 수 없으면 아무것도 보여주지 않는다. 누르면 아래 면적별 비교로 이동한다.
  */
-export default function PriceGapCard({ detail, onShowTrades }) {
-  const units = useMemo(() => (detail.unitPrices || []).filter(unit => Number.isFinite(unit.amountManwon) && unit.amountManwon > 0 && unit.area >= 10), [detail.unitPrices]);
-  const areas = useMemo(() => [...new Set(units.map(unit => Math.round(unit.area)))].sort((a, b) => a - b).slice(0, 8), [units]);
-  const capabilities = useQuery({ queryKey: ['researchCapabilities'], queryFn: () => apiClient.get('/api/v1/research/capabilities'), staleTime: 300000, retry: 1, enabled: areas.length > 0 });
-  const enabled = areas.length > 0 && capabilities.data?.tradesEnabled === true;
-  const location = useAnnouncementLocation(detail, enabled);
-  const precise = location.data?.status === 'ADDRESS' && /^\d{10}$/.test(location.data?.bcode || '') ? location.data : null;
-  const gap = useQuery({ queryKey: ['priceGap', precise?.bcode, precise?.dong, areas.join(',')], enabled: Boolean(precise),
-    queryFn: () => apiClient.get('/api/v1/research/price-gap', { bcode: precise.bcode, dong: precise.dong, areas }), staleTime: 1800000, retry: false });
-  if (!enabled) return null;
-  if (location.isLoading || gap.isLoading) return <section className="match-gap" aria-busy="true"><Skeleton variant="text" width="40%" /><Skeleton variant="rounded" height={90} /></section>;
-  // 정확한 위치를 확인하지 못했거나 거래 자료가 없으면 비교 카드를 숨긴다(동네 실거래 탭에서 이유를 안내한다).
-  if (!precise || gap.data?.status !== 'READY') return null;
-  const rows = gapRows(units, gap.data.areas);
+export function PriceGapSummary({ detail, onMore }) {
+  const gap = usePriceGap(detail);
+  if (!gap.enabled) return null;
+  if (gap.loading) return <div className="match-gap-summary is-loading" aria-busy="true"><Skeleton variant="text" width="70%" /></div>;
+  if (!gap.ready) return null;
+  const row = representative(gapRows(gap.units, gap.data.areas));
+  if (!row) return null;
+  const tone = row.diffLow > 0 && row.diffHigh > 0 ? 'below' : row.diffLow < 0 && row.diffHigh < 0 ? 'above' : 'same';
+  return <button type="button" className={`match-gap-summary is-${tone}`} onClick={onMore}>
+    <TrendingDownRounded fontSize="small" />
+    <span><b>{tone === 'same' ? `주변 ${row.basis === 'new' ? '신축 ' : ''}시세와 비슷해요` : `주변 ${row.basis === 'new' ? '신축 ' : ''}시세 대비 ${gapText(row)}`}</b>
+      <small>전용 {row.area}㎡ 기준 · {scopeText(row, gap.precise.dong)} {basisText(row)} {row.basisCount}건 · {CONFIDENCE_TEXT[row.confidence]}</small></span>
+    <em>자세히</em>
+  </button>;
+}
+
+/**
+ * 주택형별 최고 공급금액과 주변 실거래(최근 최대 6개월, 전용 ±5㎡)를 나란히 놓고 차이를 범위로 보여준다.
+ * 기준은 준공 10년 이내 거래(3건 이상일 때)가 기본이며 전체 연식으로 바꿔 볼 수 있다.
+ */
+export default function PriceGapCard({ detail, onShowTrades, id }) {
+  const gap = usePriceGap(detail);
+  const [basis, setBasis] = useState('auto');
+  if (!gap.enabled) return null;
+  if (gap.loading) return <section className="match-gap" aria-busy="true"><Skeleton variant="text" width="40%" /><Skeleton variant="rounded" height={90} /></section>;
+  if (!gap.ready) return null;
+  const rows = gapRows(gap.units, gap.data.areas, basis);
   if (!rows.length) return null;
-  return <section className="match-gap" aria-labelledby="match-gap-heading">
-    <h3 id="match-gap-heading"><CompareArrowsRounded />분양가 vs 주변 실거래</h3>
-    <p className="match-gap-sub">최근 6개월 {gap.data.fromMonth.replace('-', '.')} ~ {gap.data.toMonth.replace('-', '.')} · 같은 면적(전용 ±5㎡) 매매 중간값</p>
+  const anyNew = rows.some(row => row.hasNew);
+  return <section className="match-gap" id={id} aria-labelledby="match-gap-heading">
+    <h3 id="match-gap-heading"><CompareArrowsRounded />분양가 vs 주변 시세</h3>
+    <p className="match-gap-sub">{periodText(gap.data)} · 같은 면적(전용 ±5㎡) 매매의 가운데 절반 범위와 비교{gap.data.partial ? ' · 일부 기간만 반영' : ''}</p>
+    {anyNew && <ToggleButtonGroup exclusive size="small" value={basis === 'all' ? 'all' : 'auto'} onChange={(_, value) => value && setBasis(value)} className="match-gap-basis" aria-label="비교 기준">
+      <ToggleButton value="auto">신축 기준</ToggleButton><ToggleButton value="all">전체 연식</ToggleButton>
+    </ToggleButtonGroup>}
     <div className="match-gap-rows">{rows.map(row => <div key={row.area} className="match-gap-row">
-      <div className="match-gap-area"><strong>전용 {row.area}㎡</strong><span>{row.scope === 'DONG' ? precise.dong : '같은 시·군·구'} {row.count}건</span></div>
+      <div className="match-gap-area"><strong>전용 {row.area}㎡</strong><span>{scopeText(row, gap.precise.dong)} · {basisText(row)} {row.basisCount}건</span></div>
       <div className="match-gap-values">
         <span>분양 최고 <b>{formatManwon(row.supply)}</b></span>
-        <span>실거래 중간 <b>{formatManwon(row.median)}</b></span>
-        {row.newMedian > 0 && <span className="is-new">10년 이내 준공 <b>{formatManwon(row.newMedian)}</b> ({row.newCount}건)</span>}
+        <span>시세 범위 <b>{formatManwon(row.q1)}{row.q1 !== row.q3 ? ` ~ ${formatManwon(row.q3)}` : ''}</b></span>
+        <span className="is-new">{CONFIDENCE_TEXT[row.confidence]}</span>
       </div>
-      <span className={`match-gap-diff is-${row.diff > 0 ? 'below' : row.diff < 0 ? 'above' : 'same'}`}>
-        {row.diff === 0 ? '비슷해요' : `실거래보다 ${formatManwon(Math.abs(row.diff))} ${row.diff > 0 ? '낮아요' : '높아요'}`}
-      </span>
+      <span className={`match-gap-diff is-${row.diffLow > 0 && row.diffHigh > 0 ? 'below' : row.diffLow < 0 && row.diffHigh < 0 ? 'above' : 'same'}`}>{gapText(row)}</span>
     </div>)}</div>
-    <p className="match-gap-note">기존 아파트 거래라 연식·입지·옵션이 달라요. 시세 차익을 보장하지 않는 참고 비교예요.{onShowTrades && <> <Button size="small" onClick={onShowTrades}>거래 목록 보기</Button></>}</p>
+    <p className="match-gap-note">실제 차익을 보장하지 않는 참고 비교예요. 발코니 확장·옵션·중도금 이자와 전매제한·실거주 의무는 반영하지 않았어요.{onShowTrades && <> <Button size="small" onClick={onShowTrades}>거래 목록 보기</Button></>}</p>
   </section>;
 }

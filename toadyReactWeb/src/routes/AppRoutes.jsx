@@ -7,6 +7,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import MyPlanner from '@/features/planner/MyPlanner';
 import ScoreCalculator from '@/features/score/ScoreCalculator';
 import MatchPage from '@/features/match/MatchPage';
+import FaqPage from '@/features/faq/FaqPage';
 import LegalPage from '@/features/legal/LegalPage';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
@@ -40,6 +41,7 @@ export const AppRoutes = () => {
         <Route path="score" element={<ScoreCalculator />} />
         <Route path="match" element={<MatchPage key="match" tab="match" />} />
         <Route path="match/zupzup" element={<MatchPage key="zupzup" tab="zupzup" />} />
+        <Route path="faq" element={<FaqPage />} />
         <Route path="privacy" element={<LegalPage kind="privacy" />} />
         <Route path="terms" element={<LegalPage kind="terms" />} />
         <Route path="certify" element={<SignUpCertify />} />

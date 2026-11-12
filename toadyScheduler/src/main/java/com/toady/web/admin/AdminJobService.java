@@ -60,6 +60,8 @@ public class AdminJobService {
         this.competition = competition;
         this.busyWait = Duration.ofSeconds(Math.max(1, busyWaitSeconds));
     }
+    /** 수동 수집 한 번의 최대 기간(일). 외부 API 일일 한도를 보호한다. */
+    static final int MANUAL_MAX_DAYS = 366;
     // 관리자에서 허용하는 조회 하한이며, 이 날짜 이후의 모든 원본 데이터 제공을 보장하는 값은 아니다.
     static LocalDate earliestDate() { return LocalDate.of(2017, 1, 1); }
     // 서버 OS의 시간대와 무관하게 화면·이력·자동 스케줄의 날짜 기준을 한국시간으로 맞춘다.
@@ -75,6 +77,10 @@ public class AdminJobService {
         if (kind == null || start == null || end == null || start.isAfter(end)
                 || start.isBefore(earliestDate()) || end.isAfter(today())) {
             throw new IllegalArgumentException("2017년 1월 1일부터 오늘까지의 올바른 모집공고일 범위를 선택하세요.");
+        }
+        // 수동 실행은 공고마다 외부 API를 여러 번 부른다. 너무 긴 기간은 공공데이터 일일 한도를 다 써 정규 수집까지 막으므로 나눠 실행하게 한다.
+        if ("MANUAL".equals(source) && java.time.temporal.ChronoUnit.DAYS.between(start, end) >= MANUAL_MAX_DAYS) {
+            throw new IllegalArgumentException("한 번에 " + MANUAL_MAX_DAYS + "일(약 1년)까지만 수집할 수 있어요. 기간을 나눠 실행해 주세요.");
         }
         String id = UUID.randomUUID().toString();
         if (!localJob.compareAndSet(null, id)) throw new IllegalStateException("이미 수집 작업이 진행 중입니다.");
@@ -154,6 +160,12 @@ public class AdminJobService {
             Thread.currentThread().interrupt();
             repository.finish(id, "INTERRUPTED", "실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", now());
         } catch (Exception exception) {
+            // 배포·종료로 실행기를 멈추면 HTTP 호출 중의 인터럽트가 일반 예외로 바뀌어 온다. 실제 장애와 구분해 중단으로 기록한다.
+            if (closing || Thread.currentThread().isInterrupted()) {
+                log.warn("Manual scheduler job interrupted by shutdown: id={}", id);
+                repository.finish(id, "INTERRUPTED", "실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", now());
+                return;
+            }
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
             log.error("Manual scheduler job failed: id={}", id, exception);
             repository.finish(id, "FAILED", "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요.", now());

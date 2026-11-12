@@ -264,6 +264,21 @@ class PushIntegrationTest {
         assertTrue(SENT.isEmpty());
     }
 
+    @Test void resultsPublishedDaysBeforeSavingAreNotSentAsNews() throws Exception {
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_CMPET");
+        // 11-13 마감 공고(P1)의 경쟁률이 14일에 공개되고, 그날부터 매 실행 기록된다(구독자 없음).
+        assertEquals(0, digest("2026-11-13T18:00").run().sent());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('P1','N1','01','1','01','9.1')");
+        assertEquals(0, digest("2026-11-14T18:00").run().sent());
+        // 오래전에 구독했지만 알림을 받은 적 없는 사람이 18일에 P1을 저장해도 나흘 전 결과를 새 소식으로 보내지 않는다.
+        String endpoint = "https://fcm.googleapis.com/fcm/send/old-subscriber";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favoriteIds", List.of("apt/P1/N1")))).andExpect(status().isOk());
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-10-01 10:00:00"));
+        SENT.clear();
+        assertEquals(0, digest("2026-11-18T18:00").run().sent());
+        assertTrue(SENT.isEmpty());
+    }
+
     @Test void bundledMessageListsBothKindsWithActions() {
         var message = PushMessage.digest(List.of(
             new PushMessage.Line("FAVORITE", "apt/A/1", "가 단지", "접수 마감", null, null),

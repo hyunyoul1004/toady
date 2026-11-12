@@ -118,12 +118,41 @@ test('자금 계획: 10/60/30, 중도금 대출, 잔금 대출, 취득세', () =
   assert.equal(fundPlan({ price: 0 }), null);
 });
 
-test('분양가 vs 실거래 행: 면적별 최고 공급금액과 중간값 차이', async () => {
-  const { gapRows } = await import('../src/features/match/priceGapRules.js');
+test('분양가 vs 주변 시세: 신축 우선 기준, 범위, 신뢰도, 대표 면적', async () => {
+  const { gapRows, representative, gapText, roughEok, confidenceOf } = await import('../src/features/match/priceGapRules.js');
   const units = [{ area: 59.9, amountManwon: 41110 }, { area: 59.8, amountManwon: 41042 }, { area: 84.89, amountManwon: 52000 }];
-  const rows = gapRows(units, [{ area: 60, scope: 'DONG', count: 5, median: 50000, newMedian: 61000, newCount: 1 }, { area: 85, scope: 'DISTRICT', count: 0, median: 0 }]);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].supply, 41110);
-  assert.equal(rows[0].diff, 50000 - 41110);
-  assert.equal(rows[0].newMedian, 0, '준공 10년 이내 거래가 2건 미만이면 따로 보여주지 않는다');
+  const stats = [
+    { area: 60, scope: 'DONG', count: 8, median: 50000, q1: 46000, q3: 54000, newMedian: 60000, newCount: 5, newQ1: 55000, newQ3: 63000 },
+    { area: 85, scope: 'DISTRICT', count: 4, median: 50000, q1: 48000, q3: 53000, newMedian: 0, newCount: 1, newQ1: 0, newQ3: 0 },
+    { area: 74, scope: 'DONG', count: 0, median: 0 }
+  ];
+  const rows = gapRows(units, stats);
+  assert.equal(rows.length, 2, '거래가 없는 면적은 뺀다');
+  const r60 = rows.find(r => r.area === 60);
+  assert.equal(r60.supply, 41110, '같은 면적 주택형 중 최고가');
+  assert.equal(r60.basis, 'new', '신축 거래가 3건 이상이면 신축 기준');
+  assert.equal(r60.diffLow, 55000 - 41110);
+  assert.equal(r60.confidence, 'high');
+  const r85 = rows.find(r => r.area === 85);
+  assert.equal(r85.basis, 'all', '신축 거래가 부족하면 전체 연식');
+  assert.equal(r85.confidence, 'medium');
+  assert.equal(r85.diffHigh, 53000 - 52000);
+  assert.equal(gapRows(units, stats, 'all').find(r => r.area === 60).basis, 'all', '전체 연식으로 바꿔 볼 수 있다');
+  assert.equal(representative(rows).area, 60);
+  assert.equal(representative([{ ...r85, confidence: 'low' }]), null, '참고용만 있으면 요약하지 않는다');
+  assert.equal(confidenceOf({ basis: 'all', scope: 'DONG', basisCount: 2 }), 'low');
+  assert.equal(gapText(r60), '약 1.4억~2.2억 낮아요');
+  assert.equal(gapText(r85), '주변 시세와 비슷해요', '범위가 0을 가로지르면 단정하지 않는다');
+  assert.equal(gapText({ diffLow: -12000, diffHigh: -8000 }), '약 8,000만원~1.2억 높아요');
+  assert.equal(roughEok(12345), '1.2억');
+  assert.equal(roughEok(4800), '5,000만원');
+});
+
+test('FAQ 답 문장: 문단 나누기와 허용된 링크만 변환', async () => {
+  const { answerParts } = await import('../src/features/faq/faqText.js');
+  const parts = answerParts('첫 줄 [가점 계산기](/score)에서 확인\n둘째 줄 [청약홈](https://www.applyhome.co.kr) · [위험](javascript:alert(1))');
+  assert.equal(parts.length, 2);
+  assert.deepEqual(parts[0], [{ text: '첫 줄 ' }, { text: '가점 계산기', to: '/score' }, { text: '에서 확인' }]);
+  assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr' });
+  assert.equal(parts[1].some(part => part.href?.startsWith('javascript')), false, '허용하지 않은 주소는 링크로 만들지 않는다');
 });

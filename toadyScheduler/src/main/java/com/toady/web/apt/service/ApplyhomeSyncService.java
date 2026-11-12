@@ -107,22 +107,39 @@ public class ApplyhomeSyncService {
 
 		List<M> models = new ArrayList<>();
 		Set<JsonNode> distinctUrbanRows = new LinkedHashSet<>();
+		// 주택형 조회에 실패한 공고는 이번 교체에서 빼고(기존 주택형 유지) 나머지 공고는 반영한 뒤 실패를 알린다.
+		List<AnnouncementKey> fetched = new ArrayList<>();
+		List<String> failures = new ArrayList<>();
 		for (AnnouncementKey key : announcementKeys) {
 			Map<String, String> filters = Map.of(
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
 					"cond[PBLANC_NO::EQ]", key.pblancNo());
-			for (JsonNode row : fetchAllPages(modelEndpoint, filters)) {
-                if (!key.houseManageNo().equals(textValue(row, "HOUSE_MANAGE_NO"))
-                        || !key.pblancNo().equals(textValue(row, "PBLANC_NO"))) {
-                    throw new IllegalStateException("Applyhome model response does not match the requested announcement: " + modelEndpoint);
-                }
-				// 도시형 응답에는 동일 주택형이 반복될 수 있어 원본 JSON 기준으로 한 번만 적재한다.
-				if (urbanModel && !distinctUrbanRows.add(row)) {
-					continue;
+			List<M> keyModels = new ArrayList<>();
+			try {
+				for (JsonNode row : fetchAllPages(modelEndpoint, filters)) {
+	                if (!key.houseManageNo().equals(textValue(row, "HOUSE_MANAGE_NO"))
+	                        || !key.pblancNo().equals(textValue(row, "PBLANC_NO"))) {
+	                    throw new ResponseMismatchException("Applyhome model response does not match the requested announcement: " + modelEndpoint);
+	                }
+					// 도시형 응답에는 동일 주택형이 반복될 수 있어 원본 JSON 기준으로 한 번만 적재한다.
+					if (urbanModel && !distinctUrbanRows.add(row)) {
+						continue;
+					}
+					keyModels.add(mapper.toEntity(row, modelType));
 				}
-				models.add(mapper.toEntity(row, modelType));
+			} catch (RuntimeException failure) {
+				// 다른 공고의 주택형이 섞여 오면 제공처 전체 이상으로 보고 아무것도 바꾸지 않고 멈춘다(개별 오류만 건너뛴다).
+				if (failure instanceof ResponseMismatchException || Thread.currentThread().isInterrupted()) throw failure;
+				failures.add(key.houseManageNo() + "/" + key.pblancNo());
+				log.warn("Applyhome model sync failed for one announcement endpoint={} key={}/{} error={}",
+						modelEndpoint, key.houseManageNo(), key.pblancNo(), failure.getMessage());
+				if (failures.size() >= 20) throw new IllegalStateException("주택형 수집 실패가 20건을 넘어 중단했습니다: " + failure.getMessage(), failure);
+				continue;
 			}
+			fetched.add(key);
+			models.addAll(keyModels);
 		}
+		announcementKeys = new LinkedHashSet<>(fetched);
 
 		if (urbanModel) {
 			List<UrbtyOfctlLttotPblancMdl> urbanModels = models.stream()
@@ -134,6 +151,10 @@ public class ApplyhomeSyncService {
 		}
 		log.info("Upserted Applyhome endpoint={} announcements={} rows={}",
 				modelEndpoint, announcementKeys.size(), models.size());
+		if (!failures.isEmpty()) {
+			throw new IllegalStateException("주택형 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+					+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
+		}
 	}
 
 	/**
@@ -163,5 +184,10 @@ public class ApplyhomeSyncService {
 			value = row.get(fieldName.toLowerCase());
 		}
 		return value == null || value.isNull() ? null : value.asText();
+	}
+
+	/** 요청한 공고와 다른 공고의 응답. 개별 공고 오류가 아니라 제공처 이상이므로 전체 수집을 멈춘다. */
+	static final class ResponseMismatchException extends IllegalStateException {
+		ResponseMismatchException(String message) { super(message); }
 	}
 }

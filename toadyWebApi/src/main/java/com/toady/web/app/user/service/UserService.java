@@ -94,6 +94,9 @@ public class UserService {
 
         try {
 
+            if (!com.toady.web.app.certify.service.EmailRules.ascii(param.getUserEmail())) {
+                return ResponseEntity.ok().body(ResData.of(ResultCode.VALID_ERROR.getCode(), "이메일은 영문·숫자·기호로 된 주소만 사용할 수 있어요."));
+            }
             param.setUserEmail(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
             if(!param.getUserPassword().equals(param.getUserPasswordConfirm())){
@@ -116,7 +119,7 @@ public class UserService {
                     return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
                 }
                 UserEntity sameNick = userRepository.findByUserNicName(param.getUserNicName());
-                if (sameNick != null && !sameNick.getUserSeq().equals(existing.getUserSeq())) {
+                if (sameNick != null && !sameNick.getUserSeq().equals(existing.getUserSeq()) && !releaseStaleNickname(sameNick)) {
                     return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
                 }
                 existing.setUserPassword(passwordEncoder.encode(param.getUserPassword()));
@@ -127,7 +130,8 @@ public class UserService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "["+param.getUserEmail()+"]로 인증 URL을 보냈습니다.<br/>메일의 링크를 열고 방금 정한 비밀번호를 입력하면 가입이 완료됩니다.<br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
             }
 
-            if(userRepository.findByUserNicName(param.getUserNicName())  != null){
+            UserEntity nickOwner = userRepository.findByUserNicName(param.getUserNicName());
+            if(nickOwner != null && !releaseStaleNickname(nickOwner)){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
             }
             UserEntity userParam = UserEntity.builder()
@@ -140,7 +144,12 @@ public class UserService {
                     .createDt(LocalDateTime.now())
                     .build();
 
-            userRepository.save(userParam);
+            try {
+                userRepository.saveAndFlush(userParam);
+            } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+                // 같은 닉네임·이메일로 동시에 가입하면 유니크 제약이 먼저 막는다. 500 대신 이미 사용 중으로 안내한다.
+                throw new NicknameTakenException();
+            }
 
             CertifyDTO.Save certifyParam = new CertifyDTO().new Save();
 
@@ -155,11 +164,29 @@ public class UserService {
 
         } catch (EmailDeliveryException e) {
             throw e;
+        } catch (NicknameTakenException e) {
+            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
         } catch (Exception e) {
             log.error("회원가입 처리에 실패했습니다.", e);
             throw new IllegalStateException("회원가입 처리에 실패했습니다.", e);
         }
 
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "성공적으로 회원가입 되었습니다. <br/>["+param.getUserEmail()+"]로 인증 URL을 전송했습니다.<br/>메일의 링크를 열고 가입 비밀번호를 입력하면 인증이 완료되며, <br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
+    }
+
+    /** 이 기간이 지나도록 인증하지 않은 계정의 닉네임은 다른 사람이 쓸 수 있게 놓아준다. */
+    static final int STALE_UNVERIFIED_DAYS = 7;
+    static final class NicknameTakenException extends RuntimeException { }
+
+    /** 닉네임을 가진 계정이 오래 인증하지 않은 계정이면 닉네임을 비워 주고 true를 돌려준다. */
+    private boolean releaseStaleNickname(UserEntity owner) {
+        if ("Y".equals(owner.getEmailCertifyYn())) return false;
+        LocalDateTime last = owner.getUpdateDt() != null ? owner.getUpdateDt() : owner.getCreateDt();
+        if (last == null || last.plusDays(STALE_UNVERIFIED_DAYS).isAfter(LocalDateTime.now())) return false;
+        owner.setUserNicName("미인증" + owner.getUserSeq());
+        owner.setUpdateDt(LocalDateTime.now());
+        userRepository.saveAndFlush(owner);
+        return true;
     }
 }
