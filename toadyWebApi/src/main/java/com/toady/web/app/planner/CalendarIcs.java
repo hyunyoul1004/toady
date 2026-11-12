@@ -14,11 +14,15 @@ final class CalendarIcs {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
     static String build(List<PlannerSummary.Summary> summaries, String domain, Instant now) {
+        return build(summaries, domain, now, "TOADY 나의 청약", "TOADY에 저장한 관심 공고의 청약 일정", true);
+    }
+    /** 생활권 구독처럼 여러 공고가 한꺼번에 들어오는 피드는 alarms=false로 알림 폭주를 막는다. */
+    static String build(List<PlannerSummary.Summary> summaries, String domain, Instant now, String name, String description, boolean alarms) {
         StringBuilder out = new StringBuilder();
         line(out, "BEGIN:VCALENDAR"); line(out, "VERSION:2.0"); line(out, "PRODID:-//TOADY//My Schedule Feed//KO");
         line(out, "CALSCALE:GREGORIAN"); line(out, "METHOD:PUBLISH");
-        line(out, "X-WR-CALNAME:TOADY 나의 청약"); line(out, "X-WR-TIMEZONE:Asia/Seoul");
-        line(out, "X-WR-CALDESC:TOADY에 저장한 관심 공고의 청약 일정");
+        line(out, "X-WR-CALNAME:" + text(name)); line(out, "X-WR-TIMEZONE:Asia/Seoul");
+        line(out, "X-WR-CALDESC:" + text(description));
         // 캘린더 앱마다 갱신 주기 힌트를 읽는 키가 달라 두 가지를 함께 둔다.
         line(out, "REFRESH-INTERVAL;VALUE=DURATION:PT6H"); line(out, "X-PUBLISHED-TTL:PT6H");
         String stamp = STAMP.format(now);
@@ -39,8 +43,10 @@ final class CalendarIcs {
                 line(out, "URL:" + url);
                 line(out, "DESCRIPTION:" + text("일정은 공식 모집공고를 함께 확인하세요.\n" + url));
                 line(out, "TRANSP:TRANSPARENT");
-                line(out, "BEGIN:VALARM"); line(out, "ACTION:DISPLAY"); line(out, "TRIGGER:-PT15H");
-                line(out, "DESCRIPTION:" + text("내일 " + summary.houseNm() + " " + event.label())); line(out, "END:VALARM");
+                if (alarms) {
+                    line(out, "BEGIN:VALARM"); line(out, "ACTION:DISPLAY"); line(out, "TRIGGER:-PT15H");
+                    line(out, "DESCRIPTION:" + text("내일 " + summary.houseNm() + " " + event.label())); line(out, "END:VALARM");
+                }
                 line(out, "END:VEVENT");
             }
         }

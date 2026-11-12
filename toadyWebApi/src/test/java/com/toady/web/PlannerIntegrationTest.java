@@ -37,7 +37,8 @@ class PlannerIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_ATTEMPT (ID CHAR(36) PRIMARY KEY,MAIL_KIND VARCHAR(10),REG_DT TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_REMINDER_DELIVERY (USER_SEQ BIGINT,SEND_DATE DATE,STATUS VARCHAR(12),UPDATED_AT TIMESTAMP,PRIMARY KEY(USER_SEQ,SEND_DATE))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (USER_SEQ BIGINT PRIMARY KEY,FEED_TOKEN CHAR(43) NOT NULL UNIQUE,REG_DT TIMESTAMP NOT NULL,LAST_READ_DT TIMESTAMP)");
-        for(String table:List.of("TB_CALENDAR_FEED","TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_RATE_POLL (ANNOUNCEMENT_ID VARCHAR(110) NOT NULL,VISITOR_ID CHAR(36) NOT NULL,CHOICE TINYINT NOT NULL,REG_DT TIMESTAMP NOT NULL,PRIMARY KEY(ANNOUNCEMENT_ID,VISITOR_ID))");
+        for(String table:List.of("TB_RATE_POLL","TB_APT_LTTOT_PBLANC_CMPET","TB_REMNDR_LTTOT_PBLANC_DETAIL","TB_CALENDAR_FEED","TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
         jdbc.update("INSERT INTO TB_MAIL_BUDGET VALUES (1)");
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
@@ -96,6 +97,70 @@ class PlannerIntegrationTest {
         assertTrue(detail.contains("/areas/unjeong") && detail.contains("운정 생활권"),detail);
         assertTrue(detail.contains("data-app"),"공개 페이지에서 앱으로 갈 때 유입처를 넘길 링크를 표시한다");
         mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/areas/gwanggyo")));
+    }
+    static String html(org.springframework.test.web.servlet.ResultActions result) throws Exception { return result.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8); }
+    @Test void areaCalendarIsPublicContainsOnlyThatAreaAndHasNoAlarms() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('C1','N1','운정 구독 단지','경기도 파주시 와동동 1',?,?,?)",
+                today.plusDays(3).toString(),today.plusDays(4).toString(),today.plusDays(10).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('C2','N2','동탄 단지','경기도 화성시 청계동 1',?,?,?)",
+                today.plusDays(3).toString(),today.plusDays(4).toString(),today.plusDays(10).toString());
+        String ics=html(mvc.perform(get("/api/v1/public/areas/unjeong/calendar.ics")).andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",org.hamcrest.Matchers.startsWith("text/calendar")))).replace("\r\n ","");
+        assertTrue(ics.contains("X-WR-CALNAME:TOADY 운정 청약") && ics.contains("SUMMARY:운정 구독 단지"),ics);
+        assertFalse(ics.contains("동탄 단지"),"다른 생활권 공고는 넣지 않는다");
+        assertFalse(ics.contains("BEGIN:VALARM"),"여러 공고가 들어오는 공개 구독에는 알림을 붙이지 않는다");
+        mvc.perform(get("/api/v1/public/areas/unknown/calendar.ics")).andExpect(status().isNotFound());
+        String page=html(mvc.perform(get("/api/v1/public/areas/unjeong")).andExpect(status().isOk()));
+        assertTrue(page.contains("webcal://") && page.contains("/calendar/areas/unjeong.ics") && page.contains("calendar.google.com"),"생활권 페이지에 구독 버튼을 둔다");
+    }
+    @Test void scoreBenchmarksGroupPublishedScoresByAnnouncementAndArea() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE) VALUES ('S1','N1','운정 가점 단지','경기도 파주시 동패동 1',?)",today.minusMonths(2).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE) VALUES ('S2','N2','오래된 단지','경기도 파주시 동패동 2',?)",today.minusYears(4).toString().replace("-",""));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE) VALUES ('S1','N1','01','01','52','69'),('S1','N1','02','01','47','74'),('S1','N1','03','02','-','0'),('S2','N2','01','01','30','40')");
+        String body=html(mvc.perform(get("/api/v1/public/score-benchmarks")).andExpect(status().isOk()));
+        var tree=json.readTree(body);
+        var unjeong=java.util.stream.StreamSupport.stream(tree.path("areas").spliterator(),false).filter(a->a.path("slug").asText().equals("unjeong")).findFirst().orElseThrow();
+        assertEquals(1,unjeong.path("items").size(),"3년보다 오래된 공고는 빼고 공고별로 한 줄로 모은다");
+        assertEquals(47.0,unjeong.path("items").get(0).path("low").asDouble());
+        assertEquals(74.0,unjeong.path("items").get(0).path("high").asDouble());
+        assertEquals("apt/S1/N1",tree.path("recent").get(0).path("id").asText());
+    }
+    @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R1','N1','<줍줍 단지>','서울특별시 강동구 1',?,?)",today.toString(),today.plusDays(1).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('W1','N1','이번주 발표 단지','서울특별시 송파구 1',?,?,?)",
+                today.minusDays(20).toString(),today.minusDays(18).toString(),today.toString());
+        String unranked=html(mvc.perform(get("/api/v1/public/zupzup")).andExpect(status().isOk()));
+        assertTrue(unranked.contains("무순위·줍줍 청약 일정") && unranked.contains("/announcements/remaining/R1/N1"),unranked);
+        assertTrue(unranked.contains("&lt;줍줍 단지&gt;") && !unranked.contains("<줍줍 단지>"),"단지명은 이스케이프한다");
+        assertFalse(unranked.contains("이번주 발표 단지"),"무순위 페이지에는 일반 아파트 공고를 넣지 않는다");
+        assertTrue(unranked.contains("/?focus=unranked"));
+        String weekly=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
+        assertTrue(weekly.contains("이번 주 청약 일정") && weekly.contains("/announcements/remaining/R1/N1"),weekly);
+        assertTrue(weekly.contains("/announcements/apt/W1/N1?tabType=rate"),"이번 주 발표 공고는 경쟁률 탭으로 연결한다");
+        String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
+        assertTrue(sitemap.contains("/zupzup") && sitemap.contains("/weekly") && sitemap.contains("/score"));
+    }
+    @Test void ratePollAcceptsOneChangeableVoteUntilCloseAndRevealsActualBucket() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('V1','N1','투표 단지','서울특별시 송파구 1',?,?)",today.toString(),today.plusDays(2).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('V2','N2','마감 단지','서울특별시 송파구 2',?,?)",today.minusDays(9).toString(),today.minusDays(7).toString());
+        String a=UUID.randomUUID().toString(),b=UUID.randomUUID().toString();
+        mvc.perform(get("/api/v1/polls/rate/apt/V1/N1").param("visitorId",a)).andExpect(status().isOk()).andExpect(jsonPath("$.open").value(true)).andExpect(jsonPath("$.total").value(0));
+        mvc.perform(post("/api/v1/polls/rate/apt/V1/N1").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+a+"\",\"choice\":2}")).andExpect(status().isOk()).andExpect(jsonPath("$.myChoice").value(2));
+        mvc.perform(post("/api/v1/polls/rate/apt/V1/N1").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+a+"\",\"choice\":4}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1)).andExpect(jsonPath("$.counts[4]").value(1)).andExpect(jsonPath("$.counts[2]").value(0));
+        mvc.perform(post("/api/v1/polls/rate/apt/V1/N1").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+b+"\",\"choice\":6}")).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/polls/rate/apt/V1/N1").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+b+"\",\"choice\":5}")).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/v1/polls/rate/apt/V1/N1")).andExpect(status().isOk()).andExpect(jsonPath("$.myChoice").doesNotExist());
+        mvc.perform(post("/api/v1/polls/rate/apt/V2/N2").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+a+"\",\"choice\":1}")).andExpect(status().isConflict());
+        // 경쟁률이 공개되면 투표를 닫고 실제 구간을 알려 준다.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('V1','N1','01','1','01','45.2'),('V1','N1','02','1','01','(△3)'),('V1','N1','01','2','01','300')");
+        mvc.perform(get("/api/v1/polls/rate/apt/V1/N1").param("visitorId",a)).andExpect(status().isOk()).andExpect(jsonPath("$.open").value(false))
+                .andExpect(jsonPath("$.actualRate").value(45.2)).andExpect(jsonPath("$.actualChoice").value(4)).andExpect(jsonPath("$.myChoice").value(4));
+        mvc.perform(get("/api/v1/polls/rate/apt/NOPE/N1")).andExpect(status().isNotFound());
     }
     @Test void favoritesArePrivateValidatedAndUseAuthoritativeSummary() throws Exception {
         user("owner@example.test");user("other@example.test");String owner=token("owner@example.test"),other=token("other@example.test");

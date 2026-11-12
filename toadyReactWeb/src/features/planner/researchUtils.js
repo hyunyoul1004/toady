@@ -43,3 +43,18 @@ export function formatSupplySummary(value) {
     return `${area>=10?unitLabel(match[1]):`주택형 ${match[1]}`} · ${amount?formatManwon(amount):'금액 미제공'} (최고가)`;
   }).join('\n');
 }
+
+/**
+ * 선택한 면적(㎡, 반올림 값)의 주택형 최고 공급금액과 같은 법정동 실거래(±5㎡ 조회 결과)를 나란히 놓는다.
+ * 실거래는 화면에 보이는 최근 거래만 쓰며, 분양가가 싸다·비싸다고 판정하지 않는다.
+ */
+export function tradeComparison(units=[],trades=[],area='') {
+  const size=Number(area);
+  if(!Number.isFinite(size) || size<=0) return null;
+  const supply=units.filter(unit=>Math.round(unit.area)===size).map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
+  const amounts=trades.map(trade=>Number(trade.amountManwon)).filter(amount=>Number.isFinite(amount) && amount>0).sort((a,b)=>a-b);
+  if(!supply.length || !amounts.length) return null;
+  const middle=Math.floor(amounts.length/2);
+  const median=amounts.length%2?amounts[middle]:Math.round((amounts[middle-1]+amounts[middle])/2);
+  return {area:size,supplyMin:Math.min(...supply),supplyMax:Math.max(...supply),count:amounts.length,min:amounts[0],max:amounts.at(-1),median};
+}

@@ -11,8 +11,9 @@ import EventAvailableOutlined from '@mui/icons-material/EventAvailableOutlined';
 import ApartmentRounded from '@mui/icons-material/ApartmentRounded';
 import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
+import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import { summaryOf, downloadCalendar, koreaToday, daysUntil } from './plannerUtils';
-import { formatManwon } from './researchUtils';
+import { formatManwon, tradeComparison } from './researchUtils';
 import { usePlanner } from './usePlanner';
 import { useNeighborhoodResearch } from './useNeighborhoodResearch';
 import './research.css';
@@ -28,6 +29,22 @@ function DataState({kind,onRetry}) {
 function LoadingData(){return <div className="research-loading"><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/></div>;}
 const shortDate=date=>date?date.slice(5).replace('-','.'):'미제공';
 const checkedAt=value=>value?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'';
+
+/** 같은 면적의 공급금액과 동네 실거래 범위를 나란히 보여준다. 연식·입지가 달라 판정 문구는 쓰지 않는다. */
+function PriceComparison({comparison,hasUnits,area}) {
+  if(!hasUnits) return null;
+  if(!area) return <p className="research-compare-hint"><CompareArrowsRounded/>면적을 고르면 이 공고의 공급금액과 같은 동네 실거래를 나란히 비교해 드려요.</p>;
+  if(!comparison) return null;
+  const supply=comparison.supplyMin===comparison.supplyMax?formatManwon(comparison.supplyMax):`${formatManwon(comparison.supplyMin)} ~ ${formatManwon(comparison.supplyMax)}`;
+  return <section className="research-compare" aria-label={`전용 ${comparison.area}㎡ 공급금액과 실거래 비교`}>
+    <h3><CompareArrowsRounded/>전용 {comparison.area}㎡ 안팎 비교</h3>
+    <div className="research-compare-grid">
+      <div><span>이 공고 최고 공급금액</span><strong>{supply}</strong><small>주택형별 최고가 · 청약홈</small></div>
+      <div><span>같은 동 최근 실거래</span><strong>{formatManwon(comparison.median)}</strong><small>중간값 · {comparison.count}건 {formatManwon(comparison.min)} ~ {formatManwon(comparison.max)}</small></div>
+    </div>
+    <p>실거래는 같은 법정동의 기존 아파트 거래라 연식·입지·옵션이 달라요. 참고용으로 비교해 주세요.</p>
+  </section>;
+}
 
 export function AnnouncementActions({detail}) {
   const planner=usePlanner(),navigate=useNavigate();
@@ -90,6 +107,7 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
         {tradesQueryable && <ToggleButtonGroup size="small" exclusive value={area} onChange={(_,value)=>{if(value!==null)setArea(value);}} className="research-area-filter" aria-label="실거래 전용면적 필터"><ToggleButton value="">전체 면적</ToggleButton>{areas.map(value=><ToggleButton key={value} value={String(value)}>{value}㎡ 안팎</ToggleButton>)}</ToggleButtonGroup>}
         {tradesQueryable && area && <p className="research-explanation">전용 {area}㎡에서 ±5㎡ 이내 거래를 조회합니다.</p>}
         {research.capabilities.isLoading || research.location.isLoading || research.location.isFetching || research.trades.isFetching ? <LoadingData/> : research.capabilities.error || research.trades.error ? <DataState kind="UNAVAILABLE" onRetry={()=>{research.capabilities.refetch();research.trades.refetch();}}/> : !research.capabilities.data?.tradesEnabled ? <DataState kind="NOT_CONFIGURED"/> : research.location.error ? <div className="research-data-state"><PlaceOutlined/><strong>거래를 조회할 위치를 확인하지 못했어요</strong><p>{research.location.error.message}</p><div className="research-data-actions"><Button size="small" onClick={()=>research.location.refetch()}>위치 다시 확인</Button><OfficialTradeLink/></div></div> : trades?.status==='READY' ? <>
+          <PriceComparison comparison={tradeComparison(units,trades.items,area)} hasUnits={amounts.length>0} area={area}/>
           <p className="research-explanation">{trades.fromMonth} ~ {trades.toMonth} · 조건에 맞는 거래 {trades.total}건 중 최근 {trades.items.length}건</p>
           <div className="research-trade-list">{trades.items.map((trade,index)=><article key={`${trade.apartment}/${trade.date}/${index}`}><div><h3>{trade.apartment}</h3><span>전용 {Number(trade.area).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡ · {trade.floor}층{trade.buildYear?` · ${trade.buildYear}년 준공`:''}</span></div><div><strong>{formatManwon(trade.amountManwon)}</strong><time dateTime={trade.date}>{trade.date} 계약</time></div></article>)}</div>
           <p className="research-footnote">데이터 확인 {checkedAt(trades.checkedAt)} · 취소 표시가 있는 거래 제외</p>

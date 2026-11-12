@@ -43,4 +43,34 @@ class PublicPagesUnitTest {
         String unfolded = ics.replace("\r\n ", "");
         assertTrue(unfolded.contains("운정 테스트 단지\\, 1블록\\; 후속사업"));
     }
+    @Test void ratePollBucketsAndPublishedTopRate() {
+        assertEquals(0, RatePoll.bucket(0.4)); assertEquals(1, RatePoll.bucket(1)); assertEquals(3, RatePoll.bucket(29.99)); assertEquals(5, RatePoll.bucket(512.3));
+        assertEquals(12.5, RatePoll.topRate(List.of("3.1", "12.5", "(△2)", "", "1,000a")));
+        assertNull(RatePoll.topRate(List.of("-", "(△1)")));
+        assertEquals(6, RatePoll.LABELS.size());
+    }
+    @Test void weekRangeUsesMondayToSundayInKorea() {
+        var week = PublicCollectionPages.Week.of(LocalDate.of(2026, 11, 12));
+        assertEquals(LocalDate.of(2026, 11, 9), week.monday()); assertEquals(LocalDate.of(2026, 11, 15), week.sunday());
+        assertTrue(week.overlaps(LocalDate.of(2026, 11, 5), LocalDate.of(2026, 11, 9)));
+        assertFalse(week.overlaps(LocalDate.of(2026, 11, 16), null));
+        assertEquals(LocalDate.of(2026, 11, 16), week.next().monday());
+    }
+    @Test void scoreSummaryIgnoresUnpublishedValuesAndKeepsNewestFirst() {
+        var body = ScoreBenchmarks.summarize(List.of(
+            new String[]{"A", "1", "운정 A", "경기도 파주시 다율동 1", "2026-10-01", "50", "70"},
+            new String[]{"A", "1", "운정 A", "경기도 파주시 다율동 1", "2026-10-01", "0", "-"},
+            new String[]{"B", "1", "강남 B", "서울특별시 강남구 1", "20261105", "60", "84"},
+            new String[]{"C", "1", "빈 공고", "서울특별시 강남구 2", "2026-11-01", "", "90"}), Instant.parse("2026-11-12T00:00:00Z"));
+        @SuppressWarnings("unchecked") var recent = (List<ScoreBenchmarks.Item>) body.get("recent");
+        assertEquals(List.of("apt/B/1", "apt/A/1"), recent.stream().map(ScoreBenchmarks.Item::id).toList(), "84점 초과·0점·빈 값만 있는 공고는 뺀다");
+        assertEquals(50.0, recent.get(1).low()); assertEquals(70.0, recent.get(1).high()); assertEquals("unjeong", recent.get(1).areaSlug());
+    }
+    @Test void areaSubscribeLinksUseWebcalAndGoogle() {
+        var area = LivingAreas.bySlug("dongtan").orElseThrow();
+        assertEquals("https://www.toady.co.kr/calendar/areas/dongtan.ics", AreaCalendar.feedUrl("https://www.toady.co.kr/", area));
+        String links = AreaCalendar.subscribeLinks("https://www.toady.co.kr", area);
+        assertTrue(links.contains("webcal://www.toady.co.kr/calendar/areas/dongtan.ics"));
+        assertTrue(links.contains("calendar.google.com/calendar/r?cid=webcal%3A%2F%2Fwww.toady.co.kr%2Fcalendar%2Fareas%2Fdongtan.ics"));
+    }
 }

@@ -12,6 +12,8 @@ import apiClient from '@/api/client';
 import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
 import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview';
+import AreaSubscribe from '@/features/planner/AreaSubscribe';
+import '@/features/planner/planner.css';
 import { initialBrowseState, monthRange } from '@/features/planner/browseState';
 import { safeRead, isoDate } from '@/features/planner/plannerUtils';
 import { SubscriptionCalendar } from '@/views/main/calendar';
@@ -54,6 +56,9 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import 'simplebar-react/dist/simplebar.min.css';
 import './main.css';
+
+/** 무순위·잔여세대(06), 임의공급(07), 불법행위 재공급(08) */
+const UNRANKED_RCEPT_SE=['06','07','08'];
 
 export const Main = ({detailOnly=false,onDetailClose}) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -143,6 +148,23 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     setSearchParams(next, { replace:true, state:location.state });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areaSlug, livingAreaQuery.data, livingAreaQuery.isError]);
+
+  // 공개 모음 페이지(/zupzup, /weekly)에서 넘어온 유형·월 조건도 한 번만 적용하고 주소에서 지운다.
+  const entryFocus = detailOnly || areaSlug ? null : searchParams.get('focus');
+  const entryMonth = detailOnly || areaSlug ? null : searchParams.get('month');
+  useEffect(() => {
+    if (!entryFocus && !entryMonth) return;
+    if (entryFocus === 'unranked') {
+      setSelectedRegions(ALL_REGIONS);
+      setSearchInputValue('');
+      setParamInfo(previous => ({ ...previous, citys: [], ...Object.fromEntries(Array.from({length:8},(_,index)=>{const key=String(index+1).padStart(2,'0');return [`rceptSe${key}`,UNRANKED_RCEPT_SE.includes(key)?'Y':'N'];})) }));
+    }
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(entryMonth || '')) setJumpToDate(`${entryMonth}-01`);
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus'); next.delete('month');
+    setSearchParams(next, { replace:true, state:location.state });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryFocus, entryMonth]);
 
   const resetBrowseFilters = () => {
     setSelectedRegions(ALL_REGIONS);
@@ -340,6 +362,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           </ThemeProvider>
         </Box>
 
+        <AreaSubscribe targets={paramInfo.citys} />
         <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={announcementsRes == null && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
@@ -588,7 +611,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
               <Tab
                 icon={<CommentIcon sx={{ fontSize: '1.05rem', mr: 0.5 }} />}
                 iconPosition="start"
-                label={`댓글${mainDetail.subscriptDetail?.subscriptCommentCnt > 0 ? ` (${mainDetail.subscriptDetail.subscriptCommentCnt})` : ''}`}
+                label={`이야기${mainDetail.subscriptDetail?.subscriptCommentCnt > 0 ? ` (${mainDetail.subscriptDetail.subscriptCommentCnt})` : ''}`}
               />
             </Tabs>
           </Box>

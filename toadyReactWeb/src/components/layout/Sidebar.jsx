@@ -19,6 +19,7 @@ import Divider from '@mui/material/Divider';
 import Button from '@mui/material/Button';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -38,6 +39,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
 
   const menuItems = [
     { text: '청약캘린더', icon: <CalendarMonthIcon />, path: '/' },
+    { text: '가점 계산기', icon: <CalculateOutlinedIcon />, path: '/score' },
     { text: '나의 청약', icon: <BookmarkBorderIcon />, path: '/my' }
   ];
 

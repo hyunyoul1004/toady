@@ -35,12 +35,14 @@ public class AnnouncementSitemap {
         },(long)page*5000);
         xml.append("</urlset>");return response(xml.toString());
     }
-    /** 생활권 공개 페이지. 목록 페이지와 각 생활권 페이지만 포함한다. */
+    /** 생활권·모음 공개 페이지. 생활권 목록·각 생활권, 무순위·이번 주, 가점 계산기를 포함한다. */
     @GetMapping(value="/api/v1/public/sitemaps/areas.xml",produces="application/xml;charset=UTF-8")
     public ResponseEntity<String> areas() {
         StringBuilder xml=new StringBuilder("<?xml version='1.0' encoding='UTF-8'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
         xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
         for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
+        // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기
+        for(String path:java.util.List.of("/zupzup","/weekly","/score")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
         xml.append("</urlset>");return response(xml.toString());
     }
     private static String esc(String value) { return HtmlUtils.htmlEscape(value); }

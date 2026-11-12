@@ -28,7 +28,7 @@ public class ShareScores {
         var high = highs.stream().map(ShareScores::number).filter(java.util.Objects::nonNull).max(BigDecimal::compareTo);
         return new Range(low.map(n -> n.stripTrailingZeros().toPlainString()).orElse(""), high.map(n -> n.stripTrailingZeros().toPlainString()).orElse(""));
     }
-    private static BigDecimal number(String value) {
+    static BigDecimal number(String value) {
         try {
             if (value == null || !value.trim().matches("[0-9]+(?:\\.[0-9]+)?")) return null;
             BigDecimal number = new BigDecimal(value.trim());

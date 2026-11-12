@@ -4,12 +4,10 @@ import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.service.AnnouncementSearchService;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -38,14 +36,20 @@ public class PublicAreaPage {
         }
     }
 
-    Groups groups(LivingAreas.Area area, LocalDate today) {
+    Groups groups(LivingAreas.Area area, LocalDate today) { return groups(area.label(), null, today, PAST_DAYS); }
+
+    /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
+    Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) {
         AnnouncementSearch query = new AnnouncementSearch();
-        query.setKeyword(area.label());
-        query.setStartDate(today.minusDays(PAST_DAYS));
+        query.setKeyword(keyword);
+        query.setStartDate(today.minusDays(pastDays));
         query.setEndDate(today.plusDays(FUTURE_DAYS));
         query.setSize(100);
+        return classify(search.searchAll(query, types).getContent(), today);
+    }
+    static Groups classify(List<AnnouncementListItem> sources, LocalDate today) {
         List<Item> open = new ArrayList<>(), upcoming = new ArrayList<>(), closed = new ArrayList<>();
-        for (AnnouncementListItem source : search.searchAll(query, null).getContent()) {
+        for (AnnouncementListItem source : sources) {
             LocalDate start = PlannerSummary.date(source.rceptBgnde() == null ? "" : source.rceptBgnde());
             LocalDate end = PlannerSummary.date(source.rceptEndde() == null ? "" : source.rceptEndde());
             if (start == null) continue;
@@ -89,18 +93,19 @@ public class PublicAreaPage {
         String body = "<nav><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><a href='" + esc(domain) + "/areas'>생활권</a><span>›</span><span>" + esc(area.label()) + "</span></nav>"
             + "<section class='card'><span class='chip'>생활권</span><h1>" + esc(area.label()) + " 청약 일정</h1><p class='muted'>" + esc(area.description().split(" · ")[0])
             + "의 청약 공고를 주소·단지명 기준으로 모았어요. 분양가·경쟁률·당첨가점과 동네 실거래가는 캘린더에서 공고를 눌러 확인하세요.</p>"
-            + "<a class='cta' data-app href='" + esc(app) + "'>" + esc(area.label()) + " 청약 캘린더 열기</a></section>"
+            + "<a class='cta' data-app href='" + esc(app) + "'>" + esc(area.label()) + " 청약 캘린더 열기</a>"
+            + AreaCalendar.subscribeLinks(domain, area) + "</section>"
             // 진행·예정이 모두 없으면 빈 카드를 두 번 보여주지 않고 한 번만 안내한다.
             + (groups.open().isEmpty() && groups.upcoming().isEmpty()
                 ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 " + esc(area.label()) + "에서 접수 중이거나 예정된 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : section("접수 예정", groups.upcoming(), "")))
             + section("최근 마감", groups.closed(), "최근 6개월 안에 마감된 공고가 없습니다.")
-            + "<section class='card'><h2>다른 생활권</h2>" + others + "</section>"
+            + "<section class='card'><h2>다른 생활권</h2><div class='chips'>" + others + "</div></section>" + PublicHtml.explore(domain, "")
             + "<small>출처: 청약홈 공개 데이터. 생활권은 행정 경계가 아니며, 주소·단지명 기준으로 분류해 일부 공고가 빠지거나 포함될 수 있습니다.</small>";
         return html(title, description, domain + "/areas/" + area.slug(), body);
     }
 
-    private String section(String heading, List<Item> items, String empty) {
+    String section(String heading, List<Item> items, String empty) {
         StringBuilder list = new StringBuilder("<section class='card list'><h2>").append(esc(heading)).append(" <span class='muted'>").append(items.size()).append("건</span></h2>");
         if (items.isEmpty()) return list.append("<p class='empty'>").append(esc(empty)).append("</p></section>").toString();
         for (Item item : items) {
@@ -115,13 +120,6 @@ public class PublicAreaPage {
     }
 
     private ResponseEntity<String> html(String title, String description, String canonical, String body) {
-        String html = """
-            <!doctype html><html lang='ko'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
-            <title>%s</title><meta name='description' content='%s'><link rel='canonical' href='%s'>
-            <meta property='og:type' content='website'><meta property='og:locale' content='ko_KR'><meta property='og:site_name' content='TOADY'>
-            <meta property='og:title' content='%s'><meta property='og:description' content='%s'><meta property='og:url' content='%s'>
-            %s</head><body><main>%s</main>%s</body></html>
-            """.formatted(esc(title), esc(description), esc(canonical), esc(title), esc(description), esc(canonical), PublicHtml.STYLE, body, PublicHtml.SOURCE_SCRIPT);
-        return ResponseEntity.ok().header("Content-Type", "text/html;charset=UTF-8").cacheControl(CacheControl.maxAge(Duration.ofMinutes(10))).body(html);
+        return PublicHtml.page(title, description, canonical, body);
     }
 }

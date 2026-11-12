@@ -15,8 +15,8 @@ public class UsageEventController {
     private final JdbcTemplate jdbc; private final boolean enabled;
     public UsageEventController(JdbcTemplate jdbc,@Value("${toady.analytics.enabled:true}") boolean enabled) { this.jdbc=jdbc;this.enabled=enabled; }
     public record Event(@NotNull UUID eventId,@NotNull UUID visitorId,
-        @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share") String action,
-        @NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String subject) { }
+        @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share|score_save|poll_vote") String action,
+        @NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}|tool/[a-z0-9-]{1,40}") String subject) { }
     @PostMapping("/api/v1/analytics/events") public ResponseEntity<Void> record(@Valid @RequestBody Event event) {
         if(!enabled) return ResponseEntity.noContent().build();
         LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Seoul"));

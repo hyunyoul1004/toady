@@ -138,3 +138,15 @@
 .announcement-documents{display:flex;flex-direction:column;gap:10px;padding:16px!important;border:1px solid #dbe7f5;border-radius:10px;background:#f8fbff;margin-bottom:20px}
 .announcement-documents h3{margin:0 0 4px!important}
 .announcement-documents p{margin:0}
+.research-compare-hint{display:flex;align-items:center;gap:8px;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#f5f8fc;color:#5c718b;font-size:12.5px;line-height:1.5;word-break:keep-all}
+.research-compare-hint svg{font-size:18px;color:#2563eb;flex-shrink:0}
+.research-compare{border:1px solid #dbe6f7;background:linear-gradient(180deg,#f7faff,#fff);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.research-compare h3{display:flex;align-items:center;gap:6px;margin:0 0 10px;font-size:14px;font-weight:800;color:#0f172a}
+.research-compare h3 svg{font-size:18px;color:#2563eb}
+.research-compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.research-compare-grid>div{background:#fff;border:1px solid #e5ebf2;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.research-compare-grid span{font-size:11.5px;color:#64748b;font-weight:700}
+.research-compare-grid strong{font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.3px;word-break:keep-all}
+.research-compare-grid small{font-size:11px;color:#94a3b8;line-height:1.45;word-break:keep-all}
+.research-compare p{margin:10px 0 0;font-size:11.5px;color:#7c8ba1;line-height:1.55;word-break:keep-all}
+@media (max-width:420px){.research-compare-grid{grid-template-columns:1fr}}

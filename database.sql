@@ -335,3 +335,16 @@ CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (
     UNIQUE (FEED_TOKEN)
 ) ENGINE=InnoDB COMMENT='회원별 캘린더 구독 주소';
 -- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
+
+-- 12. 경쟁률 예상 투표 (API 배포 전에 생성)
+-- 아파트 공고의 '가장 인기 있는 주택형 1순위 경쟁률' 구간 예상. 접수 마감일까지 받고 경쟁률 공개 후 실제 구간과 함께 보여 준다.
+-- VISITOR_ID는 익명 측정과 같은 브라우저 무작위 값이며 회원 정보와 연결하지 않는다.
+CREATE TABLE IF NOT EXISTS TB_RATE_POLL (
+    ANNOUNCEMENT_ID VARCHAR(110) NOT NULL COMMENT 'apt/주택관리번호/공고번호',
+    VISITOR_ID CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '브라우저 익명 방문자 ID',
+    CHOICE TINYINT NOT NULL COMMENT '경쟁률 구간 0~5',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 투표·변경 시각',
+    PRIMARY KEY (ANNOUNCEMENT_ID, VISITOR_ID),
+    INDEX IX_RATE_POLL_CHOICE (ANNOUNCEMENT_ID, CHOICE)
+) ENGINE=InnoDB COMMENT='공고별 경쟁률 예상 투표';
+-- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE 권한이 필요합니다.

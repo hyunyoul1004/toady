@@ -1,6 +1,8 @@
 import ImageExportButton from '@/features/announcement/export/ImageExportButton';
 import { competitionImageSections } from '@/features/announcement/export/exportData';
 import useMediaQuery from '@mui/material/useMediaQuery';
+import ScoreCompareCard from '@/features/score/ScoreCompareCard';
+import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileSpecialSupplyCards} from './MobileCompetitionCards';
 /**
  * @file SubscriptRate.jsx
@@ -551,6 +553,8 @@ export function SubscriptRate({ subscriptDetail }) {
 
   return (
     <Box sx={{ width: '100%', pt: 0.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {isApt && !isScoresError && <ScoreCompareCard rows={scoresList} loading={isScoresLoading} />}
+      {isApt && houseManageNo && <RatePoll houseManageNo={houseManageNo} pblancNo={pblancNo} />}
       {/* 1. 청약 경쟁률 & 당첨가점 통합 섹션 */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap:1, flexWrap:'wrap', mb: 1.2 }}>

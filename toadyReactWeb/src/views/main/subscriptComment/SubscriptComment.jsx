@@ -2,7 +2,11 @@
  * @file SubscriptComment.jsx
  * @description 청약 공고 상세 댓글 및 답글(대댓글) 컴포넌트
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { summaryOf, koreaToday } from '@/features/planner/plannerUtils';
+import StoryPrompts from '@/features/story/StoryPrompts';
+import { splitTag, storyStage, withTag } from '@/features/story/storyRules';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Avatar from '@mui/material/Avatar';
@@ -69,6 +73,16 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
 
   // 입력 상태 관리
   const [rootContent, setRootContent] = useState('');
+  const inputRef = useRef(null);
+  const [, setLayoutOverlay] = useHistoryOverlay('layout');
+  const stage = storyStage(summaryOf(subscriptDetail || {}), koreaToday());
+  const activeTag = splitTag(rootContent).tag;
+  // 질문 칩: 로그인했으면 말머리를 붙여 글쓰기를 시작하고, 아니면 로그인 창을 연다(히스토리와 연결된 공통 로그인 창).
+  const pickPrompt = prompt => {
+    if (!isAuthenticated) { setLayoutOverlay('login'); return; }
+    setRootContent(previous => withTag(previous, prompt?.tag || null));
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
   const [replyState, setReplyState] = useState({ parentCommentSeq: null, content: '', show: false });
   const [modifyState, setModifyState] = useState({ commentSeq: null, content: '', show: false });
   const [feedback, setFeedback] = useState(null);
@@ -384,7 +398,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                 pr: 1
               }}
             >
-              {formatServerMessage(row.content)}
+              {(() => { const { tag, body } = splitTag(row.content); return <>{tag && <span className="story-tag">{tag}</span>}{formatServerMessage(body)}</>; })()}
             </Typography>
 
             {/* 하단 답글 달기 버튼 (루트 댓글에만 제공) */}
@@ -528,7 +542,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
-            댓글
+            이 단지 이야기
           </Typography>
           <Chip
             label={`${totalCommentCount}개`}
@@ -563,6 +577,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
           </Alert>
         )}
       </Collapse>
+
+      <StoryPrompts stage={stage} activeTag={activeTag} onPick={pickPrompt} />
 
       {/* 댓글 작성 폼 */}
       {isAuthenticated ? (
@@ -607,7 +623,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
             minRows={2.5}
             maxRows={8}
             fullWidth
-            placeholder="청약 관련 정보나 의견, 궁금한 점을 자유롭게 남겨보세요."
+            inputRef={inputRef}
+            placeholder="위에서 주제를 고르거나, 이 단지에 대한 경험·질문을 자유롭게 남겨 주세요."
             value={rootContent}
             onChange={(e) => {
               if (e.target.value.length <= 3000) setRootContent(e.target.value);
@@ -646,7 +663,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                 }
               }}
             >
-              {addMutation.isPending ? <CircularProgress size={16} color="inherit" /> : '댓글 등록'}
+              {addMutation.isPending ? <CircularProgress size={16} color="inherit" /> : '이야기 남기기'}
             </Button>
           </Box>
         </Paper>
@@ -682,11 +699,14 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
             <LockOutlinedIcon sx={{ fontSize: '1.2rem' }} />
           </Box>
           <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>
-            로그인 후 공고에 대한 의견을 나눌 수 있습니다.
+            로그인하면 이 단지 이야기에 참여할 수 있어요
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.78rem' }}>
-            청약 전략 및 실시간 질문을 다른 회원들과 함께 소통해 보세요.
+            모델하우스 후기, 가점·타입 고민, 당첨 후기를 같은 단지를 보는 사람들과 나눠 보세요.
           </Typography>
+          <Button variant="contained" disableElevation size="small" onClick={() => setLayoutOverlay('login')} sx={{ mt: 0.5, borderRadius: 2, fontWeight: 700, textTransform: 'none', bgcolor: '#2563eb' }}>
+            로그인하고 이야기 남기기
+          </Button>
         </Paper>
       )}
 
@@ -695,12 +715,12 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 6, gap: 1.5 }}>
           <CircularProgress size={32} />
           <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
-            댓글을 불러오는 중입니다...
+            이야기를 불러오는 중입니다...
           </Typography>
         </Box>
       ) : isError ? (
         <Alert severity="error" action={<Button color="inherit" onClick={() => refetch()}>다시 시도</Button>}>
-          댓글을 불러오지 못했습니다. {error?.message}
+          이야기를 불러오지 못했습니다. {error?.message}
         </Alert>
       ) : treeCommentList.length > 0 ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -742,10 +762,10 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
             <ChatBubbleOutlineRoundedIcon sx={{ fontSize: '1.6rem' }} />
           </Box>
           <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b' }}>
-            아직 등록된 댓글이 없습니다
+            아직 이야기가 없어요
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.8rem' }}>
-            이 청약 공고에 대해 가장 먼저 질문이나 의견을 남겨보세요!
+            위의 주제 중 하나를 골라 첫 이야기를 남겨 주세요. 같은 단지를 보는 사람들에게 큰 도움이 돼요.
           </Typography>
         </Box>
       )}

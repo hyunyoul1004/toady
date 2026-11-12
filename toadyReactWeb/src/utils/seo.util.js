@@ -135,3 +135,15 @@ export function resetDefaultSeo() {
   }
 }
 
+
+/** 도구·안내 화면(예: 가점 계산기)의 제목·설명·대표 주소. 화면을 떠날 때 resetDefaultSeo로 되돌린다. */
+export function updatePageSeo({ title, description, path }) {
+  const url = new URL(path || '/', 'https://www.toady.co.kr').href;
+  document.title = title;
+  for (const selector of ['#meta-description', 'meta[name="description"]', '#og-description', '#twitter-description']) setMetaContent(selector, description);
+  for (const selector of ['#og-title', '#twitter-title']) setMetaContent(selector, title);
+  setMetaContent('#og-url', url);
+  setMetaContent('meta[property="og:url"]', url);
+  setLinkHref('#canonical-url', url);
+  setLinkHref('link[rel="canonical"]', url);
+}
