@@ -113,6 +113,22 @@ export const apiClient = {
   },
 
   /**
+   * PUT 요청
+   * @param {string} endpoint 엔드포인트 경로
+   * @param {any} body 요청 바디 데이터
+   */
+  async put(endpoint, body) {
+    const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
+    const headers = getAuthHeaders();
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body || {})
+    });
+    return handleResponse(res, headers.Authorization?.slice(7));
+  },
+
+  /**
    * PATCH 요청
    * @param {string} endpoint 엔드포인트 경로
    * @param {any} body 요청 바디 데이터

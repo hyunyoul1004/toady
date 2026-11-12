@@ -15,6 +15,8 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import { usePlanner } from './usePlanner';
 import { CHECKS, koreaToday, upcomingGroups } from './plannerUtils';
 import CalendarConnect from './CalendarConnect';
+import PushPrompt from '@/features/push/PushPrompt';
+import PushSettingsDialog from '@/features/push/PushSettingsDialog';
 import FavoriteCard from './FavoriteCard';
 import {formatSupplySummary} from './researchUtils';
 import UpcomingSchedule from './UpcomingSchedule';
@@ -36,6 +38,7 @@ export default function MyPlanner() {
   const [menuOpen,setMenuOpen] = useHistoryOverlay('planner-settings');
   const setMenu = anchor => setMenuOpen(Boolean(anchor));
   const [calendarOpen,setCalendarOpen] = useHistoryOverlay('calendar-connect');
+  const [pushOpen,setPushOpen] = useHistoryOverlay('push-settings');
   const overlayCount = location.state?.overlayLayers?.length || 0;
   // 비회원이 연결을 시작하면 연결 창 자리를 로그인 창으로 바꾼다. 로그인 후에는 연결 창을 다시 열고, 로그인을 취소하면 의도를 지운다.
   const openLoginForCalendar = () => {
@@ -69,6 +72,7 @@ export default function MyPlanner() {
     {!planner.loggedIn && <div className="planner-storage-notice"><BookmarkBorderRounded fontSize="small" /><span>이 브라우저에 저장 중이에요. <strong>로그인하면 다른 기기에서도 이어볼 수 있어요.</strong></span></div>}
     {planner.guestRefreshError && <Alert severity="warning" sx={{mb:2}}>최신 일정을 확인하지 못해 저장 당시 정보를 표시합니다. 원문에서 일정을 확인해 주세요.</Alert>}
     {planner.error && <Alert severity="error" action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>{planner.error.message}</Alert>}
+    {!planner.isLoading && planner.items.length>0 && <PushPrompt overlayId="push-prompt-settings" announcementId={planner.items[0]?.id} loggedIn={planner.loggedIn} />}
     {planner.isLoading ? <div className="planner-loading"><CircularProgress size={26} /><p>나의 청약을 불러오고 있어요.</p></div> : <>
       <div className="planner-stats"><div><span>관심 공고</span><strong>{planner.items.length}<small>/ 50</small></strong></div><div><span>예정 일정</span><strong>{groups.reduce((n,g)=>n+g.events.length,0)}<small>개</small></strong></div><div><span>확인한 준비 항목</span><strong>{completed}<small>/ {planner.items.length*CHECKS.length}</small></strong></div></div>
       {planner.items.length>0 && <UpcomingSchedule key={planner.scope} groups={groups} today={today} />}
@@ -78,10 +82,12 @@ export default function MyPlanner() {
       {!planner.error && !planner.items.length && <div className="planner-empty"><div><BookmarkBorderRounded /></div><h3>어떤 집이 마음에 드세요?</h3><p>공고를 저장하면 일정과 준비 노트를<br />이곳에서 함께 관리할 수 있어요.</p><Button variant="contained" disableElevation component={Link} to="/" endIcon={<ArrowForwardRounded />}>청약 찾아보기</Button></div>}</section>
     </>}
     {detailId && <Main detailOnly onDetailClose={closeDetail}/>}
+    <PushSettingsDialog open={Boolean(pushOpen)} onClose={()=>setPushOpen(false)} testAnnouncementId={planner.items[0]?.id} loggedIn={planner.loggedIn} />
     <CalendarConnect open={Boolean(calendarOpen)} onClose={()=>setCalendarOpen(false)} loggedIn={planner.loggedIn} summaries={planner.items.map(item=>item.summary)} onLogin={openLoginForCalendar} />
     <Menu anchorEl={()=>menuButtonRef.current} open={Boolean(menuOpen)} onClose={()=>setMenu(null)}>
       {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>action(planner.importGuest,'기기 공고를 가져왔습니다. 계정의 기존 메모는 유지합니다.')}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
       {planner.loggedIn && <MenuItem disabled={busy} onClick={()=>action(planner.disableEmails,'모든 이메일 알림을 해제했습니다.')}>이메일 알림 전체 해제</MenuItem>}
+      <MenuItem onClick={()=>{const layers=(location.state?.overlayLayers || []).filter(layer=>layer.id!=='planner-settings');navigate(location.pathname+location.search+location.hash,{replace:true,state:{...location.state,overlayLayers:[...layers,{id:'push-settings',value:true}]}});}}>알림 설정</MenuItem>
       <MenuItem component={Link} to="/" replace state={{browseView:'calendar'}}>청약캘린더로 이동</MenuItem>
     </Menu>
     {selected.length>0 && <div className="planner-compare-hint"><CompareArrowsRounded /><span>{selected.length===1?'비교할 공고를 하나 더 선택해 주세요.':`${selected.length}개 공고를 선택했어요.`}</span>{selected.length>=2 && <Button size="small" color="inherit" onClick={()=>comparisonRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}>선택한 공고 비교</Button>}<IconButton size="small" aria-label="비교 선택 해제" onClick={()=>setSelected([])}><CloseRounded fontSize="small" /></IconButton></div>}

@@ -1,0 +1,40 @@
+.push-card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px 14px;background:#f2f8f4;border:1px solid #d5e8db;border-radius:14px;padding:14px 44px 14px 16px;margin:0 0 22px;color:#173b28}
+.push-card.compact{margin:12px 0 4px}
+.push-card-icon{color:#1f7a45;font-size:26px!important}
+.push-card-icon.ok{color:#16a34a}
+.push-card-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.push-card-text strong{font-size:14px;font-weight:750;letter-spacing:-.2px;word-break:keep-all}
+.push-card-text span{font-size:12px;line-height:1.55;color:#4f6b5b;word-break:keep-all}
+.push-card-actions{display:flex;gap:6px;flex-shrink:0}
+.push-card-actions .MuiButton-root{text-transform:none;border-radius:9px;font-weight:700;white-space:nowrap}
+.push-card-close{position:absolute!important;top:8px;right:8px;color:#6b8577!important}
+.push-card-error{grid-column:1/-1;margin:0;font-size:12px;color:#b42318}
+@media (max-width:600px){
+  .push-card{grid-template-columns:auto 1fr;padding-right:40px}
+  .push-card-actions{grid-column:1/-1}
+  .push-card-actions .MuiButton-root{flex:1}
+}
+.push-dialog .push-title{display:flex;justify-content:space-between;align-items:center;font-weight:800;letter-spacing:-.3px}
+.push-content{font-size:14px;color:#172b42}
+.push-loading{display:flex;justify-content:center;padding:32px 0}
+.push-lead{margin:0 0 16px;line-height:1.7;word-break:keep-all}
+.push-status{display:flex;gap:10px;align-items:flex-start;border-radius:12px;padding:12px 14px;margin-bottom:16px;background:#ecfdf3;color:#14532d}
+.push-status svg{color:#16a34a;margin-top:1px}
+.push-status div{display:flex;flex-direction:column;gap:2px}
+.push-status span{font-size:12px;color:#3f6b52}
+.push-option{display:flex;flex-direction:column;gap:4px;border-top:1px solid #e5ebf2;padding:14px 0}
+.push-option .MuiFormControlLabel-root{margin:0;justify-content:space-between;flex-direction:row-reverse;gap:12px}
+.push-option .MuiFormControlLabel-label span{display:flex;flex-direction:column;gap:2px}
+.push-option small{font-size:12px;color:#718096;line-height:1.5}
+.push-areas{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.push-actions{display:flex;justify-content:space-between;gap:8px;margin-top:8px}
+.push-actions .MuiButton-root,.push-content>.MuiButton-root{text-transform:none;border-radius:10px;font-weight:700}
+.push-help{font-size:12px;color:#718096;margin:12px 0 0;line-height:1.6}
+.push-guide-lead{margin:0 0 16px;line-height:1.7;word-break:keep-all}
+.push-steps{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:12px}
+.push-steps li{display:flex;gap:12px;align-items:flex-start;background:#f7f9fc;border-radius:12px;padding:12px 14px}
+.push-steps li>div{display:flex;flex-direction:column;gap:4px;line-height:1.6}
+.push-steps small{font-size:12px;color:#718096}
+.push-step-no{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#1f7a45;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;margin-top:1px}
+.push-key{display:inline-flex;align-items:center;gap:3px;padding:1px 7px;margin:0 2px;border-radius:7px;background:white;border:1px solid #dbe3ec;font-size:13px;white-space:nowrap;vertical-align:1px}
+.push-key svg{font-size:16px;color:#2563eb}

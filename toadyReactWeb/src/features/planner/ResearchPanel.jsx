@@ -1,6 +1,6 @@
 import ImageExportButton from '@/features/announcement/export/ImageExportButton';
 import { detailImageSections } from '@/features/announcement/export/exportData';
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, Chip, Skeleton, Tab, Tabs, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
@@ -16,6 +16,7 @@ import { summaryOf, downloadCalendar, koreaToday, daysUntil } from './plannerUti
 import { formatManwon, tradeComparison } from './researchUtils';
 import { usePlanner } from './usePlanner';
 import { useNeighborhoodResearch } from './useNeighborhoodResearch';
+import PushPrompt from '@/features/push/PushPrompt';
 import './research.css';
 
 const MOLIT_TRADE_SITE='https://rt.molit.go.kr/';
@@ -48,13 +49,15 @@ function PriceComparison({comparison,hasUnits,area}) {
 
 export function AnnouncementActions({detail}) {
   const planner=usePlanner(),navigate=useNavigate();
-  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null);
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null),[justSaved,setJustSaved]=useState(false);
   const summary=summaryOf(detail),saved=planner.items.some(x=>x.id===summary.id);
-  async function save(){if(saved){navigate('/my');return;}setBusy(true);setMessage(null);try{await planner.save({id:summary.id,summary,note:'',checklist:0,emailEnabled:false});}catch(e){setMessage(e.message);}finally{setBusy(false);}}
+  useEffect(()=>{setJustSaved(false);},[summary.id]);
+  async function save(){if(saved){navigate('/my');return;}setBusy(true);setMessage(null);try{await planner.save({id:summary.id,summary,note:'',checklist:0,emailEnabled:false});setJustSaved(true);}catch(e){setMessage(e.message);}finally{setBusy(false);}}
   return <>
     <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={save}>{saved?'저장한 공고 관리':busy?'저장 중…':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
     {!planner.loggedIn && <p className="research-storage-note">로그인 없이 저장하고, 이 브라우저에서 이어볼 수 있어요.</p>}
-    </div>    {message && <Alert severity="error" sx={{my:1}}>{message}</Alert>}
+    </div>    {justSaved && <PushPrompt compact overlayId="push-settings-detail" announcementId={summary.id} loggedIn={planner.loggedIn} />}
+    {message && <Alert severity="error" sx={{my:1}}>{message}</Alert>}
     {planner.error && <Alert severity="error" sx={{my:1}} action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>저장한 공고를 확인하지 못했습니다.</Alert>}
   </>;
 }

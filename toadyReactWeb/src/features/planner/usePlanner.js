@@ -14,6 +14,8 @@ const guest = create(set => ({ items: readGuest(), replace: items => {
   try { localStorage.setItem(KEY, JSON.stringify(items)); } catch { throw Error('기기 저장 공간을 사용할 수 없습니다. 로그인 후 저장해 주세요.'); }
   set({ items });
 } }));
+/** 로그인하지 않은 브라우저의 관심 공고 ID. 웹 푸시 구독 범위로 서버에 보낸다(메모·준비 상태는 보내지 않음). */
+export function useGuestFavoriteIds() { const items = guest(s => s.items); return items.map(item => item.id); }
 if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) guest.setState({ items: readGuest() }); });
 
 export function usePlanner() {
