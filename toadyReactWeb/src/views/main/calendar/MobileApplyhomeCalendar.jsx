@@ -1,3 +1,5 @@
+import { calendarSelection } from '@/features/planner/browseState';
+import { koreaToday } from '@/features/planner/plannerUtils';
 /**
  * @file MobileApplyhomeCalendar.jsx
  * @description 모바일 반응형 청약 달력 컴포넌트
@@ -5,7 +7,7 @@
  * - 날짜별 건수 표시 (예: 04일 (8건))
  * - 오늘 날짜 기본 선택 및 터치 시 해당 주 바로 아래에 청약 상세 목록 아코디언 카드 노출
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
@@ -78,9 +80,11 @@ function generateMonthWeeks(targetDate) {
 export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen }) {
   const [selectedDate, setSelectedDate] = useState('');
   const [isListOpen, setIsListOpen] = useState(true);
+  const userSelectedDate=useRef('');
 
   // 날짜 클릭 시 토글 동작: 같은 날짜를 다시 누르면 닫힘/열림 토글, 다른 날짜는 선택 및 열림
   const handleDateClick = (dateStr) => {
+    userSelectedDate.current=dateStr;
     if (selectedDate === dateStr) {
       setIsListOpen((prev) => !prev);
     } else {
@@ -120,39 +124,14 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
     return generateMonthWeeks(currentDate);
   }, [currentDate]);
 
-  // 3. 월 이동 시 선택 날짜 자동 갱신 (오늘 날짜 우선, 없으면 첫 이벤트 날짜 또는 1일)
+  // 검색·월·데이터가 바뀌어도 확인 가능한 일정 날짜를 선택하고, 유효한 사용자 선택은 유지한다.
+  const calendarMonth=dayjs(currentDate).format('YYYY-MM');
+  const today=koreaToday();
+  const fallback=weeks[0]?.find(Boolean)?.dateStr || `${calendarMonth}-01`;
   useEffect(() => {
-    const today = dayjs();
-    const currentMonthStr = dayjs(currentDate).format('YYYY-MM');
-    const todayMonthStr = today.format('YYYY-MM');
-
-    if (currentMonthStr === todayMonthStr) {
-      // 이번 달이면 오늘 날짜 선택 (단, 주말이면 가장 가까운 평일)
-      if (today.day() === 0) {
-        setSelectedDate(today.add(1, 'day').format('YYYY-MM-DD'));
-      } else if (today.day() === 6) {
-        setSelectedDate(today.subtract(1, 'day').format('YYYY-MM-DD'));
-      } else {
-        setSelectedDate(today.format('YYYY-MM-DD'));
-      }
-      setIsListOpen(true);
-    } else {
-      // 다른 달이면 해당 월의 첫 번째 공고가 있는 평일 또는 첫 번째 평일
-      const firstEventDate = Object.keys(eventsByDate)
-        .filter((d) => d.startsWith(currentMonthStr))
-        .sort()[0];
-
-      if (firstEventDate) {
-        setSelectedDate(firstEventDate);
-      } else {
-        const firstDayCell = weeks[0]?.find(Boolean);
-        if (firstDayCell) {
-          setSelectedDate(firstDayCell.dateStr);
-        }
-      }
-      setIsListOpen(true);
-    }
-  }, [currentDate, eventsByDate, weeks]);
+    setSelectedDate(calendarSelection(calendarMonth,Object.keys(eventsByDate),today,userSelectedDate.current,fallback));
+    setIsListOpen(true);
+  }, [calendarMonth,eventsByDate,today,fallback]);
 
   // 현재 선택된 날짜의 공고 목록
   const selectedEvents = useMemo(() => {
@@ -161,7 +140,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
   }, [eventsByDate, selectedDate]);
 
   return (
-    <Box sx={{ width: '100%', bgcolor: '#ffffff', borderRadius: 2, overflow: 'hidden' }}>
+    <Box role="region" aria-label="모바일 청약 달력" data-selected-date={selectedDate} sx={{ width: '100%', bgcolor: '#ffffff', borderRadius: 2, overflow: 'hidden' }}>
       {/* 요일 헤더 (월 화 수 목 금) */}
       <Box
         sx={{
@@ -221,11 +200,16 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
 
                   return (
                     <Box
+                      component="button"
+                      type="button"
+                      aria-label={`${cell.dateStr} 청약 일정 ${count}건`}
+                      aria-pressed={isSelected}
                       key={cell.dateStr}
                       onClick={() => handleDateClick(cell.dateStr)}
                       sx={{
                         py: 0.8,
                         px: 0.3,
+                        width:'100%',fontFamily:'inherit',color:'inherit',
                         cursor: 'pointer',
                         borderRadius: isExpanded ? '8px 8px 0 0' : 1.5,
                         border: isExpanded

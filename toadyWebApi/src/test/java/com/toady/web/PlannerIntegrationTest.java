@@ -36,7 +36,7 @@ class PlannerIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (ID INT PRIMARY KEY)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_ATTEMPT (ID CHAR(36) PRIMARY KEY,MAIL_KIND VARCHAR(10),REG_DT TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_REMINDER_DELIVERY (USER_SEQ BIGINT,SEND_DATE DATE,STATUS VARCHAR(12),UPDATED_AT TIMESTAMP,PRIMARY KEY(USER_SEQ,SEND_DATE))");
-        for(String table:List.of("TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
+        for(String table:List.of("TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
         jdbc.update("INSERT INTO TB_MAIL_BUDGET VALUES (1)");
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
@@ -107,7 +107,7 @@ class PlannerIntegrationTest {
         String rate=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertTrue(detail.contains(org.springframework.web.util.HtmlUtils.htmlEscape("청약 일정·분양 정보")));assertTrue(rate.contains("청약 경쟁률"));
         assertTrue(rate.contains("?tabType=rate"));assertTrue(rate.contains("twitter:card"));assertTrue(rate.contains("summary_large_image"));
-        assertTrue(rate.contains("announcement-images/apt/P1/N1.png?tabType=rate&amp;v=1"));
+        assertTrue(rate.contains("announcement-images/apt/P1/N1.png?tabType=rate&amp;v=2"));
         assertFalse(rate.contains("<운정 테스트>"));
         byte[] image=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andExpect(status().isOk()).andExpect(content().contentType("image/png")).andReturn().getResponse().getContentAsByteArray();
         var decoded=javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(image));
@@ -115,6 +115,18 @@ class PlannerIntegrationTest {
         mvc.perform(get("/api/v1/public/announcement-images/apt/missing/missing.png")).andExpect(status().isNotFound());
         String unknown=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1").param("tabType","<script>oops</script>")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertFalse(unknown.contains("oops"));
+    }
+    @Test void sharedCompetitionMetadataAndImageIncludeOnlyPublishedScoreRange() throws Exception {
+        byte[] before=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andReturn().getResponse().getContentAsByteArray();
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE,AVRG_SCORE) VALUES ('P1','N1','01','01','56','74','65')");
+        String html=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertTrue(html.contains(org.springframework.web.util.HtmlUtils.htmlEscape("청약 경쟁률·당첨가점")));
+        assertTrue(html.contains("최저 56점 / 최고 74점"));
+        assertTrue(html.contains(org.springframework.web.util.HtmlUtils.htmlEscape("공개 주택형·지역 전체 기준")));
+        byte[] after=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        assertFalse(java.util.Arrays.equals(before,after));
+        String detail=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andReturn().getResponse().getContentAsString();
+        assertFalse(detail.contains("최저 56점"));
     }
     @Test void rollingQuotaIsAtomicAndReservesAuthenticationCapacity() throws Exception {
         ExecutorService pool=Executors.newFixedThreadPool(6);

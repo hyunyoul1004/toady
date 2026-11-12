@@ -32,7 +32,7 @@ function setLinkHref(selector, href) {
  * 특정 공고 상세 열람 시 검색엔진 메타 태그 & Schema.org 구조화 데이터 동적 갱신
  * @param {object} detailData subscriptDetail 객체
  */
-export function updateAnnouncementSeo(detailData,tab='detail') {
+export function updateAnnouncementSeo(detailData,tab='detail',scoreText='') {
   if (!detailData || !detailData.houseNm) return;
 
   const houseNm = detailData.houseNm || '분양 공고';
@@ -43,7 +43,7 @@ export function updateAnnouncementSeo(detailData,tab='detail') {
   const fullUrl = announcementShareUrl(seq,tab);
   const canonicalUrl=announcementShareUrl(seq);
   const imageUrl=announcementShareImage(seq,tab);
-  const title=`${houseNm} | ${shareLabel(tab)} · TOADY`;
+  const title=`${houseNm} | ${tab==='rate' && scoreText?'청약 경쟁률·당첨가점':shareLabel(tab)} · TOADY`;
 
   // 1. 브라우저 탭 타이틀
   const pageTitle = title;
@@ -63,13 +63,13 @@ export function updateAnnouncementSeo(detailData,tab='detail') {
   setMetaContent('#og-image',imageUrl);
   setMetaContent('meta[property="og:image"]',imageUrl);
   setMetaContent('meta[name="twitter:image"]',imageUrl);
-  setMetaContent('#og-description', `${location} | ${scale} | 접수: ${date}`);
+  setMetaContent('#og-description', `${scoreText?scoreText+' | ':''}${location} | ${scale} | 접수: ${date}`);
   setMetaContent('#og-url', fullUrl);
   setMetaContent('meta[property="og:url"]', fullUrl);
 
   // 5. Twitter Card
   setMetaContent('#twitter-title', title);
-  setMetaContent('#twitter-description', `${location} | ${scale} | 접수: ${date}`);
+  setMetaContent('#twitter-description', `${scoreText?scoreText+' | ':''}${location} | ${scale} | 접수: ${date}`);
 
   // 6. 검색엔진 캐노니컬 URL
   setLinkHref('#canonical-url', canonicalUrl);

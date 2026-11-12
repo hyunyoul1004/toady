@@ -1,5 +1,5 @@
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
-import { announcementShareUrl, shareLabel } from '@/features/planner/shareUtils';
+import { announcementShareUrl, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
 /**
  * @file Main.jsx
  * @description 청약 일정 캘린더 및 공고 메인 화면 컴포넌트
@@ -16,14 +16,15 @@ import { SubscriptionCalendar } from '@/views/main/calendar';
 import { SubscriptComment } from '@/views/main/subscriptComment';
 import SubscriptRate from '@/views/main/subscriptRate';
 import Kakaomap from '@/components/kakao/Kakaomap';
-import { ALL_REGIONS } from './announcementFilters';
+import { ALL_REGIONS, FLAT_CITY_OPTIONS } from './announcementFilters';
+import { normalizeSearchTargets, readSearchTargets } from '@/features/planner/searchState';
 import AnnouncementFilters from './components/AnnouncementFilters';
 import AnnouncementNotice from './components/AnnouncementNotice';
 import { useAnnouncementSearch } from './hooks/useAnnouncementSearch';
 import { fn_rceptSeBgColor } from './rceptSeColorUtil';
 
 import { updateAnnouncementSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { useAnnouncementsQuery, useAnnouncementDetailQuery } from '@/features/announcement/hooks/useAnnouncements';
+import { useAnnouncementsQuery, useAnnouncementDetailQuery, useAptScoresQuery } from '@/features/announcement/hooks/useAnnouncements';
 
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
@@ -69,14 +70,14 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     const { browseView, ...state } = location.state;
     navigate(location.pathname + location.search + location.hash, { replace: true, state });
   }, [location.key, location.state, location.pathname, location.search, location.hash, navigate]);
-  useEffect(() => { try { localStorage.setItem('toady.viewMode',JSON.stringify(viewMode)); } catch {} },[viewMode]);
+  useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.viewMode',JSON.stringify(viewMode)); } catch {} },[viewMode,detailOnly]);
 
   // 공급지역 체크 목록 (최초에는 전국 17개 시/도가 모두 선택된 상태)
   const [selectedRegions, setSelectedRegions] = useState(() => {
     const saved = safeRead({getItem:key=>localStorage.getItem(key)},'toady.regions',null);
     return Array.isArray(saved) ? ALL_REGIONS.filter(r => saved.includes(r.code)) : ALL_REGIONS;
   });
-  useEffect(() => { try { localStorage.setItem('toady.regions', JSON.stringify(selectedRegions.map(r=>r.code))); } catch {} },[selectedRegions]);
+  useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.regions', JSON.stringify(selectedRegions.map(r=>r.code))); } catch {} },[selectedRegions,detailOnly]);
 
   // 필터 파라미터 상태
   const [paramInfo, setParamInfo] = useState(() => ({
@@ -90,9 +91,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     rceptSe08: 'Y',
     startStr: initialBrowse.startStr,
     endStr: initialBrowse.endStr,
-    citys: (() => { const value=safeRead({getItem:key=>localStorage.getItem(key)},'toady.searchAreas',[]);return Array.isArray(value)?value.filter(x=>typeof x==='string' && x.length<=100).slice(0,10):[]; })()
+    citys: readSearchTargets({getItem:key=>localStorage.getItem(key)},FLAT_CITY_OPTIONS)
   }));
-  useEffect(() => { try { localStorage.setItem('toady.searchAreas',JSON.stringify(paramInfo.citys.map(x=>typeof x==='string'?x:x.label).filter(Boolean).slice(0,10))); } catch {} },[paramInfo.citys]);
+  useEffect(() => { if(detailOnly)return;try { localStorage.setItem('toady.searchAreas',JSON.stringify(normalizeSearchTargets(paramInfo.citys))); } catch {} },[paramInfo.citys,detailOnly]);
 
   // 캘린더 특정 날짜로 강제 이동 상태 (전체 기간 아파트 선택 시 사용)
   const [jumpToDate, setJumpToDate] = useState(null);
@@ -100,8 +101,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   useEffect(() => {
     const range = monthRange(calendarMonth);
     setParamInfo(previous => previous.startStr === range.startStr && previous.endStr === range.endStr ? previous : {...previous,...range});
+    if(detailOnly)return;
     try { localStorage.setItem('toady.calendarMonth',JSON.stringify(calendarMonth)); } catch {}
-  },[calendarMonth]);
+  },[calendarMonth,detailOnly]);
   useEffect(() => { const date=isoDate(jumpToDate); if (date) setCalendarMonth(date.slice(0,7)); },[jumpToDate]);
 
   // 1. TanStack Query로 공고 목록 페칭
@@ -118,6 +120,12 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
   const { searchInputValue, setSearchInputValue, allSearchOptions, subscriptList } =
     useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions);
+
+  const resetBrowseFilters = () => {
+    setSelectedRegions(ALL_REGIONS);
+    setSearchInputValue('');
+    setParamInfo(previous=>({...previous,citys:[],...Object.fromEntries(Array.from({length:8},(_,index)=>[`rceptSe${String(index+1).padStart(2,'0')}`,'Y']))}));
+  };
 
   // 상세 모달 상태 및 탭 (상세 0, 위치 1, 댓글 2)
   const [modalOpen, setModalOpen] = useState(false);
@@ -155,14 +163,17 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     };
   }, [mainDetail.subscriptDetail, subscriptList, selectedSubscriptSeq]);
 
+  const { data: shareScores } = useAptScoresQuery(selectedSubscriptSeq, modalOpen && detailTabValue===1 && selectedSubscriptSeq?.startsWith('apt/'));
+  const scoreText = detailTabValue===1 ? scoreShareText(shareScores?.data || []) : '';
+
   // 공고 상세 열람 시 검색엔진 메타태그(SEO) 및 OpenGraph/Schema.org 동적 갱신
   useEffect(() => {
     if (modalOpen && currentSubscriptDetail?.houseNm) {
-      updateAnnouncementSeo(currentSubscriptDetail,['detail','rate','map','comment'][detailTabValue]);
+      updateAnnouncementSeo(currentSubscriptDetail,['detail','rate','map','comment'][detailTabValue],scoreText);
     } else if (!modalOpen) {
       resetDefaultSeo();
     }
-  }, [modalOpen, currentSubscriptDetail,detailTabValue]);
+  }, [modalOpen, currentSubscriptDetail,detailTabValue,scoreText]);
 
   useEffect(() => {
     if (!modalOpen) { lastViewed.current = null; return; }
@@ -229,8 +240,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     const date = currentSubscriptDetail?.subscriptDate || '';
 
     const shareData = {
-      title: `${houseNm} | ${shareLabel(tab)} · TOADY`,
-      text: `${houseNm}\n공급위치: ${location}\n접수일정: ${date}`,
+      title: `${houseNm} | ${scoreText?'청약 경쟁률·당첨가점':shareLabel(tab)} · TOADY`,
+      text: `${houseNm}\n${scoreText?scoreText+'\n':''}공급위치: ${location}\n접수일정: ${date}`,
       url: shareUrl
     };
 
@@ -304,13 +315,14 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           </ThemeProvider>
         </Box>
 
-        <TodayOverview onResetFilters={()=>{setSelectedRegions(ALL_REGIONS);setSearchInputValue('');setParamInfo(previous=>({...previous,citys:[],...Object.fromEntries(Array.from({length:8},(_,i)=>[`rceptSe${String(i+1).padStart(2,'0')}`,'Y']))}));}} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={announcementsRes == null && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
+        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={announcementsRes == null && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
           {isListError && <Alert severity="error" sx={{ mb: 2 }}
             action={<Button color="inherit" onClick={() => refetchAnnouncements()}>다시 시도</Button>}>
             공고 목록을 불러오지 못했습니다. {listError?.message}
           </Alert>}
+          {viewMode==='calendar' && announcementsRes!=null && !isListError && !subscriptList.some(item=>String(item.inDate || '').startsWith(calendarMonth)) && <Alert severity="info" sx={{mb:1.5}} action={<Button size="small" onClick={resetBrowseFilters}>검색 조건 초기화</Button>}>이 달에는 선택한 조건의 청약 일정이 없습니다. 다른 달을 선택하거나 검색 조건을 초기화해 주세요.</Alert>}
           {viewMode === 'calendar' && <SubscriptionCalendar
             initialMonth={calendarMonth}
             onMonthChange={setCalendarMonth}

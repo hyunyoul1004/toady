@@ -1,3 +1,5 @@
+import ImageExportButton from '@/features/announcement/export/ImageExportButton';
+import { competitionImageSections } from '@/features/announcement/export/exportData';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import {MobileCompetitionCards,MobileSpecialSupplyCards} from './MobileCompetitionCards';
 /**
@@ -551,7 +553,7 @@ export function SubscriptRate({ subscriptDetail }) {
     <Box sx={{ width: '100%', pt: 0.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* 1. 청약 경쟁률 & 당첨가점 통합 섹션 */}
       <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap:1, flexWrap:'wrap', mb: 1.2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
               청약 경쟁률 및 당첨가점
@@ -564,6 +566,7 @@ export function SubscriptRate({ subscriptDetail }) {
               />
             )}
           </Box>
+          <ImageExportButton detail={subscriptDetail} kind="rate" sections={competitionImageSections(type,competitionList,scoresList,specialList)} disabled={isCompLoading || isCompError || (isApt && (isScoresLoading || isScoresError || isSpecialLoading || isSpecialError))} label="경쟁률·가점 이미지 저장"/>
         </Box>
 
         {(!isApt || !isSmallScreen) && competitionList.length>0 && <Typography variant="caption" sx={{display:'block',color:'#607995',mb:1}}>표를 좌우로 스크롤하면 전체 항목을 확인할 수 있어요.</Typography>}

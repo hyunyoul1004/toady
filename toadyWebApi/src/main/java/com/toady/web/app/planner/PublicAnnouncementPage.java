@@ -13,8 +13,9 @@ import java.time.Duration;
 @RestController
 public class PublicAnnouncementPage {
     private final PlannerSummary summaries;
+    private final ShareScores shareScores;
     private final String domain;
-    public PublicAnnouncementPage(PlannerSummary summaries,@Value("${toady.web.domain}") String domain) {this.summaries=summaries;this.domain=domain.replaceAll("/+$","");}
+    public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");}
     static String section(String value) {return java.util.Set.of("detail","rate","map","comment").contains(value)?value:"detail";}
     static String label(String value) {return switch(value){case "rate" -> "청약 경쟁률";case "map" -> "위치·입지";case "comment" -> "청약 이야기";default -> "청약 일정·분양 정보";};}
     private static boolean valid(String type,String house,String notice) {return type.matches("apt|urban|remaining|public-rental|optional") && house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}");}
@@ -25,10 +26,11 @@ public class PublicAnnouncementPage {
         try{s=summaries.get(type,house,notice);}catch(EntityNotFoundException missing){return ResponseEntity.status(404).contentType(MediaType.TEXT_HTML).body("<!doctype html><html lang='ko'><meta charset='UTF-8'><title>공고 없음 · TOADY</title><h1>공고를 찾을 수 없습니다.</h1></html>");}
         String tab=section(tabType),base=domain+"/announcements/"+s.id();
         String url=base+(tab.equals("detail")?"":"?tabType="+tab);
-        String title=s.houseNm()+" | "+label(tab)+" · TOADY";
+        var scores = tab.equals("rate") ? shareScores.get(type,house,notice) : new ShareScores.Range("", "");
+        String title=s.houseNm()+" | "+(scores.available()?"청약 경쟁률·당첨가점":label(tab))+" · TOADY";
         String description=s.address()+" · 접수 "+text(s.startDate())+" ~ "+text(s.endDate())+" · 발표 "+text(s.winnerDate());
-        if(tab.equals("rate")) description="주택형·순위별 공개 경쟁률 확인 · "+description;
-        String image=domain+"/api/v1/public/announcement-images/"+s.id()+".png?tabType="+tab+"&v=1";
+        if(tab.equals("rate")) description=(scores.available()?scores.text()+" · 공개 주택형·지역 전체 기준":"주택형·순위별 공개 경쟁률 확인")+" · "+description;
+        String image=domain+"/api/v1/public/announcement-images/"+s.id()+".png?tabType="+tab+"&v=2";
         String app=domain+"/?subscriptSeq="+URLEncoder.encode(s.id(),StandardCharsets.UTF_8)+"&tabType="+tab;
         StringBuilder events=new StringBuilder();
         for(var e:s.events())events.append("<li><strong>").append(esc(e.label())).append("</strong> ").append(e.date()).append("</li>");
@@ -47,7 +49,7 @@ public class PublicAnnouncementPage {
     @GetMapping(value="/api/v1/public/announcement-images/{type}/{house}/{notice}.png",produces=MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> image(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) throws java.io.IOException {
         if(!valid(type,house,notice))return ResponseEntity.notFound().build();
-        try{return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(AnnouncementShareCard.png(summaries.get(type,house,notice),section(tabType)));}
+        try{return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(AnnouncementShareCard.png(summaries.get(type,house,notice),section(tabType),section(tabType).equals("rate")?shareScores.get(type,house,notice):new ShareScores.Range("", "")));}
         catch(EntityNotFoundException missing){return ResponseEntity.notFound().build();}
     }
     private static String text(Object value){return value==null?"미제공":value.toString();}

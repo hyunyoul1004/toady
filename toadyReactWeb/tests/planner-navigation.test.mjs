@@ -216,6 +216,24 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await click('청약캘린더');
     await waitFor(()=>findButton('달력')?.getAttribute('aria-pressed')==='true','calendar link after shared URL selects real calendar');
     assert.equal(findButton('목록').getAttribute('aria-pressed'),'false');
+    await click('이번달');
+    await act(async()=>{mobileViewport=true;for(const listener of [...mediaListeners])listener({matches:true});});
+    const search=document.querySelector('input[role=combobox]');
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype,'value').set.call(search,'파주');
+      search.dispatchEvent(new win.Event('input',{bubbles:true}));
+    });
+    await waitFor(()=>[...document.querySelectorAll('[role=option]')].some(option=>option.textContent.includes('경기도 파주시')),'Paju region option is available');
+    const regionOption=[...document.querySelectorAll('[role=option]')].find(option=>option.textContent.includes('경기도 파주시'));
+    await act(async()=>regionOption.dispatchEvent(new win.MouseEvent('click',{bubbles:true})));
+    await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','mobile calendar selects a matching date when today has no results');
+    const beforeReturnCount=findButton('조회된 공고 1').textContent;
+    await click('나의 청약');
+    await click('청약캘린더');
+    await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','Paju search survives planner round trip and selects a populated date');
+    assert.equal(findButton('조회된 공고 1').textContent,beforeReturnCount);
+    assert.equal(JSON.parse(localStorage.getItem('toady.searchAreas'))[0].districtName,'파주시');
+    assert.ok(document.querySelector('[aria-label="모바일 청약 달력"]').textContent.includes('회귀검증 운정 단지'));
 
   } finally {
     await act(async()=>root.unmount());dom.window.close();

@@ -225,3 +225,5 @@ docker run --rm -p 8080:8080 \
 `/api/v1/public/announcements/{type}/{house}/{notice}?tabType=rate`는 JavaScript 없이 공고별 제목·설명·OG/Twitter 태그를 제공합니다. `tabType`은 detail/rate/map/comment를 허용합니다. 공개 PNG는 `/api/v1/public/announcement-images/{type}/{house}/{notice}.png?tabType=rate`에서 생성하며 원본 공고의 공개 정보만 담습니다. 없는 공고는 404, 응답 캐시는 5분입니다. Docker 런타임에 한글 렌더링용 Noto CJK 폰트를 설치합니다. 이미지·메타태그 수정 후 카카오의 기존 URL 캐시 초기화가 필요할 수 있습니다.
 
 청약홈 공통 상세 양식의 모집공고문 링크는 `GET /api/v1/notice-documents/{type}/{house}/{notice}`로 조회합니다. 저장된 공고에 한해 공식 호스트와 공고 번호가 일치하는 첨부 링크를 추출하며, 정상 결과는 1시간, 조회 실패는 1분 동안 캐시합니다. 파일을 복제하거나 별도 테이블에 저장하지 않습니다. 원문 양식 변경이나 연결 실패 시 상세의 원문 확인 경로를 제공합니다.
+
+경쟁률 공유 미리보기는 공개된 APT 당첨가점이 있으면 전체 공개 주택형·지역의 최저/최고 점수를 설명과 PNG 카드에 표시합니다. 0·누락·미공개 및 유효 범위 밖 점수는 제외하고 지역별 평균을 다시 평균내지 않습니다. 미리보기 이미지 버전은 `v=2`입니다.
