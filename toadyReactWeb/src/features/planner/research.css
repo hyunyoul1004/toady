@@ -132,3 +132,7 @@
 
 .announcement-header-actions .research-primary-actions .announcement-my-action.MuiButton-root{margin-left:auto;background:#eef4ff;border-color:#c4d6ee;color:#28578e;font-weight:650}
 .announcement-header-actions .research-primary-actions .announcement-my-action.MuiButton-root:hover{background:#e2edff;border-color:#8eafd9}
+
+.announcement-documents{display:flex;flex-direction:column;gap:10px;padding:16px!important;border:1px solid #dbe7f5;border-radius:10px;background:#f8fbff;margin-bottom:20px}
+.announcement-documents h3{margin:0 0 4px!important}
+.announcement-documents p{margin:0}

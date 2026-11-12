@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from 'react';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { useEffect, useId, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Checkbox, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControlLabel, IconButton, LinearProgress, Menu, MenuItem, Switch, TextField } from '@mui/material';
@@ -15,7 +16,12 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
   const [note,setNote] = useState(item.note || '');
   const [checks,setChecks] = useState(item.checklist || 0);
   const [email,setEmail] = useState(Boolean(item.emailEnabled));
-  const [busy,setBusy] = useState(false), [open,setOpen] = useState(false), [menu,setMenu] = useState(null), [confirm,setConfirm] = useState(false);
+  const [busy,setBusy] = useState(false), [open,setOpen] = useState(false);
+  const menuButtonRef=useRef(null);
+  const [cardOverlay,setCardOverlay] = useHistoryOverlay(`favorite:${item.id}`);
+  const confirm = cardOverlay === 'confirm';
+  const setMenu = anchor => { if (anchor) setCardOverlay('menu'); else if (cardOverlay === 'menu') setCardOverlay(null); };
+  const setConfirm = open => setCardOverlay(open ? 'confirm' : null);
   const editorId = useId();
   useEffect(() => { setNote(item.note || '');setChecks(item.checklist || 0);setEmail(Boolean(item.emailEnabled)); },[item.note,item.checklist,item.emailEnabled]);
   const s = item.summary, today = koreaToday();
@@ -26,7 +32,7 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
   async function save() { setBusy(true);try {await planner.save({...item,note,checklist:checks,emailEnabled:email});report('준비 노트를 저장했습니다.',false);}catch(e){report(e.message,true);}finally{setBusy(false);} }
   async function remove() { setBusy(true);try {await planner.remove(item.id);report('관심 공고를 해제했습니다.',false);}catch(e){report(e.message,true);setBusy(false);}setConfirm(false); }
   return <article className={`planner-favorite-card ${selected?'is-selected':''}`}>
-    <div className="planner-favorite-top"><div className="planner-card-tags"><Chip size="small" label={status} color={status==='접수 중'?'primary':'default'} variant="outlined" />{s.housingType && <span>{s.housingType}</span>}{item.emailEnabled && <span className="planner-mail-indicator"><NotificationsNoneRounded fontSize="inherit" /> 알림 켜짐</span>}</div><IconButton aria-label={`${s.houseNm} 더 보기`} onClick={e=>setMenu(e.currentTarget)} size="small"><MoreHorizRounded /></IconButton></div>
+    <div className="planner-favorite-top"><div className="planner-card-tags"><Chip size="small" label={status} color={status==='접수 중'?'primary':'default'} variant="outlined" />{s.housingType && <span>{s.housingType}</span>}{item.emailEnabled && <span className="planner-mail-indicator"><NotificationsNoneRounded fontSize="inherit" /> 알림 켜짐</span>}</div><IconButton ref={menuButtonRef} aria-label={`${s.houseNm} 더 보기`} onClick={e=>setMenu(e.currentTarget)} size="small"><MoreHorizRounded /></IconButton></div>
     <h3>{s.unavailable?s.houseNm:<Link to={`/my?subscriptSeq=${encodeURIComponent(item.id)}`} state={{plannerDetail:true}}>{s.houseNm}</Link>}</h3>
     <div className="planner-address"><LocationOnOutlined fontSize="inherit" /><span>{s.address || '주소 미제공'}</span></div>
     <div className="planner-card-dates"><div><span>청약 접수</span><strong>{s.startDate?.slice(5).replace('-','.') || '미제공'}<em>—</em>{s.endDate?.slice(5).replace('-','.') || '미제공'}</strong></div><div><span>당첨자 발표</span><strong>{s.winnerDate || '미제공'}</strong></div></div>
@@ -41,7 +47,7 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
       <div className="planner-email-setting"><div><strong>관심 일정 이메일</strong><p>{!planner.loggedIn?'로그인하면 이메일 알림을 받을 수 있어요.':!planner.remindersEnabled?'이메일 알림 서비스를 준비하고 있어요.':'오늘·내일 일정을 하루 한 통으로 알려드려요.'}</p></div><Switch inputProps={{'aria-label':`${s.houseNm} 이메일 알림`}} checked={email} disabled={busy || !planner.loggedIn || !planner.remindersEnabled} onChange={e=>setEmail(e.target.checked)} /></div>
       <div className="planner-editor-footer"><span role="status">{dirty?'저장하지 않은 변경사항이 있어요.':'저장된 준비 상태입니다.'}</span><Button variant="contained" disableElevation disabled={busy || !dirty} onClick={save}>{busy?'저장 중…':'변경사항 저장'}</Button></div>
     </div></Collapse>
-    <Menu anchorEl={menu} open={Boolean(menu)} onClose={()=>setMenu(null)}><MenuItem disabled={!s.events?.length} onClick={()=>{downloadCalendar([s]);setMenu(null);}}><CalendarMonthOutlined fontSize="small" sx={{mr:1}} />캘린더에 일정 추가</MenuItem><MenuItem disabled={busy} onClick={()=>{setMenu(null);setConfirm(true);}} sx={{color:'error.main'}}>관심 공고 해제</MenuItem></Menu>
+    <Menu anchorEl={()=>menuButtonRef.current} open={cardOverlay === 'menu'} onClose={()=>setMenu(null)}><MenuItem disabled={!s.events?.length} onClick={()=>{downloadCalendar([s]);setMenu(null);}}><CalendarMonthOutlined fontSize="small" sx={{mr:1}} />캘린더에 일정 추가</MenuItem><MenuItem disabled={busy} onClick={()=>{setConfirm(true);}} sx={{color:'error.main'}}>관심 공고 해제</MenuItem></Menu>
     <Dialog open={confirm} onClose={()=>{if(!busy)setConfirm(false);}} maxWidth="xs" fullWidth><DialogTitle>관심 공고를 해제할까요?</DialogTitle><DialogContent>이 공고의 체크리스트와 조사 메모도 함께 삭제됩니다.</DialogContent><DialogActions><Button disabled={busy} onClick={()=>setConfirm(false)}>취소</Button><Button disabled={busy} color="error" onClick={remove}>관심 해제</Button></DialogActions></Dialog>
   </article>;
 }

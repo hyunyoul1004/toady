@@ -209,8 +209,6 @@ export const LoginPage = (props) => {
               variant="text"
               onClick={(e) => {
                 e.preventDefault();
-                props.handleCloseModal?.();
-                props.handleLoginModalClose?.();
                 props.handleFindPwModalOpen?.();
               }}
               sx={{
@@ -313,8 +311,6 @@ export const LoginPage = (props) => {
               variant="text"
               onClick={(e) => {
                 e.preventDefault();
-                props.handleCloseModal?.();
-                props.handleLoginModalClose?.();
                 props.handleSignUpModalOpen?.();
               }}
               sx={{

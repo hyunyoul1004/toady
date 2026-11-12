@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import NoticeDocuments from '@/features/announcement/NoticeDocuments';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
@@ -11,7 +12,7 @@ function officialUrl(value) {
 
 /** 공개된 일정과 사업 정보를 먼저 보여주고, 자격 세부 조건은 공식 원문에서 확인한다. */
 export default function AnnouncementNotice({ mainDetail }) {
-  const [originalOpen,setOriginalOpen]=useState(false);
+  const [originalOpen,setOriginalOpen]=useHistoryOverlay('official-notice');
   const detail=mainDetail.subscriptDetail;
   if(!detail) return null;
   const summary=summaryOf(detail);
@@ -20,6 +21,7 @@ export default function AnnouncementNotice({ mainDetail }) {
   const facts=[['공급 위치',summary.address],['주택 구분',detail.housingDivision],['모집공고일',detail.applicationDate],
     ['입주 예정',detail.upcomingMonth],['시행사',detail.developer],['시공사',detail.contractor],['문의',detail.businessPhoneNumber]];
   return <div className="announcement-info">
+    <NoticeDocuments id={detail.subscriptSeq}/>
     <section aria-labelledby="announcement-schedule-title">
       <h3 id="announcement-schedule-title">청약 일정</h3>
       {events.length ? <ol className="announcement-schedule">{events.map(event=><li key={event.date}><time dateTime={event.date}>{event.date}</time><span>{event.label}</span></li>)}</ol>:<p className="research-explanation">공개된 접수 일정이 없습니다. 모집공고 원문을 확인해 주세요.</p>}

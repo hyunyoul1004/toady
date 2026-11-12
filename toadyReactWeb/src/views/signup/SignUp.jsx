@@ -441,8 +441,6 @@ export const SignUp = (props) => {
               variant="text"
               onClick={(e) => {
                 e.preventDefault();
-                props.handleCloseModal?.();
-                props.handleSignUpModalClose?.();
                 props.handleOpenLogin?.();
               }}
               sx={{

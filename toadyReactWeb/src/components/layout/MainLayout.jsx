@@ -5,7 +5,8 @@
  * - 모바일: 상단 앱바 및 슬라이드 내비게이션 드로어
  * - 계정 관련 모달(로그인, 회원가입, 비밀번호 찾기) 관리
  */
-import React, { useState } from 'react';
+import React from 'react';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { Outlet, Link } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
@@ -23,10 +24,15 @@ import { LoginPage } from '@/views/login/LoginPage';
 import { SignUp, FindPassword } from '@/views/signup';
 
 export function MainLayout() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [signUpModalOpen, setSignUpModalOpen] = useState(false);
-  const [findPwModalOpen, setFindPwModalOpen] = useState(false);
+  const [overlay, setOverlay] = useHistoryOverlay('layout');
+  const mobileOpen = overlay === 'menu';
+  const loginModalOpen = overlay === 'login';
+  const signUpModalOpen = overlay === 'signup';
+  const findPwModalOpen = overlay === 'password';
+  const setMobileOpen = open => { if (open) setOverlay('menu'); else if (mobileOpen) setOverlay(null); };
+  const setLoginModalOpen = open => { if (open) setOverlay('login'); else if (loginModalOpen) setOverlay(null); };
+  const setSignUpModalOpen = open => { if (open) setOverlay('signup'); else if (signUpModalOpen) setOverlay(null); };
+  const setFindPwModalOpen = open => { if (open) setOverlay('password'); else if (findPwModalOpen) setOverlay(null); };
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -59,7 +65,7 @@ export function MainLayout() {
           >
             <MenuIcon />
           </IconButton>
-          <Box component={Link} to="/" aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
+          <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
             <img
               alt="TOADY Logo"
               src="https://www.toady.co.kr/cont/images/logo/logo.png"
@@ -145,11 +151,9 @@ export function MainLayout() {
         <LoginPage
           handleCloseModal={() => setLoginModalOpen(false)}
           handleSignUpModalOpen={() => {
-            setLoginModalOpen(false);
             setSignUpModalOpen(true);
           }}
           handleFindPwModalOpen={() => {
-            setLoginModalOpen(false);
             setFindPwModalOpen(true);
           }}
         />
@@ -197,7 +201,6 @@ export function MainLayout() {
         <SignUp
           handleCloseModal={() => setSignUpModalOpen(false)}
           handleOpenLogin={() => {
-            setSignUpModalOpen(false);
             setLoginModalOpen(true);
           }}
         />
@@ -245,7 +248,6 @@ export function MainLayout() {
         <FindPassword
           handleCloseModal={() => setFindPwModalOpen(false)}
           handleOpenLogin={() => {
-            setFindPwModalOpen(false);
             setLoginModalOpen(true);
           }}
         />

@@ -1,10 +1,11 @@
+import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { announcementShareUrl, shareLabel } from '@/features/planner/shareUtils';
 /**
  * @file Main.jsx
  * @description 청약 일정 캘린더 및 공고 메인 화면 컴포넌트
  */
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate, useLocation } from 'react-router-dom';
 
 import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
@@ -56,9 +57,18 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   useEffect(()=>()=>resetDefaultSeo(),[]);
   const route = useParams();
   const navigate = useNavigate();
-  const [initialBrowse] = useState(() => initialBrowseState({getItem:key=>localStorage.getItem(key)},undefined,window.matchMedia?.('(max-width:600px)').matches?'list':'calendar'));
+  const location = useLocation();
+  const routeDetailId = route.type ? `${route.type}/${route.house}/${route.notice}` : searchParams.get('subscriptSeq');
+  useDirectDetailHistory(!detailOnly && Boolean(routeDetailId), 'detailOverlay', '/');
+  const [initialBrowse] = useState(() => initialBrowseState({getItem:key=>localStorage.getItem(key)}));
   const [calendarMonth,setCalendarMonth] = useState(initialBrowse.month);
   const [viewMode,setViewMode] = useState(initialBrowse.viewMode);
+  useEffect(() => {
+    if (location.state?.browseView !== 'calendar') return;
+    setViewMode('calendar');
+    const { browseView, ...state } = location.state;
+    navigate(location.pathname + location.search + location.hash, { replace: true, state });
+  }, [location.key, location.state, location.pathname, location.search, location.hash, navigate]);
   useEffect(() => { try { localStorage.setItem('toady.viewMode',JSON.stringify(viewMode)); } catch {} },[viewMode]);
 
   // 공급지역 체크 목록 (최초에는 전국 17개 시/도가 모두 선택된 상태)
@@ -178,6 +188,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
       if (tabType && tabMap[tabType] !== undefined) {
         setDetailTabValue(tabMap[tabType]);
       }
+    } else {
+      setModalOpen(false);
     }
   }, [searchParams, route.type, route.house, route.notice]);
 
@@ -186,16 +198,13 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     setResearchTab('info');
     setDetailTabValue(0);
     setModalOpen(true);
-    navigate(`/announcements/${seq}`, {replace:true});
+    navigate(`/announcements/${seq}`, {state:{detailOverlay:true}});
   };
 
   const handleCloseDetail = () => {
-    setModalOpen(false);
-    setSelectedSubscriptSeq(null);
-    resetDefaultSeo();
-    if(onDetailClose) {onDetailClose();return;}
-    setSearchParams({}, { replace: true });
-    if (route.type) navigate('/', {replace:true});
+    if (onDetailClose) { onDetailClose(); return; }
+    if (location.state?.detailOverlay) navigate(-1);
+    else navigate('/', { replace: true });
   };
 
   const handleTabChange = (event, newValue) => {
@@ -205,7 +214,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     if (selectedSubscriptSeq) {
       setSearchParams(
         { subscriptSeq: selectedSubscriptSeq, tabType: tabNames[newValue] },
-        { replace: true }
+        { replace: true, state: location.state }
       );
     }
   };

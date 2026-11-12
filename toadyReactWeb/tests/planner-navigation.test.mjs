@@ -35,6 +35,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
     if(url.pathname==='/api/v1/apt/announcements/NAV1/NAV1') body={data:{announcement:{...announcements[0],przwnerPresnatnDe:'2026-11-24',bsnsMbyNm:'회귀검증 시행사'},models:[{modelNo:'1',houseTy:'084.95',lttotTopAmount:'58900'}]}};
     if(url.pathname.endsWith('/competition-rates')) body={data:[{houseTy:'084.95',modelNo:'1',suplyHshldco:4,subscrptRankCode:'1',resideSenm:'해당지역',reqCnt:999,cmpetRate:249.75}]};
     if(url.pathname.endsWith('/special-supply-status')) body={data:[{houseTy:'084.95',spsplyHshldco:10,crspareaMnychCnt:8,nwwdsNmtwHshldco:16,lfeFrstHshldco:18}]};
+    if(url.pathname.startsWith('/api/v1/notice-documents/')) body={status:'READY',documents:[{title:'모집공고문 보기',url:'https://static.applyhome.co.kr/ai/aia/getAtchmnfl.do?houseManageNo=2026000472&pblancNo=2026000472&atchmnflSeqNo=2012076&atchmnflSn=4'}]};
     if(url.pathname==='/api/v1/research/capabilities') body={tradesEnabled:false};
     if(url.pathname==='/api/v1/living-areas') body=[];
     if(url.pathname==='/api/v1/planner/settings') body={remindersEnabled:false};
@@ -54,7 +55,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
   const React=require('react'), {act}=React, {createRoot}=require('react-dom/client');
   const root=createRoot(document.getElementById('root'));
   const text=()=>document.body.textContent;
-  const findButton=label=>[...document.querySelectorAll('button,[role=button]')].find(el=>el.textContent.trim()===label || el.getAttribute('aria-label')===label);
+  const findButton=label=>[...document.querySelectorAll('button,[role=button],[role=menuitem]')].find(el=>el.textContent.trim()===label || el.getAttribute('aria-label')===label);
   async function waitFor(predicate,message) {
     for(let i=0;i<80;i++){await act(async()=>{await new Promise(resolve=>setTimeout(resolve,15));});if(predicate())return;}
     assert.fail(`${message}\n${text().slice(0,1200)}`);
@@ -77,9 +78,20 @@ test('actual app prioritizes application details, restores detail tabs and retai
     assert.equal(document.querySelector('.research-save-bar'),null);
     assert.equal(document.querySelector('.research-source-links'),null,'removed footer must not return');
     assert.equal(document.querySelector('iframe'),null,'official content loads only when explicitly requested');
+    await waitFor(()=>Boolean(document.querySelector('.announcement-documents a')),'official attachment is linked directly from detail');
+    const pdfLink=document.querySelector('.announcement-documents a');
+    assert.ok(pdfLink.textContent.includes('PDF 받기'));
+    assert.ok(pdfLink.href.startsWith('https://static.applyhome.co.kr/ai/aia/getAtchmnfl.do?'));
+    assert.equal(pdfLink.target,'_blank');
+
     await click('모집공고 원문 확인');
     await waitFor(()=>Boolean(document.querySelector('[role=dialog] iframe')),'official notice opens inside a bounded dialog');
     assert.equal(document.querySelector('[role=dialog] iframe').title,'모집공고 원문');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!document.querySelector('iframe'),'browser back closes only the nested notice');
+    assert.ok(document.querySelector('.announcement-info'),'parent detail remains open');
+    await act(async()=>win.history.forward());
+    await waitFor(()=>Boolean(document.querySelector('iframe')),'forward restores the nested notice');
     await click('모집공고 원문 닫기');
     await waitFor(()=>!document.querySelector('iframe'),'closing original notice releases the iframe');
     assert.ok(document.querySelector('.research-price-list'),'application information includes unit prices without switching tabs');
@@ -101,10 +113,45 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await click('청약 정보');
     assert.equal(detailScroll.scrollTop,0,'changing sections resets detail scroll');
     assert.ok(document.querySelector('.announcement-schedule'),'switching back restores application information');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!document.querySelector('.announcement-info'),'back closes calendar detail');
+    assert.equal(win.location.pathname,'/');
+    assert.equal(JSON.parse(localStorage.getItem('toady.viewMode')),'list');
+    await act(async()=>win.history.forward());
+    await waitFor(()=>Boolean(document.querySelector('.announcement-info')),'forward restores detail');
     await click('닫기');
+    await waitFor(()=>win.location.pathname==='/' && !document.querySelector('.announcement-info'),'close button consumes the same history entry');
+    await click('로그인');
+    await waitFor(()=>Boolean(findButton('로그인 닫기')),'login opens');
+    await click('비밀번호를 잊으셨나요?');
+    await waitFor(()=>Boolean(findButton('비밀번호 찾기 닫기')),'password dialog replaces login atomically');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!findButton('비밀번호 찾기 닫기'),'one back closes switched account dialog');
+    assert.equal(win.location.pathname,'/');
+    await click('로그인');
+    await click('회원가입');
+    await waitFor(()=>Boolean(findButton('회원가입 닫기')),'signup replaces login atomically');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!findButton('회원가입 닫기'),'one back closes switched signup');
+    await click('로그인');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!findButton('로그인 닫기'),'back closes login without leaving page');
+    await click('회원가입');
+    await waitFor(()=>Boolean(findButton('회원가입 닫기')),'signup opens');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!findButton('회원가입 닫기'),'back closes signup without leaving page');
     await click('나의 청약');
     await waitFor(()=>Boolean(document.querySelector('.planner-page')),'my planner should open');
     assert.equal(document.title,'나의 청약 | TOADY');
+    await click('나의 청약 설정');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!document.querySelector('[role=menu]'),'back closes planner settings');
+    await click('저장한 공고 1 더 보기');
+    await click('관심 공고 해제');
+    await waitFor(()=>text().includes('관심 공고를 해제할까요?'),'remove confirmation opens');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!text().includes('관심 공고를 해제할까요?'),'back cancels confirmation without deleting saved data');
+    assert.equal(JSON.parse(localStorage.getItem('toady.planner.guest')).length,2);
     const firstSchedule=document.querySelector('.planner-schedule-card');
     assert.equal(firstSchedule.querySelectorAll('.planner-schedule-property a').length,1,'property title should be shown once per schedule card');
     assert.equal(firstSchedule.querySelectorAll('.planner-timeline li').length,3);
@@ -137,12 +184,15 @@ test('actual app prioritizes application details, restores detail tabs and retai
     assert.equal(document.querySelector('.planner-page'),plannerElement,'planner stays mounted behind detail');
     assert.equal(document.querySelector('.fc'),null,'opening saved announcement must not mount a calendar');
     assert.equal(calls.filter(url=>url.pathname==='/api/v1/announcements').length,browseRequests,'no calendar listing requests for planner detail');
-    await click('닫기');
-    await waitFor(()=>!document.querySelector('.announcement-info'),'close returns to existing planner');
+    await act(async()=>win.history.back());
+    await waitFor(()=>!document.querySelector('.announcement-info'),'browser back returns to existing planner');
     assert.equal(document.querySelector('.planner-page'),plannerElement);
     assert.equal(JSON.parse(localStorage.getItem('toady.planner.guest')).find(item=>item.id==='apt/NAV1/NAV1').note,'실거래가와 현장 동선 확인');
     await click('청약캘린더');
-    await waitFor(()=>text().includes('회귀검증 운정 단지'),'returning to saved list mode must keep listings');
+    await waitFor(()=>findButton('달력')?.getAttribute('aria-pressed')==='true','calendar menu explicitly selects calendar view');
+    assert.equal(findButton('목록').getAttribute('aria-pressed'),'false');
+    await click('목록');
+    await waitFor(()=>Boolean(findButton('목록 다음달')),'list control and rendered content agree');
     await click('목록 다음달');
     await waitFor(()=>calls.some(url=>url.pathname==='/api/v1/announcements' && url.searchParams.get('startDate')==='2026-11-24'),'list month navigation must update API range');
     assert.equal(JSON.parse(localStorage.getItem('toady.calendarMonth')),'2026-12');
@@ -156,6 +206,17 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await act(async()=>root.render(React.createElement(module.exports.App)));
     await waitFor(()=>text().includes('회귀검증 운정 단지'),'reload in saved list mode must not produce an empty page');
     assert.equal(document.querySelector('input[type="month"]').value,'2026-12');
+    // 공유 경쟁률 URL로 첫 진입: 이전 사이트로 나가지 않고 상세 아래의 공고 화면으로 복귀한다.
+    await act(async()=>root.render(null));
+    win.history.replaceState(null,'','/announcements/apt/NAV1/NAV1?tabType=rate');
+    await act(async()=>root.render(React.createElement(module.exports.App)));
+    await waitFor(()=>document.querySelector('[role=tab][aria-selected=true]')?.textContent.includes('경쟁률'),'direct competition link selects competition');
+    await act(async()=>win.history.back());
+    await waitFor(()=>win.location.pathname==='/' && !document.querySelector('[data-testid=announcement-scroll]'),'first back from shared URL stays on site');
+    await click('청약캘린더');
+    await waitFor(()=>findButton('달력')?.getAttribute('aria-pressed')==='true','calendar link after shared URL selects real calendar');
+    assert.equal(findButton('목록').getAttribute('aria-pressed'),'false');
+
   } finally {
     await act(async()=>root.unmount());dom.window.close();
   }

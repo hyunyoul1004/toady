@@ -1,3 +1,5 @@
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { trackAction } from '@/features/analytics/trackAction';
 import { useEffect, useState, useRef } from 'react';
 import { Main } from '@/views/main/Main';
@@ -23,9 +25,13 @@ export default function MyPlanner() {
   const [searchParams,setSearchParams]=useSearchParams();
   const location=useLocation(),navigate=useNavigate();
   const detailId=searchParams.get('subscriptSeq');
+  useDirectDetailHistory(Boolean(detailId), 'plannerDetail', '/my');
   useEffect(()=>{if(!detailId)document.title='나의 청약 | TOADY';},[detailId]);
   const closeDetail=()=>{if(location.state?.plannerDetail) navigate(-1);else setSearchParams({}, {replace:true});};
-  const [selected,setSelected] = useState([]), [message,setMessage] = useState(null), [busy,setBusy] = useState(false), [menu,setMenu] = useState(null);
+  const [selected,setSelected] = useState([]), [message,setMessage] = useState(null), [busy,setBusy] = useState(false);
+  const menuButtonRef=useRef(null);
+  const [menuOpen,setMenuOpen] = useHistoryOverlay('planner-settings');
+  const setMenu = anchor => setMenuOpen(Boolean(anchor));
   const report = (text,error) => setMessage({text,error});
   useEffect(() => {setSelected([]);setMessage(null);},[planner.scope]);
   const availableIds = planner.items.map(x=>x.id).sort().join(',');
@@ -40,7 +46,7 @@ export default function MyPlanner() {
     setSelected(previous=>previous.includes(id)?previous.filter(value=>value!==id):[...previous,id]);
   }
   return <Box className="planner-page">
-    <header className="planner-hero"><div><span className="planner-eyebrow">MY HOME PLAN</span><h1>나의 청약</h1><p>관심 있는 집을 모으고, 다음 청약을 차근차근 준비하세요.</p></div><div className="planner-hero-actions"><Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={!planner.items.length} onClick={()=>downloadCalendar(planner.items.map(x=>x.summary))}>일정 내려받기</Button><IconButton aria-label="나의 청약 설정" onClick={e=>setMenu(e.currentTarget)} disabled={busy}><MoreHorizRounded /></IconButton></div></header>
+    <header className="planner-hero"><div><span className="planner-eyebrow">MY HOME PLAN</span><h1>나의 청약</h1><p>관심 있는 집을 모으고, 다음 청약을 차근차근 준비하세요.</p></div><div className="planner-hero-actions"><Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={!planner.items.length} onClick={()=>downloadCalendar(planner.items.map(x=>x.summary))}>일정 내려받기</Button><IconButton ref={menuButtonRef} aria-label="나의 청약 설정" onClick={e=>setMenu(e.currentTarget)} disabled={busy}><MoreHorizRounded /></IconButton></div></header>
     {!planner.loggedIn && <div className="planner-storage-notice"><BookmarkBorderRounded fontSize="small" /><span>이 브라우저에 저장 중이에요. <strong>로그인하면 다른 기기에서도 이어볼 수 있어요.</strong></span></div>}
     {planner.guestRefreshError && <Alert severity="warning" sx={{mb:2}}>최신 일정을 확인하지 못해 저장 당시 정보를 표시합니다. 원문에서 일정을 확인해 주세요.</Alert>}
     {planner.error && <Alert severity="error" action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>{planner.error.message}</Alert>}
@@ -53,10 +59,10 @@ export default function MyPlanner() {
       {!planner.error && !planner.items.length && <div className="planner-empty"><div><BookmarkBorderRounded /></div><h3>어떤 집이 마음에 드세요?</h3><p>공고를 저장하면 일정과 준비 노트를<br />이곳에서 함께 관리할 수 있어요.</p><Button variant="contained" disableElevation component={Link} to="/" endIcon={<ArrowForwardRounded />}>청약 찾아보기</Button></div>}</section>
     </>}
     {detailId && <Main detailOnly onDetailClose={closeDetail}/>}
-    <Menu anchorEl={menu} open={Boolean(menu)} onClose={()=>setMenu(null)}>
+    <Menu anchorEl={()=>menuButtonRef.current} open={Boolean(menuOpen)} onClose={()=>setMenu(null)}>
       {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>action(planner.importGuest,'기기 공고를 가져왔습니다. 계정의 기존 메모는 유지합니다.')}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
       {planner.loggedIn && <MenuItem disabled={busy} onClick={()=>action(planner.disableEmails,'모든 이메일 알림을 해제했습니다.')}>이메일 알림 전체 해제</MenuItem>}
-      <MenuItem component={Link} to="/" onClick={()=>setMenu(null)}>청약캘린더로 이동</MenuItem>
+      <MenuItem component={Link} to="/" replace state={{browseView:'calendar'}}>청약캘린더로 이동</MenuItem>
     </Menu>
     {selected.length>0 && <div className="planner-compare-hint"><CompareArrowsRounded /><span>{selected.length===1?'비교할 공고를 하나 더 선택해 주세요.':`${selected.length}개 공고를 선택했어요.`}</span>{selected.length>=2 && <Button size="small" color="inherit" onClick={()=>comparisonRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}>선택한 공고 비교</Button>}<IconButton size="small" aria-label="비교 선택 해제" onClick={()=>setSelected([])}><CloseRounded fontSize="small" /></IconButton></div>}
 

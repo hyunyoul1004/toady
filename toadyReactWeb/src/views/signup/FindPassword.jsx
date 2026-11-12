@@ -244,8 +244,6 @@ export const FindPassword = (props) => {
               variant="text"
               startIcon={<ArrowBackIcon fontSize="small" />}
               onClick={() => {
-                props.handleCloseModal?.();
-                props.handleFindPwModalClose?.();
                 props.handleOpenLogin?.();
               }}
               sx={{

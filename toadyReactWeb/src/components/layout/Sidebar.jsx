@@ -54,10 +54,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
           borderBottom: '1px solid #f1f5f9'
         }}
       >
-        <Box component={Link} to="/" aria-label="TOADY 홈으로"
-          onClick={() => {
-            if (mobileOpen) onMobileClose();
-          }}
+        <Box component={Link} to="/" replace={mobileOpen} state={{browseView:'calendar'}} aria-label="TOADY 홈으로"
           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
           <img
@@ -105,8 +102,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
                   aria-current={isSelected?'page':undefined}
                   selected={isSelected}
                   onClick={() => {
-                    navigate(item.path);
-                    if (mobileOpen) onMobileClose();
+                    navigate(item.path, { replace: mobileOpen, state: item.path === '/' ? { browseView: 'calendar' } : null });
                   }}
                   sx={{
                     borderRadius: 1.5,
@@ -149,7 +145,6 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
               startIcon={<LoginIcon />}
               onClick={() => {
                 onOpenLogin();
-                if (mobileOpen) onMobileClose();
               }}
               sx={{
                 bgcolor: '#2563eb',
@@ -168,7 +163,6 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
               startIcon={<PersonAddIcon />}
               onClick={() => {
                 onOpenSignUp();
-                if (mobileOpen) onMobileClose();
               }}
               sx={{
                 color: '#475569',
