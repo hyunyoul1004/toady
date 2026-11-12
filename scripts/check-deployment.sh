@@ -36,4 +36,8 @@ for service in toadyWebApi toadyReactWeb toadyScheduler; do
   test "$(docker inspect --format '{{.State.Running}}' "$service")" = true
   test "$(docker inspect --format '{{.State.Restarting}}' "$service")" = false
 done
+# 동네 실거래는 선택 기능이라 배포를 막지 않는다. 다만 서버 환경 설정 누락이 조용히 지나가지 않도록 경고한다.
+if ! curl --fail --silent --max-time 3 http://127.0.0.1:8080/api/v1/research/capabilities | grep -q '"tradesEnabled":true'; then
+  echo 'WARNING: Neighborhood trades are disabled. Set MOLIT_TRADE_SERVICE_KEY in toadyWebApi/.env.prod and recreate the API container.' >&2
+fi
 echo 'API, database connection, scheduler readiness, frontend and container startup checks passed'

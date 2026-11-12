@@ -53,7 +53,9 @@
 .research-data-state>svg{color:#acbdd3;font-size:26px;margin-bottom:12px}
 .research-data-state strong{font-size:13px;font-weight:650;color:#617994}
 .research-data-state p{font-size:11px;line-height:1.8;color:#91a0b2;margin:8px 0 0;max-width:290px;word-break:keep-all}
-.research-data-state .MuiButton-root{margin-top:10px;font-size:11px}
+.research-data-state .MuiButton-root{font-size:11px}
+.research-data-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:12px;max-width:100%}
+.research-data-actions .MuiButton-root{min-width:0;white-space:normal;word-break:keep-all}
 .research-loading{display:flex;flex-direction:column;gap:10px}
 @media(max-width:600px){.research-heading{padding:19px 16px 16px}.research-heading h2{font-size:16px;max-width:230px}.research-eyebrow{font-size:10px}.research-heading .MuiChip-root{font-size:9px}.research-metrics{margin:0 16px;padding:14px 12px;gap:10px;grid-template-columns:1.35fr 1fr .8fr}.research-metric>span{font-size:10px;gap:3px}.research-metric>span svg{font-size:12px}.research-metric>strong{font-size:18px;letter-spacing:-.6px}.research-metric i{font-size:11px;margin:0 3px}.research-metric small{font-size:8px}.research-metric em{font-size:9px}.research-primary-actions{padding:16px 16px 8px;gap:6px}.research-primary-actions .MuiButton-root{font-size:10px;padding:6px 9px;min-height:34px}.research-primary-actions .MuiButton-startIcon{margin-right:4px}.research-primary-actions .MuiButton-startIcon svg{font-size:16px}.research-storage-note{padding:0 16px 8px;font-size:9px}.research-tabs .MuiTab-root{font-size:11px}.research-tab-content{padding:19px 16px}.research-price-range strong{font-size:21px}.research-price-row{padding:13px 11px;gap:6px}.research-price-row strong{font-size:13px}.research-price-row>div:last-child strong{font-size:15px}.research-price-row span{font-size:9px}.research-trade-list h3{font-size:12px}.research-trade-list strong{font-size:14px}}
 /* 좁은 상세 패널에서는 접수 기간을 한 줄 전체에 배치해 날짜가 겹치지 않게 한다. */

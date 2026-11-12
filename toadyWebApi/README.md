@@ -126,7 +126,7 @@ GET /api/v1/announcements/suggestions?keyword=자이&limit=10
 ```bash
 cp .env.example .env
 # .env의 DB 접속 정보를 수정하고 JWT_SECRET에 아래 명령의 출력값을 넣습니다.
-openssl rand -base64 64
+openssl rand -base64 64 | tr -d '\n'
 
 # 외부 DB 없이 실행할 수 있는 기본 테스트
 bash ./gradlew test

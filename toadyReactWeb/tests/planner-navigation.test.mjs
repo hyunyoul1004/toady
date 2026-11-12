@@ -109,7 +109,13 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await act(async()=>{mobileViewport=false;for(const listener of [...mediaListeners])listener({matches:false});});
     await click('상세');
     await click('동네 실거래');
-    await waitFor(()=>document.body.textContent.includes('정보 서비스를 준비하고 있어요'),'unconfigured trade state should render');
+    await waitFor(()=>Boolean(document.querySelector('.research-data-state[data-state="NOT_CONFIGURED"]')),'unconfigured trade state should render');
+    assert.ok(text().includes('지금은 동네 실거래를 바로 보여드리지 못해요'));
+    assert.equal(document.querySelector('.research-area-filter'),null,'area filter is hidden when trades cannot be queried');
+    const officialTrades=document.querySelector('.research-data-state a[href="https://rt.molit.go.kr/"]');
+    assert.ok(officialTrades,'unconfigured trades still lead to the official public system');
+    assert.equal(officialTrades.target,'_blank');
+    assert.equal(officialTrades.rel,'noopener noreferrer');
     await click('청약 정보');
     assert.equal(detailScroll.scrollTop,0,'changing sections resets detail scroll');
     assert.ok(document.querySelector('.announcement-schedule'),'switching back restores application information');

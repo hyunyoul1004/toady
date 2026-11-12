@@ -2,6 +2,7 @@ package com.toady.web.app.planner.research;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.*;
@@ -17,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /** 같은 법정동의 신고 거래를 제공한다. 호가나 시세 추정으로 표현하지 않는다. */
+@Slf4j
 @Service
 public class NeighborhoodResearchService {
     public record Trade(String apartment,String dong,String dongCode,BigDecimal area,int floor,String buildYear,LocalDate date,long amountManwon) { }
@@ -31,7 +33,10 @@ public class NeighborhoodResearchService {
             @Value("${toady.research.molit-service-key:}") String molitKey) {
         this.transport=transport;
         // 공공데이터포털의 일반/인코딩 인증키를 모두 허용하되 요청에는 한 번만 인코딩한다.
-        this.molitKey=molitKey.contains("%")?java.net.URLDecoder.decode(molitKey,StandardCharsets.UTF_8):molitKey;
+        String key=molitKey.trim();
+        this.molitKey=key.contains("%")?java.net.URLDecoder.decode(key,StandardCharsets.UTF_8):key;
+        // 키가 없으면 화면은 미제공 상태로만 보이므로 운영 로그에서 설정 누락을 바로 알 수 있게 남긴다.
+        if(!tradesEnabled()) log.warn("Neighborhood trades are disabled: MOLIT_TRADE_SERVICE_KEY is not configured");
     }
     public boolean tradesEnabled() {return !molitKey.isBlank();}
     public TradeResult trades(String bcode,String dong) {return trades(bcode,dong,null);}

@@ -10,16 +10,20 @@ import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import EventAvailableOutlined from '@mui/icons-material/EventAvailableOutlined';
 import ApartmentRounded from '@mui/icons-material/ApartmentRounded';
 import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { summaryOf, downloadCalendar, koreaToday, daysUntil } from './plannerUtils';
 import { formatManwon } from './researchUtils';
 import { usePlanner } from './usePlanner';
 import { useNeighborhoodResearch } from './useNeighborhoodResearch';
 import './research.css';
 
+const MOLIT_TRADE_SITE='https://rt.molit.go.kr/';
+/** 이 화면에서 조회할 수 없을 때도 사용자가 같은 공식 자료로 이어서 확인할 수 있게 한다. */
+function OfficialTradeLink(){return <Button size="small" variant="outlined" component="a" href={MOLIT_TRADE_SITE} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewRounded/>}>국토교통부 실거래가 공개시스템</Button>;}
 function DataState({kind,onRetry}) {
-  const copy={NOT_CONFIGURED:['정보 서비스를 준비하고 있어요','연동이 완료되면 이 화면에서 데이터를 바로 확인할 수 있어요.'],EMPTY:['조건에 맞는 공개 자료가 없어요','조회 기간과 공개 범위에 따라 결과가 없을 수 있어요.'],UNAVAILABLE:['지금은 정보를 불러오지 못했어요','제공처 응답이 지연되고 있어요. 잠시 후 다시 확인해 주세요.']};
+  const copy={NOT_CONFIGURED:['지금은 동네 실거래를 바로 보여드리지 못해요','국토교통부 실거래가 공개시스템에서 같은 동네의 신고 거래를 확인할 수 있어요.'],EMPTY:['최근 3개월 동안 조건에 맞는 거래가 없어요','면적 조건을 넓히거나 공식 공개시스템에서 기간을 늘려 확인해 보세요.'],UNAVAILABLE:['지금은 실거래를 불러오지 못했어요','제공처 응답이 지연되고 있어요. 잠시 후 다시 확인해 주세요.']};
   const [title,description]=copy[kind] || copy.UNAVAILABLE;
-  return <div className="research-data-state"><ApartmentRounded /><strong>{title}</strong><p>{description}</p>{kind==='UNAVAILABLE' && onRetry && <Button size="small" onClick={onRetry}>다시 불러오기</Button>}</div>;
+  return <div className="research-data-state" data-state={kind || 'UNAVAILABLE'}><ApartmentRounded /><strong>{title}</strong><p>{description}</p><div className="research-data-actions">{(kind==='UNAVAILABLE' || !copy[kind]) && onRetry && <Button size="small" onClick={onRetry}>다시 불러오기</Button>}<OfficialTradeLink/></div></div>;
 }
 function LoadingData(){return <div className="research-loading"><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/></div>;}
 const shortDate=date=>date?date.slice(5).replace('-','.'):'미제공';
@@ -58,6 +62,8 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
   const closing=daysUntil(summary.endDate,today),start=daysUntil(summary.startDate,today);
   const status=start>0?`접수 D-${start}`:closing>=0 && closing!==null?'접수 중':summary.endDate?'접수 종료':'일정 확인';
   const trades=research.trades.data;
+  // 조회할 수 없는 상태에서 면적 필터를 보여주면 동작하지 않는 컨트롤이 되므로 조회 가능한 경우에만 노출한다.
+  const tradesQueryable=research.capabilities.data?.tradesEnabled===true && !research.location.error;
 
   return <section className="research-panel" aria-label="공고 핵심 정보와 동네 조사">
     <header className="research-heading"><span className="research-eyebrow">모집공고 핵심 요약</span><Chip size="small" label={status} variant="outlined" /></header>
@@ -81,9 +87,9 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
       </>}
       {tab==='trades' && <>
         <div className="research-section-caption"><span>{research.location.data?.dong || '같은 법정동'} 아파트 매매</span><span>국토교통부 신고 자료</span></div>
-        <ToggleButtonGroup size="small" exclusive value={area} onChange={(_,value)=>{if(value!==null)setArea(value);}} className="research-area-filter" aria-label="실거래 전용면적 필터"><ToggleButton value="">전체 면적</ToggleButton>{areas.map(value=><ToggleButton key={value} value={String(value)}>{value}㎡ 안팎</ToggleButton>)}</ToggleButtonGroup>
-        {area && <p className="research-explanation">전용 {area}㎡에서 ±5㎡ 이내 거래를 조회합니다.</p>}
-        {research.capabilities.isLoading || research.location.isLoading || research.location.isFetching || research.trades.isFetching ? <LoadingData/> : research.capabilities.error || research.trades.error ? <DataState kind="UNAVAILABLE" onRetry={()=>{research.capabilities.refetch();research.trades.refetch();}}/> : !research.capabilities.data?.tradesEnabled ? <DataState kind="NOT_CONFIGURED"/> : research.location.error ? <div className="research-data-state"><PlaceOutlined/><strong>거래를 조회할 위치를 확인하지 못했어요</strong><p>{research.location.error.message}</p><Button onClick={()=>research.location.refetch()}>위치 다시 확인</Button></div> : trades?.status==='READY' ? <>
+        {tradesQueryable && <ToggleButtonGroup size="small" exclusive value={area} onChange={(_,value)=>{if(value!==null)setArea(value);}} className="research-area-filter" aria-label="실거래 전용면적 필터"><ToggleButton value="">전체 면적</ToggleButton>{areas.map(value=><ToggleButton key={value} value={String(value)}>{value}㎡ 안팎</ToggleButton>)}</ToggleButtonGroup>}
+        {tradesQueryable && area && <p className="research-explanation">전용 {area}㎡에서 ±5㎡ 이내 거래를 조회합니다.</p>}
+        {research.capabilities.isLoading || research.location.isLoading || research.location.isFetching || research.trades.isFetching ? <LoadingData/> : research.capabilities.error || research.trades.error ? <DataState kind="UNAVAILABLE" onRetry={()=>{research.capabilities.refetch();research.trades.refetch();}}/> : !research.capabilities.data?.tradesEnabled ? <DataState kind="NOT_CONFIGURED"/> : research.location.error ? <div className="research-data-state"><PlaceOutlined/><strong>거래를 조회할 위치를 확인하지 못했어요</strong><p>{research.location.error.message}</p><div className="research-data-actions"><Button size="small" onClick={()=>research.location.refetch()}>위치 다시 확인</Button><OfficialTradeLink/></div></div> : trades?.status==='READY' ? <>
           <p className="research-explanation">{trades.fromMonth} ~ {trades.toMonth} · 조건에 맞는 거래 {trades.total}건 중 최근 {trades.items.length}건</p>
           <div className="research-trade-list">{trades.items.map((trade,index)=><article key={`${trade.apartment}/${trade.date}/${index}`}><div><h3>{trade.apartment}</h3><span>전용 {Number(trade.area).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡ · {trade.floor}층{trade.buildYear?` · ${trade.buildYear}년 준공`:''}</span></div><div><strong>{formatManwon(trade.amountManwon)}</strong><time dateTime={trade.date}>{trade.date} 계약</time></div></article>)}</div>
           <p className="research-footnote">데이터 확인 {checkedAt(trades.checkedAt)} · 취소 표시가 있는 거래 제외</p>
