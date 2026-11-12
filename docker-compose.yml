@@ -54,6 +54,29 @@ services:
       - mariadb
     restart: always
 
+  # 관리자 사이트. 서버의 toadyAdmin/.env.prod를 채운 뒤부터 배포 스크립트가 함께 띄운다.
+  # 앞단 nginx가 https://www.toady.co.kr/admin/ 을 이 컨테이너로 보낸다(서버 nginx 설정, README 참고).
+  toadyAdmin:
+    container_name: toadyAdmin
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-admin:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
+    env_file:
+      - /home/ec2-user/toady/toadyAdmin/.env.prod
+    environment:
+      - TZ=Asia/Seoul
+      - SERVER_PORT=8083
+      - ADMIN_SECURE_COOKIE=true
+      # 수집 실행·일정 변경은 같은 compose 네트워크의 스케줄러 내부 API로 요청한다.
+      - SCHEDULER_BASE_URL=http://toadyScheduler:8082
+    volumes:
+      - /usr/local/dockerVolumes/toady/toadyAdmin/logs/:/app/logs/
+    ports:
+      # 직접 포트는 서버 안(배포 확인)에서만 연다.
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      - mariadb
+      - toadyScheduler
+    restart: always
+
   toadyReactWeb:
     container_name: toadyReactWeb
     image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}

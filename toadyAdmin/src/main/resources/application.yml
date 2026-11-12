@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: toady-admin
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  thymeleaf:
+    cache: true
+
+server:
+  port: ${SERVER_PORT:8083}
+  # 앞단 nginx(HTTPS) 뒤에서 Tomcat이 Location을 http://내부주소 로 바꾸지 않게 상대 경로 그대로 보낸다.
+  tomcat:
+    use-relative-redirects: true
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${ADMIN_SECURE_COOKIE:false}
+
+toady:
+  admin:
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:}
+  scheduler:
+    # 같은 docker-compose 네트워크의 스케줄러 내부 주소. 토큰이 없으면 수집 화면은 조회 안내만 보여 준다.
+    base-url: ${SCHEDULER_BASE_URL:http://toadyScheduler:8082}
+    token: ${SCHEDULER_INTERNAL_TOKEN:}
+
+logging:
+  level:
+    com.toady.admin: INFO

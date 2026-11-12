@@ -40,6 +40,9 @@ jobs:
       - name: Test scheduler (external integration tests stay opt-in)
         working-directory: toadyScheduler
         run: bash ./gradlew --no-daemon test
+      - name: Test admin site
+        working-directory: toadyAdmin
+        run: bash ./gradlew --no-daemon test
       - name: Build frontend
         working-directory: toadyReactWeb
         run: |
@@ -54,6 +57,7 @@ jobs:
           path: |
             toadyWebApi/build/reports/tests/
             toadyScheduler/build/reports/tests/
+            toadyAdmin/build/reports/tests/
 
   verify-mariadb:
     runs-on: ubuntu-latest
@@ -115,9 +119,11 @@ jobs:
           docker build --build-arg VITE_KAKAO_MAP_KEY -t "$DOCKER_USERNAME/toady-react-web:$IMAGE_TAG" ./toadyReactWeb
           docker build -t "$DOCKER_USERNAME/toady-web-api:$IMAGE_TAG" ./toadyWebApi
           docker build -t "$DOCKER_USERNAME/toady-scheduler:$IMAGE_TAG" ./toadyScheduler
+          docker build -t "$DOCKER_USERNAME/toady-admin:$IMAGE_TAG" ./toadyAdmin
           docker push "$DOCKER_USERNAME/toady-react-web:$IMAGE_TAG"
           docker push "$DOCKER_USERNAME/toady-web-api:$IMAGE_TAG"
           docker push "$DOCKER_USERNAME/toady-scheduler:$IMAGE_TAG"
+          docker push "$DOCKER_USERNAME/toady-admin:$IMAGE_TAG"
       - name: Copy deployment files to EC2
         # 서버 SSH 키를 받는 서드파티 Action은 태그가 옮겨져도 바뀌지 않도록 커밋 SHA로 고정한다(v0.1.7).
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
@@ -144,6 +150,11 @@ jobs:
             export DOCKER_USERNAME IMAGE_TAG
             NEW_TAG="$IMAGE_TAG"
             APPS="toadyWebApi toadyScheduler toadyReactWeb"
+            # 관리자 사이트(toadyAdmin)는 서버의 설정 파일(toadyAdmin/.env.prod)을 채운 뒤부터 함께 배포한다.
+            # compose는 env_file이 없으면 설정 검사에서 실패하므로 빈 파일을 먼저 둔다(비어 있으면 관리자 컨테이너는 띄우지 않는다).
+            mkdir -p toadyAdmin
+            [ -f toadyAdmin/.env.prod ] || { : > toadyAdmin/.env.prod; chmod 600 toadyAdmin/.env.prod; }
+            if [ -s toadyAdmin/.env.prod ]; then APPS="$APPS toadyAdmin"; fi
             # 마지막으로 검증에 성공한 태그. 새 이미지가 확인을 통과하지 못하면 이 태그로 되돌린다.
             PREVIOUS_TAG=""
             if [ -f .deployed-image-tag ]; then PREVIOUS_TAG=$(tr -d '[:space:]' < .deployed-image-tag); fi

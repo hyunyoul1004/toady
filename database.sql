@@ -454,3 +454,24 @@ CREATE TABLE IF NOT EXISTS TB_PRICE_GAP (
     PRIMARY KEY (ANNOUNCEMENT_ID),
     INDEX IX_PRICE_GAP_COMPUTED (COMPUTED_DT)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='공고별 주변 시세 비교 요약';
+
+-- 19. 관리자 사이트(toadyAdmin) 전용 DB 계정 (관리자 배포 전에 root로 수동 실행, 자동 실행하지 않음)
+-- 조회는 화면에 쓰는 테이블·컬럼만, 변경은 회원 잠금(LOCK_YN·LOCK_DT)과 댓글 숨김(DELETE_YN)만 허용한다.
+-- 비밀번호 해시(USER_PASSWORD)와 푸시 구독 키(P256DH·AUTH)는 읽지 못하게 컬럼 단위로 준다. 비밀번호는 실제 값으로 바꿔 실행한다.
+-- CREATE USER 'toady_admin'@'%' IDENTIFIED BY '<관리자 DB 비밀번호>';
+-- GRANT SELECT (USER_SEQ, USER_EMAIL, USER_NIC_NAME, EMAIL_CERTIFY_YN, LOCK_YN, LOCK_DT, WITHDRAWAL_YN, CREATE_DT, UPDATE_DT), UPDATE (LOCK_YN, LOCK_DT, UPDATE_DT) ON toady.TB_USER TO 'toady_admin'@'%';
+-- GRANT SELECT, UPDATE (DELETE_YN, UPDATE_DT) ON toady.TB_LTTOT_PBLANC_COMMENT TO 'toady_admin'@'%';
+-- GRANT SELECT (USER_SEQ, AREA_SLUGS, LAST_ATTEMPT_DATE, LAST_DIGEST_DT, LAST_SUCCESS_DT) ON toady.TB_PUSH_SUBSCRIPTION TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_FAVORITE TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_PAGE_VIEW TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_USAGE_EVENT TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_PRICE_GAP TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_DETAIL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_REMNDR_LTTOT_PBLANC_DETAIL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_OPT_LTTOT_PBLANC_DETAIL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_CMPET TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_SCORE TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_SCHEDULER_ADMIN_JOB TO 'toady_admin'@'%';
+-- 권한 확인: SHOW GRANTS FOR 'toady_admin'@'%';

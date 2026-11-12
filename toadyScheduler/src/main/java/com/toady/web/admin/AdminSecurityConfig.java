@@ -96,6 +96,8 @@ public class AdminSecurityConfig {
         } else {
             http.authorizeHttpRequests(authorize -> authorize
                             .requestMatchers("/internal/health").permitAll()
+                            // 관리자 사이트(toadyAdmin)용 내부 API. 세션이 아니라 공유 토큰으로 확인한다(AdminInternalApi).
+                            .requestMatchers("/internal/admin/**").permitAll()
                             .requestMatchers("/admin/login", "/admin/style.css", "/error").permitAll()
                             .requestMatchers("/admin/**", "/").hasRole("ADMIN")
                             .anyRequest().denyAll())
@@ -115,7 +117,9 @@ public class AdminSecurityConfig {
                             .permitAll())
                     .logout(logout -> logout.logoutUrl("/admin/logout").logoutSuccessUrl("/admin/login?logout"))
                     // 앞단 nginx(HTTPS) 뒤에서 http://내부주소 로 보내지 않도록 로그인 이동 주소를 상대 경로로 둔다.
-                    .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(relativeLoginEntryPoint()));
+                    .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(relativeLoginEntryPoint()))
+                    // 내부 API는 브라우저 세션 쿠키를 쓰지 않고 토큰 헤더로만 인증하므로 CSRF 대상이 아니다.
+                    .csrf(csrf -> csrf.ignoringRequestMatchers("/internal/admin/**"));
         }
         // 로그인·로그아웃·수집 실행·설정 변경 모두 CSRF 보호를 유지한다. 템플릿의 POST 폼이 토큰을 전달한다.
         return http.build();

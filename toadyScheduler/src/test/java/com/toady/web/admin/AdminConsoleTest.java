@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "applyhome.admin.enabled=true", "applyhome.admin.username=operator",
         "applyhome.admin.password=local-test-password",
+        "applyhome.admin.internal-token=test-internal-token-0123456789abcdef",
         "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-",
         "applyhome.admin.busy-retry-seconds=1", "applyhome.admin.busy-wait-seconds=1", "data.retention.cron=-",
         "spring.datasource.url=jdbc:h2:mem:admin;MODE=MariaDB;DB_CLOSE_DELAY=-1",
@@ -248,6 +249,34 @@ class AdminConsoleTest {
         verify(competition).synchronize(LocalDate.of(2018, 2, 1), LocalDate.of(2018, 2, 3));
         assertEquals("FAILED", repository.find(id).orElseThrow().status());
         assertTrue(repository.find(id).orElseThrow().message().contains("2018-01-20~2018-01-31"));
+    }
+
+    @Test void internalApiRequiresTheSharedTokenAndControlsJobs() throws Exception {
+        String token = "test-internal-token-0123456789abcdef";
+        // 토큰이 없거나 틀리면 거절한다(세션 로그인과 무관, CSRF 대상 아님).
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/internal/admin/state"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/internal/admin/state").header("X-Admin-Token", "wrong"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/internal/admin/state").header("X-Admin-Token", token))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.schedules").isArray());
+        // 잘못된 기간은 사유와 함께 400
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/internal/admin/jobs").header("X-Admin-Token", token)
+                        .contentType("application/json").content("{\"kind\":\"SCORES\",\"startDate\":\"2016-01-01\",\"endDate\":\"2016-01-02\",\"requestedBy\":\"운영자\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").exists());
+        // 정상 요청은 작업을 접수하고 요청자를 이력에 남긴다.
+        String body = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/internal/admin/jobs").header("X-Admin-Token", token)
+                        .contentType("application/json").content("{\"kind\":\"SCORES\",\"startDate\":\"2018-05-01\",\"endDate\":\"2018-05-02\",\"requestedBy\":\"운영자\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String id = body.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+        await().atMost(Duration.ofSeconds(10)).until(() -> !repository.find(id).orElseThrow().isActive());
+        assertEquals("운영자", repository.find(id).orElseThrow().requestedBy());
+        // 자동 일정 저장도 같은 검증(재조회 일수 상한)을 거친다.
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/internal/admin/schedules/SCORES").header("X-Admin-Token", token)
+                        .contentType("application/json").content("{\"enabled\":false,\"cron\":\"0 15 3 * * *\",\"lookbackDays\":3000}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
     }
 
     @Test void redirectsStayRelativeBehindTheHttpsProxy() throws Exception {

@@ -25,6 +25,7 @@ allowed_readmes = {
     'toadyReactWeb/README.md',
     'toadyWebApi/README.md',
     'toadyScheduler/README.md',
+    'toadyAdmin/README.md',
 }
 local_notes = {'docs/REFACTORING.md', 'docs/REPOSITORY.md'}
 # Only recognizable credential formats; never print their values.
@@ -53,7 +54,7 @@ for relative in sorted(set(filter(None, paths))):
     if excluded_directories.intersection(parts):
         reasons.append('local files or generated output')
     # Source packages named build/bin/out are valid; root app output is not.
-    if len(parts) >= 2 and parts[0] in {'toadyWebApi', 'toadyScheduler', 'toadyReactWeb'} and parts[1] in {'build', 'bin', 'out'}:
+    if len(parts) >= 2 and parts[0] in {'toadyWebApi', 'toadyScheduler', 'toadyReactWeb', 'toadyAdmin'} and parts[1] in {'build', 'bin', 'out'}:
         reasons.append('application build output')
     if file.suffix in credential_suffixes or name.endswith(('.sql.gz', '.sql.zip', '.dump', '.hprof', '.log')):
         reasons.append('credential, backup or runtime artifact')

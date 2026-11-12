@@ -29,13 +29,33 @@ if [ "$ready" != true ]; then
   exit 1
 fi
 
+# 관리자 사이트는 설정 파일을 채운 서버에서만 띄우므로 그때만 확인한다(배포 스크립트와 같은 기준).
+admin_enabled=false
+if [ -s toadyAdmin/.env.prod ]; then
+  admin_enabled=true
+  ready=false
+  for attempt in $(seq 1 30); do
+    if curl --fail --silent --max-time 3 http://127.0.0.1:8083/internal/health >/dev/null; then
+      ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$ready" != true ]; then
+    echo 'Admin site readiness check failed' >&2
+    exit 1
+  fi
+fi
+
 # nginx:alpine supplies wget; check the frontend from its own container.
 if ! docker exec toadyReactWeb wget -q -T 5 -O /dev/null http://127.0.0.1/; then
   echo 'Frontend check failed: toadyReactWeb did not serve /' >&2
   exit 1
 fi
 # 준비 상태 확인 이후에도 종료·재시작된 컨테이너가 없는지 확인한다.
-for service in toadyWebApi toadyReactWeb toadyScheduler; do
+services="toadyWebApi toadyReactWeb toadyScheduler"
+[ "$admin_enabled" != true ] || services="$services toadyAdmin"
+for service in $services; do
   running=$(docker inspect --format '{{.State.Running}}' "$service" 2>/dev/null || echo missing)
   restarting=$(docker inspect --format '{{.State.Restarting}}' "$service" 2>/dev/null || echo missing)
   if [ "$running" != true ] || [ "$restarting" != false ]; then

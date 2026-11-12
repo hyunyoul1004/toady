@@ -16,7 +16,7 @@ def server_script():
 
 
 class DeployWorkflowTest(unittest.TestCase):
-    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config=''):
+    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config='', admin_env=None):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             work = home / 'toady'
@@ -41,6 +41,9 @@ class DeployWorkflowTest(unittest.TestCase):
             (work / '.incoming' / 'scripts' / 'check-deployment.sh').write_text(check)
             if previous_tag:
                 (work / '.deployed-image-tag').write_text(previous_tag + '\n')
+            if admin_env is not None:
+                (work / 'toadyAdmin').mkdir()
+                (work / 'toadyAdmin' / '.env.prod').write_text(admin_env)
             if env_text is not None:
                 (work / '.env').write_text(env_text)
                 (work / '.env').chmod(0o640)
@@ -64,8 +67,17 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertEqual('new\n', tag)
         self.assertEqual('OTHER=1\nIMAGE_TAG=new\n', env)
         self.assertEqual('0o640', mode)
-        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts'], files)
+        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts', 'toadyAdmin'], files)
         self.assertEqual('new compose\n', self.compose)
+
+    def test_admin_site_joins_the_deploy_only_after_its_env_file_is_filled(self):
+        # 설정 파일이 없으면 빈 파일만 만들어 compose 검사를 통과시키고, 관리자 컨테이너는 띄우지 않는다.
+        result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn('toadyAdmin', calls)
+        result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', admin_env='ADMIN_PASSWORD=x\n')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('up -d --no-deps toadyWebApi toadyScheduler toadyReactWeb toadyAdmin', calls)
 
     def test_up_failure_rolls_back_to_previous_tag(self):
         result, calls, tag, env, _, _ = self.run_deploy(fail_up_for='new', env_text='IMAGE_TAG=old\n')

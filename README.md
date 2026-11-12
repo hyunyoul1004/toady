@@ -90,7 +90,11 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 구현: [메인 화면](toadyReactWeb/src/views/main/Main.jsx) · [공고 Query 훅](toadyReactWeb/src/features/announcement/hooks/useAnnouncements.js) · [조회 진입점](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementService.java)
 
-## 수집 관리자
+## 관리자 사이트 (`toadyAdmin`)
+
+Kotlin·Spring Boot·Thymeleaf로 만든 별도 관리자 앱입니다. 서비스 지표(주간 방문·재방문·활성 탐색자·유입 경로), 회원 조회·잠금, 공고 댓글 숨김·복구, 공고 수집·주변 시세 비교·웹 푸시 상태, 수집 실행·자동 일정을 한곳에서 관리합니다. 수집 실행기는 스케줄러 프로세스에 있으므로 실행·중지·일정 변경은 토큰으로 보호한 스케줄러 내부 API(`/internal/admin`)로 요청합니다. 설정·배포 순서는 [관리자 사이트 안내](toadyAdmin/README.md)를 참고하세요.
+
+### 이전 수집 관리자 (전환 기간)
 
 `toadyScheduler`에 Thymeleaf 관리자 화면을 제공합니다. 공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 관리자 화면에서 모집공고일을 지정해 복원할 수 있습니다.
 
@@ -135,13 +139,14 @@ H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 
 ├── toadyReactWeb/           # React 화면 · API 클라이언트 · 서버 상태 관리
 ├── toadyWebApi/             # 공고 조회 · 인증 · 댓글 REST API
 ├── toadyScheduler/          # 청약홈 데이터 수집 · 저장
+├── toadyAdmin/              # 관리자 사이트(Kotlin) · 지표 · 회원 · 댓글 · 수집 제어
 ├── scripts/                # 배포 후 상태 확인
 ├── .github/workflows/      # 검증 및 배포 파이프라인
 ├── docker-compose.yml      # 운영 앱 · DB · Nginx · Certbot 구성
 └── database.sql            # 공유 DB 테이블 생성·수동 변경 참고 SQL
 ```
 
-[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md)
+[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md) · [관리자 사이트](toadyAdmin/README.md)
 
 ## 로컬에서 확인하기
 
@@ -151,6 +156,7 @@ H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 
 # 저장소 루트에서 실행
 (cd toadyWebApi && bash ./gradlew test)
 (cd toadyScheduler && bash ./gradlew test)
+(cd toadyAdmin && bash ./gradlew test)
 (cd toadyReactWeb && npm ci && npm test && npm run build)
 ```
 
