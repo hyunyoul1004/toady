@@ -29,9 +29,19 @@ if [[ ! -f .env.local ]]; then
 	exit 1
 fi
 
-set -a
-source .env.local
-set +a
+# 값을 셸 명령으로 실행(source)하지 않고 글자 그대로 읽는다. DB_URL의 '&'(접속 옵션 구분자)나 비밀번호의 '#'·'!'가
+# 셸 문법으로 해석되면 값이 잘리거나 비기 때문이다. 빈 줄·# 주석은 건너뛰고, 값 양끝의 따옴표 한 쌍은 벗긴다.
+while IFS= read -r line || [[ -n "$line" ]]; do
+	line="${line%$'\r'}"
+	[[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+	key="${line%%=*}"
+	value="${line#*=}"
+	[[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+	if [[ ${#value} -ge 2 && ( ( "${value:0:1}" == '"' && "${value: -1}" == '"' ) || ( "${value:0:1}" == "'" && "${value: -1}" == "'" ) ) ]]; then
+		value="${value:1:${#value}-2}"
+	fi
+	export "$key=$value"
+done < .env.local
 
 if (($# == 0)); then
 	exec ./gradlew bootRun

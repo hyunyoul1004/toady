@@ -1,6 +1,9 @@
 spring:
   application:
     name: toady-admin
+  config:
+    # IntelliJ 등에서 바로 실행해도 로컬 설정을 읽는다(API의 .env와 같은 방식). 운영 컨테이너에는 이 파일이 없고 환경변수를 쓴다.
+    import: optional:file:.env.local[.properties]
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
