@@ -16,11 +16,23 @@ import java.time.LocalDateTime
 class OperationsService(private val jdbc: JdbcTemplate) {
 	/** 공고 유형별 저장 건수와 마지막으로 새 행이 생긴 시각(REG_DT는 기존 행을 갱신해도 바뀌지 않는다). */
 	data class Collection(val label: String, val total: Long?, val lastInserted: LocalDateTime?)
-	/** 수집 작업 종류별 마지막 실행 결과. 수집이 멈췄는지는 이 이력으로 판단한다. */
-	data class LastRun(val kind: String, val status: String?, val finishedAt: LocalDateTime?, val lastSuccess: LocalDateTime?) {
+	/**
+	 * 수집 작업 종류별 마지막 실행 결과. 수집이 멈췄는지는 이 이력으로 판단한다.
+	 * 마지막 실행이 실패·중단이면 이후 성공 여부와 관계없이 확인이 필요하고, 자동 실행 작업이 30시간 넘게 성공하지 못했으면 멈춘 것으로 본다.
+	 */
+	data class LastRun(val kind: String, val status: String?, val finishedAt: LocalDateTime?, val lastSuccess: LocalDateTime?,
+	                   val jobId: String? = null, val source: String? = null, val message: String? = null) {
 		val kindLabel get() = com.toady.admin.jobs.JobKind.label(kind)
-		/** 마지막 성공이 30시간보다 오래됐으면(매일 자동 수집 기준) 확인이 필요하다. */
-		val stale get() = lastSuccess == null || lastSuccess.isBefore(Kst.now().minusHours(30))
+		val sourceLabel get() = when (source) { "SCHEDULE" -> "자동"; "MANUAL" -> "수동"; else -> source ?: "" }
+		val health get() = when {
+			status == "FAILED" -> "FAILED"
+			status == "INTERRUPTED" || status == "CANCELLED" -> "INTERRUPTED"
+			status in listOf("QUEUED", "RUNNING", "WAITING") -> "RUNNING"
+			source == "SCHEDULE" && (lastSuccess == null || lastSuccess.isBefore(Kst.now().minusHours(30))) -> "STALE"
+			else -> "OK"
+		}
+		val healthLabel get() = when (health) { "FAILED" -> "실패 · 확인 필요"; "INTERRUPTED" -> "중단됨"; "RUNNING" -> "실행 중"; "STALE" -> "30시간 넘게 성공 없음"; else -> "정상" }
+		val stale get() = health == "FAILED" || health == "STALE"
 	}
 	data class GapStatus(val status: String, val count: Long, val latest: LocalDateTime?) {
 		val label get() = when (status) {
@@ -34,14 +46,18 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 	fun report(): Report = Report(runs(), collections(), gaps(), recentGaps(), push())
 
 	private fun runs(): List<LastRun>? = try {
-		jdbc.query("""
-			SELECT J.JOB_KIND,
-			  (SELECT X.STATUS FROM TB_SCHEDULER_ADMIN_JOB X WHERE X.JOB_KIND=J.JOB_KIND ORDER BY X.CREATED_AT DESC LIMIT 1) AS LAST_STATUS,
-			  MAX(J.FINISHED_AT) AS LAST_FINISHED,
-			  MAX(CASE WHEN J.STATUS='SUCCEEDED' THEN J.FINISHED_AT END) AS LAST_SUCCESS
-			FROM TB_SCHEDULER_ADMIN_JOB J GROUP BY J.JOB_KIND ORDER BY J.JOB_KIND""".trimIndent()) { r, _ ->
-			LastRun(r.getString(1), r.getString(2), r.getTimestamp(3)?.toLocalDateTime(), r.getTimestamp(4)?.toLocalDateTime())
-		}
+		val latest = jdbc.query("""
+			SELECT J.JOB_KIND, J.STATUS, J.FINISHED_AT, J.JOB_ID, J.JOB_SOURCE, J.MESSAGE FROM TB_SCHEDULER_ADMIN_JOB J
+			WHERE J.CREATED_AT = (SELECT MAX(X.CREATED_AT) FROM TB_SCHEDULER_ADMIN_JOB X WHERE X.JOB_KIND = J.JOB_KIND)""".trimIndent()) { r, _ ->
+			LastRun(r.getString(1), r.getString(2), r.getTimestamp(3)?.toLocalDateTime(), null, r.getString(4), r.getString(5), r.getString(6))
+		}.associateBy { it.kind }
+		val successes = HashMap<String, LocalDateTime>()
+		jdbc.query("SELECT JOB_KIND, MAX(FINISHED_AT) FROM TB_SCHEDULER_ADMIN_JOB WHERE STATUS='SUCCEEDED' GROUP BY JOB_KIND", RowCallbackHandler { r ->
+			r.getTimestamp(2)?.let { successes[r.getString(1)] = it.toLocalDateTime() }
+		})
+		// 작업 종류 순서(전체 → 공고 → 경쟁률 → 가점)대로 보여 준다.
+		com.toady.admin.jobs.JobKind.entries.mapNotNull { k -> latest[k.name]?.copy(lastSuccess = successes[k.name]) } +
+			latest.values.filter { r -> com.toady.admin.jobs.JobKind.entries.none { it.name == r.kind } }
 	} catch (missing: DataAccessException) { null }
 
 	private fun collections(): List<Collection> = TABLES.map { (label, table) ->

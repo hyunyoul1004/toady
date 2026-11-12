@@ -107,8 +107,12 @@ class AdminSiteTest {
 		jdbc.update("DELETE FROM TB_SCHEDULER_ADMIN_JOB")
 		jdbc.update("INSERT INTO TB_SCHEDULER_ADMIN_JOB (JOB_ID,JOB_KIND,JOB_SOURCE,START_DATE,END_DATE,STATUS,TOTAL_CHUNKS,REQUESTED_BY,MESSAGE,CREATED_AT,FINISHED_AT,HEARTBEAT_AT) VALUES ('j1','ANNOUNCEMENTS','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?),('j2','COMPETITION','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?)",
 			today, today, Kst.now().minusHours(20), Kst.now().minusHours(20), Kst.now(), today, today, Kst.now().minusDays(3), Kst.now().minusDays(3), Kst.now())
+		// 직전 성공이 있어도 마지막 실행이 실패면 사유와 함께 실패로 보여 준다.
+		jdbc.update("INSERT INTO TB_SCHEDULER_ADMIN_JOB (JOB_ID,JOB_KIND,JOB_SOURCE,START_DATE,END_DATE,STATUS,TOTAL_CHUNKS,REQUESTED_BY,MESSAGE,CREATED_AT,FINISHED_AT,HEARTBEAT_AT) VALUES ('j3','SCORES','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?),('j4','SCORES','SCHEDULE',?,?,'FAILED',1,'scheduler','일부 공고만 실패했습니다 TEST-REASON',?,?,?)",
+			today, today, Kst.now().minusHours(10), Kst.now().minusHours(10), Kst.now(), today, today, Kst.now().minusHours(2), Kst.now().minusHours(2), Kst.now())
 		val html = mvc.perform(get("/admin/operations").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
-		assertTrue(html.contains("공고 수집 상태") && html.contains("공고 · 주택형") && html.contains("확인 필요") && html.contains("정상"), html.take(200))
+		assertTrue(html.contains("공고 수집 상태") && html.contains("공고 · 주택형") && html.contains("30시간 넘게 성공 없음") && html.contains("정상"), html.take(200))
+		assertTrue(html.contains("실패 · 확인 필요") && html.contains("TEST-REASON") && html.contains("작업 ID j4"), "마지막 실행 실패는 사유와 작업 ID를 보여 준다")
 		mvc.perform(get("/admin/jobs").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("스케줄러에 연결하지 못했습니다")))
 		mvc.perform(post("/admin/jobs").param("kind", "SCORES").param("startDate", "2020-01-01").param("endDate", "2020-01-02").with(admin).with(csrf()))
 			.andExpect(redirectedUrl("/admin/jobs")).andExpect(flash().attribute("error", "스케줄러에 연결하지 못했습니다. 스케줄러가 실행 중인지 확인하세요."))

@@ -71,3 +71,9 @@ table.metrics td small{display:block;color:var(--green);font-size:10px;font-weig
 
 /* 좁은 표 칸에서도 상태 표시가 글자 단위로 꺾이지 않게 한다. */
 .chip { white-space: nowrap; }
+
+/* 수집 실패 사유와 재실행 바로가기 */
+.run-message { margin: 6px 0 2px; font-size: 12px; line-height: 1.5; color: #8a3b3b; max-width: 420px; word-break: keep-all; overflow-wrap: anywhere; }
+.small-link { display: block; margin-top: 6px; font-size: 12px; font-weight: 700; color: #2f7a5c; text-decoration: none; }
+.small-link:hover { text-decoration: underline; }
+td small.mono { display: block; margin-top: 2px; font-size: 11px; color: #8a948e; }

@@ -5,13 +5,16 @@
 <aside th:replace="~{admin/fragments :: sidebar}"></aside>
 <main class="content">
     <section class="page-heading"><div><p class="eyebrow">OPERATIONS</p><h1>공고 데이터와 알림이<br class="mobile-only"> 잘 돌고 있나요?</h1><p class="muted">수집이 멈췄는지, 주변 시세 비교가 계산되고 있는지, 웹 푸시가 전달되는지 확인합니다.</p></div><span class="timezone">● Asia/Seoul · 한국시간</span></section>
-    <section class="panel"><div class="section-title"><span class="section-number">01</span><div><h2>공고 수집 상태</h2><p>수집 작업별 마지막 실행 결과 · 마지막 성공이 30시간보다 오래되면 확인 필요</p></div></div>
+    <section class="panel"><div class="section-title"><span class="section-number">01</span><div><h2>공고 수집 상태</h2><p>작업별 마지막 실행 결과 · 실패하면 사유를 함께 보여 줌 · 자동 실행 작업이 30시간 넘게 성공하지 못하면 확인 필요</p></div></div>
         <div class="alert notice" th:if="${report.runs == null}">수집 작업 이력(TB_SCHEDULER_ADMIN_JOB)을 읽지 못했습니다. database.sql 1번과 관리자 DB 계정 권한(19번)을 확인하세요.</div>
-        <div class="table-wrap" th:if="${report.runs != null and !#lists.isEmpty(report.runs)}"><table><thead><tr><th>수집 작업</th><th>마지막 결과</th><th>마지막 성공</th><th>상태</th></tr></thead><tbody>
-            <tr th:each="r : ${report.runs}"><td><strong th:text="${r.kindLabel}"></strong></td>
-                <td><span class="badge" th:classappend="${r.status}" th:text="${r.status != null ? r.status : '—'}"></span><small th:if="${r.finishedAt != null}" th:text="${#temporals.format(r.finishedAt, 'yyyy.MM.dd HH:mm')}"></small></td>
+        <div class="table-wrap" th:if="${report.runs != null and !#lists.isEmpty(report.runs)}"><table><thead><tr><th>수집 작업</th><th>마지막 실행</th><th>마지막 성공</th><th>상태</th></tr></thead><tbody>
+            <tr th:each="r : ${report.runs}"><td><strong th:text="${r.kindLabel}"></strong><small th:if="${r.sourceLabel != ''}" th:text="${r.sourceLabel + ' 실행'}"></small></td>
+                <td><span class="badge" th:classappend="${r.status}" th:text="${r.status != null ? r.status : '—'}"></span><small th:if="${r.finishedAt != null}" th:text="${#temporals.format(r.finishedAt, 'yyyy.MM.dd HH:mm')}"></small>
+                    <p class="run-message" th:if="${r.health != 'OK' and r.message != null}" th:text="${r.message}"></p>
+                    <small class="mono" th:if="${r.health == 'FAILED' and r.jobId != null}" th:text="${'작업 ID ' + r.jobId}"></small></td>
                 <td th:text="${r.lastSuccess != null ? #temporals.format(r.lastSuccess, 'yyyy.MM.dd HH:mm') : '—'}"></td>
-                <td><span class="badge" th:classappend="${r.stale} ? 'WAITING' : 'SUCCEEDED'" th:text="${r.stale ? '확인 필요' : '정상'}"></span></td></tr>
+                <td><span class="badge" th:classappend="${r.health == 'FAILED'} ? 'FAILED' : (${r.health == 'OK'} ? 'SUCCEEDED' : 'WAITING')" th:text="${r.healthLabel}"></span>
+                    <a class="small-link" th:if="${r.health == 'FAILED' or r.health == 'INTERRUPTED' or r.health == 'STALE'}" href="/admin/jobs#history">다시 실행 →</a></td></tr>
         </tbody></table></div>
         <div class="table-wrap spaced"><table><thead><tr><th>데이터</th><th>저장 건수</th><th>마지막 새 행</th></tr></thead><tbody>
             <tr th:each="c : ${report.collections}"><td><strong th:text="${c.label}"></strong></td>
