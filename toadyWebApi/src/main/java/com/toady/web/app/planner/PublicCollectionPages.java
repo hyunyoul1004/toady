@@ -77,19 +77,13 @@ public class PublicCollectionPages {
     public ResponseEntity<String> weekly() { return PublicHtml.cached("weekly", this::renderWeekly); }
     private ResponseEntity<String> renderWeekly() {
         LocalDate today = today();
-        Week week = Week.of(today), next = week.next();
-        // 접수 기간이 긴 공고(공공임대 등)도 이번 주에 열려 있으면 넣도록 시작일을 넉넉히 거슬러 올라가 모든 페이지를 읽는다.
-        List<AnnouncementListItem> found = startingBetween(week.monday().minusDays(LOOKBACK_DAYS), next.sunday());
-        var thisWeek = PublicAreaPage.classify(found.stream().filter(item -> {
-            LocalDate start = PlannerSummary.date(nz(item.rceptBgnde())), end = PlannerSummary.date(nz(item.rceptEndde()));
-            return start != null && week.overlaps(start, end);
-        }).toList(), today, Integer.MAX_VALUE);
-        var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today, Integer.MAX_VALUE);
-        List<PublicAreaPage.Item> current = new java.util.ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
-        current.sort(java.util.Comparator.comparing(PublicAreaPage.Item::start));
-        List<Winner> winners = winners(week);
+        Weekly data = weeklyData(today);
+        Week week = data.week(), next = data.next();
+        List<PublicAreaPage.Item> current = data.current();
+        List<Winner> winners = data.winners();
+        List<PublicAreaPage.Item> nextStarts = data.nextWeek();
         String title = "이번 주 청약 일정 (" + week.label() + ") · 접수 " + current.size() + "건 · TOADY";
-        String description = week.label() + " 청약 접수 " + current.size() + "건, 당첨자 발표 " + winners.size() + "건, 다음 주 접수 시작 " + nextWeek.upcoming().size()
+        String description = week.label() + " 청약 접수 " + current.size() + "건, 당첨자 발표 " + winners.size() + "건, 다음 주 접수 시작 " + nextStarts.size()
             + "건 · 아파트·오피스텔·무순위·공공임대 일정을 한 번에 확인하세요.";
         StringBuilder winnerList = new StringBuilder("<section class='card list'><h2>이번 주 당첨자 발표 <span class='muted'>").append(winners.size()).append("건</span></h2>");
         if (winners.isEmpty()) winnerList.append("<p class='empty'>이번 주 발표 예정인 아파트 공고가 없어요.</p>");
@@ -101,14 +95,58 @@ public class PublicCollectionPages {
             + "<section class='card'><span class='chip'>" + esc(week.label()) + "</span><h1>이번 주 청약 일정</h1>"
             + "<p class='muted'>이번 주 접수하는 공고와 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영됩니다.</p>"
             + "<div class='stats'><div><strong>" + current.size() + "</strong><span>이번 주 접수</span></div><div><strong>" + winners.size()
-            + "</strong><span>당첨자 발표</span></div><div><strong>" + nextWeek.upcoming().size() + "</strong><span>다음 주 시작</span></div></div>"
+            + "</strong><span>당첨자 발표</span></div><div><strong>" + nextStarts.size() + "</strong><span>다음 주 시작</span></div></div>"
             + "<a class='cta' data-app href='" + esc(domain + "/?month=" + today.toString().substring(0, 7)) + "'>청약 캘린더에서 보기</a></section>"
             + areas.section("이번 주 접수", current, "이번 주 접수하는 공고가 없어요.")
             + winnerList
-            + areas.section("다음 주 접수 시작 (" + next.label() + ")", nextWeek.upcoming(), "다음 주에 접수를 시작하는 공고가 아직 없어요.")
+            + areas.section("다음 주 접수 시작 (" + next.label() + ")", nextStarts, "다음 주에 접수를 시작하는 공고가 아직 없어요.")
             + PublicHtml.explore(domain, "/weekly")
             + "<small>출처: 청약홈 공개 데이터. 당첨자 발표는 아파트(APT) 공고 기준이며, 일정은 공식 모집공고를 함께 확인해 주세요.</small>";
         return PublicHtml.page(domain, "/weekly", title, description, domain + "/weekly", body);
+    }
+
+    /** 앱 '이번 주 청약' 화면용 목록 한 줄. status: OPEN·UPCOMING·CLOSED. */
+    public record WeeklyItem(String id, String type, String houseNm, String houseKind, String address, String start, String end, String status) {
+        static WeeklyItem of(PublicAreaPage.Item item) {
+            var source = item.source();
+            return new WeeklyItem(item.id(), source.type(), source.houseNm(), source.houseSecdNm(), source.hssplyAdres(),
+                item.start() == null ? null : item.start().toString(), item.end() == null ? null : item.end().toString(), item.status().name());
+        }
+    }
+    public record WeeklyWinner(String id, String houseNm, String address, String date) { }
+    public record WeeklySummary(String monday, String sunday, String nextMonday, String nextSunday, String today,
+                                List<WeeklyItem> current, List<WeeklyWinner> winners, List<WeeklyItem> nextWeek) { }
+    private final com.google.common.cache.Cache<String, WeeklySummary> weeklyCache = com.google.common.cache.CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+
+    /** 앱 안 '이번 주 청약' 화면 데이터. 서버 HTML(/weekly)과 같은 기준이며 10분 캐시한다. */
+    @GetMapping("/api/v1/public/weekly-summary")
+    public ResponseEntity<WeeklySummary> weeklySummary() throws java.util.concurrent.ExecutionException {
+        LocalDate today = today();
+        WeeklySummary body = weeklyCache.get(today.toString(), () -> {
+            Weekly data = weeklyData(today);
+            return new WeeklySummary(data.week().monday().toString(), data.week().sunday().toString(), data.next().monday().toString(), data.next().sunday().toString(), today.toString(),
+                data.current().stream().map(WeeklyItem::of).toList(),
+                data.winners().stream().map(w -> new WeeklyWinner(w.id(), w.houseNm(), w.address(), w.date() == null ? null : w.date().toString())).toList(),
+                data.nextWeek().stream().map(WeeklyItem::of).toList());
+        });
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+    }
+
+    record Weekly(Week week, Week next, List<PublicAreaPage.Item> current, List<Winner> winners, List<PublicAreaPage.Item> nextWeek) { }
+    /** 이번 주 접수(접수 기간이 이번 주와 겹침)·이번 주 APT 발표·다음 주 접수 시작. HTML과 앱 화면이 함께 쓴다. */
+    Weekly weeklyData(LocalDate today) {
+        Week week = Week.of(today), next = week.next();
+        // 접수 기간이 긴 공고(공공임대 등)도 이번 주에 열려 있으면 넣도록 시작일을 넉넉히 거슬러 올라가 모든 페이지를 읽는다.
+        List<AnnouncementListItem> found = startingBetween(week.monday().minusDays(LOOKBACK_DAYS), next.sunday());
+        var thisWeek = PublicAreaPage.classify(found.stream().filter(item -> {
+            LocalDate start = PlannerSummary.date(nz(item.rceptBgnde())), end = PlannerSummary.date(nz(item.rceptEndde()));
+            return start != null && week.overlaps(start, end);
+        }).toList(), today, Integer.MAX_VALUE);
+        var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today, Integer.MAX_VALUE);
+        List<PublicAreaPage.Item> current = new java.util.ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
+        current.sort(java.util.Comparator.comparing(PublicAreaPage.Item::start));
+        return new Weekly(week, next, current, winners(week), nextWeek.upcoming());
     }
 
     static final int LOOKBACK_DAYS = 120, MAX_ITEMS = 1000;

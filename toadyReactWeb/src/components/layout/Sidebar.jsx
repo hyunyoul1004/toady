@@ -50,7 +50,6 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
 
   const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
   function openMore(item) {
-    if (item.external) { window.location.assign(item.path); return; }
     if (item.overlay) {
       // 나의 청약을 한 단계 쌓은 뒤 알림 설정 창을 연다(닫으면 나의 청약에 머문다).
       if (location.pathname !== item.path) navigate(item.path, { replace: mobileOpen });
@@ -153,7 +152,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         <Typography variant="caption" sx={{ px: 1.5, mt: 2, mb: 1, display: 'block', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>더보기</Typography>
         <List disablePadding>
           {MORE_NAV.map(item => {
-            const selected = !item.external && !item.overlay && location.pathname === item.path;
+            const selected = !item.overlay && location.pathname === item.path;
             return <ListItem key={item.key} disablePadding sx={{ mb: 0.25 }}>
               <ListItemButton aria-current={selected ? 'page' : undefined} selected={selected} onClick={() => openMore(item)}
                 sx={{ borderRadius: 1.5, py: 0.75, px: 1.5, bgcolor: selected ? '#eff6ff' : 'transparent', color: selected ? '#2563eb' : '#475569', '&:hover': { bgcolor: selected ? '#eff6ff' : '#f8fafc' } }}>

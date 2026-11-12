@@ -36,9 +36,9 @@ export default function TodaySummary({ todayCount, loading, savedCount, onShowTo
       <button type="button" className="today-tile" onClick={onShowToday} disabled={loading}>
         <span>오늘 접수</span><strong>{value(todayCount, !loading)}<em>건</em></strong><small>접수 중인 공고 보기</small>
       </button>
-      <a className="today-tile" href="/weekly">
+      <Link className="today-tile" to="/this-week">
         <span>이번 주 발표</span><strong>{value(numbers.winners, feedReady)}<em>건</em></strong><small>이번 주 청약 일정</small>
-      </a>
+      </Link>
       <Link className="today-tile is-zupzup" to="/match/zupzup">
         <span>무순위·줍줍</span><strong>{value(numbers.zupzup, feedReady)}<em>건</em></strong><small>{feedReady && numbers.zupzupOpen > 0 ? `접수 중 ${numbers.zupzupOpen}건` : '접수 중·예정'}</small>
       </Link>

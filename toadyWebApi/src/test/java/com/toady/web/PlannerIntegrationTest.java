@@ -218,6 +218,17 @@ class PlannerIntegrationTest {
         com.toady.web.app.planner.PublicPagesCache.clear();
         String many=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
         for(int i=0;i<15;i++) assertTrue(many.contains("/announcements/apt/K"+i+"/N1"),"60일 전에 시작해 이번 주까지 접수하는 공고도 모두 넣는다: K"+i);
+        // 앱 안 '이번 주 청약' 화면은 같은 기준의 JSON을 쓴다.
+        var summary=json.readTree(html(mvc.perform(get("/api/v1/public/weekly-summary")).andExpect(status().isOk())));
+        assertEquals(monday.toString(),summary.path("monday").asText());
+        var ids=new java.util.ArrayList<String>(); summary.path("current").forEach(item->ids.add(item.path("id").asText()));
+        assertTrue(ids.contains("remaining/R1/N1") && ids.contains("apt/K0/N1"),ids.toString());
+        assertEquals("apt/W1/N1",summary.path("winners").get(0).path("id").asText());
+        assertEquals(today.toString(),summary.path("winners").get(0).path("date").asText());
+        var areas=json.readTree(html(mvc.perform(get("/api/v1/public/area-summaries")).andExpect(status().isOk())));
+        assertEquals(com.toady.web.app.planner.LivingAreas.ALL.size(),areas.size());
+        assertEquals("unjeong",areas.get(0).path("slug").asText());
+        assertTrue(areas.get(0).has("open") && areas.get(0).has("upcoming"));
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
         assertTrue(sitemap.contains("/zupzup") && sitemap.contains("/weekly") && sitemap.contains("/score"));
     }

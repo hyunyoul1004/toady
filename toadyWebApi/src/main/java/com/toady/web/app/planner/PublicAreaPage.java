@@ -128,6 +128,20 @@ public class PublicAreaPage {
                 + esc(description) + "</p></section><section class='card list'>" + links + "</section>");
     }
 
+    /** 앱 '생활권별 청약' 화면용: 생활권마다 접수 중·예정 건수와 캘린더에서 열 달. 10분 캐시. */
+    public record AreaSummary(String slug, String label, String description, int open, int upcoming, String month) { }
+    private final com.google.common.cache.Cache<String, List<AreaSummary>> areaSummaryCache = com.google.common.cache.CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+    @GetMapping("/api/v1/public/area-summaries")
+    public ResponseEntity<List<AreaSummary>> areaSummaries() throws java.util.concurrent.ExecutionException {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        List<AreaSummary> body = areaSummaryCache.get(today.toString(), () -> LivingAreas.ALL.stream().map(area -> {
+            Groups groups = groups(area, today);
+            return new AreaSummary(area.slug(), area.label(), area.description(), groups.open().size(), groups.upcoming().size(), groups.month(today));
+        }).toList());
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+    }
+
     @GetMapping(value = "/api/v1/public/areas/{slug}", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> page(@PathVariable String slug) {
         if (LivingAreas.bySlug(slug).isEmpty()) return renderPage(slug);

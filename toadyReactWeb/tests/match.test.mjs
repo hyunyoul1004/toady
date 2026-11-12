@@ -154,9 +154,12 @@ test('FAQ 답 문장: 문단 나누기와 허용된 링크만 변환', async () 
   assert.equal(parts.length, 2);
   assert.deepEqual(parts[0], [{ text: '첫 줄 ' }, { text: '가점 계산기', to: '/score' }, { text: '에서 확인' }]);
   assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr', external: true });
-  // 서버가 만드는 공개 페이지는 앱 라우터가 아닌 일반 링크(같은 창)로 연다(앱 라우터로 열면 홈으로 튕긴다).
-  assert.deepEqual(answerParts('[이번 주 청약](/weekly)')[0][0], { text: '이번 주 청약', href: '/weekly' });
-  assert.deepEqual(answerParts('[생활권](/areas/unjeong)')[0][0], { text: '생활권', href: '/areas/unjeong' });
+  // 검색용 서버 페이지 경로는 같은 내용의 앱 화면으로 연다(사이드바·하단 탭 유지). 그 밖의 서버 경로는 일반 링크.
+  assert.deepEqual(answerParts('[이번 주 청약](/weekly)')[0][0], { text: '이번 주 청약', to: '/this-week' });
+  assert.deepEqual(answerParts('[생활권별](/areas)')[0][0], { text: '생활권별', to: '/living-areas' });
+  assert.deepEqual(answerParts('[운정](/areas/unjeong)')[0][0], { text: '운정', to: '/?area=unjeong' });
+  assert.deepEqual(answerParts('[줍줍](/zupzup)')[0][0], { text: '줍줍', to: '/match/zupzup' });
+  assert.deepEqual(answerParts('[FAQ](/help/faq)')[0][0], { text: 'FAQ', href: '/help/faq' });
   assert.equal(parts[1].some(part => part.href?.startsWith('javascript')), false, '허용하지 않은 주소는 링크로 만들지 않는다');
 });
 
@@ -188,6 +191,9 @@ test('메뉴: 공용 이름·활성 판정·같은 탭 다시 누르기', async 
   const { MAIN_NAV, MORE_NAV, isNavActive, isMoreActive, retapAction } = await import('../src/components/layout/navItems.js');
   assert.deepEqual(MAIN_NAV.map(item => item.label), ['청약 캘린더', '맞춤 청약', '가점 계산기', '나의 청약']);
   assert.deepEqual(MORE_NAV.map(item => item.label), ['이번 주 청약', '생활권별 청약', '자주 묻는 질문', '알림 설정']);
+  assert.deepEqual(MORE_NAV.map(item => item.path), ['/this-week', '/living-areas', '/faq', '/my'], '더보기는 모두 앱 안 화면(서버 HTML로 전환하지 않음)');
+  assert.equal(isMoreActive('/this-week'), true);
+  assert.equal(retapAction('/', { pathname: '/this-week', search: '?subscriptSeq=apt/1/1', state: { weeklyDetail: true } }), 'push');
   assert.equal(isNavActive('/', '/announcements/apt/1/2'), true, '공유 상세 주소는 캘린더 탭');
   assert.equal(isNavActive('/', '/showSubscriptDetail'), true);
   assert.equal(isNavActive('/match', '/match/zupzup'), true);
@@ -207,4 +213,15 @@ test('오늘의 요약 숫자', async () => {
   const ranked = [{ item: { status: 'OPEN' }, result: { best: 'ok' } }, { item: { status: 'UPCOMING' }, result: { best: 'check' } }, { item: { status: 'OPEN' }, result: { best: 'no' } }];
   assert.deepEqual(summaryNumbers({ items, ranked, winners: 4 }), { winners: 4, zupzup: 2, zupzupOpen: 1, possible: 2, possibleOpen: 1 });
   assert.equal(summaryNumbers({ winners: undefined }).winners, 0, '서버가 아직 값을 주지 않으면 0');
+});
+
+test('이번 주 청약 화면: 날짜·유형 이름·정렬', async () => {
+  const { dayLabel, periodLabel, TYPE_NAME, byStatus } = await import('../src/features/explore/exploreRules.js');
+  assert.equal(dayLabel('2026-11-13'), '11.13 (금)');
+  assert.equal(dayLabel(''), '미정');
+  assert.equal(periodLabel('2026-11-16', '2026-11-16'), '11.16 (월)');
+  assert.equal(periodLabel('2026-11-16', '2026-11-18'), '11.16 (월) ~ 11.18 (수)');
+  assert.equal(TYPE_NAME.remaining, '무순위', '달력·공급유형 필터와 같은 이름');
+  assert.deepEqual(byStatus([{ status: 'CLOSED', start: '2026-11-09' }, { status: 'UPCOMING', start: '2026-11-15' }, { status: 'OPEN', start: '2026-11-12' }, { status: 'OPEN', start: '2026-11-10' }]).map(item => item.start),
+    ['2026-11-10', '2026-11-12', '2026-11-15', '2026-11-09']);
 });

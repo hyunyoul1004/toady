@@ -32,7 +32,7 @@ public class PageViewController {
     }
 
     public record PageView(@NotNull UUID eventId, @NotNull UUID visitorId, @NotNull UUID sessionId,
-            @NotNull @Pattern(regexp = "^(/|/my|/score|/match|/match/zupzup|/faq|/announcements|/login|/certify|/showSubscriptDetail)$") String path,
+            @NotNull @Pattern(regexp = "^(/|/my|/score|/match|/match/zupzup|/faq|/this-week|/living-areas|/announcements|/login|/certify|/showSubscriptDetail)$") String path,
             // 세션 첫 조회의 외부 유입 도메인만 받는다. 전체 URL·검색어는 받지 않는다.
             @Pattern(regexp = "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$") @Size(max = 100) String referrerHost) { }
 

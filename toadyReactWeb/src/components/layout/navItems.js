@@ -9,10 +9,13 @@ export const MAIN_NAV = [
   { key: 'my', path: '/my', label: '나의 청약', short: '나의 청약' }
 ];
 
-/** 더보기 묶음. external은 서버가 만드는 공개 페이지라 새로 불러온다. */
+/**
+ * 더보기 묶음. 모두 앱 안 화면이라 사이드바·하단 탭이 그대로 유지된다.
+ * (검색용 서버 페이지 /weekly·/areas·/help/faq는 같은 내용을 따로 둔다.)
+ */
 export const MORE_NAV = [
-  { key: 'weekly', path: '/weekly', label: '이번 주 청약', external: true },
-  { key: 'areas', path: '/areas', label: '생활권별 청약', external: true },
+  { key: 'weekly', path: '/this-week', label: '이번 주 청약' },
+  { key: 'areas', path: '/living-areas', label: '생활권별 청약' },
   { key: 'faq', path: '/faq', label: '자주 묻는 질문' },
   { key: 'push', path: '/my', label: '알림 설정', overlay: 'push-settings' }
 ];
@@ -28,7 +31,7 @@ export function isMoreActive(pathname) {
   return !MAIN_NAV.some(item => isNavActive(item.path, pathname));
 }
 
-const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreDetail'];
+const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreDetail', 'weeklyDetail'];
 /**
  * 지금 보고 있는 탭을 다시 눌렀을 때 할 일.
  * - 'back': 상세·팝업이 히스토리 한 단계로 열려 있으면 닫는다(뒤로가기와 같게).

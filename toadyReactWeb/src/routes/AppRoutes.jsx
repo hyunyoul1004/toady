@@ -8,6 +8,8 @@ import MyPlanner from '@/features/planner/MyPlanner';
 import ScoreCalculator from '@/features/score/ScoreCalculator';
 import MatchPage from '@/features/match/MatchPage';
 import FaqPage from '@/features/faq/FaqPage';
+import ThisWeekPage from '@/features/explore/ThisWeekPage';
+import LivingAreasPage from '@/features/explore/LivingAreasPage';
 import LegalPage from '@/features/legal/LegalPage';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
@@ -42,6 +44,8 @@ export const AppRoutes = () => {
         <Route path="match" element={<MatchPage key="match" tab="match" />} />
         <Route path="match/zupzup" element={<MatchPage key="zupzup" tab="zupzup" />} />
         <Route path="faq" element={<FaqPage />} />
+        <Route path="this-week" element={<ThisWeekPage />} />
+        <Route path="living-areas" element={<LivingAreasPage />} />
         <Route path="privacy" element={<LegalPage kind="privacy" />} />
         <Route path="terms" element={<LegalPage kind="terms" />} />
         <Route path="certify" element={<SignUpCertify />} />
