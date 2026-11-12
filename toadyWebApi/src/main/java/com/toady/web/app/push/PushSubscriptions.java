@@ -68,6 +68,12 @@ public class PushSubscriptions {
     public boolean delete(String endpoint) { return deleteHash(hash(endpoint)); }
     public boolean deleteHash(String hash) { return jdbc.update("DELETE FROM TB_PUSH_SUBSCRIPTION WHERE ENDPOINT_HASH=?", hash) > 0; }
 
+    /** 마지막 전달 성공(없으면 등록)과 마지막 재등록이 모두 기준보다 오래된 구독을 지운다. */
+    int removeStale(LocalDateTime before) {
+        Timestamp at = Timestamp.valueOf(before);
+        return jdbc.update("DELETE FROM TB_PUSH_SUBSCRIPTION WHERE COALESCE(LAST_SUCCESS_DT,REG_DT)<? AND UPDATED_DT<?", at, at);
+    }
+
     /** 오늘 아직 묶음 발송을 시도하지 않은 구독. */
     List<Row> pending(LocalDate today) {
         return jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<? ORDER BY REG_DT", (r, n) -> map(r), java.sql.Date.valueOf(today));

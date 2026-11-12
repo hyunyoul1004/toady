@@ -47,6 +47,7 @@ import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 
 import Chip from '@mui/material/Chip';
+import Collapse from '@mui/material/Collapse';
 
 import CommentIcon from '@mui/icons-material/Comment';
 import Alert from '@mui/material/Alert';
@@ -181,12 +182,25 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   const [modalOpen, setModalOpen] = useState(false);
   const lastViewed = useRef(null);
   const [researchTab,setResearchTab]=useState('info');
+  const routeSeqRef=useRef(null);
   const detailScrollRef=useRef(null);
   // 상세 본문을 내리면 제목·탭만 남기고 상단(유형·주소·저장 버튼)을 접어 본문을 넓게 보여 준다.
   const [headerCompact,setHeaderCompact]=useState(false);
   const [detailTabValue, setDetailTabValue] = useState(0);
   const [selectedSubscriptSeq, setSelectedSubscriptSeq] = useState(null);
   useEffect(()=>{if(detailScrollRef.current) detailScrollRef.current.scrollTop=0; setHeaderCompact(false);},[researchTab,detailTabValue,selectedSubscriptSeq]);
+  const headerChipsRef=useRef(null), headerAddressRef=useRef(null), headerActionsRef=useRef(null);
+  const collapsibleHeightRef=useRef(0);
+  const handleDetailScroll=event=>{
+    const target=event.currentTarget, top=target.scrollTop;
+    setHeaderCompact(previous=>{
+      if(previous) return top>24;
+      // 펼친 상태에서 접힐 영역 높이를 잰다. 접으면 본문이 그만큼 커지므로, 남는 스크롤 여유가 그보다 충분히 클 때만 접어 짧은 본문에서 접힘↔펼침이 반복되지 않게 한다.
+      collapsibleHeightRef.current=[headerChipsRef,headerAddressRef,headerActionsRef].reduce((sum,ref)=>sum+(ref.current?.offsetHeight||0),0);
+      const room=target.scrollHeight-target.clientHeight;
+      return top>120 && room>collapsibleHeightRef.current+80;
+    });
+  };
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [addressCopied, setAddressCopied] = useState(false);
 
@@ -244,7 +258,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
     if (subscriptSeq) {
       setSelectedSubscriptSeq(subscriptSeq);
-      setResearchTab('info');
+      // 탭 전환(setSearchParams)으로 이 효과가 다시 돌 때는 조사 탭을 유지하고, 공고가 바뀔 때만 처음 탭으로 돌린다.
+      if (routeSeqRef.current !== subscriptSeq) setResearchTab('info');
+      routeSeqRef.current = subscriptSeq;
       setModalOpen(true);
 
       const tabMap = { detail: 0, rate: 1, map: 2, comment: 3 };
@@ -252,6 +268,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         setDetailTabValue(tabMap[tabType]);
       }
     } else {
+      routeSeqRef.current = null;
       setModalOpen(false);
     }
   }, [searchParams, route.type, route.house, route.notice]);
@@ -428,7 +445,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {/* 뱃지 영역: 주택유형 */}
-            <Box sx={{ display: headerCompact ? 'none' : 'flex', alignItems: 'center', gap: 0.8, mb: 0.8, flexWrap: 'wrap' }}>
+            {/* 접힐 때도 언마운트하지 않고 숨겨 상태(복사 완료·저장 직후 안내 등)를 유지한다. */}
+            <Collapse in={!headerCompact} ref={headerChipsRef} timeout={150}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mb: 0.8, flexWrap: 'wrap' }}>
               <Chip
                 label={currentSubscriptDetail?.housingDivision || currentSubscriptDetail?.houseSecdNm || '분양공고'}
                 size="small"
@@ -456,6 +475,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
                 />
               )}
             </Box>
+            </Collapse>
 
             {/* 단지명 (SEO 최적화: h1 시맨틱 태그) */}
             <Typography
@@ -478,7 +498,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             </Typography>
 
             {/* 공급위치(주소) 요약 (SEO address 태그) + 주소 복사 버튼 */}
-            {!headerCompact && (currentSubscriptDetail?.hssplyAdres || currentSubscriptDetail?.supplyLocation) && (
+            {(currentSubscriptDetail?.hssplyAdres || currentSubscriptDetail?.supplyLocation) && (
+              <Collapse in={!headerCompact} ref={headerAddressRef} timeout={150}>
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.8, mt: 0.3 }}>
                 <Typography
                   component="address"
@@ -520,6 +541,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
                   {addressCopied ? '복사완료' : '주소 복사'}
                 </Button>
               </Box>
+              </Collapse>
             )}
           </Box>
 
@@ -584,7 +606,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           </Box>
         </Box>
 
-        {!headerCompact && !isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <AnnouncementActions key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail}/>}
+        {!isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <Collapse in={!headerCompact} ref={headerActionsRef} timeout={150}><AnnouncementActions key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail}/></Collapse>}
 
         {/* 상세 정보 탭 내비게이션 */}
         <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 1.5, pb: 1, bgcolor: '#ffffff' }}>
@@ -639,7 +661,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
         {/* 3. 본문 스크롤 영역 */}
         <Box ref={detailScrollRef} data-testid="announcement-scroll"
-          onScroll={event => { const top = event.currentTarget.scrollTop; setHeaderCompact(previous => previous ? top > 24 : top > 120); }}
+          onScroll={handleDetailScroll}
           sx={{
             flex: 1,
             overflowY: 'auto',

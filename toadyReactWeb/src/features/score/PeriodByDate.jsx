@@ -3,7 +3,7 @@ import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import DateDigitsField from './DateDigitsField';
 import AutoFixHighRounded from '@mui/icons-material/AutoFixHighRounded';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { accountFromDate, housingFromDates } from './scoreRules';
+import { accountFromDate, housingFromDates, periodPickUpdate } from './scoreRules';
 
 
 function Choice({ value, onChange, options, label }) {
@@ -16,16 +16,23 @@ function Choice({ value, onChange, options, label }) {
  * 무주택 기간·통장 가입기간을 날짜로 입력하면 구간을 자동으로 고른다.
  * 생년월일 등 입력값은 이 화면에서만 쓰고 저장·전송하지 않는다(저장되는 것은 고른 구간뿐).
  */
-export default function PeriodByDate({ kind, options, value, onPick }) {
+export default function PeriodByDate({ kind, options, value, onPick, active = true }) {
   const today = koreaToday();
   const [form, setForm] = useState({ birth: '', married: false, marriageDate: '', owned: false, soldDate: '', joined: '' });
-  const set = (key, next) => setForm(previous => ({ ...previous, [key]: next }));
+  // 한 번이라도 날짜를 만졌는지. 만진 뒤 입력이 부족해지면(예: 기혼으로 바꾸고 혼인신고일 미입력) 이전 자동 선택을 지운다.
+  const [dirty, setDirty] = useState(false);
+  const set = (key, next) => { setDirty(true); setForm(previous => ({ ...previous, [key]: next })); };
   const result = useMemo(() => kind === 'housing' ? housingFromDates(form, today) : accountFromDate(form.joined, today), [kind, form, today]);
   const touched = kind === 'housing' ? Boolean(form.birth) : Boolean(form.joined);
   // 계산된 구간이 바뀌면 바로 반영한다(같은 값이면 다시 저장하지 않는다).
-  useEffect(() => { if (result.index !== undefined && result.index !== value) onPick(result.index); }, [result.index]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 입력이 부족해지면 null 을 넘겨 점수 계산·저장에서 빠지게 한다. '직접 고르기'에서 돌아오면(active) 날짜 결과를 다시 반영한다.
+  useEffect(() => {
+    if (!active) return;
+    const next = periodPickUpdate(result, value, dirty);
+    if (next !== undefined) onPick(next);
+  }, [result.index, result.error, dirty, active]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div className="score-dates">
+  return <div className="score-dates" hidden={!active}>
     {kind === 'housing' ? <>
       <div className="score-dates-grid">
         <DateDigitsField label="생년월일" value={form.birth} onChange={next => set('birth', next)} max={today} />

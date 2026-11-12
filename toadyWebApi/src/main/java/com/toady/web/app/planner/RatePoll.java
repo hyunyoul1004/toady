@@ -31,6 +31,21 @@ public class RatePoll {
     public RatePoll(JdbcTemplate jdbc, PlannerSummary summaries) { this(jdbc, summaries, Clock.system(ZoneId.of("Asia/Seoul"))); }
     RatePoll(JdbcTemplate jdbc, PlannerSummary summaries, Clock clock) { this.jdbc = jdbc; this.summaries = summaries; this.clock = clock; }
 
+    static final int VOTERS_PER_IP = 3;
+    private final com.google.common.cache.Cache<String, java.util.Set<String>> voters = com.google.common.cache.CacheBuilder.newBuilder()
+            .maximumSize(100_000).expireAfterWrite(java.time.Duration.ofDays(1)).build();
+    boolean voterAllowed(String ipKey, String announcementId, String visitorId) {
+        java.util.Set<String> seen;
+        try { seen = voters.get(ipKey + "|" + announcementId, () -> java.util.concurrent.ConcurrentHashMap.newKeySet()); }
+        catch (java.util.concurrent.ExecutionException impossible) { return true; }
+        synchronized (seen) {
+            if (seen.contains(visitorId)) return true;
+            if (seen.size() >= VOTERS_PER_IP) return false;
+            seen.add(visitorId);
+            return true;
+        }
+    }
+
     public record Vote(@NotNull UUID visitorId, @NotNull @Min(0) @Max(5) Integer choice) { }
 
     static int bucket(double rate) {
@@ -59,8 +74,12 @@ public class RatePoll {
     }
 
     @PostMapping("/api/v1/polls/rate/apt/{house}/{notice}")
-    public ResponseEntity<Map<String, Object>> vote(@PathVariable String house, @PathVariable String notice, @Valid @RequestBody Vote vote) {
+    public ResponseEntity<Map<String, Object>> vote(@PathVariable String house, @PathVariable String notice, @Valid @RequestBody Vote vote,
+                                                    jakarta.servlet.http.HttpServletRequest request) {
         if (!valid(house, notice)) return ResponseEntity.notFound().build();
+        // 방문자 ID는 브라우저가 만들므로, 같은 IP에서 공고 하나에 새 ID로 표를 늘리는 것을 하루 3개까지로 막는다(기존 표 변경은 허용).
+        if (!voterAllowed(com.toady.web.core.security.RequestLimitFilter.limitKey(com.toady.web.core.security.RequestLimitFilter.clientIp(request)), "apt/" + house + "/" + notice, vote.visitorId().toString()))
+            return ResponseEntity.status(429).body(Map.of("message", "이 공고에는 같은 네트워크에서 더 투표할 수 없어요."));
         var found = summary(house, notice);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
         Map<String, Object> current = view(found.get(), house, notice, vote.visitorId());

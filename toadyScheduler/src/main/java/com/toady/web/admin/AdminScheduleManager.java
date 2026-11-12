@@ -41,6 +41,8 @@ public class AdminScheduleManager {
 
     // 다른 작업과 겹쳐 건너뛴 자동 실행을 한 번 더 시도하기까지의 대기 시간.
     private final Duration busyRetryDelay;
+    // 시작 후 이전 프로세스 작업을 다시 정리하는 시점. 정리 기준(생존 신호 주기의 2.5배)보다 조금 뒤로 둔다.
+    static final Duration LEFTOVER_RECHECK_DELAY = AdminJobService.LEFTOVER_STALE_AFTER.plusSeconds(10);
 
     public AdminScheduleManager(JdbcTemplate jdbc, AdminJobService jobs,
             @Value("${applyhome.scheduler.cron:0 15 3 * * *}") String daily,
@@ -59,12 +61,21 @@ public class AdminScheduleManager {
         // 관리자 기능을 명시적으로 켰는데 테이블이 없으면, 자동 수집이 조용히 빠지지 않도록 시작을 실패시킨다.
         jdbc.queryForObject("SELECT COUNT(*) FROM TB_SCHEDULER_ADMIN_JOB", Long.class);
         jobs.interruptLeftovers();
+        // 빠른 재시작이면 이전 프로세스의 마지막 생존 신호가 아직 기준 시간 안이다. 기준이 지난 뒤 한 번 더 정리한다.
+        timer.schedule(this::interruptLeftoversAfterRestart, Instant.now().plus(LEFTOVER_RECHECK_DELAY));
         seed(JobKind.ANNOUNCEMENTS, true, defaultDaily);
         seed(JobKind.COMPETITION, true, defaultCompetition);
         seed(JobKind.SCORES, false, "0 15 6 * * *");
         seed(JobKind.ALL, false, "0 15 1 * * *");
         ready = true;
         refresh();
+    }
+    private void interruptLeftoversAfterRestart() {
+        try {
+            jobs.interruptLeftovers();
+        } catch (RuntimeException exception) {
+            log.warn("Leftover scheduler job cleanup after restart failed: {}", exception.getMessage());
+        }
     }
     /** 환경변수는 최초 등록의 기본값으로만 사용하며, 관리자가 저장한 기존 설정은 덮어쓰지 않는다. */
     private void seed(JobKind kind, boolean enabled, String cron) {
@@ -115,8 +126,8 @@ public class AdminScheduleManager {
             previous = next;
         }
     }
-    /** 설정 변경 반영과 작업 생존 확인을 30초마다 수행한다. 초기 테이블 준비 전에는 실행하지 않는다. */
-    @Scheduled(fixedDelay = 30000)
+    /** 설정 변경 반영과 작업 생존 확인을 생존 신호 주기(30초)마다 수행한다. 초기 테이블 준비 전에는 실행하지 않는다. */
+    @Scheduled(fixedDelay = AdminJobService.HEARTBEAT_INTERVAL_MILLIS)
     public synchronized void refresh() {
         if (!ready) return;
         jobs.maintain();

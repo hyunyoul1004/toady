@@ -16,7 +16,7 @@ services:
 
   toadyWebApi:
     container_name: toadyWebApi
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
     env_file:
       - /home/ec2-user/toady/toadyWebApi/.env.prod
     environment:
@@ -34,13 +34,15 @@ services:
 
   toadyScheduler:
     container_name: toadyScheduler
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-scheduler:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-scheduler:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
     env_file:
       - /home/ec2-user/toady/toadyScheduler/.env.prod
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
       - SERVER_PORT=8082
+      # 운영 관리자 화면은 앞단 nginx의 HTTPS로만 접속하므로 세션 쿠키에 Secure를 붙인다.
+      - SCHEDULER_ADMIN_SECURE_COOKIE=true
     # 종료 시 진행 중인 수집 구간을 중단 상태로 기록할 시간을 준다(앱은 최대 20초 대기).
     stop_grace_period: 30s
     volumes:
@@ -54,7 +56,7 @@ services:
 
   toadyReactWeb:
     container_name: toadyReactWeb
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
     environment:
       - TZ=Asia/Seoul
     restart: always

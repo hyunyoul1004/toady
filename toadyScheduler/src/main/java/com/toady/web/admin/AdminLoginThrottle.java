@@ -24,7 +24,11 @@ public class AdminLoginThrottle {
     // X-Real-IP는 IP 리터럴만 받는다. 호스트 이름을 넘겨 DNS 조회가 일어나지 않게 한다.
     private static final Pattern IP_LITERAL = Pattern.compile("[0-9A-Fa-f:.]{2,45}");
 
-    private record Attempts(int failures, Instant firstFailure, Instant lockedUntil) { }
+    // inFlight는 비밀번호 확인(BCrypt)이 끝나지 않은 시도 수다. 동시에 보낸 요청이 실패 기록 전에 모두 통과하지 못하게 함께 센다.
+    private record Attempts(int failures, Instant firstFailure, Instant lockedUntil, int inFlight) {
+        boolean empty() { return failures == 0 && inFlight == 0; }
+    }
+    private static final Attempts NONE = new Attempts(0, null, null, 0);
     private final Map<String, Attempts> attempts = new ConcurrentHashMap<>();
     private final Clock clock;
 
@@ -36,25 +40,71 @@ public class AdminLoginThrottle {
         return current != null && current.lockedUntil() != null && clock.instant().isBefore(current.lockedUntil());
     }
 
+    /**
+     * 비밀번호 확인 전에 호출한다. 잠겼거나 (기간 안 실패 + 진행 중 시도)가 상한에 닿으면 false를 반환한다.
+     * true를 받은 호출은 반드시 failed·succeeded·abandoned 중 하나로 끝내야 한다.
+     */
+    public boolean tryBegin(String ip) {
+        Instant now = clock.instant();
+        makeRoom(now);
+        boolean[] allowed = {false};
+        attempts.compute(ip, (key, stored) -> {
+            Attempts current = fresh(stored, now);
+            if (current.lockedUntil() != null || current.failures() + current.inFlight() >= MAX_FAILURES) {
+                return current.empty() ? null : current;
+            }
+            allowed[0] = true;
+            return new Attempts(current.failures(), current.firstFailure(), null, current.inFlight() + 1);
+        });
+        return allowed[0];
+    }
+
     /** 실패를 기록한다. 기간 안의 실패가 상한에 닿으면 잠금 시각을 설정한다. */
     public void failed(String ip) {
         Instant now = clock.instant();
-        if (attempts.size() >= MAX_TRACKED) purge(now);
-        if (attempts.size() >= MAX_TRACKED) attempts.clear();
-        attempts.compute(ip, (key, current) -> {
-            if (current == null || expired(current, now)) return new Attempts(1, now, null);
+        makeRoom(now);
+        attempts.compute(ip, (key, stored) -> {
+            Attempts current = fresh(stored, now);
             int failures = current.failures() + 1;
-            return new Attempts(failures, current.firstFailure(), failures >= MAX_FAILURES ? now.plus(LOCK) : null);
+            Instant first = current.failures() == 0 ? now : current.firstFailure();
+            return new Attempts(failures, first, failures >= MAX_FAILURES ? now.plus(LOCK) : null,
+                    Math.max(0, current.inFlight() - 1));
         });
     }
 
-    public void succeeded(String ip) { attempts.remove(ip); }
-
-    private static boolean expired(Attempts value, Instant now) {
-        if (value.lockedUntil() != null) return !now.isBefore(value.lockedUntil());
-        return !now.isBefore(value.firstFailure().plus(WINDOW));
+    /** 성공하면 실패 기록을 지운다. 같은 IP의 다른 진행 중 시도 수는 유지한다. */
+    public void succeeded(String ip) {
+        attempts.computeIfPresent(ip, (key, current) -> {
+            int inFlight = Math.max(0, current.inFlight() - 1);
+            return inFlight == 0 ? null : new Attempts(0, null, null, inFlight);
+        });
     }
-    private void purge(Instant now) { attempts.values().removeIf(value -> expired(value, now)); }
+
+    /** 인증 결과 없이 끝난 시도(예외 등)는 실패로 세지 않고 진행 중 수만 줄인다. */
+    public void abandoned(String ip) {
+        Instant now = clock.instant();
+        attempts.computeIfPresent(ip, (key, stored) -> {
+            Attempts current = fresh(stored, now);
+            Attempts next = new Attempts(current.failures(), current.firstFailure(), current.lockedUntil(),
+                    Math.max(0, current.inFlight() - 1));
+            return next.empty() ? null : next;
+        });
+    }
+
+    // 잠금이 끝났거나 실패 집계 기간이 지났으면 실패 수를 새로 센다. 진행 중 시도 수는 유지한다.
+    private static Attempts fresh(Attempts value, Instant now) {
+        if (value == null) return NONE;
+        boolean reset = value.lockedUntil() != null ? !now.isBefore(value.lockedUntil())
+                : value.firstFailure() != null && !now.isBefore(value.firstFailure().plus(WINDOW));
+        return reset ? new Attempts(0, null, null, value.inFlight()) : value;
+    }
+    private void makeRoom(Instant now) {
+        if (attempts.size() < MAX_TRACKED) return;
+        attempts.replaceAll((key, value) -> fresh(value, now));
+        attempts.values().removeIf(Attempts::empty);
+        // 그래도 넘치면 진행 중이 아닌 기록부터 버린다. 진행 중 수를 잃으면 동시 시도 차단이 약해지기 때문이다.
+        if (attempts.size() >= MAX_TRACKED) attempts.values().removeIf(value -> value.inFlight() == 0);
+    }
 
     /**
      * 실제 접속 IP. 앞단 nginx(같은 서버·도커 네트워크)를 거친 요청에서만 X-Real-IP를 믿는다.

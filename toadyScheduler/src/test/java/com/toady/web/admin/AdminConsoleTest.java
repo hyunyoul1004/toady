@@ -29,11 +29,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** 관리자 DDL을 H2에서 적용하고 인증·화면·실행 이력을 검증한다. 실제 수집 서비스와 외부 API는 호출하지 않는다. */
-@SpringBootTest(properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "applyhome.admin.enabled=true", "applyhome.admin.username=operator",
         "applyhome.admin.password=local-test-password",
         "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-",
-        "applyhome.admin.busy-retry-seconds=1", "data.retention.cron=-",
+        "applyhome.admin.busy-retry-seconds=1", "applyhome.admin.busy-wait-seconds=1", "data.retention.cron=-",
         "spring.datasource.url=jdbc:h2:mem:admin;MODE=MariaDB;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password=",
@@ -49,6 +49,7 @@ class AdminConsoleTest {
     @Autowired AdminJobService jobs;
     @Autowired AdminScheduleManager schedules;
     @Autowired AdminMetrics metrics;
+    @org.springframework.boot.test.web.server.LocalServerPort int port;
     @MockitoBean ApplyhomeSyncService announcements;
     @MockitoBean ApplyhomeCompetitionSyncService competition;
 
@@ -59,7 +60,7 @@ class AdminConsoleTest {
 
     @Test void requiresAuthenticationAndAcceptsConfiguredCredentials() throws Exception {
         mvc.perform(get("/admin")).andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("**/admin/login"));
+                .andExpect(redirectedUrl("/admin/login"));
         mvc.perform(get("/admin/login")).andExpect(status().isOk())
                 .andExpect(content().string(containsString("수집 관리에 로그인")));
         mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
@@ -183,13 +184,58 @@ class AdminConsoleTest {
     }
 
     @Test void marksLeftoverActiveJobsFromAPreviousProcessAsInterruptedOnStartup() {
-        // 생존 신호가 아직 유효해도(10분 미만) 이전 프로세스의 활성 작업이면 새 실행을 막지 않도록 정리한다.
-        repository.insert("leftover", JobKind.ANNOUNCEMENTS, "SCHEDULE", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto", AdminJobService.now());
+        // 생존 신호가 방금 갱신된 작업은 아직 살아 있는 다른 프로세스의 것일 수 있으므로 건드리지 않는다.
+        repository.insert("alive", JobKind.ANNOUNCEMENTS, "MANUAL", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto",
+                AdminJobService.now().minus(AdminJobService.LEFTOVER_STALE_AFTER).plusSeconds(20));
+        assertEquals(0, jobs.interruptLeftovers());
+        assertTrue(repository.find("alive").orElseThrow().isActive());
+        repository.finish("alive", "CANCELLED", "test", AdminJobService.now());
+        assertTrue(AdminScheduleManager.LEFTOVER_RECHECK_DELAY.compareTo(AdminJobService.LEFTOVER_STALE_AFTER) > 0,
+                "시작 직후 재정리는 정리 기준 시간이 지난 뒤에 실행되어야 한다");
+        // 생존 신호가 주기의 2.5배 넘게 끊겼다면(10분 미만이어도) 이전 프로세스의 작업으로 보고 정리한다.
+        repository.insert("leftover", JobKind.ANNOUNCEMENTS, "MANUAL", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto",
+                AdminJobService.now().minus(AdminJobService.LEFTOVER_STALE_AFTER).minusSeconds(5));
         assertEquals(1, jobs.interruptLeftovers());
         assertEquals("INTERRUPTED", repository.find("leftover").orElseThrow().status());
         assertTrue(repository.active().isEmpty());
         String id = jobs.submit(JobKind.ANNOUNCEMENTS, LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2), "operator", "MANUAL");
         await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
+    }
+
+    @Test void retriesOnlyTheBusyCompetitionStepOfAnAllJob() {
+        LocalDate start = LocalDate.of(2020, 1, 1), end = LocalDate.of(2020, 1, 2);
+        doThrow(new com.toady.web.apt.service.ApplyhomeSyncBusyException()).doNothing()
+                .when(competition).synchronize(start, end);
+        String id = jobs.submit(JobKind.ALL, start, end, "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(10)).until(() -> !repository.find(id).orElseThrow().isActive());
+        assertEquals("SUCCEEDED", repository.find(id).orElseThrow().status());
+        // 공고 단계는 이미 끝났으므로 경쟁률 잠금 대기 후 재시도에서 다시 실행하지 않는다.
+        verify(announcements, times(1)).synchronize(start, end);
+        verify(competition, times(2)).synchronize(start, end);
+    }
+
+    @Test void redirectsStayRelativeBehindTheHttpsProxy() throws Exception {
+        var cookies = new java.net.CookieManager();
+        var client = java.net.http.HttpClient.newBuilder().cookieHandler(cookies)
+                .followRedirects(java.net.http.HttpClient.Redirect.NEVER).build();
+        String base = "http://127.0.0.1:" + port;
+        var entry = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/")).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertEquals(302, entry.statusCode());
+        assertEquals("/admin/login", entry.headers().firstValue("Location").orElseThrow());
+        String page = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/login")).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+        var token = java.util.regex.Pattern.compile("name=\"_csrf\"[^>]*value=\"([^\"]+)\"").matcher(page);
+        assertTrue(token.find(), "로그인 폼에 CSRF 토큰이 있어야 한다");
+        String form = "username=operator&password=local-test-password&_csrf="
+                + java.net.URLEncoder.encode(token.group(1), java.nio.charset.StandardCharsets.UTF_8);
+        var login = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/login"))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(form)).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertEquals(302, login.statusCode());
+        // 절대 주소(http://…)면 HTTPS 프록시 뒤에서 브라우저가 http로 이동한다.
+        assertEquals("/admin/", login.headers().firstValue("Location").orElseThrow());
     }
 
     @Test void retriesABusyScheduledRunOnce() throws Exception {
@@ -225,11 +271,14 @@ class AdminConsoleTest {
         jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES ('a','*',?),('a','apt/B/1',?),('a','apt/C/1',?),('a','apt/D/1',?)",
                 com.toady.web.retention.DataRetentionJob.PUSH_AREA_BASELINE, com.toady.web.retention.DataRetentionJob.PUSH_AREA_BASELINE,
                 now.minusDays(400), now.minusDays(10));
+        // 1년 넘게 열려 있지만 최근에도 보인 장기 공고는 마지막 확인 기준이라 남는다(database.sql 15번 LAST_SEEN_DT).
+        jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT,LAST_SEEN_DT) VALUES ('a','apt/E/1',?,?)", now.minusDays(500), now.minusDays(5));
         var job = new com.toady.web.retention.DataRetentionJob(jdbc);
         var result = job.run(now);
-        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L), result);
+        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 2L), result);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class));
-        assertEquals(java.util.List.of("*", "apt/B/1", "apt/D/1"), jdbc.queryForList(
+        // 생활권 기록 시작 표시('*')는 남기고, 1년 넘게 보이지 않은 공고(B: 기준 시각, C: 400일 전)는 지운다.
+        assertEquals(java.util.List.of("*", "apt/D/1", "apt/E/1"), jdbc.queryForList(
                 "SELECT ANNOUNCEMENT_ID FROM TB_PUSH_AREA_SEEN ORDER BY ANNOUNCEMENT_ID", String.class));
     }
 
@@ -247,7 +296,7 @@ class AdminConsoleTest {
 
     @Test void loginRedirectAndBothDashboardPathsWorkWithTheSameSession() throws Exception {
         mvc.perform(get("/admin/")).andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("**/admin/login"));
+                .andExpect(redirectedUrl("/admin/login"));
         var login = mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
                 .andExpect(authenticated().withUsername("operator"))
                 .andExpect(redirectedUrl("/admin/"))

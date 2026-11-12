@@ -46,6 +46,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
     }
 
+    private static final org.springframework.web.util.UrlPathHelper PATHS = new org.springframework.web.util.UrlPathHelper();
     private final List<Rule> rules;
     private final Duration shortWindow;
     private final Clock clock;
@@ -62,7 +63,9 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     }
 
     private Optional<Rule> rule(HttpServletRequest request) {
-        String method = request.getMethod(), path = request.getRequestURI();
+        // 원본 URI가 아니라 Spring이 컨트롤러를 찾을 때 쓰는 디코딩·정규화된 경로로 비교한다.
+        // 예: /webApi/user/reg%55ser 는 컨트롤러에서 /webApi/user/regUser 로 매칭되므로 같은 규칙을 적용해야 한다.
+        String method = request.getMethod(), path = PATHS.getLookupPathForRequest(request);
         return rules.stream().filter(rule -> rule.matches(method, path)).findFirst();
     }
 
@@ -73,7 +76,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         Rule rule = rule(request).orElseThrow();
-        if (!allow(rule, clientIp(request))) {
+        if (!allow(rule, limitKey(clientIp(request)))) {
             tooMany(response, "요청이 너무 많습니다. 10분 뒤에 다시 시도해 주세요.");
             return;
         }
@@ -110,6 +113,21 @@ public class RequestLimitFilter extends OncePerRequestFilter {
         String forwarded = request.getHeader("X-Real-IP");
         if (forwarded != null && !forwarded.isBlank() && fromProxy(remote)) return forwarded.trim();
         return remote;
+    }
+    /**
+     * 제한에 쓰는 주소 키. IPv6는 한 가입자가 /64 대역 안의 주소를 마음대로 바꿀 수 있어 /64 접두사로 묶는다.
+     */
+    public static String limitKey(String ip) {
+        try {
+            InetAddress parsed = InetAddress.getByName(ip);
+            if (parsed instanceof java.net.Inet6Address) {
+                byte[] bytes = parsed.getAddress();
+                StringBuilder prefix = new StringBuilder("v6:");
+                for (int i = 0; i < 8; i += 2) prefix.append(String.format("%02x%02x", bytes[i], bytes[i + 1])).append(i < 6 ? ":" : "");
+                return prefix + "::/64";
+            }
+        } catch (Exception invalid) { /* 주소 형식이 아니면 그대로 쓴다 */ }
+        return ip;
     }
     private static boolean fromProxy(String address) {
         try {

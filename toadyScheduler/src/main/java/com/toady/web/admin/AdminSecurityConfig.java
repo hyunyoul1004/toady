@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -21,6 +22,9 @@ public class AdminSecurityConfig {
     @Bean
     AdminLoginThrottle adminLoginThrottle() { return loginThrottle; }
 
+    // 로그인 필터가 시작한 시도의 IP. 성공·실패 처리기가 꺼내 가면 필터는 따로 정리하지 않는다.
+    private static final String ATTEMPT_ATTRIBUTE = AdminSecurityConfig.class.getName() + ".loginAttempt";
+
     private static OncePerRequestFilter lockedLoginFilter(AdminLoginThrottle throttle) {
         return new OncePerRequestFilter() {
             @Override
@@ -32,13 +36,36 @@ public class AdminSecurityConfig {
             protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
                     jakarta.servlet.http.HttpServletResponse response, jakarta.servlet.FilterChain chain)
                     throws jakarta.servlet.ServletException, java.io.IOException {
-                if (throttle.isLocked(AdminLoginThrottle.clientIp(request))) {
+                String ip = AdminLoginThrottle.clientIp(request);
+                // 잠긴 IP와 동시 시도로 상한을 넘기는 요청은 비밀번호 확인 전에 돌려보낸다.
+                if (!throttle.tryBegin(ip)) {
                     response.sendRedirect(request.getContextPath() + "/admin/login?locked");
                     return;
                 }
-                chain.doFilter(request, response);
+                request.setAttribute(ATTEMPT_ATTRIBUTE, ip);
+                try {
+                    chain.doFilter(request, response);
+                } finally {
+                    // 처리기가 결과를 기록하지 못한 경우(예외 등) 진행 중 시도만 반환한다.
+                    if (request.getAttribute(ATTEMPT_ATTRIBUTE) != null) {
+                        request.removeAttribute(ATTEMPT_ATTRIBUTE);
+                        throttle.abandoned(ip);
+                    }
+                }
             }
         };
+    }
+
+    private static String finishAttempt(jakarta.servlet.http.HttpServletRequest request) {
+        Object ip = request.getAttribute(ATTEMPT_ATTRIBUTE);
+        request.removeAttribute(ATTEMPT_ATTRIBUTE);
+        return ip instanceof String value ? value : AdminLoginThrottle.clientIp(request);
+    }
+
+    private static LoginUrlAuthenticationEntryPoint relativeLoginEntryPoint() {
+        LoginUrlAuthenticationEntryPoint entryPoint = new LoginUrlAuthenticationEntryPoint("/admin/login");
+        entryPoint.setFavorRelativeUris(true);
+        return entryPoint;
     }
 
     /** 기능을 끈 상태에서는 계정을 만들지 않으며, 활성화 시에는 명시적으로 설정한 자격 증명만 허용한다. */
@@ -74,17 +101,19 @@ public class AdminSecurityConfig {
                     .addFilterBefore(lockedLoginFilter(throttle), UsernamePasswordAuthenticationFilter.class)
                     .formLogin(form -> form.loginPage("/admin/login").loginProcessingUrl("/admin/login")
                             .successHandler((request, response, authentication) -> {
-                                throttle.succeeded(AdminLoginThrottle.clientIp(request));
+                                throttle.succeeded(finishAttempt(request));
                                 response.sendRedirect(request.getContextPath() + "/admin/");
                             })
                             .failureHandler((request, response, exception) -> {
-                                String ip = AdminLoginThrottle.clientIp(request);
+                                String ip = finishAttempt(request);
                                 throttle.failed(ip);
                                 response.sendRedirect(request.getContextPath()
                                         + (throttle.isLocked(ip) ? "/admin/login?locked" : "/admin/login?error"));
                             })
                             .permitAll())
-                    .logout(logout -> logout.logoutUrl("/admin/logout").logoutSuccessUrl("/admin/login?logout"));
+                    .logout(logout -> logout.logoutUrl("/admin/logout").logoutSuccessUrl("/admin/login?logout"))
+                    // 앞단 nginx(HTTPS) 뒤에서 http://내부주소 로 보내지 않도록 로그인 이동 주소를 상대 경로로 둔다.
+                    .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(relativeLoginEntryPoint()));
         }
         // 로그인·로그아웃·수집 실행·설정 변경 모두 CSRF 보호를 유지한다. 템플릿의 POST 폼이 토큰을 전달한다.
         return http.build();

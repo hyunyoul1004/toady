@@ -2,7 +2,7 @@
  * @file FindPassword.jsx
  * @description 비밀번호 찾기 및 이메일 인증 기반 재설정 컴포넌트
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -44,6 +44,16 @@ export const FindPassword = (props) => {
   const codeRef = useRef(null);
   const pwRef = useRef(null);
   const pwConfirmRef = useRef(null);
+  const loginTimerRef = useRef(null);
+
+  // 창을 닫거나(뒤로가기 포함) 화면이 사라지면 예약된 로그인 전환을 취소한다.
+  useEffect(() => {
+    if (props.open === false) {
+      clearTimeout(loginTimerRef.current);
+      loginTimerRef.current = null;
+    }
+  }, [props.open]);
+  useEffect(() => () => clearTimeout(loginTimerRef.current), []);
 
   // 1단계: 인증코드 전송 요청
   const handleRequestCertify = async (e) => {
@@ -65,7 +75,7 @@ export const FindPassword = (props) => {
       const res = await authApi.requestPasswordReset({ userEmail });
 
       if (res?.resultCode === 'SUCCESS') {
-        setStatusMessage({ severity: 'success', text: `[${userEmail}]로 인증코드가 발송되었습니다.` });
+        setStatusMessage({ severity: 'success', text: res?.resultMessage || '가입된 이메일이면 인증코드를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요.' });
         setStep('02');
       } else {
         setStatusMessage({ severity: 'error', text: res?.resultMessage || '인증코드 발송에 실패했습니다.' });
@@ -120,9 +130,10 @@ export const FindPassword = (props) => {
 
       if (res?.resultCode === 'SUCCESS') {
         setStatusMessage({ severity: 'success', text: '비밀번호가 성공적으로 변경되었습니다. 변경된 비밀번호로 로그인해 주세요.' });
-        setTimeout(() => {
-          props.handleCloseModal?.();
-          props.handleFindPwModalClose?.();
+        // 안내를 잠시 보여준 뒤 같은 'layout' 레이어를 로그인으로 교체한다(닫기 후 열기는 비동기 이동이 겹쳐 로그인 창이 사라짐).
+        clearTimeout(loginTimerRef.current);
+        loginTimerRef.current = setTimeout(() => {
+          loginTimerRef.current = null;
           props.handleOpenLogin?.();
         }, 1500);
       } else {

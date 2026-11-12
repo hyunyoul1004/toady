@@ -4,7 +4,8 @@
  * - 메일 링크(userEmail, certifyCode)와 가입 비밀번호를 함께 확인한다.
  *   링크만으로 활성화하면 남이 먼저 내 이메일로 가입해 둔 비밀번호가 그대로 활성화될 수 있기 때문이다.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Box, Button, Container, Typography, Alert, AlertTitle, CircularProgress, TextField, InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
@@ -21,6 +22,12 @@ export const SignUpCertify = () => {
   const userEmail = searchParams.get('userEmail');
   const certifyCode = searchParams.get('certifyCode');
   const hasLink = Boolean(userEmail && certifyCode);
+
+  // 인증 링크의 개인정보(이메일·코드)는 대표 주소에 넣지 않고 /certify 로만 둔다. 떠날 때 기본 SEO로 되돌린다.
+  useEffect(() => {
+    updatePageSeo({ title: '이메일 인증 | TOADY', description: '회원가입 이메일 인증을 완료하고 TOADY 청약 정보를 이어서 확인하세요.', path: '/certify' });
+    return () => resetDefaultSeo();
+  }, []);
 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

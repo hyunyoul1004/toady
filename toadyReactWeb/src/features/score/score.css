@@ -107,6 +107,7 @@
 .score-choice .MuiToggleButton-root.Mui-selected,.score-choice .MuiToggleButton-root.Mui-selected:hover{background:#eef4ff !important;border-color:var(--score-blue) !important;color:var(--score-blue) !important}
 .score-mode{margin-bottom:12px}
 .score-dates{background:#f8fafc;border:1px solid #eef2f6;border-radius:14px;padding:14px}
+.score-dates[hidden]{display:none}
 .score-dates-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 12px;align-items:center}
 .score-dates-grid .MuiOutlinedInput-root{background:#fff;border-radius:10px}
 .score-dates-row{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:2px 2px}

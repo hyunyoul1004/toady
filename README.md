@@ -197,21 +197,32 @@ cd ~/toady
 export DOCKER_USERNAME=dukkeoba
 export IMAGE_TAG=배포할_커밋_SHA
 docker-compose -p toady pull toadyWebApi toadyScheduler toadyReactWeb
-docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
+docker-compose -p toady up -d --no-deps toadyWebApi toadyScheduler toadyReactWeb
+docker exec nginx nginx -s reload
 bash scripts/check-deployment.sh
 ```
 
-상태 검사는 API `/internal/health`와 DB 연결, 웹 컨테이너의 정적 페이지 응답, 세 앱 컨테이너의 실행·재시작 상태를 확인합니다. 이어서 API `/internal/schema`가 알려 주는 누락 테이블과, 서버 자신에게 `--resolve`로 접속한 `https://www.toady.co.kr/`(앞단 nginx·인증서 경로) 응답을 확인하며 이 두 가지는 실패해도 경고만 남깁니다(`/internal/schema`가 없는 이전 API 이미지는 건너뜀). 수집 작업의 완료나 외부 DNS는 검증하지 않습니다.
+`docker-compose.yml`은 세 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그가 없으면 `latest`로 넘어가지 않고 바로 실패합니다. compose는 파일 전체를 해석하므로 `mariadb`·`nginx`·`certbot`만 다루는 명령에도 `IMAGE_TAG`가 필요합니다. CI가 첫 배포에 성공하면 `~/toady/.env`에 `IMAGE_TAG=`를 기록하므로 그 뒤로는 별도 지정 없이 실행됩니다. 이 변경 전에 배포된 서버처럼 `.env`에 값이 없으면 한 번만 다음으로 만듭니다.
+
+```bash
+cd ~/toady
+umask 077; touch .env
+grep -q '^IMAGE_TAG=' .env || printf 'IMAGE_TAG=%s\n' "$(tr -d '[:space:]' < .deployed-image-tag)" >> .env
+```
+
+앱 컨테이너를 다시 만들 때는 `--no-deps`를 붙여 compose 설정 변경으로 `mariadb`·`nginx`까지 다시 만들어지지 않게 합니다.
+
+상태 검사는 API `/internal/health`와 DB 연결, 웹 컨테이너의 정적 페이지 응답, 세 앱 컨테이너의 실행·재시작 상태(실패 시 서비스 이름 출력)를 확인합니다. API `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다(`/internal/schema`가 없는 이전 API 이미지는 건너뜀). 이어서 서버 자신에게 `--resolve`로 접속해 앞단 nginx를 거친 `https://www.toady.co.kr/`와 `https://www.toady.co.kr/api/v1/planner/settings`의 HTTP 상태를 확인합니다. 연결 거부·시간 초과·502/503/504는 배포 실패로 보고 롤백하며, DNS·TLS·인증서 오류(curl 종료 코드 6, 35, 51, 60 등)나 예상과 다른 그 밖의 상태는 서버마다 인증서·도메인 구성이 다를 수 있어 경고만 남깁니다(`PUBLIC_HOST`로 도메인 변경 가능). 수집 작업의 완료나 외부 DNS는 검증하지 않습니다.
 
 앞단 nginx는 업스트림 컨테이너 IP를 기억하므로, CI는 앱 컨테이너를 다시 만든 뒤 `docker exec nginx nginx -s reload`를 실행합니다. 수동 배포 후 502가 나면 같은 명령을 실행합니다.
 
 배포 검증은 API와 스케줄러의 `/internal/health` 응답을 기다립니다. 스케줄러는 Spring 초기화·자동 스케줄 등록과 DB 연결이 완료되어야 준비 완료를 반환합니다.
 
-CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 기록하고, 같은 값을 `~/toady/.env`의 `IMAGE_TAG=` 줄에 저장합니다(다른 줄은 유지). 그래서 서버에서 `IMAGE_TAG`를 지정하지 않고 실행하는 `docker-compose` 명령(재시작, certbot 갱신 등)도 `latest`가 아닌 배포된 태그를 씁니다. 배포 확인(`check-deployment.sh`)이 실패하면 CI는 세 앱 컨테이너를 기록된 이전 태그로 다시 올리고 확인을 한 번 더 실행한 뒤 실패로 끝납니다. 이전 기록이 없으면 되돌리지 않고 실패만 알립니다. 이전 커밋 태그를 지정해 수동으로 롤백할 수도 있습니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
+CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 기록하고, 같은 값을 `~/toady/.env`의 `IMAGE_TAG=` 줄에 저장합니다(다른 줄은 유지). 그래서 서버에서 `IMAGE_TAG`를 지정하지 않고 실행하는 `docker-compose` 명령(재시작, certbot 갱신 등)도 `latest`가 아닌 배포된 태그를 씁니다. 이미지 pull, `docker-compose up`, 배포 확인(`check-deployment.sh`) 중 어느 단계가 실패해도 CI는 실패 단계를 출력하고 세 앱 컨테이너를 기록된 이전 태그로 다시 올린 뒤 확인을 한 번 더 실행하고 실패로 끝납니다(롤백 `up` 자체가 실패하면 `ROLLBACK FAILED`를 출력). 성공 기록은 같은 폴더의 임시 파일에 쓴 뒤 `mv`로 교체하며 기존 `.env` 권한을 유지합니다(새로 만들면 600). 이전 기록이 없으면 되돌리지 않고 실패만 알립니다. 이전 커밋 태그를 지정해 수동으로 롤백할 수도 있습니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
 
 ### Nginx 버전과 인증서 갱신
 
-웹 컨테이너(`toadyReactWeb/Dockerfile`), CI의 `nginx -t` 검사, 앞단 `nginx` 서비스는 모두 `nginx:1.27-alpine`을 씁니다. 앞단 nginx의 버전 변경은 CI 배포(앱 3개만 재생성)로는 적용되지 않고, 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d nginx`로 nginx 컨테이너를 다시 만들 때 적용됩니다. 서버의 기존 설정에 있는 `listen 443 ssl http2;`는 1.25 이후 사용 중단 경고가 출력되지만 그대로 동작합니다(나중에 `listen 443 ssl;` + `http2 on;`으로 바꿀 수 있음). 재생성 전에 `docker run --rm -v /usr/local/dockerVolumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro -v /usr/local/dockerVolumes/nginx/conf.d:/etc/nginx/conf.d:ro -v /usr/local/dockerVolumes/certbot/conf:/etc/nginx/ssl:ro nginx:1.27-alpine nginx -t`로 문법을 확인합니다(업스트림 이름을 시작 시 해석하는 설정이면 compose 네트워크 밖에서 실패할 수 있으니, 그 경우 오류 내용만 확인).
+웹 컨테이너(`toadyReactWeb/Dockerfile`), CI의 `nginx -t` 검사, 앞단 `nginx` 서비스는 모두 `nginx:1.27-alpine`을 씁니다. 앞단 nginx의 버전 변경은 CI 배포(앱 3개만 재생성)로는 적용되지 않고, 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d --no-deps nginx`로 nginx 컨테이너를 다시 만들 때 적용됩니다. 서버의 기존 설정에 있는 `listen 443 ssl http2;`는 1.25 이후 사용 중단 경고가 출력되지만 그대로 동작합니다(나중에 `listen 443 ssl;` + `http2 on;`으로 바꿀 수 있음). 재생성 전에 `docker run --rm -v /usr/local/dockerVolumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro -v /usr/local/dockerVolumes/nginx/conf.d:/etc/nginx/conf.d:ro -v /usr/local/dockerVolumes/certbot/conf:/etc/nginx/ssl:ro nginx:1.27-alpine nginx -t`로 문법을 확인합니다(업스트림 이름을 시작 시 해석하는 설정이면 compose 네트워크 밖에서 실패할 수 있으니, 그 경우 오류 내용만 확인).
 
 compose의 certbot은 `--keep-until-expiring`으로 만료가 가까울 때만 다시 발급합니다(이전 `--force-renewal`은 실행할 때마다 재발급해 발급 한도를 소모). 갱신은 서버 cron으로 주 1회 실행합니다.
 
@@ -246,6 +257,7 @@ mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
 | 12 | 경쟁률 예상 투표(`TB_RATE_POLL`) | 없는 테이블만 생성, 미적용 시 투표 카드만 숨김 |
 | 13 | 웹 푸시 구독·생활권 새 공고 판정(`TB_PUSH_SUBSCRIPTION`, `TB_PUSH_AREA_SEEN`) | 없는 테이블만 생성, 미적용 시 알림 켜기 화면만 숨김 |
 | 14 | 유입 경로·푸시 발송 조회 인덱스, 스케줄러 계정의 보관 기간 정리 권한 | 없는 인덱스만 생성(`CREATE INDEX IF NOT EXISTS`, 10번 컬럼 필요), 권한은 참고용 주석이라 관리 계정으로 별도 적용 |
+| 15 | 생활권 새 공고 판정의 마지막 확인 시각(`TB_PUSH_AREA_SEEN.LAST_SEEN_DT`) | 없는 컬럼·인덱스만 추가, 미적용이면 API는 기록을 건너뛰고 스케줄러는 해당 정리를 건너뜀 |
 
 `CREATE TABLE IF NOT EXISTS`는 기존 테이블의 열·인덱스 차이를 보정하지 않습니다. 기존 도시형 PK 변경은 이미 반영한 DB에서 재실행하면 안 되므로 자동 실행문에 포함하지 않습니다. 권한 변경 역시 DB 관리 계정에서 확인 후 적용합니다.
 

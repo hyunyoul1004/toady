@@ -64,7 +64,7 @@ public class UserController {
 
         try {
             Map<String, Object> rtnMap = userService.getUser(param);
-            loginAttempts.succeeded(param.getUserEmail());
+            loginAttempts.succeeded(ip, param.getUserEmail());
             return ResponseEntity.ok().body(ResData.of(rtnMap, ResultCode.LOGIN_SUCCESS.getCode(), ResultCode.LOGIN_SUCCESS.getMessage()));
         } catch (UsernameNotFoundException | BadCredentialsException wrong) {
             // 없는 이메일과 틀린 비밀번호를 같은 응답으로 돌려 가입 여부가 드러나지 않게 한다.

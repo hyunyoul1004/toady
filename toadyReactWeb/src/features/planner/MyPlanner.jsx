@@ -2,6 +2,7 @@ import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { trackAction } from '@/features/analytics/trackAction';
 import { useEffect, useState, useRef } from 'react';
+import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { Main } from '@/views/main/Main';
 import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, Menu, MenuItem, Snackbar,
@@ -31,7 +32,12 @@ export default function MyPlanner() {
   const location=useLocation(),navigate=useNavigate();
   const detailId=searchParams.get('subscriptSeq');
   useDirectDetailHistory(Boolean(detailId), 'plannerDetail', '/my');
-  useEffect(()=>{if(!detailId)document.title='나의 청약 | TOADY';},[detailId]);
+  // 상세가 열려 있으면 Main이 공고 SEO를 맡는다. 화면을 떠나면 기본 SEO로 되돌린다.
+  useEffect(()=>{
+    if(detailId) return undefined;
+    updatePageSeo({title:'나의 청약 | TOADY',description:'관심 공고의 청약 일정·체크리스트를 한곳에서 챙기고 공고끼리 비교하세요. 접수일 알림과 캘린더 연결도 할 수 있어요.',path:'/my'});
+    return ()=>resetDefaultSeo();
+  },[detailId]);
   const closeDetail=()=>{if(location.state?.plannerDetail) navigate(-1);else setSearchParams({}, {replace:true});};
   const [selected,setSelected] = useState([]), [message,setMessage] = useState(null), [busy,setBusy] = useState(false);
   const menuButtonRef=useRef(null);

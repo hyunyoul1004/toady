@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Alert, Button, InputAdornment, MenuItem, Skeleton, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
@@ -30,7 +30,13 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
     try { localStorage.setItem(FILTER_KEY, JSON.stringify(next)); } catch { /* 저장소가 막혀도 이번 화면에서는 동작한다 */ }
   };
   const regions = useQuery({ queryKey: ['scoreRegions'], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/regions'), staleTime: 3600000, retry: 1 });
-  const q = keyword.trim().length >= 2 ? keyword.trim() : '';
+  // 글자를 칠 때마다 요청하지 않도록 입력이 300ms 멈춘 뒤의 검색어만 조회 키에 쓴다.
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [keyword]);
+  const q = debouncedKeyword.length >= 2 ? debouncedKeyword : '';
   const params = { sido: filter.area ? undefined : filter.sido || undefined, district: filter.area ? undefined : filter.district || undefined, area: filter.area || undefined, years: filter.years, sort: filter.sort, q: q || undefined };
   const search = useQuery({ queryKey: ['scoreSearch', params], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/search', params), staleTime: 600000, retry: 1, placeholderData: keepPreviousData });
   const sidoList = Array.isArray(regions.data) ? regions.data : [];

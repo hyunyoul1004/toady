@@ -52,6 +52,7 @@ public class PushDigest {
         this.areas = areas; this.users = users; this.mapper = mapper; this.clock = clock;
     }
 
+    static final int STALE_DAYS = 180;
     public record Report(int sent, int removed, int retry, int empty) { }
     record Seen(AnnouncementListItem item, LocalDateTime firstSeen) {
         String id() { return item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo(); }
@@ -69,6 +70,9 @@ public class PushDigest {
     public Report run() {
         LocalDateTime now = PushSubscriptions.now(clock);
         LocalDate today = now.toLocalDate(), tomorrow = today.plusDays(1);
+        // 오래 쓰지 않은 구독 정리: 6개월 넘게 전달 성공도 없고 브라우저의 재등록(앱 방문 시 범위 저장)도 없는 행.
+        // 보낼 내용이 없던 구독은 푸시 서비스의 404·410 응답을 받을 일이 없어 이렇게 따로 정리한다.
+        store.removeStale(now.minusDays(STALE_DAYS));
         List<PushSubscriptions.Row> pending = store.pending(today);
         if (pending.isEmpty()) return new Report(0, 0, 0, 0);
         Map<String, List<Seen>> news = new HashMap<>();
@@ -93,7 +97,8 @@ public class PushDigest {
                             lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), "새 공고", slug, area.get().label()));
                 }
                 var message = PushMessage.digest(lines);
-                if (message.isEmpty()) { empty++; continue; }
+                // 보낼 내용이 없어도 오늘 확인을 마친 것으로 기록해, 저녁 30분마다 같은 구독을 다시 계산하지 않는다.
+                if (message.isEmpty()) { store.claim(row.hash(), today); empty++; continue; }
                 if (!store.claim(row.hash(), today)) continue;
                 switch (sender.send(row.target(), message.get().json(mapper), "digest")) {
                     case ACCEPTED -> { store.delivered(row.hash(), now, true); sent++; }
@@ -152,6 +157,24 @@ public class PushDigest {
             }
             result.add(new Seen(item, at));
         }
+        markSeen(area.slug(), result.stream().map(Seen::id).toList(), now);
         return result;
+    }
+
+    /** 0이면 아직 확인 전, 1이면 LAST_SEEN_DT 컬럼 있음, -1이면 없음(database.sql 15번 미적용). */
+    private volatile int lastSeenColumn = 0;
+    /**
+     * 지금도 접수 중·예정인 공고의 마지막 확인 시각을 남긴다. 보관 정리는 이 값 기준으로 지워,
+     * 1년 넘게 열려 있는 공고의 최초 확인 기록이 지워졌다가 '새 공고'로 다시 알림되는 일을 막는다.
+     */
+    void markSeen(String slug, List<String> ids, LocalDateTime now) {
+        if (ids.isEmpty() || lastSeenColumn < 0) return;
+        try {
+            for (String id : ids) jdbc.update("UPDATE TB_PUSH_AREA_SEEN SET LAST_SEEN_DT=? WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID=?", Timestamp.valueOf(now), slug, id);
+            lastSeenColumn = 1;
+        } catch (org.springframework.jdbc.BadSqlGrammarException missingColumn) {
+            lastSeenColumn = -1;
+            log.warn("TB_PUSH_AREA_SEEN.LAST_SEEN_DT 컬럼이 없어 마지막 확인 시각을 기록하지 않습니다. database.sql 15번을 적용하세요.");
+        }
     }
 }

@@ -221,7 +221,6 @@ public class CertifyService {
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ResData> findPasswordRequestCertify(CertifyDTO.UserInfo param){
-        Map<String, String> resultMap = new HashMap<>();
         UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
         // 가입 여부·계정 상태·재요청 간격과 상관없이 같은 응답을 돌려 이메일 존재 여부를 알아낼 수 없게 한다.
@@ -266,7 +265,6 @@ public class CertifyService {
                 throw new EmailDeliveryException("비밀번호 재설정 이메일 발송에 실패했습니다.", exception);
             }
 
-            resultMap.put("userEmail", userEntity.getUserEmail());
 
         } catch (Exception e) {
             if (e instanceof EmailDeliveryException delivery) throw delivery;
@@ -274,7 +272,8 @@ public class CertifyService {
         }
 
 
-        return ResponseEntity.ok().body(ResData.of(resultMap,ResultCode.SUCCESS.getCode(), "["+userEntity.getUserEmail()+"]로 인증번호를 전송했습니다.<br/>메일로 전송된 인증번호를 입력해 주세요."));
+        // 실제로 보낸 경우도 없는 계정·재요청 간격과 같은 응답을 돌려 가입 여부가 드러나지 않게 한다.
+        return passwordRequestAccepted();
     }
 
 
@@ -286,8 +285,9 @@ public class CertifyService {
 
         try {
             UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+            // 없는 계정도 '코드가 맞지 않음'과 같은 응답으로 돌려 가입 여부를 숨긴다.
             if(userEntity == null){
-                return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
+                return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
             }
 
             CertifyEntity certifyEntity = findCode("FIND_PW", param.getCertifyCode(), userEntity.getUserSeq());

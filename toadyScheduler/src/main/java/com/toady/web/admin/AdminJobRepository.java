@@ -78,13 +78,13 @@ public class AdminJobRepository {
     public void heartbeat(String id, LocalDateTime now) {
         jdbc.update("UPDATE TB_SCHEDULER_ADMIN_JOB SET HEARTBEAT_AT = ? WHERE JOB_ID = ? AND ACTIVE_SLOT = 1", now, id);
     }
-    /** 이 프로세스가 실행 중인 작업(currentId)을 제외한 활성 작업을 즉시 중단 상태로 정리한다. */
-    public int interruptLeftovers(String currentId, LocalDateTime now) {
+    /** 이 프로세스가 실행 중인 작업(currentId)을 제외하고, 생존 신호가 cutoff 이전에 멈춘 활성 작업을 중단 상태로 정리한다. */
+    public int interruptLeftovers(String currentId, LocalDateTime cutoff, LocalDateTime now) {
         return jdbc.update("""
                 UPDATE TB_SCHEDULER_ADMIN_JOB SET STATUS = 'INTERRUPTED', ACTIVE_SLOT = NULL,
                  MESSAGE = '스케줄러가 재시작되어 작업이 중단되었습니다. 기간을 확인한 뒤 다시 실행하세요.', FINISHED_AT = ?
-                WHERE ACTIVE_SLOT = 1 AND JOB_ID <> ?
-                """, now, currentId == null ? "" : currentId);
+                WHERE ACTIVE_SLOT = 1 AND JOB_ID <> ? AND HEARTBEAT_AT < ?
+                """, now, currentId == null ? "" : currentId, cutoff);
     }
     /** 생존 신호가 오래 끊긴 작업의 슬롯을 반환한다. 과거 데이터 삭제나 작업 자동 재실행은 하지 않는다. */
     public void recoverStale(LocalDateTime cutoff, LocalDateTime now) {

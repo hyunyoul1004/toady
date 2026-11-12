@@ -140,4 +140,11 @@ class PublicPagesUnitTest {
         assertEquals("경기", regions.get(0).get("sido"));
         assertEquals(4L, regions.get(0).get("count"));
     }
+    @Test void ratePollLimitsNewVotersPerNetworkButAllowsChangingAVote() {
+        var poll = new RatePoll(null, null, java.time.Clock.systemUTC());
+        for (int i = 0; i < RatePoll.VOTERS_PER_IP; i++) assertTrue(poll.voterAllowed("ip", "apt/A/1", "v" + i));
+        assertFalse(poll.voterAllowed("ip", "apt/A/1", "new"), "같은 네트워크의 새 방문자 ID는 3개까지");
+        assertTrue(poll.voterAllowed("ip", "apt/A/1", "v0"), "이미 투표한 방문자는 선택을 바꿀 수 있다");
+        assertTrue(poll.voterAllowed("ip", "apt/B/1", "new"), "공고가 다르면 따로 센다");
+    }
 }

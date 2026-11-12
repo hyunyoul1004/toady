@@ -82,7 +82,7 @@ SCHEDULER_ADMIN_SECURE_COOKIE=true
 
 관리자 목록은 `/admin`과 `/admin/` 모두 처리합니다. 로그인 성공·변경 요청 후 이동과 화면 갱신 링크는 `/admin/`로 통일해, 프록시의 끝 슬래시 리다이렉트에 따른 404나 갱신 누락을 방지합니다.
 
-관리자 화면은 `SCHEDULER_ADMIN_ENABLED=true`와 관리자 비밀번호를 설정해야 활성화됩니다. 운영 관리자는 이제 앞단 nginx의 HTTPS `/admin/`으로만 제공하므로 서버 `toadyScheduler/.env.prod`에 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 설정하고 스케줄러 컨테이너를 다시 만드세요. 이 값이 false면 세션 쿠키에 Secure 속성이 빠져 HTTP 요청에도 쿠키가 실릴 수 있습니다(로컬 `http://localhost:8082`에서는 true로 두면 로그인이 유지되지 않으므로 false). 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
+관리자 화면은 `SCHEDULER_ADMIN_ENABLED=true`와 관리자 비밀번호를 설정해야 활성화됩니다. 운영 관리자는 이제 앞단 nginx의 HTTPS `/admin/`으로만 제공하므로 루트 `docker-compose.yml`의 스케줄러 `environment`에 `SCHEDULER_ADMIN_SECURE_COOKIE=true`를 고정했습니다(`env_file`보다 우선). 배포로 스케줄러 컨테이너가 다시 만들어질 때 적용됩니다. 이 값이 false면 세션 쿠키에 Secure 속성이 빠져 HTTP 요청에도 쿠키가 실릴 수 있습니다(로컬 `http://localhost:8082`에서는 true로 두면 로그인이 유지되지 않으므로 false). 로그인·실행·설정 변경·로그아웃에는 CSRF 보호를 적용하며 세션은 30분 동안 유지됩니다.
 
 같은 IP에서 15분 안에 로그인을 5번 실패하면 그 IP는 15분 동안 비밀번호 확인 없이 로그인 화면으로 돌려보내집니다(`/admin/login?locked`). 기록은 스케줄러 메모리에 있어 재시작하면 초기화됩니다. IP는 접속 주소가 루프백·사설망(앞단 nginx 컨테이너)일 때만 `X-Real-IP` 헤더를 사용하므로, 앞단 nginx의 `/admin/` location에 `proxy_set_header X-Real-IP $remote_addr;`가 있어야 사용자별로 구분됩니다. 없으면 모든 접속이 nginx 주소 하나로 집계되어 다른 사람의 실패로 관리자도 함께 잠길 수 있습니다.
 

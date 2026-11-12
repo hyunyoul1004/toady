@@ -45,9 +45,14 @@ export default function ScoreCalculator() {
   }, [detailId]);
 
   const change = (key, value) => {
-    const next = { ...draft, [key]: value };
+    const next = { ...draft };
+    // null/undefined 는 그 항목을 비운다(날짜 입력이 부족해진 경우). 항목이 비면 점수를 계산·저장하지 않는다.
+    if (value === null || value === undefined) delete next[key]; else next[key] = value;
     setDraft(next);
     if (normalizeSelection(next)) { const first = !saved.selection; saveMyScore(next); if (first) trackAction('score_save', 'tool/score'); }
+    // 날짜 입력이 부족해져 항목이 비면 예전에 계산된 점수도 지운다. 공고 상세의 '내 가점 비교'가 잘못된 점수로 보이지 않게 하기 위해서다.
+    // 공유받은 점수를 보는 중에는 내 저장값을 건드리지 않는다.
+    else if ((value === null || value === undefined) && saved.selection && !showingShared) clearMyScore();
   };
   const clearShared = () => { if (searchParams.has('h')) { const next = new URLSearchParams(searchParams); ['h', 'd', 'a'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); } };
   // 공유 점수를 보는 중이면 내 저장값은 지우지 않고 내 점수로 돌아간다.
@@ -97,8 +102,9 @@ export default function ScoreCalculator() {
                 <ToggleButtonGroup exclusive size="small" value={modes[part.key]} onChange={(_, mode) => mode && setModes(previous => ({ ...previous, [part.key]: mode }))} className="score-choice score-mode" aria-label={`${part.title} 입력 방식`}>
                   <ToggleButton value="dates">날짜로 계산</ToggleButton><ToggleButton value="select">직접 고르기</ToggleButton>
                 </ToggleButtonGroup>
-                {modes[part.key] === 'dates' ? <PeriodByDate key={`${part.key}-${resetKey}`} kind={part.key} options={part.options} value={value} onPick={index => change(part.key, index)} />
-                : <TextField select fullWidth size="small" value={value ?? ''} onChange={event => change(part.key, Number(event.target.value))} inputProps={{ 'aria-labelledby': `score-${part.key}` }}
+                {/* '직접 고르기'로 바꿔도 날짜 입력값을 잃지 않도록 날짜 입력은 숨기기만 한다. */}
+                <PeriodByDate key={`${part.key}-${resetKey}`} kind={part.key} options={part.options} value={value} active={modes[part.key] === 'dates'} onPick={index => change(part.key, index)} />
+                {modes[part.key] === 'select' && <TextField select fullWidth size="small" value={value ?? ''} onChange={event => change(part.key, Number(event.target.value))} inputProps={{ 'aria-labelledby': `score-${part.key}` }}
                   SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { sx: { maxHeight: 360 } } } }}>
                   <MenuItem value="" disabled>기간을 선택해 주세요</MenuItem>
                   {part.options.map((option, optionIndex) => <MenuItem key={option.label} value={optionIndex}><span className="score-option">{option.label}{option.hint && <small>{option.hint}</small>}</span><span className="score-option-points">{option.points}점</span></MenuItem>)}

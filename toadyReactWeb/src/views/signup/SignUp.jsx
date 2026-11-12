@@ -163,8 +163,8 @@ export const SignUp = (props) => {
           fullWidth
           variant="contained"
           onClick={() => {
-            props.handleCloseModal?.();
-            props.handleSignUpModalClose?.();
+            // 같은 'layout' 레이어를 signup → login 으로 교체한다. 닫기(navigate(-1))를 먼저 부르면
+            // 비동기 history 이동이 교체된 로그인 레이어까지 지워 로그인 창이 뜨지 않는다.
             props.handleOpenLogin?.();
           }}
           sx={{

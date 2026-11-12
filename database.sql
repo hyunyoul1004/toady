@@ -395,3 +395,9 @@ CREATE INDEX IF NOT EXISTS IX_PUSH_LAST_ATTEMPT ON TB_PUSH_SUBSCRIPTION (LAST_AT
 -- GRANT SELECT, DELETE ON toady.TB_REMINDER_DELIVERY TO 'toady_sources'@'%';
 -- GRANT SELECT, DELETE ON toady.TB_PUSH_AREA_SEEN TO 'toady_sources'@'%';
 -- 권한 확인: SHOW GRANTS FOR 'toady_sources'@'%';
+
+-- 15. 생활권 새 공고 판정의 마지막 확인 시각 (API·스케줄러 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- 웹 푸시 묶음 발송이 생활권의 접수 중·예정 공고를 볼 때마다 갱신한다. 보관 정리는 이 값이 1년 지난 행만 지워,
+-- 1년 넘게 열려 있는 공고가 '새 공고'로 다시 알림되지 않게 한다. 미적용이면 API는 기록을 건너뛰고 스케줄러는 이 테이블 정리를 건너뛴다.
+ALTER TABLE TB_PUSH_AREA_SEEN ADD COLUMN IF NOT EXISTS LAST_SEEN_DT DATETIME(6) NULL COMMENT '한국시간 마지막 확인 시각';
+CREATE INDEX IF NOT EXISTS IX_PUSH_AREA_LAST_SEEN ON TB_PUSH_AREA_SEEN (LAST_SEEN_DT);

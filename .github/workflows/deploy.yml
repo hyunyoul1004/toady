@@ -141,32 +141,55 @@ jobs:
             cd ~/toady
             export DOCKER_USERNAME IMAGE_TAG
             NEW_TAG="$IMAGE_TAG"
+            APPS="toadyWebApi toadyScheduler toadyReactWeb"
             # 마지막으로 검증에 성공한 태그. 새 이미지가 확인을 통과하지 못하면 이 태그로 되돌린다.
             PREVIOUS_TAG=""
             if [ -f .deployed-image-tag ]; then PREVIOUS_TAG=$(tr -d '[:space:]' < .deployed-image-tag); fi
-            docker-compose -p toady pull toadyWebApi toadyScheduler toadyReactWeb
-            docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
-            # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
-            docker exec nginx nginx -s reload || true
-            if ! bash scripts/check-deployment.sh; then
+            # 앱 컨테이너만 바꾼다. --no-deps로 compose 설정이 바뀌어도 mariadb·nginx를 다시 만들지 않는다.
+            start_apps() {
+              # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
+              docker-compose -p toady up -d --no-deps $APPS && { docker exec nginx nginx -s reload || true; }
+            }
+            # set -e는 if 조건 안에서 꺼지므로 pull·up·확인 중 어느 단계가 실패해도 같은 롤백 경로로 들어온다.
+            deploy_failed=""
+            if ! docker-compose -p toady pull $APPS; then
+              deploy_failed="image pull failed"
+            elif ! start_apps; then
+              deploy_failed="docker-compose up failed"
+            elif ! bash scripts/check-deployment.sh; then
+              deploy_failed="deployment checks failed"
+            fi
+            if [ -n "$deploy_failed" ]; then
               if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$NEW_TAG" ]; then
-                echo "DEPLOY FAILED: $NEW_TAG did not pass checks. Rolling back app containers to $PREVIOUS_TAG." >&2
+                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed). Rolling back app containers to $PREVIOUS_TAG." >&2
                 export IMAGE_TAG="$PREVIOUS_TAG"
-                docker-compose -p toady up -d toadyWebApi toadyScheduler toadyReactWeb
-                docker exec nginx nginx -s reload || true
-                if bash scripts/check-deployment.sh; then
+                if ! start_apps; then
+                  echo "ROLLBACK FAILED: docker-compose up for $PREVIOUS_TAG failed. Inspect the server manually." >&2
+                elif bash scripts/check-deployment.sh; then
                   echo "ROLLBACK OK: app containers are running $PREVIOUS_TAG. DB changes are not rolled back." >&2
                 else
                   echo "ROLLBACK CHECK FAILED: $PREVIOUS_TAG also failed checks. Inspect the server manually." >&2
                 fi
               else
-                echo "DEPLOY FAILED: $NEW_TAG did not pass checks and no previous successful tag is recorded. Not rolled back." >&2
+                echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed) and no previous successful tag is recorded. Not rolled back." >&2
               fi
               exit 1
             fi
-            printf '%s\n' "$NEW_TAG" > .deployed-image-tag
+            # 성공 기록: 태그 파일과 .env의 IMAGE_TAG를 같은 태그로 맞춘다.
             # 서버에서 직접 docker-compose를 실행해도(예: certbot 갱신, 재시작) 배포한 태그를 쓰도록 .env의 IMAGE_TAG 줄만 바꾼다.
-            touch .env
-            { grep -v '^IMAGE_TAG=' .env || true; printf 'IMAGE_TAG=%s\n' "$NEW_TAG"; } > .env.next
-            cat .env.next > .env
-            rm -f .env.next
+            # 같은 폴더의 임시 파일에 쓰고 mv로 교체해 중간 상태가 남지 않게 하고, 기존 .env 권한을 유지한다.
+            umask 077
+            tag_tmp=$(mktemp .deployed-image-tag.XXXXXX)
+            env_tmp=$(mktemp .env.XXXXXX)
+            trap 'rm -f "$tag_tmp" "$env_tmp"' EXIT
+            # cp -p로 기존 권한을 먼저 옮긴 뒤 내용을 덮어쓴다(리다이렉션은 권한을 바꾸지 않는다).
+            [ ! -f .deployed-image-tag ] || cp -p .deployed-image-tag "$tag_tmp"
+            printf '%s\n' "$NEW_TAG" > "$tag_tmp"
+            if [ -f .env ]; then
+              cp -p .env "$env_tmp"
+              { grep -v '^IMAGE_TAG=' .env || true; } > "$env_tmp"
+            fi
+            printf 'IMAGE_TAG=%s\n' "$NEW_TAG" >> "$env_tmp"
+            mv -f "$env_tmp" .env
+            mv -f "$tag_tmp" .deployed-image-tag
+            echo "DEPLOY OK: $NEW_TAG recorded in .deployed-image-tag and .env"

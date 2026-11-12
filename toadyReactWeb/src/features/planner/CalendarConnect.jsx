@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogContent, DialogTitle, IconButton, useMediaQuery } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
@@ -39,6 +39,8 @@ export default function CalendarConnect({ open, onClose, loggedIn, summaries, on
     catch { setError('주소를 복사하지 못했어요. 아래 주소를 길게 눌러 복사해 주세요.'); }
   }
   const close = () => { if (busy) return; setConfirm(null); setNotice(null); setError(null); onClose(); };
+  // 뒤로가기로 닫힌 경우 close()를 거치지 않으므로, 다시 열릴 때 지난 확인창·안내를 비운다.
+  useEffect(() => { if (open) { setConfirm(null); setNotice(null); setError(null); } }, [open]);
 
   let body;
   if (!loggedIn) body = <>

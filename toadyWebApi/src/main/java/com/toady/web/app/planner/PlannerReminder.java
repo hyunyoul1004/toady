@@ -22,12 +22,15 @@ public class PlannerReminder {
     private final EmailUtilService mail; private final String domain;
     /** 회원별로 '오늘 보낼 일정 없음'을 확인한 관심 공고 상태. 날짜·관심 공고가 바뀌면 다시 확인한다. */
     private final java.util.Map<Long,String> nothingToSend=new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile LocalDate memoDate;
     public PlannerReminder(JdbcTemplate jdbc,PlannerService planner,UserRepository users,EmailUtilService mail,
             @Value("${toady.web.domain}") String domain) { this.jdbc=jdbc;this.planner=planner;this.users=users;this.mail=mail;this.domain=domain.replaceAll("/+$",""); }
     /** 정시에 서버가 중단되어도 08~18시 사이 재기동 후 실행할 수 있도록 30분마다 확인한다. */
     @Scheduled(cron="0 0,30 8-18 * * *",zone="Asia/Seoul")
     public void send() {
         LocalDate today=LocalDate.now(ZoneId.of("Asia/Seoul"));
+        // 날짜가 바뀌면 전날 메모를 비워 회원 수만큼 쌓인 항목이 남지 않게 한다.
+        if(!today.equals(memoDate)) { nothingToSend.clear(); memoDate=today; }
         // SMTP 결과가 불명확한 작업은 자동 재발송하지 않아 중복을 줄인다.
         jdbc.update("UPDATE TB_REMINDER_DELIVERY SET STATUS='UNKNOWN' WHERE STATUS='SENDING' AND UPDATED_AT<?",java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(15)));
         List<Long> recipients=jdbc.queryForList("SELECT DISTINCT USER_SEQ FROM TB_FAVORITE WHERE EMAIL_ENABLED=TRUE ORDER BY USER_SEQ",Long.class);
@@ -43,7 +46,8 @@ public class PlannerReminder {
         if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_REMINDER_DELIVERY WHERE USER_SEQ=? AND SEND_DATE=?",Integer.class,id,java.sql.Date.valueOf(today))>0) return;
         // 오늘 이미 확인했는데 보낼 일정이 없었고 관심 공고도 그대로면 30분마다 공고를 다시 읽지 않는다.
         String signature=jdbc.queryForObject("SELECT CONCAT(COUNT(*),'/',COALESCE(MAX(REG_DT),'')) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE",String.class,id);
-        String checked=today+"|"+signature;
+        // 같은 날이라도 3시간마다 다시 확인한다. 수집기가 공고 일정을 고쳐 내일 일정이 새로 생긴 경우를 놓치지 않기 위해서다.
+        String checked=today+"|"+(LocalDateTime.now(ZoneId.of("Asia/Seoul")).getHour()/3)+"|"+signature;
         if(checked.equals(nothingToSend.get(id))) return;
         StringBuilder lines=new StringBuilder();
         for(var favorite:planner.list(id)) {

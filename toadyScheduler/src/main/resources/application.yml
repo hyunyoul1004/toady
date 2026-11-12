@@ -21,6 +21,9 @@ logging:
 
 server:
   port: ${SERVER_PORT:8082}
+  # 앞단 nginx(HTTPS) 뒤에서 Tomcat이 Location을 http://내부주소 로 바꾸지 않게 상대 경로 그대로 보낸다.
+  tomcat:
+    use-relative-redirects: true
   servlet:
     session:
       timeout: 30m

@@ -6,6 +6,7 @@ import com.toady.web.apt.service.ApplyhomeSyncService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -40,12 +41,24 @@ public class AdminJobService {
                 return thread;
             });
     private volatile boolean closing;
+    // 다른 수집이 잠금을 가진 동안 같은 구간을 다시 시도하기까지의 대기 시간.
+    private final Duration busyWait;
+
+    /** 실행 중 작업의 생존 신호 주기. AdminScheduleManager.refresh가 이 주기로 maintain을 호출한다. */
+    static final long HEARTBEAT_INTERVAL_MILLIS = 30_000;
+    /**
+     * 시작 시 정리할 이전 프로세스 작업의 기준. 생존 신호 주기의 2.5배 동안 신호가 없으면 끝난 프로세스로 본다.
+     * 빠르게 재시작해 아직 이 시간이 지나지 않은 작업은 시작 직후 한 번 더 정리한다(AdminScheduleManager).
+     */
+    static final Duration LEFTOVER_STALE_AFTER = Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS * 5 / 2);
 
     public AdminJobService(AdminJobRepository repository, ApplyhomeSyncService announcements,
-            ApplyhomeCompetitionSyncService competition) {
+            ApplyhomeCompetitionSyncService competition,
+            @Value("${applyhome.admin.busy-wait-seconds:15}") long busyWaitSeconds) {
         this.repository = repository;
         this.announcements = announcements;
         this.competition = competition;
+        this.busyWait = Duration.ofSeconds(Math.max(1, busyWaitSeconds));
     }
     // 관리자에서 허용하는 조회 하한이며, 이 날짜 이후의 모든 원본 데이터 제공을 보장하는 값은 아니다.
     static LocalDate earliestDate() { return LocalDate.of(2017, 1, 1); }
@@ -92,6 +105,8 @@ public class AdminJobService {
             AdminJob job = repository.find(id).orElseThrow();
             for (DateRange chunk : chunks(job.startDate(), job.endDate())) {
                 boolean done = false;
+                // 전체 수집에서 경쟁률 단계만 잠금 대기로 재시도할 때 이미 끝난 공고 단계를 다시 실행하지 않는다.
+                boolean announcementsDone = false;
                 while (!done) {
                     AdminJob current = repository.find(id).orElseThrow();
                     // 오래된 작업이 이미 중단 상태로 정리되었다면 이후 구간을 더 실행하지 않는다.
@@ -108,7 +123,10 @@ public class AdminJobService {
                         switch (job.kind()) {
                             case ALL -> {
                                 // 전체 수집은 공고·주택형을 먼저 반영한 뒤 같은 기간의 결과 데이터를 가져온다.
-                                announcements.synchronize(chunk.start(), chunk.end());
+                                if (!announcementsDone) {
+                                    announcements.synchronize(chunk.start(), chunk.end());
+                                    announcementsDone = true;
+                                }
                                 competition.synchronize(chunk.start(), chunk.end());
                             }
                             case ANNOUNCEMENTS -> announcements.synchronize(chunk.start(), chunk.end());
@@ -120,7 +138,7 @@ public class AdminJobService {
                         // 관리자 테이블을 사용하지 않는 기존 자동 수집이나 다른 인스턴스가 잠금을 가진 경우다.
                         // 실패로 확정하지 않고 잠시 기다린 뒤 같은 구간을 재시도한다.
                         repository.update(id, "WAITING", completed, "자동 또는 다른 인스턴스의 수집이 끝나기를 기다립니다.", now());
-                        TimeUnit.SECONDS.sleep(15);
+                        TimeUnit.MILLISECONDS.sleep(busyWait.toMillis());
                     }
                 }
                 // 모든 하위 수집이 끝난 구간만 진행률에 포함한다. 개별 API 행 수와는 다른 지표다.
@@ -166,12 +184,13 @@ public class AdminJobService {
     }
     record DateRange(LocalDate start, LocalDate end) { }
     /**
-     * 시작 시 이전 프로세스가 남긴 활성 작업을 중단 상태로 정리한다. 스케줄러는 한 인스턴스만 실행하고,
-     * compose가 새 컨테이너를 띄우기 전에 이전 컨테이너를 멈추므로 남은 활성 행은 끝난 프로세스의 것이다.
+     * 시작 시 이전 프로세스가 남긴 활성 작업을 중단 상태로 정리한다. 생존 신호가 LEFTOVER_STALE_AFTER보다
+     * 오래된 작업만 대상으로 해, 아직 살아 있는 다른 프로세스(예: 교체 중 잠시 겹친 이전 컨테이너)의 작업은 건드리지 않는다.
      * 정리하지 않으면 생존 신호가 만료되는 10분 동안 새 수동·자동 실행이 막힌다.
      */
     public int interruptLeftovers() {
-        int cleaned = repository.interruptLeftovers(localJob.get(), now());
+        LocalDateTime now = now();
+        int cleaned = repository.interruptLeftovers(localJob.get(), now.minus(LEFTOVER_STALE_AFTER), now);
         if (cleaned > 0) log.warn("Marked {} leftover scheduler job(s) from a previous process as INTERRUPTED", cleaned);
         return cleaned;
     }

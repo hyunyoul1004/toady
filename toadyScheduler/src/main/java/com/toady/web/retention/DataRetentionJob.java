@@ -57,9 +57,11 @@ public class DataRetentionJob {
                 new Target("TB_USAGE_EVENT", "VISIT_DATE < ?", List.of(Date.valueOf(today.minusDays(180)))),
                 // 일정 알림 중복 방지는 당일 기준이라 오래된 발송 이력은 필요 없다.
                 new Target("TB_REMINDER_DELIVERY", "SEND_DATE < ?", List.of(Date.valueOf(today.minusDays(90)))),
-                // 기준 시각 행은 생활권별 최초 기록 표시이므로 남긴다. 지우면 기존 공고가 새 공고로 다시 알림될 수 있다.
-                new Target("TB_PUSH_AREA_SEEN", "FIRST_SEEN_DT < ? AND FIRST_SEEN_DT > ?",
-                        List.of(Timestamp.valueOf(now.minusDays(365)), Timestamp.valueOf(PUSH_AREA_BASELINE))));
+                // 생활권 새 공고 판정: 1년 넘게 보이지 않은(마지막 확인 기준) 공고만 지운다. 아직 접수 중인 장기 공고를 지웠다가
+                // '새 공고'로 다시 알리는 일을 막는다. 생활권별 기록 시작 표시('*')는 남긴다. LAST_SEEN_DT는 database.sql 15번이며,
+                // 없으면 이 테이블만 건너뛴다(경고 로그).
+                new Target("TB_PUSH_AREA_SEEN", "COALESCE(LAST_SEEN_DT, FIRST_SEEN_DT) < ? AND ANNOUNCEMENT_ID <> '*'",
+                        List.of(Timestamp.valueOf(now.minusDays(365)))));
     }
 
     /** 테이블별 삭제 행 수를 돌려준다. 실패한 테이블은 -1이다. */

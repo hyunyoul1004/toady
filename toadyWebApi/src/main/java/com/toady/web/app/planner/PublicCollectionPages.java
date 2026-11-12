@@ -111,18 +111,18 @@ public class PublicCollectionPages {
         return PublicHtml.page(domain, "/weekly", title, description, domain + "/weekly", body);
     }
 
-    static final int LOOKBACK_DAYS = 120, PAGE_SIZE = 100, MAX_PAGES = 10;
-    /** 접수 시작일이 범위 안인 공고를 페이지를 넘기며 모두 읽는다(통합 검색 상한 1000건 안). */
+    static final int LOOKBACK_DAYS = 120, MAX_ITEMS = 1000;
+    /**
+     * 접수 시작일이 범위 안인 공고를 한 번에 읽는다(내부 호출이라 통합 검색 상한 1000건까지 한 페이지로).
+     * 페이지를 나눠 부르면 유형별로 앞부분을 매번 다시 읽어 조회량이 커진다.
+     */
     List<AnnouncementListItem> startingBetween(LocalDate from, LocalDate to) {
-        List<AnnouncementListItem> all = new java.util.ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
-            AnnouncementSearch query = new AnnouncementSearch();
-            query.setStartDate(from); query.setEndDate(to); query.setSize(PAGE_SIZE); query.setPage(page);
-            var result = search.searchAll(query, null);
-            all.addAll(result.getContent());
-            if (!result.hasNext()) break;
-        }
-        return all;
+        AnnouncementSearch query = new AnnouncementSearch();
+        query.setStartDate(from); query.setEndDate(to); query.setSize(MAX_ITEMS); query.setPage(0);
+        var result = search.searchAll(query, null);
+        if (result.getTotalElements() > MAX_ITEMS)
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("이번 주 청약 집계 대상이 {}건을 넘어 일부가 빠질 수 있습니다: {}", MAX_ITEMS, result.getTotalElements());
+        return result.getContent();
     }
 
     List<Winner> winners(Week week) {

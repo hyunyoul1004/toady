@@ -30,10 +30,12 @@ export function MainLayout() {
   const loginModalOpen = overlay === 'login';
   const signUpModalOpen = overlay === 'signup';
   const findPwModalOpen = overlay === 'password';
-  const setMobileOpen = open => { if (open) setOverlay('menu'); else if (mobileOpen) setOverlay(null); };
-  const setLoginModalOpen = open => { if (open) setOverlay('login'); else if (loginModalOpen) setOverlay(null); };
-  const setSignUpModalOpen = open => { if (open) setOverlay('signup'); else if (signUpModalOpen) setOverlay(null); };
-  const setFindPwModalOpen = open => { if (open) setOverlay('password'); else if (findPwModalOpen) setOverlay(null); };
+  // 닫기는 최신 레이어 값이 자기 자신일 때만 적용한다(비동기 로그인 뒤 늦게 온 닫기가 다른 창을 닫지 않게).
+  const toggleLayer = name => open => setOverlay(current => open ? name : current === name ? null : current);
+  const setMobileOpen = toggleLayer('menu');
+  const setLoginModalOpen = toggleLayer('login');
+  const setSignUpModalOpen = toggleLayer('signup');
+  const setFindPwModalOpen = toggleLayer('password');
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -109,7 +111,7 @@ export function MainLayout() {
           <Copyright />
         </Box>
       </Box>
-      <MobileTabBar onOpenMenu={() => setMobileOpen(true)} />
+      <MobileTabBar onOpenMenu={() => setMobileOpen(true)} menuOpen={mobileOpen} />
 
       {/* 로그인 다이얼로그 */}
       <Dialog
@@ -248,6 +250,7 @@ export function MainLayout() {
           <CloseIcon fontSize="small" />
         </IconButton>
         <FindPassword
+          open={findPwModalOpen}
           handleCloseModal={() => setFindPwModalOpen(false)}
           handleOpenLogin={() => {
             setLoginModalOpen(true);

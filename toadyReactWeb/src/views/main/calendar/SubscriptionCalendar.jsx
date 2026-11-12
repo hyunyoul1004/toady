@@ -89,7 +89,8 @@ export function SubscriptionCalendar(props) {
   // 날짜별 '더보기' 목록: 히스토리 한 단계로 열어 뒤로가기로 닫히고, 앞으로가기로 다시 열린다.
   const wrapperRef = useRef(null);
   const [overlayDate, setOverlayDate] = useHistoryOverlay(DAY_OVERLAY_ID);
-  const [dayAnchor, setDayAnchor] = useState(null);
+  // undefined: 칸을 찾는 중, null: 화면에 그 칸이 없음(가운데 표시), 요소: 그 칸에 붙여 표시
+  const [dayAnchor, setDayAnchor] = useState(undefined);
   // 앞뒤 달이 섞인 첫·마지막 주 칸도 열 수 있도록 월 대신 '지금 화면에 그 날짜 칸이 있는지'로 판단한다(아래 dayAnchor).
   const openDate = isDateKey(overlayDate) ? overlayDate : null;
   const dayGroups = openDate ? groupMap[openDate] || [] : [];
@@ -195,14 +196,20 @@ export function SubscriptionCalendar(props) {
   // 6. '+N건 더보기': FullCalendar 기본 팝오버 대신 히스토리와 연결된 목록을 연다.
   const handleMoreLinkClick = (arg) => {
     const cellDate = arg.jsEvent?.target?.closest?.('.fc-daygrid-day')?.getAttribute('data-date');
-    const date = isDateKey(cellDate) ? cellDate : arg.date.toISOString().slice(0, 10);
+    // toISOString 은 UTC 기준이라 한국 시간 자정 날짜가 전날로 바뀐다. 로컬 날짜로 만든다.
+    const date = isDateKey(cellDate) ? cellDate : dayjs(arg.date).format('YYYY-MM-DD');
     setOverlayDate(date);
     return true; // 'popover'나 뷰 이름이 아니면 FullCalendar는 아무 동작도 하지 않는다.
   };
 
   // 열린 날짜의 칸을 기준점으로 잡는다(뒤로가기·앞으로가기·새로고침으로 복원될 때도 같은 칸에 붙는다).
+  // 다른 달로 이동했거나 모바일 달력으로 바뀌어 그 칸이 없으면 화면 가운데에 띄워, 보이지 않는 히스토리 레이어가 남지 않게 한다.
   useEffect(() => {
     if (!openDate) {
+      setDayAnchor(undefined);
+      return undefined;
+    }
+    if (isMobile) {
       setDayAnchor(null);
       return undefined;
     }
@@ -214,7 +221,8 @@ export function SubscriptionCalendar(props) {
     }
     const frame = requestAnimationFrame(() => setDayAnchor(find()));
     return () => cancelAnimationFrame(frame);
-  }, [openDate, events]);
+  }, [openDate, events, isMobile, currentTitle]);
+  const centerPosition = typeof window === 'undefined' ? { top: 0, left: 0 } : { top: Math.round(window.innerHeight / 2), left: Math.round(window.innerWidth / 2) };
 
   const closeDayList = () => setOverlayDate(null);
 
@@ -414,16 +422,22 @@ export function SubscriptionCalendar(props) {
             eventDidMount={handleEventDidMount}
             eventContent={renderEventContent}
             datesSet={handleDatesSet}
+            eventInteractive
             locale="ko"
             dayHeaderFormat={{ weekday: 'short' }}
           />
 
+        </Box>
+      )}
+
           <Popover
-            open={Boolean(openDate && dayAnchor)}
-            anchorEl={dayAnchor}
+            open={Boolean(openDate) && dayAnchor !== undefined}
+            anchorReference={dayAnchor ? 'anchorEl' : 'anchorPosition'}
+            anchorEl={dayAnchor || null}
+            anchorPosition={centerPosition}
             onClose={closeDayList}
             anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+            transformOrigin={{ vertical: dayAnchor ? 'top' : 'center', horizontal: 'center' }}
             slotProps={{ paper: { sx: { width: 340, maxWidth: 'calc(100vw - 32px)', borderRadius: 2.5, boxShadow: '0 12px 32px rgba(15,23,42,0.16)', border: '1px solid #e2e8f0' } } }}
           >
             {openDate && (
@@ -477,8 +491,6 @@ export function SubscriptionCalendar(props) {
               </Box>
             )}
           </Popover>
-        </Box>
-      )}
     </Box>
   );
 }

@@ -9,7 +9,8 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'check-deployment.sh'
 
 
 class DeploymentReadinessTest(unittest.TestCase):
-    def run_check(self, scheduler_fails, capabilities='{"tradesEnabled":true}', schema='', public_fails=False):
+    def run_check(self, scheduler_fails, capabilities='{"tradesEnabled":true}', schema='',
+                  public_code='200', public_exit=0, api_code='200', api_exit=0, restarting_service=''):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stubs = {
@@ -17,7 +18,8 @@ class DeploymentReadinessTest(unittest.TestCase):
 case "$*" in
   *research/capabilities*) printf '%s' "$CAPABILITIES" ;;
   *internal/schema*) [ -n "$SCHEMA" ] || exit 22; printf '%s' "$SCHEMA" ;;
-  *--resolve*) [ "$PUBLIC_FAIL" = 0 ] ;;
+  *planner/settings*) printf '%s' "$API_CODE"; exit "$API_EXIT" ;;
+  *--resolve*) printf '%s' "$PUBLIC_CODE"; exit "$PUBLIC_EXIT" ;;
   *8082*)
     count=0
     [ ! -f "$REVIEW_STATE" ] || count=$(cat "$REVIEW_STATE")
@@ -32,7 +34,9 @@ esac
                 'docker': '''#!/bin/sh
 case "$*" in
   *State.Running*) echo true ;;
-  *State.Restarting*) echo false ;;
+  *State.Restarting*)
+    for last; do :; done
+    if [ "$last" = "$RESTARTING_SERVICE" ]; then echo true; else echo false; fi ;;
 esac
 ''',
             }
@@ -45,7 +49,9 @@ esac
                                     env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                                          'REVIEW_STATE': str(state), 'FAIL_SCHEDULER': str(int(scheduler_fails)),
                                          'CAPABILITIES': capabilities, 'SCHEMA': schema,
-                                         'PUBLIC_FAIL': str(int(public_fails))})
+                                         'PUBLIC_CODE': public_code, 'PUBLIC_EXIT': str(public_exit),
+                                         'API_CODE': api_code, 'API_EXIT': str(api_exit),
+                                         'RESTARTING_SERVICE': restarting_service})
             return result, int(state.read_text())
 
     def test_waits_until_scheduler_is_ready(self):
@@ -76,10 +82,33 @@ esac
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertNotIn('WARNING', result.stderr)
 
-    def test_warns_when_public_site_fails_through_front_nginx(self):
-        result, _ = self.run_check(False, public_fails=True)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn('front nginx', result.stderr)
+    def test_fails_when_front_nginx_refuses_connection(self):
+        result, _ = self.run_check(False, public_code='000', public_exit=7)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Front nginx check failed', result.stderr)
+
+    def test_fails_when_front_nginx_returns_gateway_errors(self):
+        for code in ('502', '503', '504'):
+            result, _ = self.run_check(False, public_code=code)
+            self.assertNotEqual(0, result.returncode, code)
+            self.assertIn('HTTP ' + code, result.stderr)
+
+    def test_fails_when_api_through_front_nginx_returns_bad_gateway(self):
+        result, _ = self.run_check(False, api_code='502')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('/api/v1/planner/settings returned HTTP 502', result.stderr)
+
+    def test_only_warns_for_tls_or_dns_errors_through_front_nginx(self):
+        for exit_code in (6, 35, 51, 60):
+            result, _ = self.run_check(False, public_code='000', public_exit=exit_code, api_code='000', api_exit=exit_code)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn('WARNING', result.stderr)
+            self.assertIn('curl exit %d' % exit_code, result.stderr)
+
+    def test_names_the_container_that_is_restarting(self):
+        result, _ = self.run_check(False, restarting_service='toadyScheduler')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Container check failed: toadyScheduler', result.stderr)
 
 
 if __name__ == '__main__':

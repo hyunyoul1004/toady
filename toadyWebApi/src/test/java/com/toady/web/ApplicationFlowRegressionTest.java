@@ -153,6 +153,16 @@ class ApplicationFlowRegressionTest {
                 "userEmail", EMAIL, "userPassword", "Attacker123!", "userPasswordConfirm", "Attacker123!", "userNicName", "선점자"))))
                 .andExpect(jsonPath("$.resultCode").value(com.toady.web.core.constants.ResultCode.ALREADY_EMAIL_ERROR.getCode()));
     }
+    @Test void encodedPathsCannotBypassTheMailLimit() throws Exception {
+        for (int i = 0; i < 5; i++)
+            mvc.perform(post(java.net.URI.create("/webApi/certify/find-password-request-certify")).header("X-Real-IP", "203.0.113.77").contentType(MediaType.APPLICATION_JSON)
+                    .content(body(Map.of("userEmail", "enc" + i + "@example.test"))));
+        // 글자 하나를 인코딩해도 Spring은 같은 컨트롤러로 매칭하므로 제한도 같아야 한다.
+        mvc.perform(post(java.net.URI.create("/webApi/user/reg%55ser")).header("X-Real-IP", "203.0.113.77").contentType(MediaType.APPLICATION_JSON).content(body(Map.of(
+                "userEmail", "encoded@example.test", "userPassword", PASSWORD, "userPasswordConfirm", PASSWORD, "userNicName", "인코딩"))))
+                .andExpect(status().isTooManyRequests());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER WHERE USER_EMAIL='encoded@example.test'", Integer.class));
+    }
     @Test void mailSendingRequestsAreLimitedPerClientIp() throws Exception {
         for (int i = 0; i < 5; i++)
             mvc.perform(post("/webApi/certify/find-password-request-certify").header("X-Real-IP", "203.0.113.9").contentType(MediaType.APPLICATION_JSON)
