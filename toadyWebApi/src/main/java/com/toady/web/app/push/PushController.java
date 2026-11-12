@@ -58,7 +58,7 @@ public class PushController {
         if (!WebPushSender.allowedEndpoint(request.endpoint())) return error(400, "지원하지 않는 브라우저 알림 주소예요.");
         try { WebPushCrypto.publicKey(WebPushCrypto.b64(request.keys().p256dh())); if (WebPushCrypto.b64(request.keys().auth()).length != 16) throw new IllegalArgumentException(); }
         catch (Exception invalid) { return error(400, "브라우저 알림 키를 확인하지 못했어요."); }
-        List<String> areas = Optional.ofNullable(request.areas()).orElse(List.of()).stream().distinct().filter(slug -> LivingAreas.bySlug(slug).isPresent()).toList();
+        List<String> areas = Optional.ofNullable(request.areas()).orElse(List.of()).stream().distinct().filter(PushTopics::valid).toList();
         List<String> favoriteIds = user != null ? List.of() : Optional.ofNullable(request.favoriteIds()).orElse(List.of()).stream().distinct().toList();
         var scope = new PushSubscriptions.Scope(user == null ? null : user.getUserSeq(), request.visitorId(), !Boolean.FALSE.equals(request.favorites()), favoriteIds, areas);
         store.upsert(request.endpoint(), strip(request.keys().p256dh()), strip(request.keys().auth()), scope, clock);

@@ -68,6 +68,52 @@ public class NeighborhoodResearchService {
             return new TradeResult(matched.isEmpty()?"EMPTY":"READY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),matched.size(),matched.stream().limit(20).toList());
         } catch(Exception failure) {return new TradeResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,0,List.of());}
     }
+    /** 주택형 면적 하나의 실거래 요약. scope: DONG(같은 법정동) · DISTRICT(같은 시·군·구, 같은 동 거래가 적을 때). */
+    public record AreaStat(BigDecimal area,String scope,int count,long median,long min,long max,long newMedian,int newCount) { }
+    public record GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas) { }
+    static final int GAP_MONTHS=6, ENOUGH_TRADES=3, NEW_BUILD_YEARS=10;
+
+    /**
+     * 분양가와 나란히 볼 면적별 실거래 중간값. 최근 6개월, 전용 ±5㎡.
+     * 같은 법정동 거래가 3건 미만이면 같은 시·군·구로 넓히고 그 사실을 scope로 알린다. 준공 10년 이내 거래만의 중간값도 함께 준다.
+     */
+    public GapResult priceGap(String bcode,String dong,List<BigDecimal> areas) {
+        YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(GAP_MONTHS-1);
+        if(!tradesEnabled()) return new GapResult("NOT_CONFIGURED",bcode,dong,start.toString(),end.toString(),null,List.of());
+        if(bcode==null || !bcode.matches("\\d{10}") || !SIDO_CODES.contains(bcode.substring(0,2))) return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());
+        try {
+            List<Trade> all=new ArrayList<>();List<Instant> updated=new ArrayList<>();
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);
+            for(int month=0;month<GAP_MONTHS;month++) {
+                String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
+                String key=bcode.substring(0,5)+"/"+ymd;
+                if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
+                TradeMonth data;
+                try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                catch(Exception failure) { failedMonths.put(key,Boolean.TRUE); throw failure; }
+                all.addAll(data.trades());updated.add(data.fetchedAt());
+            }
+            String legalDong=bcode.substring(5);
+            int thisYear=end.getYear();
+            List<AreaStat> stats=new ArrayList<>();
+            for(BigDecimal area:areas.stream().distinct().limit(8).toList()) {
+                List<Trade> near=all.stream().filter(t -> t.area().subtract(area).abs().compareTo(BigDecimal.valueOf(5))<=0).toList();
+                List<Trade> sameDong=near.stream().filter(t -> t.dongCode().isBlank()? t.dong().equals(dong):t.dongCode().equals(legalDong)).toList();
+                String scope=sameDong.size()>=ENOUGH_TRADES?"DONG":"DISTRICT";
+                List<Trade> chosen="DONG".equals(scope)?sameDong:near;
+                if(chosen.isEmpty()) { stats.add(new AreaStat(area,scope,0,0,0,0,0,0)); continue; }
+                List<Long> amounts=chosen.stream().map(Trade::amountManwon).sorted().toList();
+                List<Long> fresh=chosen.stream().filter(t -> t.buildYear().matches("\\d{4}") && thisYear-Integer.parseInt(t.buildYear())<=NEW_BUILD_YEARS).map(Trade::amountManwon).sorted().toList();
+                stats.add(new AreaStat(area,scope,amounts.size(),median(amounts),amounts.get(0),amounts.get(amounts.size()-1),fresh.isEmpty()?0:median(fresh),fresh.size()));
+            }
+            boolean any=stats.stream().anyMatch(stat -> stat.count()>0);
+            return new GapResult(any?"READY":"EMPTY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),stats);
+        } catch(Exception failure) {return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());}
+    }
+    static long median(List<Long> sorted) {
+        int middle=sorted.size()/2;
+        return sorted.size()%2==1?sorted.get(middle):Math.round((sorted.get(middle-1)+sorted.get(middle))/2.0);
+    }
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
         List<Trade> result=new ArrayList<>();int expected=-1,read=0;
         for(int number=1;number<=5;number++) {

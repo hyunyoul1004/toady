@@ -44,11 +44,11 @@ public class PublicCollectionPages {
         String title = "무순위·줍줍 청약 일정" + (groups.open().isEmpty() ? "" : " · 접수 중 " + groups.open().size() + "건") + " · TOADY";
         String description = "APT 무순위·잔여세대와 임의공급(줍줍) 청약 일정 · 접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size()
             + "건 · 공급금액·위치·동네 실거래가를 한 화면에서 확인하세요.";
-        String app = domain + "/?focus=unranked";
+        String app = domain + "/match/zupzup";
         String body = nav("무순위·줍줍")
             + "<section class='card'><span class='chip'>매일 업데이트</span><h1>무순위·줍줍 청약 일정</h1>"
             + "<p class='muted'>청약홈에 올라온 APT 무순위·잔여세대와 임의공급 공고를 모았어요. 계약 포기·부적격으로 다시 나온 물량이라 접수 기간이 짧으니 일정을 먼저 확인하세요.</p>"
-            + stats(groups) + "<a class='cta' data-app href='" + esc(app) + "'>캘린더에서 무순위만 보기</a></section>"
+            + stats(groups) + "<a class='cta' data-app href='" + esc(app) + "'>줍줍 모아보기 · 새 공고 알림 받기</a></section>"
             + (groups.open().isEmpty() && groups.upcoming().isEmpty()
                 ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 접수 중이거나 예정된 무순위·임의공급 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : areas.section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : areas.section("접수 예정", groups.upcoming(), "")))

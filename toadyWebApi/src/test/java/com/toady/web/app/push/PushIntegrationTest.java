@@ -197,6 +197,23 @@ class PushIntegrationTest {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE ENDPOINT_HASH=?", Integer.class, PushSubscriptions.hash(areaOnly)));
     }
 
+    @Test void zupzupTopicSendsOnlyNewCapitalUnrankedAnnouncements() throws Exception {
+        jdbc.update("DELETE FROM TB_REMNDR_LTTOT_PBLANC_DETAIL");
+        String endpoint = "https://fcm.googleapis.com/fcm/send/zupzup";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favorites", false, "areas", List.of("zupzup-capital", "zupzup-nowhere"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.areas.length()").value(1)).andExpect(jsonPath("$.areas[0]").value("zupzup-capital"));
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_AREA_CODE_NM,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R0','N0','기존 줍줍','서울특별시 강동구 1','서울','2026-11-14','2026-11-14')");
+        // 첫 확인은 기준만 남긴다(이미 있던 공고를 새 공고로 보내지 않는다).
+        assertEquals(0, digest("2026-11-11T18:00").run().sent());
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_AREA_CODE_NM,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R1','N1','서울 새 줍줍','서울특별시 송파구 1','서울','2026-11-16','2026-11-16'),('R2','N2','부산 새 줍줍','부산광역시 해운대구 1','부산','2026-11-16','2026-11-16')");
+        SENT.clear();
+        assertEquals(1, digest("2026-11-12T18:00").run().sent());
+        JsonNode message = decrypt(SENT.get(0).body());
+        assertEquals("수도권 줍줍 새 청약 공고", message.path("title").asText(), message.toString());
+        assertEquals("/?subscriptSeq=remaining%2FR1%2FN1", message.path("url").asText());
+    }
+
     @Test void bundledMessageListsBothKindsWithActions() {
         var message = PushMessage.digest(List.of(
             new PushMessage.Line("FAVORITE", "apt/A/1", "가 단지", "접수 마감", null, null),

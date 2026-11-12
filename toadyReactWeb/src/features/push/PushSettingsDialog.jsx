@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ZUPZUP_TOPICS, withZupzup, zupzupTopic } from './pushTopics';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControlLabel, IconButton, Switch, useMediaQuery } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
@@ -53,9 +54,15 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
         label={<span><strong>관심 공고 전날 일정</strong><small>{loggedIn ? '계정에 저장한 관심 공고 기준' : '이 브라우저에 저장한 관심 공고 기준'} · 접수·발표·계약일 전날</small></span>} />
     </section>
     <section className="push-option">
-      <strong>새 공고를 받을 생활권</strong><small>공고가 새로 올라온 날 알려 드려요. 최대 6곳.</small>
+      <strong>새 공고를 받을 생활권</strong><small>공고가 새로 올라온 날 알려 드려요. 줍줍 알림을 포함해 최대 6곳.</small>
       <div className="push-areas">{Array.isArray(areas.data) ? areas.data.map(area => <Chip key={area.slug} label={area.label} disabled={busy}
         color={scope.areas.includes(area.slug) ? 'primary' : 'default'} variant={scope.areas.includes(area.slug) ? 'filled' : 'outlined'} onClick={() => toggleArea(area.slug)} />) : areas.isLoading ? <CircularProgress size={18} /> : null}</div>
+    </section>
+    <section className="push-option">
+      <strong>무순위·줍줍 새 공고</strong><small>무순위·잔여세대·임의공급 공고가 새로 올라온 날 알려 드려요.</small>
+      <div className="push-areas">{ZUPZUP_TOPICS.map(topic => <Chip key={topic.slug} label={topic.label} disabled={busy || (!zupzupTopic(scope.areas) && scope.areas.length >= 6)}
+        color={zupzupTopic(scope.areas) === topic.slug ? 'primary' : 'default'} variant={zupzupTopic(scope.areas) === topic.slug ? 'filled' : 'outlined'}
+        onClick={() => change({ ...scope, areas: withZupzup(scope.areas, zupzupTopic(scope.areas) === topic.slug ? null : topic.slug) })} />)}</div>
     </section>
     {push.subscribed ? <div className="push-actions">
       <Button variant="contained" disableElevation disabled={busy} onClick={() => run(() => push.sendTest(testAnnouncementId), '테스트 알림을 보냈어요. 알림을 눌러 이동해 보세요.')}>테스트 알림 보내기</Button>

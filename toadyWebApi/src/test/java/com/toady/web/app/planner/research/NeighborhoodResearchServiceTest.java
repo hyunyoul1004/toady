@@ -27,6 +27,26 @@ class NeighborhoodResearchServiceTest {
         assertEquals("EMPTY",service.trades("4148012800","동패동",new BigDecimal("60")).status());
         assertEquals(3,calls.get());assertEquals(result.checkedAt(),service.trades("4148012800","동패동").checkedAt());
     }
+    @Test void priceGapUsesSixMonthsDongFirstThenDistrictAndReusesCache() {
+        AtomicInteger calls=new AtomicInteger();
+        var service=new NeighborhoodResearchService((uri,headers)->{
+            calls.incrementAndGet();
+            String month=uri.getQuery().split("DEAL_YMD=")[1].substring(0,6);
+            return response(month,"동패동","");
+        },"key");
+        var gap=service.priceGap("4148012800","동패동",java.util.List.of(new BigDecimal("84"),new BigDecimal("59")));
+        assertEquals("READY",gap.status());
+        assertEquals(6,calls.get(),"최근 6개월을 시·군·구 단위로 한 번씩 부른다");
+        var area84=gap.areas().get(0);
+        assertEquals("DONG",area84.scope());assertEquals(6,area84.count());assertEquals(58900,area84.median());
+        assertEquals(6,area84.newCount(),"2020년 준공은 10년 이내 거래로 따로 센다");
+        assertEquals(0,gap.areas().get(1).count(),"59㎡ 안팎 거래가 없으면 0건");
+        var other=service.priceGap("4148012900","다른동",java.util.List.of(new BigDecimal("84")));
+        assertEquals("DISTRICT",other.areas().get(0).scope(),"같은 동 거래가 부족하면 시·군·구로 넓힌다");
+        assertEquals(6,calls.get(),"같은 시·군·구·월은 캐시를 다시 쓴다");
+        assertEquals(58900,NeighborhoodResearchService.median(java.util.List.of(58900L)));
+        assertEquals(15,NeighborhoodResearchService.median(java.util.List.of(10L,20L)));
+    }
     @Test void cancelledTradesCountForPaginationButAreNotDisplayed() throws Exception {
         var page=NeighborhoodResearchService.parseTrades(response("202610","동패동","Y"));
         assertEquals(1,page.rawCount());assertTrue(page.trades().isEmpty());

@@ -15,6 +15,7 @@ function Copyright() {
       </div>
       <nav className="site-footer-links" aria-label="사이트 바로가기">
         <RouterLink to="/">청약 캘린더</RouterLink>
+        <RouterLink to="/match">내게 맞는 청약</RouterLink>
         <RouterLink to="/score">가점 계산기</RouterLink>
         <a href="/zupzup">무순위·줍줍</a>
         <a href="/weekly">이번 주 청약</a>

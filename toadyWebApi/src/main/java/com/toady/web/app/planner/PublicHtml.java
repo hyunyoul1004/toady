@@ -55,7 +55,7 @@ final class PublicHtml {
     }
     /** 앱과 같은 로고·메뉴를 위에 두어 검색으로 들어온 사람도 같은 서비스임을 알아보게 한다. 앱 화면(/, /score)으로 가는 링크만 유입처를 넘긴다. */
     static String header(String domain, String current) {
-        String[][] links = { {"/", "청약 캘린더", "app"}, {"/score", "가점 계산기", "app"}, {"/zupzup", "무순위", ""}, {"/weekly", "이번 주", ""} };
+        String[][] links = { {"/", "청약 캘린더", "app"}, {"/match", "맞춤 청약", "app"}, {"/score", "가점 계산기", "app"}, {"/zupzup", "무순위", ""}, {"/weekly", "이번 주", ""} };
         StringBuilder out = new StringBuilder("<header class='site'><div class='site-in'><a class='brand' data-app href='").append(esc(domain + "/"))
             .append("'><img src='").append(esc(domain + "/icons/icon-192.png")).append("' width='28' height='28' alt=''><span>TOADY</span></a><nav class='menu' aria-label='주요 메뉴'>");
         for (String[] link : links) {
@@ -73,7 +73,7 @@ final class PublicHtml {
     }
     /** 공개 페이지끼리 서로 이어지도록 하단에 같은 탐색 묶음을 둔다. current는 지금 페이지라 링크에서 뺀다. */
     static String explore(String domain, String current) {
-        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/score", "청약 가점 계산기"} };
+        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"} };
         StringBuilder out = new StringBuilder("<section class='card'><h2>더 알아보기</h2><div class='chips'>");
         for (String[] link : links) if (!link[0].equals(current))
             out.append("<a class='chip' href='").append(esc(domain + link[0])).append("'>").append(esc(link[1])).append("</a>");

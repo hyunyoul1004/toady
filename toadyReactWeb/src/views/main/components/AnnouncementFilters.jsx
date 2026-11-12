@@ -461,7 +461,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                         <TextField
                           {...params}
                           size="small"
-                          placeholder="운정·동탄·지역·아파트명 검색..."
+                          placeholder="서울·강남·과천·아파트명 검색..."
                           InputProps={{
                             ...params.InputProps,
                             startAdornment: (

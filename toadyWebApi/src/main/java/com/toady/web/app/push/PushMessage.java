@@ -59,7 +59,7 @@ public record PushMessage(String title, String body, String url, String tag, Lis
         } else url = detailUrl(news.get(0).announcementId());
         if (!byArea.isEmpty()) {
             Line first = byArea.values().iterator().next().get(0);
-            actions.add(new Action("area", first.areaLabel() + " 새 공고", "/areas/" + first.areaSlug()));
+            actions.add(new Action("area", first.areaLabel() + " 새 공고", PushTopics.url(first.areaSlug())));
         }
         String title = favorites.isEmpty() ? "새 청약 공고 " + news.size() + "건" : "TOADY 청약 알림 · " + (favorites.size() + news.size()) + "건";
         return Optional.of(new PushMessage(title, String.join("\n", parts), url, tag, actions.stream().limit(2).toList()));

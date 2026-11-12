@@ -78,6 +78,7 @@ public class PushDigest {
         Map<String, List<Seen>> news = new HashMap<>();
         Map<Long, List<PushMessage.Line>> members = new HashMap<>();
         Map<String, Optional<PlannerSummary.Summary>> guestSummaries = new HashMap<>();
+        List<List<AnnouncementListItem>> unranked = new ArrayList<>();
         int sent = 0, removed = 0, retry = 0, empty = 0;
         for (PushSubscriptions.Row row : pending) {
             try {
@@ -91,10 +92,14 @@ public class PushDigest {
                 lines.forEach(line -> already.add(line.announcementId()));
                 for (String slug : row.areas()) {
                     var area = LivingAreas.bySlug(slug);
-                    if (area.isEmpty()) continue;
-                    for (Seen seen : news.computeIfAbsent(slug, key -> refreshArea(area.get(), today, now)))
+                    var topic = PushTopics.bySlug(slug);
+                    if (area.isEmpty() && topic.isEmpty()) continue;
+                    String label = area.map(LivingAreas.Area::label).orElseGet(() -> topic.get().label());
+                    List<Seen> seenList = news.computeIfAbsent(slug, key -> area.isPresent() ? refreshArea(area.get(), today, now)
+                        : refresh(slug, unranked(today, unranked).stream().filter(topic.get()::includes).toList(), now));
+                    for (Seen seen : seenList)
                         if (seen.firstSeen().isAfter(since) && already.add(seen.id()))
-                            lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), "새 공고", slug, area.get().label()));
+                            lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), "새 공고", slug, label));
                 }
                 var message = PushMessage.digest(lines);
                 // 보낼 내용이 없어도 오늘 확인을 마친 것으로 기록해, 저녁 30분마다 같은 구독을 다시 계산하지 않는다.
@@ -136,14 +141,23 @@ public class PushDigest {
 
     /** 생활권의 접수 중·예정 공고를 기록하고, 공고별 최초 확인 시각을 돌려준다. 첫 기록은 기존 공고를 새 공고로 보지 않는다. */
     List<Seen> refreshArea(LivingAreas.Area area, LocalDate today, LocalDateTime now) {
-        List<AnnouncementListItem> active = areas.active(area, today);
+        return refresh(area.slug(), areas.active(area, today), now);
+    }
+    /** 이번 실행에서 무순위·임의공급 목록은 한 번만 읽어 줍줍 주제들이 함께 쓴다. */
+    private List<AnnouncementListItem> unranked(LocalDate today, List<List<AnnouncementListItem>> memo) {
+        if (memo.isEmpty()) memo.add(areas.activeUnranked(today));
+        return memo.get(0);
+    }
+
+    /** 생활권·알림 주제(slug)의 접수 중·예정 공고를 기록하고, 공고별 최초 확인 시각을 돌려준다. 첫 기록은 기존 공고를 새 공고로 보지 않는다. */
+    List<Seen> refresh(String slug, List<AnnouncementListItem> active, LocalDateTime now) {
         Map<String, LocalDateTime> known = new HashMap<>();
         jdbc.query("SELECT ANNOUNCEMENT_ID,FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=?", (org.springframework.jdbc.core.RowCallbackHandler) r ->
-            known.put(r.getString(1), r.getTimestamp(2).toLocalDateTime()), area.slug());
+            known.put(r.getString(1), r.getTimestamp(2).toLocalDateTime()), slug);
         LocalDateTime firstSeen = known.isEmpty() ? BASELINE : now;
         // 접수 중 공고가 없는 생활권도 기록 시작 시점을 남겨, 나중에 처음 올라온 공고를 새 공고로 판정한다.
         if (known.isEmpty()) {
-            try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,'*',?)", area.slug(), Timestamp.valueOf(BASELINE)); }
+            try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,'*',?)", slug, Timestamp.valueOf(BASELINE)); }
             catch (org.springframework.dao.DuplicateKeyException raced) { firstSeen = now; }
         }
         List<Seen> result = new ArrayList<>();
@@ -151,13 +165,13 @@ public class PushDigest {
             String id = item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo();
             LocalDateTime at = known.get(id);
             if (at == null) {
-                try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", area.slug(), id, Timestamp.valueOf(firstSeen)); at = firstSeen; }
+                try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(firstSeen)); at = firstSeen; }
                 catch (org.springframework.dao.DuplicateKeyException raced) { at = BASELINE; }
                 known.put(id, at);
             }
             result.add(new Seen(item, at));
         }
-        markSeen(area.slug(), result.stream().map(Seen::id).toList(), now);
+        markSeen(slug, result.stream().map(Seen::id).toList(), now);
         return result;
     }
 

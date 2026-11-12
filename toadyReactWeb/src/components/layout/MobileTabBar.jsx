@@ -1,17 +1,19 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import CalculateOutlined from '@mui/icons-material/CalculateOutlined';
+import FactCheckOutlined from '@mui/icons-material/FactCheckOutlined';
 import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
 import MenuRounded from '@mui/icons-material/MenuRounded';
 import './mobileTabBar.css';
 
 const TABS = [
   { path: '/', label: '캘린더', icon: <CalendarMonthOutlined /> },
+  { path: '/match', label: '맞춤 청약', icon: <FactCheckOutlined /> },
   { path: '/score', label: '가점 계산', icon: <CalculateOutlined /> },
   { path: '/my', label: '나의 청약', icon: <BookmarkBorderRounded /> }
 ];
 
-/** 모바일(사이드바가 숨는 폭) 하단 탭. 재방문 기능(가점·나의 청약)이 햄버거 메뉴 속에 묻히지 않게 한다. */
+/** 모바일(사이드바가 숨는 폭) 하단 탭. 재방문 기능(맞춤 청약·가점·나의 청약)이 햄버거 메뉴 속에 묻히지 않게 한다. */
 export default function MobileTabBar({ onOpenMenu, menuOpen = false }) {
   const location = useLocation(), navigate = useNavigate();
   const active = path => path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);

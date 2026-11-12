@@ -27,7 +27,7 @@ export default function ServiceIntro({ onSearchFocus }) {
   </header>;
 
   const features = [
-    { icon: <TravelExploreRounded />, title: '생활권으로 찾기', text: '운정·동탄·검단처럼 동네 이름으로 공고를 찾아요', action: <button type="button" onClick={onSearchFocus}>검색해 보기</button> },
+    { icon: <TravelExploreRounded />, title: '지역·단지명으로 찾기', text: '서울·강남·과천·분당처럼 지역이나 단지 이름으로 공고를 찾아요', action: <button type="button" onClick={onSearchFocus}>검색해 보기</button> },
     { icon: <InsightsRounded />, title: '한 화면에서 판단', text: '일정·분양가·경쟁률·당첨가점·위치·동네 실거래', action: <a href="/weekly">이번 주 청약</a> },
     { icon: <CalculateOutlined />, title: '내 가점과 비교', text: '날짜만 넣으면 가점 계산, 지역별 당첨가점과 비교', action: <RouterLink to="/score">가점 계산기</RouterLink> },
     { icon: <NotificationsActiveOutlined />, title: '놓치지 않게', text: '관심 공고 저장, 캘린더 구독, 전날 알림', action: <RouterLink to="/my">나의 청약</RouterLink> }

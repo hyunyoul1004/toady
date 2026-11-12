@@ -142,6 +142,36 @@ class PlannerIntegrationTest {
         assertEquals("경기",regions.get(0).path("sido").asText());
         assertEquals("파주시",regions.get(0).path("districts").get(0).path("name").asText());
     }
+    @Test void eligibilityFeedListsActiveAnnouncementsWithSupplyConditions() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_DETAIL");
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_MDL");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_AREA_CODE_NM,HOUSE_DTL_SECD_NM,SPECLT_RDN_EARTH_AT,MDAT_TRGET_AREA_SECD,RCEPT_BGNDE,RCEPT_ENDDE,GNRL_RNK1_ETC_AREA_RCPTDE,CNTRCT_CNCLS_BGNDE,MVN_PREARNGE_YM) VALUES ('E1','N1','자격 단지','서울특별시 강동구 1','서울','민영','Y','N',?,?,?,?,'202906')",
+            today.minusDays(1).toString().replace("-",""),today.plusDays(2).toString(),today.toString(),today.plusMonths(2).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('E2','N2','지난 단지','서울특별시 강동구 2',?,?)",today.minusDays(30).toString(),today.minusDays(28).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_MDL (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,HOUSE_TY,SUPLY_HSHLDCO,SPSPLY_HSHLDCO,NWWDS_HSHLDCO,LFE_FRST_HSHLDCO,MNYCH_HSHLDCO,LTTOT_TOP_AMOUNT) VALUES ('E1','N1','01','084.9500A','10','5','3','2','0','95,000'),('E1','N1','02','059.9800','7','4','1','1','2','-')");
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R9','N9','줍줍 예정','경기도 화성시 1',?,?)",today.plusDays(3).toString(),today.plusDays(3).toString());
+        var body=json.readTree(html(mvc.perform(get("/api/v1/public/eligibility/announcements")).andExpect(status().isOk())));
+        var items=body.path("items");
+        assertEquals(2,items.size(),items.toString());
+        var apt=items.get(0);
+        assertEquals("apt/E1/N1",apt.path("id").asText());
+        assertEquals("OPEN",apt.path("status").asText());
+        assertEquals(today.minusDays(1).toString(),apt.path("start").asText(),"압축 날짜도 ISO로 맞춘다");
+        assertTrue(apt.path("speculative").asBoolean());
+        assertFalse(apt.path("adjusted").asBoolean());
+        assertFalse(apt.path("national").asBoolean());
+        assertEquals("서울",apt.path("region").asText());
+        assertEquals(4,apt.path("special").path("newlywed").asInt());
+        assertEquals(2,apt.path("special").path("multiChild").asInt());
+        assertEquals(95000,apt.path("units").get(0).path("amountManwon").asInt());
+        assertEquals(84.95,apt.path("units").get(0).path("area").asDouble(),0.001);
+        assertTrue(apt.path("units").get(1).path("amountManwon").isNull(),"금액이 없는 주택형은 비워 둔다");
+        assertEquals("2029-06",apt.path("moveIn").asText());
+        var remaining=items.get(1);
+        assertEquals("remaining/R9/N9",remaining.path("id").asText());
+        assertEquals("UPCOMING",remaining.path("status").asText());
+    }
     @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R1','N1','<줍줍 단지>','서울특별시 강동구 1',?,?)",today.toString(),today.plusDays(1).toString());
@@ -151,7 +181,7 @@ class PlannerIntegrationTest {
         assertTrue(unranked.contains("무순위·줍줍 청약 일정") && unranked.contains("/announcements/remaining/R1/N1"),unranked);
         assertTrue(unranked.contains("&lt;줍줍 단지&gt;") && !unranked.contains("<줍줍 단지>"),"단지명은 이스케이프한다");
         assertFalse(unranked.contains("이번주 발표 단지"),"무순위 페이지에는 일반 아파트 공고를 넣지 않는다");
-        assertTrue(unranked.contains("/?focus=unranked"));
+        assertTrue(unranked.contains("/match/zupzup"));
         String weekly=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
         assertTrue(weekly.contains("이번 주 청약 일정") && weekly.contains("/announcements/remaining/R1/N1"),weekly);
         assertTrue(weekly.contains("aria-current='page' href='http") && weekly.contains("/weekly'>이번 주</a>") && unranked.contains("/zupzup'>무순위</a>"),"상단 메뉴에 지금 페이지를 표시한다");

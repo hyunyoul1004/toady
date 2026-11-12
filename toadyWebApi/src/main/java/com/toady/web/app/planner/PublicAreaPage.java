@@ -44,6 +44,12 @@ public class PublicAreaPage {
         return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
     }
 
+    /** 무순위·잔여세대·임의공급의 접수 중·예정 공고. 웹 푸시의 '줍줍' 새 공고 판정에 쓴다. */
+    public List<AnnouncementListItem> activeUnranked(LocalDate today) {
+        Groups groups = groups(null, PublicCollectionPages.UNRANKED_TYPES, today, 45);
+        return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+    }
+
     /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) {
         AnnouncementSearch query = new AnnouncementSearch();

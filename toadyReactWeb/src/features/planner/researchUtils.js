@@ -14,8 +14,10 @@ export function unitLabel(type,modelNo) {
   const match=String(type || '').trim().match(/^(\d+(?:\.\d+)?)([A-Za-z]+)?$/);
   return match?`${Number(match[1]).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡${match[2]?` · ${match[2]}`:''}`:String(type || modelNo || '주택형 미제공');
 }
+/** 주택형 금액이 공개되는 유형: APT와 무순위·잔여세대·임의공급(같은 주택형 형식). */
+const PRICED_TYPES=new Set(['apt','remaining','optional']);
 export function modelPrices(models=[],type='apt') {
-  if(type!=='apt') return [];
+  if(!PRICED_TYPES.has(type)) return [];
   return models.map((model,index)=>({
     id:`${model.modelNo || index}/${index}`,area: Number.parseFloat(model.houseTy),
     label:unitLabel(model.houseTy,model.modelNo),

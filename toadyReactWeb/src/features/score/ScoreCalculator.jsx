@@ -40,7 +40,7 @@ export default function ScoreCalculator() {
 
   useEffect(() => {
     if (detailId) return undefined;
-    updatePageSeo({ title: '청약 가점 계산기 · 84점 만점 내 점수와 당첨가점 비교 · TOADY', description: '무주택 기간·부양가족 수·청약통장 가입기간만 고르면 청약 가점을 계산하고, 전국 시·군·구와 운정·동탄 등 생활권별 공개 당첨가점과 비교해 드려요.', path: '/score' });
+    updatePageSeo({ title: '청약 가점 계산기 · 84점 만점 내 점수와 당첨가점 비교 · TOADY', description: '무주택 기간·부양가족 수·청약통장 가입기간만 고르면 청약 가점을 계산하고, 서울·경기 등 전국 시·군·구별 공개 당첨가점과 비교해 드려요.', path: '/score' });
     return () => resetDefaultSeo();
   }, [detailId]);
 
