@@ -152,7 +152,7 @@ export const SignUp = (props) => {
           <CheckCircleOutlineIcon sx={{ fontSize: 44 }} />
         </Box>
         <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', mb: 1 }}>
-          회원가입 완료! 🎉
+          회원가입 완료!
         </Typography>
         <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, mb: 3 }}>
           입력하신 <b>{formData.userEmail}</b>으로<br />
@@ -188,7 +188,7 @@ export const SignUp = (props) => {
         <Box
           component="img"
           alt="TOADY Logo"
-          src="https://www.toady.co.kr/cont/images/logo/logo.png"
+          src="/icons/icon-192.png"
           sx={{
             width: 52,
             height: 52,
@@ -432,6 +432,11 @@ export const SignUp = (props) => {
         >
           {isLoading ? <CircularProgress size={24} color="inherit" /> : '회원가입'}
         </Button>
+        {/* 가입 동의 안내: 작성 중인 입력이 사라지지 않게 정책 문서는 새 탭으로 연다. */}
+        <Typography variant="caption" component="p" sx={{ mt: -1.2, mb: 2, color: '#64748b', textAlign: 'center', lineHeight: 1.6, wordBreak: 'keep-all' }}>
+          가입하면 <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 700 }}>이용약관</a>과{' '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 700 }}>개인정보처리방침</a>에 동의하게 됩니다.
+        </Typography>
 
         {/* 4. 하단 로그인 전환 안내 */}
         <Box sx={{ textAlign: 'center', pt: 1, borderTop: '1px solid #f1f5f9' }}>

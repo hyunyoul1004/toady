@@ -9,7 +9,7 @@ const DEFAULT_SEO = {
   description: '전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률, 당첨가점 및 실시간 청약 커뮤니티 플랫폼 TOADY(두껍아)',
   keywords: '청약, 아파트청약, 청약일정, 무순위, 줍줍, 분양가, 청약경쟁률, 당첨가점, 부동산커뮤니티, 두껍아, TOADY',
   url: 'https://toady.co.kr/',
-  image: 'https://www.toady.co.kr/cont/images/logo/logo.png'
+  image: 'https://www.toady.co.kr/og/toady-og.png'
 };
 
 function setMetaContent(selector, content) {

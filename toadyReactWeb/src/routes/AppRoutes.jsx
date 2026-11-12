@@ -6,6 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import MyPlanner from '@/features/planner/MyPlanner';
 import ScoreCalculator from '@/features/score/ScoreCalculator';
+import LegalPage from '@/features/legal/LegalPage';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
 import { SignUpCertify } from '@/views/signup/SignUpCertify';
@@ -36,6 +37,8 @@ export const AppRoutes = () => {
         <Route path="announcements/:type/:house/:notice" element={<Main />} />
         <Route path="my" element={<MyPlanner />} />
         <Route path="score" element={<ScoreCalculator />} />
+        <Route path="privacy" element={<LegalPage kind="privacy" />} />
+        <Route path="terms" element={<LegalPage kind="terms" />} />
         <Route path="certify" element={<SignUpCertify />} />
       </Route>
 

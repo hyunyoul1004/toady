@@ -11,6 +11,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import { formatDate, dayjs } from '@/utils/date.util';
 
 // 청약홈 벤치마킹: 공급 유형별 뱃지 스타일
@@ -303,8 +304,9 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                         borderBottom: '1px solid #f1f5f9'
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e40af' }}>
-                        📅 {dayjs(selectedDate).format('M월 D일')} 청약 일정 ({selectedEvents.length}건)
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e40af', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                        <CalendarMonthOutlinedIcon sx={{ fontSize: '1rem' }} aria-hidden="true" />
+                        {dayjs(selectedDate).format('M월 D일')} 청약 일정 ({selectedEvents.length}건)
                       </Typography>
                       <Box
                         onClick={(e) => {

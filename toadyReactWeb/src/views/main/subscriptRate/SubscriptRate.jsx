@@ -3,14 +3,15 @@ import { competitionImageSections } from '@/features/announcement/export/exportD
 import useMediaQuery from '@mui/material/useMediaQuery';
 import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
-import {MobileCompetitionCards,MobileSpecialSupplyCards} from './MobileCompetitionCards';
+import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
+import { formatCount, formatUnit, normalizeRateRows, rankLabel, summarizeRates } from './rateFormat';
 /**
  * @file SubscriptRate.jsx
  * @description 청약 경쟁률, 당첨 가점 및 특별공급 신청 현황 테이블 컴포넌트
  */
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import Button from '@mui/material/Button';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -35,23 +36,42 @@ import {
 } from '@/features/announcement/hooks/useAnnouncements';
 
 /**
- * 경쟁률 소수점 2자리 포맷터 (예: 249.75 -> 249.75)
+ * 표가 실제로 화면보다 넓을 때만 좌우 스크롤 안내를 보여 준다.
+ * 넓은 화면에서 표가 다 보이면 안내·스크롤 포커스를 두지 않는다.
  */
-function formatCmpetRate(rate) {
-  if (rate == null || rate === '' || rate === '-') return '';
-  const num = Number(rate);
-  if (isNaN(num)) return String(rate);
-  if (num === 0) return '';
-  return num.toFixed(2);
-}
-
-/**
- * 숫자 콤마 포맷터
- */
-function formatNumber(val) {
-  if (val == null || val === '' || val === '-') return '0';
-  const n = Number(val);
-  return isNaN(n) ? String(val) : n.toLocaleString();
+function ScrollTable({ label, sx, children }) {
+  const ref = useRef(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const check = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', check);
+      return () => window.removeEventListener('resize', check);
+    }
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <>
+      {overflow && <span className="competition-scroll-hint">표를 좌우로 스크롤하면 전체 항목을 확인할 수 있어요.</span>}
+      <TableContainer
+        ref={ref}
+        tabIndex={overflow ? 0 : undefined}
+        role="region"
+        aria-label={overflow ? `${label} · 좌우로 스크롤` : label}
+        component={Paper}
+        variant="outlined"
+        sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1', maxWidth: '100%', overflowX: 'auto', ...sx }}
+      >
+        {children}
+      </TableContainer>
+    </>
+  );
 }
 
 /**
@@ -111,6 +131,9 @@ export function SubscriptRate({ subscriptDetail }) {
   const competitionList = useMemo(() => compRes?.data || [], [compRes]);
   const scoresList = useMemo(() => scoresRes?.data || [], [scoresRes]);
   const specialList = useMemo(() => specialRes?.data || [], [specialRes]);
+  // 요약 띠·APT 외 표는 공고 유형과 무관한 공통 계산(rateFormat.js)을 쓴다.
+  const rateSummary = useMemo(() => summarizeRates(type, competitionList), [type, competitionList]);
+  const nonAptTable = useMemo(() => (isApt ? null : normalizeRateRows(type, competitionList)), [isApt, type, competitionList]);
 
   /**
    * APT 경쟁률 및 당첨가점 통합 데이터 매핑
@@ -136,7 +159,7 @@ export function SubscriptRate({ subscriptDetail }) {
         groups.push(newGroup);
       }
       const g = houseMap.get(houseKey);
-      const rank = item.subscrptRankCode === '1' ? '1순위' : item.subscrptRankCode === '2' ? '2순위' : (item.subscrptRankCode || '1순위');
+      const rank = rankLabel(item.subscrptRankCode);
 
       if (!g.itemsByRank[rank]) {
         g.itemsByRank[rank] = [];
@@ -218,17 +241,7 @@ export function SubscriptRate({ subscriptDetail }) {
     if(isSmallScreen)return <MobileCompetitionCards groups={groupedAptData}/>;
 
     return (
-      <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤"
-        component={Paper}
-        variant="outlined"
-        sx={{
-          borderRadius: 1.5,
-          overflow: 'hidden',
-          border: '1px solid #cbd5e1',
-          maxWidth: '100%',
-          overflowX: 'auto'
-        }}
-      >
+      <ScrollTable label="주택형별 경쟁률·당첨가점 표">
         <Table size="small" sx={{ minWidth: 860, borderCollapse: 'collapse' }}>
           <TableHead>
             {/* 1단 헤더 */}
@@ -268,7 +281,7 @@ export function SubscriptRate({ subscriptDetail }) {
                         align="center"
                         sx={{ ...gridCellStyle, fontWeight: 800, bgcolor: '#ffffff' }}
                       >
-                        {group.houseTy || '-'}
+                        {formatUnit(group.houseTy, group.modelNo)}
                       </TableCell>
                     )}
 
@@ -279,7 +292,7 @@ export function SubscriptRate({ subscriptDetail }) {
                         align="center"
                         sx={{ ...gridCellStyle, fontWeight: 700, bgcolor: '#ffffff' }}
                       >
-                        {formatNumber(group.suplyHshldco)}
+                        {formatCount(group.suplyHshldco)}
                       </TableCell>
                     )}
 
@@ -306,19 +319,12 @@ export function SubscriptRate({ subscriptDetail }) {
 
                     {/* 5. 접수건수 */}
                     <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 600 }}>
-                      {formatNumber(item.reqCnt)}
+                      {formatCount(item.reqCnt)}
                     </TableCell>
 
                     {/* 6. 순위내 경쟁률 */}
-                    <TableCell
-                      align="center"
-                      sx={{
-                        ...gridCellStyle,
-                        fontWeight: Number(item.cmpetRate) > 0 ? 800 : 400,
-                        color: Number(item.cmpetRate) > 0 ? '#1e293b' : '#94a3b8'
-                      }}
-                    >
-                      {formatCmpetRate(item.cmpetRate)}
+                    <TableCell align="center" sx={gridCellStyle}>
+                      <RateValue value={item.cmpetRate} reqCnt={item.reqCnt} />
                     </TableCell>
 
                     {/* 7. 청약결과 (그룹 첫 행에 rowSpan) */}
@@ -366,13 +372,13 @@ export function SubscriptRate({ subscriptDetail }) {
                           {scoreItem.resideSenm || scoreItem.resideSecd || '-'}
                         </TableCell>
                         <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700, color: '#059669' }}>
-                          {scoreItem.lwetScore ?? '-'}
+                          {scoreText(scoreItem.lwetScore)}
                         </TableCell>
                         <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700, color: '#dc2626' }}>
-                          {scoreItem.topScore ?? '-'}
+                          {scoreText(scoreItem.topScore)}
                         </TableCell>
                         <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0, fontWeight: 800, color: '#2563eb' }}>
-                          {scoreItem.avrgScore ?? '-'}
+                          {scoreText(scoreItem.avrgScore)}
                         </TableCell>
                       </React.Fragment>
                     ) : (
@@ -394,7 +400,7 @@ export function SubscriptRate({ subscriptDetail }) {
             })}
           </TableBody>
         </Table>
-      </TableContainer>
+      </ScrollTable>
     );
   };
 
@@ -422,132 +428,50 @@ export function SubscriptRate({ subscriptDetail }) {
       );
     }
 
-    // urban (오피스텔/도시형)
-    if (type === 'urban') {
-      return (
-        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell align="center" sx={headerCellStyle}>주택형</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>거주자우선</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>공급세대수</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>접수건수</TableCell>
-                <TableCell align="center" sx={{ ...headerCellStyle, borderRight: 0, color: '#2563eb' }}>경쟁률</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {competitionList.map((row, idx) => (
-                <TableRow key={idx} hover>
-                  <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700 }}>{row.houseTy || '-'}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{row.residentPriorSenm || (row.residntPriorAt === 'Y' ? '우선' : '일반')}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.suplyHshldco)}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.reqCnt)}</TableCell>
-                  <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0, fontWeight: 800, color: '#2563eb' }}>
-                    {formatCmpetRate(row.cmpetRate) ? `${formatCmpetRate(row.cmpetRate)} : 1` : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      );
-    }
+    // 오피스텔·공공지원 민간임대·취소후재공급·잔여세대·임의공급을 같은 정규화 결과로 그린다.
+    const { rows, showCategory, categoryLabel, extras } = nonAptTable;
+    if (isSmallScreen) return <MobileRateRowCards table={nonAptTable} />;
+    const isCancel = type === 'cancel-resupply';
 
-    // public-rental (공공지원민간임대)
-    if (type === 'public-rental') {
-      return (
-        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell align="center" sx={headerCellStyle}>주택형</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>공급유형</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>공급세대수</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>접수건수</TableCell>
-                <TableCell align="center" sx={{ ...headerCellStyle, borderRight: 0, color: '#2563eb' }}>경쟁률</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {competitionList.map((row, idx) => (
-                <TableRow key={idx} hover>
-                  <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700 }}>{row.houseTy || '-'}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{row.spsplyKndNm || '-'}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.spsplyKndHshldco || row.suplyHshldco)}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.reqCnt)}</TableCell>
-                  <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0, fontWeight: 800, color: '#2563eb' }}>
-                    {formatCmpetRate(row.cmpetRate) ? `${formatCmpetRate(row.cmpetRate)} : 1` : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      );
-    }
-
-    // cancel-resupply (취소후재공급)
-    if (type === 'cancel-resupply') {
-      return (
-        <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell align="center" sx={headerCellStyle}>주택형</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>일반세대</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>일반접수</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>일반경쟁률</TableCell>
-                <TableCell align="center" sx={headerCellStyle}>다자녀</TableCell>
-                <TableCell align="center" sx={{ ...headerCellStyle, borderRight: 0 }}>신혼부부</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {competitionList.map((row, idx) => (
-                <TableRow key={idx} hover>
-                  <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700 }}>{row.houseTy || '-'}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.normalHshldco)}</TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.normalReqCnt)}</TableCell>
-                  <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 800, color: '#2563eb' }}>
-                    {formatCmpetRate(row.normalCmpetRate) ? `${formatCmpetRate(row.normalCmpetRate)} : 1` : '-'}
-                  </TableCell>
-                  <TableCell align="center" sx={gridCellStyle}>{row.mnychCmpetRate || '-'}</TableCell>
-                  <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0 }}>{row.nwwdsCmpetRate || '-'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      );
-    }
-
-    // 기타 (remaining / optional)
     return (
-      <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤" component={Paper} variant="outlined" sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1' }}>
-        <Table size="small">
+      <ScrollTable label="주택형별 경쟁률 표">
+        <Table size="small" sx={{ minWidth: 520 + extras.length * 90, borderCollapse: 'collapse' }}>
           <TableHead>
             <TableRow>
               <TableCell align="center" sx={headerCellStyle}>주택형</TableCell>
-              {type === 'remaining' && <TableCell align="center" sx={headerCellStyle}>유형</TableCell>}
-              <TableCell align="center" sx={headerCellStyle}>공급세대수</TableCell>
-              <TableCell align="center" sx={headerCellStyle}>접수건수</TableCell>
-              <TableCell align="center" sx={{ ...headerCellStyle, borderRight: 0, color: '#2563eb' }}>경쟁률</TableCell>
+              {showCategory && <TableCell align="center" sx={headerCellStyle}>{categoryLabel}</TableCell>}
+              <TableCell align="center" sx={headerCellStyle}>{isCancel ? '일반공급 세대' : '공급세대수'}</TableCell>
+              <TableCell align="center" sx={headerCellStyle}>{isCancel ? '일반공급 접수' : '접수건수'}</TableCell>
+              <TableCell align="center" sx={{ ...headerCellStyle, borderRight: extras.length ? headerCellStyle.borderRight : 0, color: '#1d4f8f' }}>
+                {isCancel ? '일반공급 경쟁률' : '경쟁률'}
+              </TableCell>
+              {extras.map((extra, i) => (
+                <TableCell key={extra.key} align="center" sx={{ ...headerCellStyle, ...(i === extras.length - 1 ? { borderRight: 0 } : {}) }}>
+                  {extra.label} 경쟁률
+                </TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {competitionList.map((row, idx) => (
-              <TableRow key={idx} hover>
-                <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700 }}>{row.houseTy || '-'}</TableCell>
-                {type === 'remaining' && <TableCell align="center" sx={gridCellStyle}>{row.remndrHshldPblancTycd || '-'}</TableCell>}
-                <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.suplyHshldco)}</TableCell>
-                <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.reqCnt)}</TableCell>
-                <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0, fontWeight: 800, color: '#2563eb' }}>
-                  {formatCmpetRate(row.cmpetRate) ? `${formatCmpetRate(row.cmpetRate)} : 1` : '-'}
+            {rows.map((row) => (
+              <TableRow key={row.key} hover>
+                <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700, whiteSpace: 'nowrap' }}>{row.unit}</TableCell>
+                {showCategory && <TableCell align="center" sx={gridCellStyle}>{row.category || '-'}</TableCell>}
+                <TableCell align="center" sx={gridCellStyle}>{formatCount(row.supply)}</TableCell>
+                <TableCell align="center" sx={gridCellStyle}>{formatCount(row.applications)}</TableCell>
+                <TableCell align="center" sx={{ ...gridCellStyle, ...(extras.length ? {} : { borderRight: 0 }) }}>
+                  <RateValue rate={row.rate} />
                 </TableCell>
+                {extras.map((extra, i) => (
+                  <TableCell key={extra.key} align="center" sx={{ ...gridCellStyle, ...(i === extras.length - 1 ? { borderRight: 0 } : {}) }}>
+                    <RateValue rate={row.extras.find((item) => item.key === extra.key).rate} compact />
+                  </TableCell>
+                ))}
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </ScrollTable>
     );
   };
 
@@ -573,7 +497,7 @@ export function SubscriptRate({ subscriptDetail }) {
           <ImageExportButton detail={subscriptDetail} kind="rate" sections={competitionImageSections(type,competitionList,scoresList,specialList)} disabled={isCompLoading || isCompError || (isApt && (isScoresLoading || isScoresError || isSpecialLoading || isSpecialError))} label="경쟁률·가점 이미지 저장"/>
         </Box>
 
-        {(!isApt || !isSmallScreen) && competitionList.length>0 && <Typography variant="caption" sx={{display:'block',color:'#607995',mb:1}}>표를 좌우로 스크롤하면 전체 항목을 확인할 수 있어요.</Typography>}
+        {!isCompLoading && !isCompError && <RateSummary summary={rateSummary} />}
         {isApt ? renderAptIntegratedTable() : renderNonAptTable()}
       </Box>
 
@@ -616,11 +540,7 @@ export function SubscriptRate({ subscriptDetail }) {
                 특별공급 신청현황 데이터가 등록되지 않았습니다.
               </Alert>
             ) : isSmallScreen ? <MobileSpecialSupplyCards items={specialList}/> : (
-              <TableContainer tabIndex={0} role="region" aria-label="청약 데이터 표 · 좌우로 스크롤"
-                component={Paper}
-                variant="outlined"
-                sx={{ borderRadius: 1.5, border: '1px solid #cbd5e1', overflowX: 'auto' }}
-              >
+              <ScrollTable label="특별공급 신청현황 표">
                 <Table size="small" sx={{ minWidth: 650, borderCollapse: 'collapse' }}>
                   <TableHead>
                     <TableRow>
@@ -640,13 +560,13 @@ export function SubscriptRate({ subscriptDetail }) {
                   <TableBody>
                     {specialList.map((row, idx) => (
                       <TableRow key={idx} hover>
-                        <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700 }}>{row.houseTy || '-'}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.spsplyHshldco)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.crspareaMnychCnt)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.ctprvnMnychCnt)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.etcAreaMnychCnt)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.nwwdsNmtwHshldco)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatNumber(row.lfeFrstHshldco)}</TableCell>
+                        <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700, whiteSpace: 'nowrap' }}>{formatUnit(row.houseTy, row.modelNo)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.spsplyHshldco)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.crspareaMnychCnt)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.ctprvnMnychCnt)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.etcAreaMnychCnt)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.nwwdsNmtwHshldco)}</TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.lfeFrstHshldco)}</TableCell>
                         <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0 }}>
                           <Chip
                             label={row.subscrptResultNm || '-'}
@@ -658,7 +578,7 @@ export function SubscriptRate({ subscriptDetail }) {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </ScrollTable>
             )}
           </AccordionDetails>
         </Accordion>

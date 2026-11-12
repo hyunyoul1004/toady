@@ -40,78 +40,159 @@
   background-color: #f0fdf4 !important;
 }
 
-/* 일정 이벤트 블록 스타일 */
-.subscription-calendar-wrapper .fc-daygrid-event {
-  margin: 2px 3px !important;
-  padding: 1px 4px !important;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-width: 1px !important;
-}
-
-.subscription-calendar-wrapper .fc-daygrid-event:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  filter: brightness(0.95);
-}
-
-/* 청약홈 스타일 커스텀 이벤트 렌더러 */
-.custom-fc-event-content {
+/* 공급 유형 범례 (그달에 실제 있는 유형만) */
+.subscription-calendar-wrapper .tc-legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
-  width: 100%;
-  overflow: hidden;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
 }
 
-/* 원형 뱃지 스타일 */
-.custom-fc-event-content .event-badge {
+.subscription-calendar-wrapper .tc-legend li {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 17px;
-  height: 17px;
-  min-width: 17px;
-  border-radius: 50%;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1;
-  background-color: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  gap: 5px;
 }
 
-/* 공급유형별 뱃지 글자색 매핑 */
-.custom-fc-event-content .badge-rcept-01 { color: #9F496E; } /* 특별공급 */
-.custom-fc-event-content .badge-rcept-02 { color: #E0475B; } /* 1순위 */
-.custom-fc-event-content .badge-rcept-03 { color: #d97706; } /* 2순위 */
-.custom-fc-event-content .badge-rcept-04 { color: #6F4849; } /* 민간임대 */
-.custom-fc-event-content .badge-rcept-05 { color: #0284c7; } /* 오피스텔 */
-.custom-fc-event-content .badge-rcept-06 { color: #647295; } /* 무순위 */
-.custom-fc-event-content .badge-rcept-07 { color: #475569; } /* 임의공급 */
-.custom-fc-event-content .badge-rcept-08 { color: #0f766e; } /* 불법행위재공급 */
+.subscription-calendar-wrapper .tc-legend .tc-legend-note {
+  margin-left: auto;
+  font-weight: 500;
+  color: #94a3b8;
+}
 
-/* 주택명 텍스트 */
-.custom-fc-event-content .event-title-text {
+/* 일정 한 줄: 옅은 배경 + 왼쪽 색 띠 + 진한 글자 */
+.subscription-calendar-wrapper .fc-daygrid-event {
+  margin: 1px 4px 2px !important;
+  padding: 0 !important;
+  border-radius: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+  overflow: hidden;
+  border-width: 1px !important;
+  transition: box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.subscription-calendar-wrapper .fc-daygrid-event:hover,
+.subscription-calendar-wrapper .fc-daygrid-event:focus-visible {
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+  filter: brightness(0.97);
+}
+
+.subscription-calendar-wrapper .fc-daygrid-event:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.tc-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px 2px 5px;
+  border-left: 3px solid var(--tc-accent, #94a3b8);
+  line-height: 1.35;
+}
+
+.tc-event .tc-title {
+  flex: 1;
+  min-width: 0;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.subscription-calendar-wrapper .fc-daygrid-event:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  filter: brightness(0.95);
+.tc-event .tc-count {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* 단계 뱃지(특·1·2): 그날 단계는 채움, 같은 공고의 다른 단계는 옅게 */
+.tc-stages {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.tc-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.tc-badge.is-active {
+  background-color: var(--tc-accent, #94a3b8);
+  color: #ffffff;
+}
+
+.tc-badge.is-muted {
+  background-color: transparent;
+  border: 1px solid currentColor;
+  color: var(--tc-text, #64748b);
+  opacity: 0.38;
+}
+
+.tc-stages-md .tc-badge {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  font-size: 11px;
+}
+
+/* '+N건 더보기' 링크 */
+.subscription-calendar-wrapper .fc-daygrid-more-link {
+  display: inline-block;
+  margin: 2px 4px 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  background-color: #eff6ff;
+  text-decoration: none;
+}
+
+.subscription-calendar-wrapper .fc-daygrid-more-link:hover,
+.subscription-calendar-wrapper .fc-daygrid-more-link:focus-visible {
+  background-color: #dbeafe;
+  color: #1d4ed8;
 }
 
 /* 날짜 칸(셀) 최소 높이 확보 */
 .subscription-calendar-wrapper .fc-daygrid-day-frame {
-  min-height: 120px;
+  min-height: 112px;
+}
+
+/* 칸 폭 기준 반응형: 좁은 칸(노트북·창 축소)에서는 옅은 단계 뱃지를 숨겨 단지명 자리를 확보한다 */
+.subscription-calendar-wrapper .fc-daygrid-day-frame {
+  container-type: inline-size;
+}
+
+@container (max-width: 190px) {
+  .tc-event .tc-badge.is-muted {
+    display: none;
+  }
 }
 
 /* react-datepicker 월 선택 팝업 UI 스타일링 */

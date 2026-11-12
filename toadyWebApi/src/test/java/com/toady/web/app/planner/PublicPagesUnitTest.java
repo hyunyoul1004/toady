@@ -21,6 +21,32 @@ class PublicPagesUnitTest {
         assertNull(PlannerSummary.manwon("0"));
         assertNull(PlannerSummary.manwon("미정"));
     }
+    @Test void publicPagesShareAppHeaderFooterAndPalette() {
+        String html = PublicHtml.page("https://www.toady.co.kr", "/weekly", "제목 <b>", "설명 & 요약", "https://www.toady.co.kr/weekly",
+            "<nav aria-label='현재 위치'><a href='https://www.toady.co.kr/'>TOADY</a></nav><section class='card'>본문</section>").getBody();
+        assertNotNull(html);
+        // 상단: 로고·워드마크·주요 메뉴, 지금 페이지 표시, 빵부스러기는 그 아래 본문에 남는다.
+        assertTrue(html.indexOf("<header class='site'>") < html.indexOf("<main>"), "헤더는 본문보다 먼저");
+        assertTrue(html.contains("<a class='brand' data-app href='https://www.toady.co.kr/'><img src='https://www.toady.co.kr/icons/icon-192.png' width='28' height='28' alt=''><span>TOADY</span></a>"));
+        for (String link : List.of("/'>청약 캘린더", "/score'>가점 계산기", "/zupzup'>무순위", "/weekly'>이번 주"))
+            assertTrue(html.contains("https://www.toady.co.kr" + link), link);
+        assertTrue(html.contains("aria-current='page' href='https://www.toady.co.kr/weekly'"));
+        assertEquals(1, html.split("aria-current=", -1).length - 1, "현재 페이지 표시는 하나");
+        assertTrue(html.contains("<main><nav aria-label='현재 위치'>"));
+        // 하단: 서비스 설명·데이터 출처·약관·문의
+        assertTrue(html.indexOf("<footer class='site-foot'>") > html.indexOf("</main>"));
+        assertTrue(html.contains("청약홈·국토교통부 공개 데이터"));
+        assertTrue(html.contains("href='https://www.toady.co.kr/privacy'>개인정보처리방침</a>") && html.contains("href='https://www.toady.co.kr/terms'>이용약관</a>"));
+        assertTrue(html.contains("mailto:dukkeoba@gmail.com"));
+        // 제목·설명은 그대로 이스케이프되고, 유입처 스크립트는 문서 끝에 한 번만 둔다.
+        assertTrue(html.contains("<title>제목 &lt;b&gt;</title>") && html.contains("content='설명 &amp; 요약'"));
+        assertTrue(html.endsWith(PublicHtml.SOURCE_SCRIPT + "</body></html>\n"));
+        assertEquals(1, html.split("<header", -1).length - 1); assertEquals(1, html.split("<footer", -1).length - 1);
+        // 앱과 같은 파란 계열만 쓰고 예전 청록색은 남기지 않는다.
+        assertTrue(PublicHtml.STYLE.contains("#2563eb") && PublicHtml.STYLE.contains("#eef4ff") && PublicHtml.STYLE.contains("#f8fafc"));
+        for (String teal : List.of("#0b6e64", "#e7f4f1", "#b9dcd5", "#f4f8f7")) assertFalse(html.toLowerCase().contains(teal), teal);
+        assertFalse(PublicHtml.header("https://www.toady.co.kr", "").contains("aria-current"), "공고·생활권 페이지는 메뉴에 해당 항목이 없다");
+    }
     @Test void livingAreaMatchesAddressTermsAndSlugs() {
         assertEquals("unjeong", LivingAreas.match("경기도 파주시 파주운정3지구 주상복합 3블록(경기도 파주시 동패동 1673번지 일원)", "시티프라디움").orElseThrow().slug());
         assertEquals("wirye", LivingAreas.match("서울특별시 송파구 장지동 100", null).orElseThrow().slug());

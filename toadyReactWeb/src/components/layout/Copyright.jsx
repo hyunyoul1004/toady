@@ -1,17 +1,33 @@
 import React from 'react';
-import Typography from '@mui/material/Typography';
-import Link from '@mui/material/Link';
+import { Link as RouterLink } from 'react-router-dom';
+import './footer.css';
 
+/**
+ * 사이트 푸터: 서비스 소개, 데이터 출처, 정책 문서, 문의. 처음 온 사용자가 운영 주체와 정보 출처를 확인할 수 있게 한다.
+ * /zupzup·/weekly는 서버 HTML이라 앱 라우터가 아닌 일반 링크로 연다.
+ */
 function Copyright() {
   return (
-    <Typography variant="body2" color="text.secondary" align="center" sx={{ pt: 4, pb: 2 }}>
-      <b>{'Email.'}</b>{' dukkeoba@gmail.com'}<br />
-      {'Copyright © '}
-      <Link color="inherit" href="https://www.toady.co.kr/">
-        Toady
-      </Link>{' '}
-      {new Date().getFullYear()}.
-    </Typography>
+    <div className="site-footer">
+      <div className="site-footer-brand">
+        <strong>TOADY</strong>
+        <p>청약 공고 찾기부터 경쟁률·당첨가점, 위치, 동네 실거래까지 한 화면에서 확인하는 청약 정보 서비스</p>
+      </div>
+      <nav className="site-footer-links" aria-label="사이트 바로가기">
+        <RouterLink to="/">청약 캘린더</RouterLink>
+        <RouterLink to="/score">가점 계산기</RouterLink>
+        <a href="/zupzup">무순위·줍줍</a>
+        <a href="/weekly">이번 주 청약</a>
+        <a href="/areas">생활권별 청약</a>
+      </nav>
+      <nav className="site-footer-links is-policy" aria-label="정책">
+        <RouterLink to="/privacy"><b>개인정보처리방침</b></RouterLink>
+        <RouterLink to="/terms">이용약관</RouterLink>
+        <a href="mailto:dukkeoba@gmail.com">문의 dukkeoba@gmail.com</a>
+      </nav>
+      <p className="site-footer-note">청약홈·국토교통부 공개 데이터를 바탕으로 한 참고 정보입니다. 청약 신청과 자격 확인은 청약홈과 공식 모집공고에서 해 주세요.</p>
+      <p className="site-footer-copy">© {new Date().getFullYear()} TOADY</p>
+    </div>
   );
 }
 

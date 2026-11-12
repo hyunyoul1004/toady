@@ -2,10 +2,18 @@ import { useState } from 'react';
 import { Box, Paper, Typography, Button, Divider, Autocomplete, TextField, InputAdornment, Chip, Collapse, FormControlLabel, Checkbox } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
+import TuneRounded from '@mui/icons-material/TuneRounded';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { REGION_SEOUL, REGION_METRO, REGION_PROVINCE, ALL_REGIONS, SUPPLY_FILTER_ITEMS } from '../announcementFilters';
 
 export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
+  // 모바일 첫 화면이 필터로 가득 차지 않게 유형·지역 필터를 접어 두고 검색창만 보여 준다.
+  const isMobile = useMediaQuery('(max-width:599px)');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const showFilters = !isMobile || filtersOpen;
+  const offTypes = Array.from({ length: 8 }, (_, index) => paramInfo[`rceptSe${String(index + 1).padStart(2, '0')}`]).filter(value => value !== 'Y').length;
+  const activeFilters = (offTypes > 0 ? 1 : 0) + (selectedRegions.length < ALL_REGIONS.length ? 1 : 0);
 
   // 공급지역 개별 토글 핸들러
   const handleToggleRegion = (region) => {
@@ -97,8 +105,19 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
               }}
             >
+              {/* 모바일 전용: 유형·지역 필터 펼치기 */}
+              <Box sx={{ display: { xs: 'flex', sm: 'none' }, alignItems: 'center', justifyContent: 'space-between', mb: showFilters ? 1.2 : 1 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b' }}>공고 찾기</Typography>
+                <Button size="small" variant={activeFilters ? 'contained' : 'outlined'} disableElevation startIcon={<TuneRounded />}
+                  endIcon={<ExpandMoreIcon sx={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}
+                  aria-expanded={filtersOpen} onClick={() => setFiltersOpen(open => !open)}
+                  sx={{ borderRadius: 999, fontWeight: 700, textTransform: 'none', fontSize: '0.8rem', py: 0.3 }}>
+                  {activeFilters ? `필터 ${activeFilters}개 적용` : '유형·지역 필터'}
+                </Button>
+              </Box>
+
               {/* [섹션 1] 공급유형 필터 (모던 칩 UI) */}
-              <Box sx={{ mb: 1.5 }}>
+              <Box sx={{ mb: 1.5, display: showFilters ? 'block' : 'none' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                   <Typography sx={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.6 }}>
                     <span style={{ color: '#2563eb' }}>●</span> 공급유형
@@ -191,7 +210,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                 </Box>
               </Box>
 
-              <Divider sx={{ mb: 1.2, borderStyle: 'dashed' }} />
+              <Divider sx={{ mb: 1.2, borderStyle: 'dashed', display: showFilters ? 'block' : 'none' }} />
 
               {/* [섹션 2] 공급지역 필터 헤더 + 우측 구/군/단지명 검색 (인라인 통합) */}
               <Box>
@@ -209,7 +228,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                   <Box
                     onClick={() => setIsRegionOpen((prev) => !prev)}
                     sx={{
-                      display: 'inline-flex',
+                      display: showFilters ? 'inline-flex' : 'none',
                       alignItems: 'center',
                       gap: 1,
                       cursor: 'pointer',
@@ -266,6 +285,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                   {/* 우측: 구/군/단지명 통합 검색 (인라인 수납) */}
                   <Box sx={{ width: { xs: '100%', sm: 380, md: 440 }, flexShrink: 0 }}>
                     <Autocomplete
+                      className="announcement-search"
                       multiple
                       value={paramInfo.citys || []}
                       freeSolo
@@ -472,7 +492,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                 </Box>
 
                 {/* 공급지역 상세 체크박스 레이어 (Collapse 애니메이션 적용) */}
-                <Collapse in={isRegionOpen} timeout="auto" unmountOnExit>
+                <Collapse in={isRegionOpen && showFilters} timeout="auto" unmountOnExit>
                   <Box sx={{ display: 'flex', gap: 1.2, flexWrap: { xs: 'wrap', lg: 'nowrap' }, mt: 1 }}>
                   {/* 1. 서울 카드 (블루 단독) */}
                   <Box

@@ -62,9 +62,9 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
           <img
-            alt="TOADY Logo"
-            src="https://www.toady.co.kr/cont/images/logo/logo.png"
-            style={{ width: '36px', height: '36px', objectFit: 'contain' }}
+            alt=""
+            src="/icons/icon-192.png"
+            style={{ width: '34px', height: '34px', objectFit: 'contain', background: '#eef7f0', borderRadius: '10px', padding: '3px', boxSizing: 'border-box' }}
           />
           <Typography
             variant="h6"

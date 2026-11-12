@@ -34,7 +34,7 @@ public class PublicCollectionPages {
         this.areas = areas; this.search = search; this.jdbc = jdbc; this.domain = domain.replaceAll("/+$", ""); this.clock = clock;
     }
     private LocalDate today() { return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))); }
-    private String nav(String label) { return "<nav><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>" + esc(label) + "</span></nav>"; }
+    private String nav(String label) { return "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>" + esc(label) + "</span></nav>"; }
 
     @GetMapping(value = "/api/v1/public/zupzup", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> zupzup() { return PublicHtml.cached("zupzup", this::renderZupzup); }
@@ -60,7 +60,7 @@ public class PublicCollectionPages {
             + "<p class='muted' style='margin-top:10px'>정확한 자격과 제출 서류는 각 공고의 모집공고 원문을 확인해 주세요.</p></section>"
             + PublicHtml.explore(domain, "/zupzup")
             + "<small>출처: 청약홈 공개 데이터(APT 무순위·잔여세대, 임의공급). 공고 유형은 청약홈 분류를 따릅니다.</small>";
-        return PublicHtml.page(title, description, domain + "/zupzup", body);
+        return PublicHtml.page(domain, "/zupzup", title, description, domain + "/zupzup", body);
     }
 
     record Week(LocalDate monday, LocalDate sunday) {
@@ -108,7 +108,7 @@ public class PublicCollectionPages {
             + areas.section("다음 주 접수 시작 (" + next.label() + ")", nextWeek.upcoming(), "다음 주에 접수를 시작하는 공고가 아직 없어요.")
             + PublicHtml.explore(domain, "/weekly")
             + "<small>출처: 청약홈 공개 데이터. 당첨자 발표는 아파트(APT) 공고 기준이며, 일정은 공식 모집공고를 함께 확인해 주세요.</small>";
-        return PublicHtml.page(title, description, domain + "/weekly", body);
+        return PublicHtml.page(domain, "/weekly", title, description, domain + "/weekly", body);
     }
 
     static final int LOOKBACK_DAYS = 120, PAGE_SIZE = 100, MAX_PAGES = 10;

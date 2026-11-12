@@ -139,3 +139,5 @@
 .area-subscribe-actions{display:flex;gap:6px;flex-wrap:wrap}
 .area-subscribe-error{flex-basis:100%;margin:0;font-size:12px;color:#b42318}
 .area-subscribe-actions .MuiButton-root{text-transform:none;border-radius:9px;font-weight:700;white-space:nowrap}
+/* 모바일 하단 탭(64px) 위로 비교 안내를 띄운다 */
+@media (max-width:899.95px){.planner-compare-hint{bottom:calc(72px + env(safe-area-inset-bottom))}}

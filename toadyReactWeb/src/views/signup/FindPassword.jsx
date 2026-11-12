@@ -142,7 +142,7 @@ export const FindPassword = (props) => {
         <Box
           component="img"
           alt="TOADY Logo"
-          src="https://www.toady.co.kr/cont/images/logo/logo.png"
+          src="/icons/icon-192.png"
           sx={{
             width: 52,
             height: 52,

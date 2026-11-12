@@ -47,6 +47,11 @@ function PriceComparison({comparison,hasUnits,area}) {
   </section>;
 }
 
+/** 출처·유의사항을 화면 곳곳의 작은 글씨 대신 한곳에 접어 둔다. */
+function Notes({items}) {
+  return <details className="research-notes"><summary>자료 기준·유의사항</summary><ul>{items.map(item=><li key={item}>{item}</li>)}</ul></details>;
+}
+
 export function AnnouncementActions({detail}) {
   const planner=usePlanner(),navigate=useNavigate();
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(null),[justSaved,setJustSaved]=useState(false);
@@ -102,7 +107,7 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
         <div className="research-section-caption"><span>주택형별 최고 공급금액</span><span>청약홈 공개 자료</span></div>
 
         {units.length ? <div className="research-price-list">{units.map(unit=><div className="research-price-row" key={unit.id}><div><strong>{unit.label}</strong><span>전용면적{unit.general || unit.special?` · 일반 ${unit.general} / 특별 ${unit.special}세대`:''}</span></div><div><strong>{unit.amountManwon?formatManwon(unit.amountManwon):'금액 미제공'}</strong><span>최고 공급금액</span></div></div>)}</div>:<p className="research-explanation">이 공급 유형의 금액과 납부 조건은 청약 정보 탭의 모집공고 원문에서 확인해 주세요.</p>}
-        <p className="research-footnote">실제 층·타입별 금액과 추가 옵션 비용은 모집공고를 확인해 주세요. 표시 범위는 각 주택형의 최고 금액을 모은 것으로, 최저 분양가를 의미하지 않습니다.</p>
+        <Notes items={['표시 금액은 각 주택형의 최고 공급금액이며 최저 분양가가 아니에요.','층·타입별 금액과 발코니 확장 등 옵션 비용은 모집공고에서 확인해 주세요.','출처: 청약홈 공개 자료']} />
         </section>
       </>}
       {tab==='trades' && <>
@@ -113,9 +118,9 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
           <PriceComparison comparison={tradeComparison(units,trades.items,area)} hasUnits={amounts.length>0} area={area}/>
           <p className="research-explanation">{trades.fromMonth} ~ {trades.toMonth} · 조건에 맞는 거래 {trades.total}건 중 최근 {trades.items.length}건</p>
           <div className="research-trade-list">{trades.items.map((trade,index)=><article key={`${trade.apartment}/${trade.date}/${index}`}><div><h3>{trade.apartment}</h3><span>전용 {Number(trade.area).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡ · {trade.floor}층{trade.buildYear?` · ${trade.buildYear}년 준공`:''}</span></div><div><strong>{formatManwon(trade.amountManwon)}</strong><time dateTime={trade.date}>{trade.date} 계약</time></div></article>)}</div>
-          <p className="research-footnote">데이터 확인 {checkedAt(trades.checkedAt)} · 취소 표시가 있는 거래 제외</p>
+
         </> : <DataState kind={trades?.status} onRetry={()=>research.trades.refetch()}/>}
-        <p className="research-footnote">같은 법정동의 신고 거래이며 거리순·동일 조건 비교나 현재 호가가 아닙니다. 신고 지연·정정·해제로 원본과 차이가 생길 수 있습니다.</p>
+        <Notes items={[trades?.checkedAt?`데이터 확인 ${checkedAt(trades.checkedAt)} · 취소 표시가 있는 거래는 제외했어요.`:'취소 표시가 있는 거래는 제외했어요.','같은 법정동의 신고 거래이며, 거리순 비교나 현재 호가가 아니에요.','신고 지연·정정·해제로 원본과 차이가 생길 수 있어요. 출처: 국토교통부 실거래가 공개 자료']} />
       </>}
     </div>
 

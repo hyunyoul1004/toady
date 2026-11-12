@@ -20,6 +20,7 @@ import CloseIcon from '@mui/icons-material/Close';
 
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Copyright from './Copyright';
+import MobileTabBar from './MobileTabBar';
 import { LoginPage } from '@/views/login/LoginPage';
 import { SignUp, FindPassword } from '@/views/signup';
 
@@ -67,9 +68,9 @@ export function MainLayout() {
           </IconButton>
           <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
             <img
-              alt="TOADY Logo"
-              src="https://www.toady.co.kr/cont/images/logo/logo.png"
-              style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+              alt=""
+              src="/icons/icon-192.png"
+              style={{ width: '30px', height: '30px', objectFit: 'contain', background: '#eef7f0', borderRadius: '10px', padding: '3px', boxSizing: 'border-box' }}
             />
             <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#1e293b' }}>
               TOADY
@@ -104,10 +105,11 @@ export function MainLayout() {
         <Box sx={{ flexGrow: 1,minWidth:0,maxWidth:'100%' }}>
           <Outlet />
         </Box>
-        <Box component="footer" sx={{ py: 3, mt: 4, borderTop: '1px solid #f1f5f9' }}>
+        <Box component="footer" sx={{ py: 3, mt: 4, mb: { xs: 'calc(64px + env(safe-area-inset-bottom))', md: 0 }, borderTop: '1px solid #f1f5f9' }}>
           <Copyright />
         </Box>
       </Box>
+      <MobileTabBar onOpenMenu={() => setMobileOpen(true)} />
 
       {/* 로그인 다이얼로그 */}
       <Dialog

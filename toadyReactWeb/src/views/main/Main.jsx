@@ -13,6 +13,7 @@ import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
 import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview';
 import AreaSubscribe from '@/features/planner/AreaSubscribe';
+import ServiceIntro from '@/features/intro/ServiceIntro';
 import '@/features/planner/planner.css';
 import { initialBrowseState, monthRange } from '@/features/planner/browseState';
 import { safeRead, isoDate } from '@/features/planner/plannerUtils';
@@ -41,6 +42,7 @@ import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import FeedIcon from '@mui/icons-material/Feed';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import CloseIcon from '@mui/icons-material/Close';
+import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 
@@ -180,9 +182,11 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   const lastViewed = useRef(null);
   const [researchTab,setResearchTab]=useState('info');
   const detailScrollRef=useRef(null);
+  // 상세 본문을 내리면 제목·탭만 남기고 상단(유형·주소·저장 버튼)을 접어 본문을 넓게 보여 준다.
+  const [headerCompact,setHeaderCompact]=useState(false);
   const [detailTabValue, setDetailTabValue] = useState(0);
-  useEffect(()=>{if(detailScrollRef.current) detailScrollRef.current.scrollTop=0;},[researchTab,detailTabValue]);
   const [selectedSubscriptSeq, setSelectedSubscriptSeq] = useState(null);
+  useEffect(()=>{if(detailScrollRef.current) detailScrollRef.current.scrollTop=0; setHeaderCompact(false);},[researchTab,detailTabValue,selectedSubscriptSeq]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [addressCopied, setAddressCopied] = useState(false);
 
@@ -344,10 +348,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   return (
     <>
       {!detailOnly && <div>
-        <Box component="header" sx={{ mb: 2 }}>
-          <Typography component="h1" sx={{ fontSize: { xs: 22, sm: 26 }, fontWeight: 800, color: 'text.primary', letterSpacing: '-.03em' }}>청약 공고</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: .5 }}>관심 지역의 청약 일정과 공고를 확인하세요.</Typography>
-        </Box>
+        <ServiceIntro onSearchFocus={() => {
+          const input = document.querySelector('.announcement-search input');
+          input?.scrollIntoView({ behavior: 'smooth', block: 'center' }); input?.focus({ preventScroll: true });
+        }} />
         <Box sx={{ pt: 0.5 }}>
           <ThemeProvider theme={theme}>
             {/* 상단 통합 필터 카드 (공급유형 + 공급지역을 한 화면에 조화롭게 배치) */}
@@ -424,7 +428,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {/* 뱃지 영역: 주택유형 */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mb: 0.8, flexWrap: 'wrap' }}>
+            <Box sx={{ display: headerCompact ? 'none' : 'flex', alignItems: 'center', gap: 0.8, mb: 0.8, flexWrap: 'wrap' }}>
               <Chip
                 label={currentSubscriptDetail?.housingDivision || currentSubscriptDetail?.houseSecdNm || '분양공고'}
                 size="small"
@@ -460,18 +464,21 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
               variant="h6"
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: '1.15rem', sm: '1.3rem' },
+                fontSize: headerCompact ? { xs: '1rem', sm: '1.1rem' } : { xs: '1.15rem', sm: '1.3rem' },
                 color: '#0f172a',
                 lineHeight: 1.35,
                 mb: 0.5,
-                wordBreak: 'keep-all'
+                wordBreak: 'keep-all',
+                // 긴 공고명은 모바일에서 2줄, 스크롤해 접힌 상태에서는 1줄로 줄인다(전체 이름은 title로 확인).
+                display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                WebkitLineClamp: headerCompact ? 1 : { xs: 2, sm: 3 }
               }}
             >
               {currentSubscriptDetail?.houseNm || mainDetail.subscriptDetail?.houseNm || '청약 공고 상세'}
             </Typography>
 
             {/* 공급위치(주소) 요약 (SEO address 태그) + 주소 복사 버튼 */}
-            {(currentSubscriptDetail?.hssplyAdres || currentSubscriptDetail?.supplyLocation) && (
+            {!headerCompact && (currentSubscriptDetail?.hssplyAdres || currentSubscriptDetail?.supplyLocation) && (
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.8, mt: 0.3 }}>
                 <Typography
                   component="address"
@@ -485,7 +492,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
                     gap: 0.4
                   }}
                 >
-                  <span>📍</span>
+                  <PlaceOutlined sx={{ fontSize: '1rem', color: '#94a3b8', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {currentSubscriptDetail?.hssplyAdres || currentSubscriptDetail?.supplyLocation}
                   </span>
@@ -577,7 +584,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           </Box>
         </Box>
 
-        {!isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <AnnouncementActions key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail}/>}
+        {!headerCompact && !isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <AnnouncementActions key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail}/>}
 
         {/* 상세 정보 탭 내비게이션 */}
         <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 1.5, pb: 1, bgcolor: '#ffffff' }}>
@@ -595,7 +602,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
               TabIndicatorProps={{ style: { display: 'none' } }}
               sx={{
                 minHeight: 38,
+                // 좁은 화면에서는 아이콘을 숨겨 탭 4개 글자가 잘리지 않게 한다.
+                '& .MuiTab-iconWrapper': { display: { xs: 'none', sm: 'inline-flex' } },
                 '& .MuiTab-root': {
+                  minWidth: 0,
                   minHeight: 36,
                   py: 0.5,
                   px: 1,
@@ -629,6 +639,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
         {/* 3. 본문 스크롤 영역 */}
         <Box ref={detailScrollRef} data-testid="announcement-scroll"
+          onScroll={event => { const top = event.currentTarget.scrollTop; setHeaderCompact(previous => previous ? top > 24 : top > 120); }}
           sx={{
             flex: 1,
             overflowY: 'auto',

@@ -79,8 +79,8 @@ public class PublicAreaPage {
             .append(esc(area.label())).append(" 청약</strong><span class='muted'>").append(esc(area.description())).append("</span></a>");
         String title = "생활권별 청약 일정 · TOADY";
         String description = "운정·동탄·다산·검단·위례·광교 등 생활권 이름으로 아파트 청약 일정과 분양가, 경쟁률을 찾아보세요.";
-        return html(title, description, domain + "/areas",
-            "<nav><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>생활권</span></nav><section class='card'><h1>생활권별 청약 일정</h1><p class='muted'>"
+        return html("", title, description, domain + "/areas",
+            "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>생활권</span></nav><section class='card'><h1>생활권별 청약 일정</h1><p class='muted'>"
                 + esc(description) + "</p></section><section class='card list'>" + links + "</section>");
     }
 
@@ -103,7 +103,7 @@ public class PublicAreaPage {
         StringBuilder others = new StringBuilder();
         for (var other : LivingAreas.ALL) if (!other.slug().equals(area.slug()))
             others.append("<a class='chip' href='").append(esc(domain + "/areas/" + other.slug())).append("'>").append(esc(other.label())).append("</a> ");
-        String body = "<nav><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><a href='" + esc(domain) + "/areas'>생활권</a><span>›</span><span>" + esc(area.label()) + "</span></nav>"
+        String body = "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><a href='" + esc(domain) + "/areas'>생활권</a><span>›</span><span>" + esc(area.label()) + "</span></nav>"
             + "<section class='card'><span class='chip'>생활권</span><h1>" + esc(area.label()) + " 청약 일정</h1><p class='muted'>" + esc(area.description().split(" · ")[0])
             + "의 청약 공고를 주소·단지명 기준으로 모았어요. 분양가·경쟁률·당첨가점과 동네 실거래가는 캘린더에서 공고를 눌러 확인하세요.</p>"
             + "<a class='cta' data-app href='" + esc(app) + "'>" + esc(area.label()) + " 청약 캘린더 열기</a>"
@@ -115,7 +115,7 @@ public class PublicAreaPage {
             + section("최근 마감", groups.closed(), "최근 6개월 안에 마감된 공고가 없습니다.")
             + "<section class='card'><h2>다른 생활권</h2><div class='chips'>" + others + "</div></section>" + PublicHtml.explore(domain, "")
             + "<small>출처: 청약홈 공개 데이터. 생활권은 행정 경계가 아니며, 주소·단지명 기준으로 분류해 일부 공고가 빠지거나 포함될 수 있습니다.</small>";
-        return html(title, description, domain + "/areas/" + area.slug(), body);
+        return html("", title, description, domain + "/areas/" + area.slug(), body);
     }
 
     String section(String heading, List<Item> items, String empty) {
@@ -132,7 +132,7 @@ public class PublicAreaPage {
         return list.append("</section>").toString();
     }
 
-    private ResponseEntity<String> html(String title, String description, String canonical, String body) {
-        return PublicHtml.page(title, description, canonical, body);
+    private ResponseEntity<String> html(String current, String title, String description, String canonical, String body) {
+        return PublicHtml.page(domain, current, title, description, canonical, body);
     }
 }

@@ -1,0 +1,29 @@
+.intro{position:relative;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 55%,#f1f8ff 100%);border:1px solid #dbe6f7;border-radius:18px;padding:22px 22px 18px;margin-bottom:16px;color:#0f172a;word-break:keep-all}
+.intro-close{position:absolute !important;top:12px;right:12px;background:#fff !important;border:1px solid #e2e8f0 !important}
+.intro-eyebrow{display:inline-block;font-size:12px;font-weight:800;color:#2563eb;background:#fff;border:1px solid #cfe0fb;border-radius:999px;padding:3px 10px}
+.intro h1{font-size:24px;font-weight:800;letter-spacing:-.6px;line-height:1.35;margin:10px 40px 6px 0}
+.intro>p{margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6}
+.intro-features{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.intro-features li{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.intro-icon{width:34px;height:34px;border-radius:10px;background:#eef4ff;color:#2563eb;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.intro-icon svg{font-size:20px}
+.intro-features strong{font-size:14px;font-weight:800}
+.intro-features li>span:not(.intro-icon){font-size:12.5px;color:#64748b;line-height:1.5;flex:1}
+.intro-features a,.intro-features button{align-self:flex-start;margin-top:6px;font:inherit;font-size:12.5px;font-weight:700;color:#2563eb;background:none;border:0;padding:0;cursor:pointer;text-decoration:none}
+.intro-features a::after,.intro-features button::after{content:' →'}
+.intro-compact{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+.intro-compact h1{font-size:26px;font-weight:800;letter-spacing:-.6px;margin:0;color:#0f172a}
+.intro-compact p{margin:4px 0 0;font-size:13.5px;color:#64748b;word-break:keep-all}
+.intro-compact button{flex-shrink:0;display:inline-flex;align-items:center;gap:2px;font:inherit;font-size:12.5px;font-weight:700;color:#475569;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 12px;cursor:pointer}
+.intro-break{display:none}
+@media (max-width:900px){.intro-features{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.intro{padding:18px 16px 14px;border-radius:16px}.intro h1{font-size:20px}.intro-break{display:inline}.intro>p{font-size:13px}
+  .intro-features{gap:8px}.intro-features li{padding:12px}.intro-compact{align-items:flex-start}.intro-compact h1{font-size:22px}.intro-compact p{font-size:12.5px}}
+/* 모바일: 소개가 첫 화면을 다 차지하지 않도록 카드를 아이콘·제목·링크만 남긴 한 줄로 줄인다 */
+@media (max-width:600px){
+  .intro-features li{flex-direction:row;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:10px}
+  .intro-features li>span:not(.intro-icon){display:none}
+  .intro-icon{width:28px;height:28px;margin:0}.intro-icon svg{font-size:17px}
+  .intro-features strong{font-size:13px;flex:1;min-width:0}
+  .intro-features a,.intro-features button{flex-basis:100%;margin-top:2px;font-size:12px}
+}

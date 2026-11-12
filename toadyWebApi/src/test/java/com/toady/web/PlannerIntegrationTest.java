@@ -99,6 +99,11 @@ class PlannerIntegrationTest {
         String detail=mvc.perform(get("/api/v1/public/announcements/apt/P2/N2")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(detail.contains("/areas/unjeong") && detail.contains("운정 생활권"),detail);
         assertTrue(detail.contains("data-app"),"공개 페이지에서 앱으로 갈 때 유입처를 넘길 링크를 표시한다");
+        for(String page:java.util.List.of(detail,area)){
+            assertTrue(page.contains("<header class='site'>") && page.contains("<footer class='site-foot'>") && page.contains("/icons/icon-192.png"),"공개 페이지는 앱과 같은 상단·하단을 쓴다");
+            assertTrue(page.indexOf("</header>")<page.indexOf("<nav aria-label='현재 위치'>"),"빵부스러기는 상단 메뉴 아래에 둔다");
+            assertFalse(page.contains("#0b6e64"),"예전 청록색을 쓰지 않는다");
+        }
         mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/areas/gwanggyo")));
     }
     static String html(org.springframework.test.web.servlet.ResultActions result) throws Exception { return result.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8); }
@@ -149,6 +154,7 @@ class PlannerIntegrationTest {
         assertTrue(unranked.contains("/?focus=unranked"));
         String weekly=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
         assertTrue(weekly.contains("이번 주 청약 일정") && weekly.contains("/announcements/remaining/R1/N1"),weekly);
+        assertTrue(weekly.contains("aria-current='page' href='http") && weekly.contains("/weekly'>이번 주</a>") && unranked.contains("/zupzup'>무순위</a>"),"상단 메뉴에 지금 페이지를 표시한다");
         assertTrue(weekly.contains("/announcements/apt/W1/N1?tabType=rate"),"이번 주 발표 공고는 경쟁률 탭으로 연결한다");
         // 이번 주에 마감된 공고가 12건을 넘어도 접수 건수를 자르지 않는다(생활권 페이지의 최근 마감 12건 제한과 별개).
         java.time.LocalDate monday=today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));

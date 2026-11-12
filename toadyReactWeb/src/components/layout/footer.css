@@ -1,0 +1,9 @@
+.site-footer{max-width:1080px;margin:0 auto;padding:8px 4px 12px;color:#64748b;font-size:12.5px;line-height:1.7;word-break:keep-all}
+.site-footer-brand strong{font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
+.site-footer-brand p{margin:2px 0 10px}
+.site-footer-links{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:6px}
+.site-footer-links a{color:#475569;text-decoration:none;font-weight:600;padding:4px 0}
+.site-footer-links a:hover{color:#2563eb}
+.site-footer-links.is-policy a b{color:#0f172a}
+.site-footer-note{margin:8px 0 2px;font-size:12px;color:#94a3b8}
+.site-footer-copy{margin:0;font-size:12px;color:#94a3b8}
