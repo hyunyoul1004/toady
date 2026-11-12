@@ -21,8 +21,9 @@ public class PublicAreaPage {
     static final int PAST_DAYS = 180, FUTURE_DAYS = 180;
     private final AnnouncementSearchService search;
     private final String domain;
-    public PublicAreaPage(AnnouncementSearchService search, @Value("${toady.web.domain}") String domain) {
-        this.search = search; this.domain = domain.replaceAll("/+$", "");
+    private final ScoreBenchmarks benchmarks;
+    public PublicAreaPage(AnnouncementSearchService search, @Value("${toady.web.domain}") String domain, ScoreBenchmarks benchmarks) {
+        this.search = search; this.domain = domain.replaceAll("/+$", ""); this.benchmarks = benchmarks;
     }
     enum Status { OPEN, UPCOMING, CLOSED }
     record Item(AnnouncementListItem source, LocalDate start, LocalDate end, Status status) {
@@ -42,6 +43,22 @@ public class PublicAreaPage {
     public List<AnnouncementListItem> active(LivingAreas.Area area, LocalDate today) {
         Groups groups = groups(area.label(), null, today, 45);
         return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+    }
+
+    /** 주간 브리핑 집계: 기간 안에 접수를 시작하는 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). */
+    public record WeekCounts(int apt, int unranked, int others) { public int total() { return apt + unranked + others; } }
+    public WeekCounts startingCounts(LocalDate from, LocalDate to) {
+        AnnouncementSearch query = new AnnouncementSearch();
+        query.setStartDate(from); query.setEndDate(to); query.setSize(500);
+        int apt = 0, unranked = 0, others = 0;
+        for (AnnouncementListItem item : search.searchAll(query, null).getContent()) {
+            LocalDate start = PlannerSummary.date(item.rceptBgnde() == null ? "" : item.rceptBgnde());
+            if (start == null || start.isBefore(from) || start.isAfter(to)) continue;
+            if ("apt".equals(item.type())) apt++;
+            else if (PublicCollectionPages.UNRANKED_TYPES.contains(item.type())) unranked++;
+            else others++;
+        }
+        return new WeekCounts(apt, unranked, others);
     }
 
     /** 무순위·잔여세대·임의공급의 접수 중·예정 공고. 웹 푸시의 '줍줍' 새 공고 판정에 쓴다. */
@@ -119,10 +136,29 @@ public class PublicAreaPage {
                 ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 " + esc(area.label()) + "에서 접수 중이거나 예정된 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : section("접수 예정", groups.upcoming(), "")))
             + section("최근 마감", groups.closed(), "최근 6개월 안에 마감된 공고가 없습니다.")
+            + scoreSection(area)
             + "<section class='card'><h2>다른 생활권</h2><div class='chips'>" + others + "</div></section>" + PublicHtml.explore(domain, "")
             + "<small>출처: 청약홈 공개 데이터. 생활권은 행정 경계가 아니며, 주소·단지명 기준으로 분류해 일부 공고가 빠지거나 포함될 수 있습니다.</small>";
         return html("", title, description, domain + "/areas/" + area.slug(), body);
     }
+
+    static final int AREA_SCORES = 5;
+    /** 생활권의 최근 공개 당첨가점(공고별 최저·최고)과 가점 계산기·자격 진단 연결. 자료가 없으면 비운다. */
+    String scoreSection(LivingAreas.Area area) {
+        List<ScoreBenchmarks.Item> items;
+        try { items = benchmarks.all().stream().filter(item -> area.slug().equals(item.areaSlug())).limit(AREA_SCORES).toList(); }
+        catch (RuntimeException unavailable) { return ""; }
+        if (items.isEmpty()) return "";
+        StringBuilder out = new StringBuilder("<section class='card list'><h2>").append(esc(area.label())).append(" 최근 공개 당첨가점</h2>");
+        for (ScoreBenchmarks.Item item : items) {
+            String range = (item.low() == null ? "" : "최저 " + score(item.low()) + "점") + (item.low() != null && item.high() != null ? " · " : "") + (item.high() == null ? "" : "최고 " + score(item.high()) + "점");
+            out.append("<a href='").append(esc(domain + "/announcements/" + item.id() + "?tabType=rate")).append("'><strong><span class='when'>").append(esc(range))
+                .append("</span>").append(esc(item.houseNm())).append("</strong><span class='muted'>").append(esc(item.receiptDate().substring(0, 7).replace('-', '.'))).append(" 접수</span></a>");
+        }
+        return out.append("<div class='row' style='margin-top:12px'><a class='cta' data-app href='").append(esc(domain + "/score")).append("'>내 가점 계산하고 비교하기</a>")
+            .append("<a class='cta secondary' data-app href='").append(esc(domain + "/match")).append("'>내가 넣을 수 있는 청약 찾기</a></div></section>").toString();
+    }
+    static String score(double value) { return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value); }
 
     String section(String heading, List<Item> items, String empty) {
         StringBuilder list = new StringBuilder("<section class='card list'><h2>").append(esc(heading)).append(" <span class='muted'>").append(items.size()).append("건</span></h2>");

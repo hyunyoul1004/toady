@@ -143,3 +143,19 @@
 @media (max-width:899.95px){.planner-compare-hint{bottom:calc(72px + env(safe-area-inset-bottom))}}
 /* 전체 화면 캘린더 연결 대화상자: 홈 표시줄과 겹치지 않게 아래 여백 */
 .calendar-dialog .MuiDialog-paperFullScreen .calendar-content{padding-bottom:calc(24px + env(safe-area-inset-bottom)) !important;padding-left:max(22px, env(safe-area-inset-left)) !important;padding-right:max(22px, env(safe-area-inset-right)) !important}
+/* 청약 진행 단계와 다음 할 일 */
+.planner-stage{margin:0 0 16px;display:grid;gap:8px}
+.planner-stage-steps{display:flex;flex-wrap:wrap;gap:6px}
+.planner-stage-steps button{font:inherit;font-size:12.5px;font-weight:700;color:#475569;background:#fff;border:1px solid #dbe3ec;border-radius:999px;padding:5px 11px;cursor:pointer;min-height:32px}
+.planner-stage-steps button:hover{border-color:#a9c4f5}
+.planner-stage-steps button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.planner-stage-steps button:disabled{opacity:.6;cursor:default}
+.planner-stage-steps button.is-active{background:#172b42;border-color:#172b42;color:#fff}
+.planner-stage-steps button.is-active.is-3,.planner-stage-steps button.is-active.is-5{background:#0f766e;border-color:#0f766e}
+.planner-stage-steps button.is-active.is-4{background:#64748b;border-color:#64748b}
+.planner-next{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;line-height:1.55;border-radius:12px;padding:9px 12px;background:#f5f9ff;color:#1e3a8a;word-break:keep-all}
+.planner-next.is-urgent{background:#fff4e5;color:#92400e}
+.planner-next.is-done{background:#e7f6f3;color:#0f766e}
+.planner-next .MuiButton-root{font-weight:700;text-transform:none;padding:2px 8px;min-width:0}
+.planner-results{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.planner-results li{font-size:12px;font-weight:700;color:#334155;background:#f1f5f9;border-radius:8px;padding:3px 9px}

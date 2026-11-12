@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ZUPZUP_TOPICS, withZupzup, zupzupTopic } from './pushTopics';
+import { WEEKLY_BRIEF, ZUPZUP_TOPICS, withWeekly, withZupzup, zupzupTopic } from './pushTopics';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControlLabel, IconButton, Switch, useMediaQuery } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
@@ -54,7 +54,11 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
         label={<span><strong>관심 공고 전날 일정</strong><small>{loggedIn ? '계정에 저장한 관심 공고 기준' : '이 브라우저에 저장한 관심 공고 기준'} · 접수·발표·계약일 전날</small></span>} />
     </section>
     <section className="push-option">
-      <strong>새 공고를 받을 생활권</strong><small>공고가 새로 올라온 날 알려 드려요. 줍줍 알림을 포함해 최대 6곳.</small>
+      <FormControlLabel control={<Switch checked={scope.areas.includes(WEEKLY_BRIEF)} disabled={busy || (!scope.areas.includes(WEEKLY_BRIEF) && scope.areas.length >= 6)} onChange={event => change({ ...scope, areas: withWeekly(scope.areas, event.target.checked) })} />}
+        label={<span><strong>주간 청약 브리핑</strong><small>일요일 저녁, 다음 주에 접수를 시작하는 공고 수를 알려 드려요</small></span>} />
+    </section>
+    <section className="push-option">
+      <strong>새 공고를 받을 생활권</strong><small>공고가 새로 올라온 날 알려 드려요. 줍줍·주간 브리핑을 포함해 최대 6개.</small>
       <div className="push-areas">{Array.isArray(areas.data) ? areas.data.map(area => <Chip key={area.slug} label={area.label} disabled={busy}
         color={scope.areas.includes(area.slug) ? 'primary' : 'default'} variant={scope.areas.includes(area.slug) ? 'filled' : 'outlined'} onClick={() => toggleArea(area.slug)} />) : areas.isLoading ? <CircularProgress size={18} /> : null}</div>
     </section>

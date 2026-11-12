@@ -15,7 +15,18 @@ public class PublicAnnouncementPage {
     private final PlannerSummary summaries;
     private final ShareScores shareScores;
     private final String domain;
-    public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");}
+    private final AnnouncementResults results;
+    public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain,AnnouncementResults results) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");this.results=results;}
+    /** APT 공고의 공개 결과 카드(1순위 최고 경쟁률·당첨가점). 공개 전이면 비운다. */
+    String resultCard(String id) {
+        AnnouncementResults.Result result=results.forIds(java.util.List.of(id)).get(id);
+        if(result==null || (!result.ratePublished() && !result.scorePublished())) return "";
+        StringBuilder out=new StringBuilder("<section class='card'><h2>청약 결과</h2><ul>");
+        if(result.ratePublished()) out.append("<li><strong>1순위 최고 경쟁률</strong><span>").append(result.topRate()==null?"미달":PublicHtml.esc(rate(result.topRate())+" : 1")).append("</span></li>");
+        if(result.scorePublished()) out.append("<li><strong>공개 당첨가점</strong><span>").append(PublicHtml.esc((result.scoreLow().isEmpty()?"":"최저 "+result.scoreLow()+"점")+(!result.scoreLow().isEmpty() && !result.scoreHigh().isEmpty()?" · ":"")+(result.scoreHigh().isEmpty()?"":"최고 "+result.scoreHigh()+"점"))).append("</span></li>");
+        return out.append("</ul><p class='muted' style='margin-top:8px'>주택형·거주지역 전체 중 공개된 값의 최고·최저예요. 주택형별 경쟁률과 내 가점 비교는 앱에서 확인하세요.</p></section>").toString();
+    }
+    static String rate(double value) { return value>=100?String.format("%,d",Math.round(value)):java.math.BigDecimal.valueOf(value).setScale(2,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(); }
     static String section(String value) {return java.util.Set.of("detail","rate","map","comment").contains(value)?value:"detail";}
     static String label(String value) {return switch(value){case "rate" -> "청약 경쟁률";case "map" -> "위치·입지";case "comment" -> "청약 이야기";default -> "청약 일정·분양 정보";};}
     private static boolean valid(String type,String house,String notice) {return type.matches("apt|urban|remaining|public-rental|optional") && house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}");}
@@ -54,11 +65,11 @@ public class PublicAnnouncementPage {
             <meta name='twitter:card' content='summary_large_image'><meta name='twitter:title' content='%s'><meta name='twitter:description' content='%s'><meta name='twitter:image' content='%s'>
             <meta name='theme-color' content='#ffffff'>%s</head><body>%s<main>%s
             <section class='card'><h1>%s</h1><p class='muted'>%s</p><img src='%s' width='1200' height='630' alt='%s'></section>
-            %s<section class='card'><h2>주요 일정</h2><ul>%s</ul></section>
-            <section class='card'><a class='cta' data-app href='%s'>%s 자세히 보기</a>%s<p class='muted' style='margin-top:12px'>경쟁률·당첨가점·위치·동네 실거래가를 한 화면에서 확인할 수 있어요.</p></section>
+            %s%s<section class='card'><h2>주요 일정</h2><ul>%s</ul></section>
+            <section class='card'><a class='cta' data-app href='%s'>%s 자세히 보기</a><a class='cta secondary' data-app href='%s'>이 공고, 내가 넣을 수 있을까? 자격 진단</a>%s<p class='muted' style='margin-top:12px'>경쟁률·당첨가점·위치·동네 실거래가와 내 신청 가능성을 한 화면에서 확인할 수 있어요.</p></section>
             <small>출처: 청약홈 공개 데이터. 공개 자료가 없는 경쟁률은 제공되지 않을 수 있습니다. 일정·가격·신청 자격은 공식 모집공고를 확인해 주세요.</small></main>%s%s</body></html>
             """.formatted(esc(title),esc(description),esc(base),esc(title),esc(description),esc(url),esc(image),esc(title),esc(title),esc(description),esc(image),
-                PublicHtml.STYLE,PublicHtml.header(domain,""),nav,esc(s.houseNm()),esc(summary+" · "+s.address()),esc(image),esc(title),priceCard,events,esc(app),esc(label(tab)),areaLink,PublicHtml.footer(domain),PublicHtml.SOURCE_SCRIPT);
+                PublicHtml.STYLE,PublicHtml.header(domain,""),nav,esc(s.houseNm()),esc(summary+" · "+s.address()),esc(image),esc(title),priceCard,type.equals("apt")?resultCard(s.id()):"",events,esc(app),esc(label(tab)),esc(domain+"/match"),areaLink,PublicHtml.footer(domain),PublicHtml.SOURCE_SCRIPT);
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(html);
     }
     @GetMapping(value="/api/v1/public/announcement-images/{type}/{house}/{notice}.png",produces=MediaType.IMAGE_PNG_VALUE)

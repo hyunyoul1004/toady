@@ -63,7 +63,7 @@ class PushIntegrationTest {
 
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired ObjectMapper json; @Autowired UserRepository users;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
-    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas;
+    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas; @Autowired com.toady.web.app.planner.AnnouncementResults results;
     @MockitoBean EmailUtilService mail;
 
     KeyPair browser; byte[] auth = new byte[16];
@@ -104,7 +104,7 @@ class PushIntegrationTest {
         return json.readTree(new String(padded, 0, padded.length - 1, StandardCharsets.UTF_8));
     }
     PushDigest digest(String kst) {
-        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
+        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
     }
 
     @Test void subscribeLookupTestSendAndUnsubscribe() throws Exception {
@@ -212,6 +212,41 @@ class PushIntegrationTest {
         JsonNode message = decrypt(SENT.get(0).body());
         assertEquals("수도권 줍줍 새 청약 공고", message.path("title").asText(), message.toString());
         assertEquals("/?subscriptSeq=remaining%2FR1%2FN1", message.path("url").asText());
+    }
+
+    @Test void favoriteResultsAndSundayWeeklyBriefAreBundled() throws Exception {
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_CMPET");
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_SCORE");
+        jdbc.update("DELETE FROM TB_REMNDR_LTTOT_PBLANC_DETAIL");
+        // 11-13 마감·11-20 발표 공고(P1)를 관심 공고로, 주간 브리핑도 함께 구독한 비회원.
+        String endpoint = "https://fcm.googleapis.com/fcm/send/results";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favoriteIds", List.of("apt/P1/N1"), "areas", List.of("weekly-brief"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.areas[0]").value("weekly-brief"));
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+        // 기능을 켠 첫 실행: 이미 공개돼 있던 결과는 새 소식으로 보내지 않는다.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE) VALUES ('OLD','N0','01','01','40','50')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('OLD','N0','지난 결과 단지','서울특별시 송파구 9','2026-11-10','2026-11-12','2026-11-19')");
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET FAVORITE_IDS='apt/P1/N1,apt/OLD/N0'");
+        assertEquals(0, digest("2026-11-13T18:00").run().sent(), "결과 기록을 시작하는 날에는 기존 결과를 보내지 않는다(P1은 내일 일정도 없다)");
+        // 다음 날 P1 경쟁률 발표 → 결과 알림 1건, 경쟁률 탭으로 연결.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('P1','N1','01','1','01','12.5')");
+        SENT.clear();
+        assertEquals(1, digest("2026-11-14T18:00").run().sent());
+        JsonNode message = decrypt(SENT.get(0).body());
+        assertEquals("경쟁률 발표 · 운정 푸시 테스트", message.path("title").asText(), message.toString());
+        assertEquals("/?subscriptSeq=apt%2FP1%2FN1&tabType=rate", message.path("url").asText());
+        // 일요일(11-15): 다음 주 접수 시작 공고 수를 주간 브리핑으로 보낸다. 같은 결과는 다시 보내지 않는다.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('W1','N1','다음 주 단지','서울특별시 강동구 1','2026-11-17','2026-11-18')");
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('W2','N2','다음 주 줍줍','서울특별시 강동구 2','2026-11-19','2026-11-19')");
+        SENT.clear();
+        assertEquals(1, digest("2026-11-15T18:00").run().sent());
+        JsonNode weekly = decrypt(SENT.get(0).body());
+        assertEquals("이번 주 청약 브리핑", weekly.path("title").asText(), weekly.toString());
+        assertTrue(weekly.path("body").asText().contains("접수 시작 2건 · 아파트 1건 · 무순위·줍줍 1건"), weekly.toString());
+        assertEquals("/weekly", weekly.path("url").asText());
+        // 일요일이 아니면 주간 브리핑을 넣지 않는다.
+        SENT.clear();
+        assertEquals(0, digest("2026-11-16T18:00").run().sent());
     }
 
     @Test void bundledMessageListsBothKindsWithActions() {

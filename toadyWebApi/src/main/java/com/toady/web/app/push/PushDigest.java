@@ -40,16 +40,17 @@ public class PushDigest {
     private final PushSubscriptions store; private final WebPushSender sender; private final JdbcTemplate jdbc;
     private final PlannerService planner; private final PlannerSummary summaries; private final PublicAreaPage areas;
     private final UserRepository users; private final ObjectMapper mapper; private final Clock clock;
+    private final com.toady.web.app.planner.AnnouncementResults results;
 
     @Autowired
     public PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper) {
-        this(store, sender, jdbc, planner, summaries, areas, users, mapper, Clock.system(PushSubscriptions.KST));
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results) {
+        this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, Clock.system(PushSubscriptions.KST));
     }
     PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, Clock clock) {
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results, Clock clock) {
         this.store = store; this.sender = sender; this.jdbc = jdbc; this.planner = planner; this.summaries = summaries;
-        this.areas = areas; this.users = users; this.mapper = mapper; this.clock = clock;
+        this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.clock = clock;
     }
 
     static final int STALE_DAYS = 180;
@@ -76,21 +77,35 @@ public class PushDigest {
         List<PushSubscriptions.Row> pending = store.pending(today);
         if (pending.isEmpty()) return new Report(0, 0, 0, 0);
         Map<String, List<Seen>> news = new HashMap<>();
-        Map<Long, List<PushMessage.Line>> members = new HashMap<>();
+        Map<Long, List<PlannerSummary.Summary>> members = new HashMap<>();
+        Map<String, LocalDateTime> resultSeen = new HashMap<>();
+        Map<String, com.toady.web.app.planner.AnnouncementResults.Result> resultCache = new HashMap<>();
+        Set<String> startedResultKinds = new HashSet<>();
+        PublicAreaPage.WeekCounts[] week = new PublicAreaPage.WeekCounts[1];
         Map<String, Optional<PlannerSummary.Summary>> guestSummaries = new HashMap<>();
         List<List<AnnouncementListItem>> unranked = new ArrayList<>();
         int sent = 0, removed = 0, retry = 0, empty = 0;
         for (PushSubscriptions.Row row : pending) {
             try {
                 List<PushMessage.Line> lines = new ArrayList<>();
-                if (row.favorites()) {
-                    if (row.userSeq() != null) lines.addAll(members.computeIfAbsent(row.userSeq(), user -> memberLines(user, tomorrow)));
-                    else for (String id : row.favoriteIds()) guestSummary(id, guestSummaries).ifPresent(summary -> lines.addAll(favoriteLines(summary, tomorrow)));
-                }
                 LocalDateTime since = row.lastDigestAt() != null ? row.lastDigestAt() : row.registeredAt();
+                if (row.favorites()) {
+                    List<PlannerSummary.Summary> favorites = new ArrayList<>();
+                    if (row.userSeq() != null) favorites.addAll(members.computeIfAbsent(row.userSeq(), this::memberSummaries));
+                    else for (String id : row.favoriteIds()) guestSummary(id, guestSummaries).ifPresent(favorites::add);
+                    for (PlannerSummary.Summary summary : favorites) lines.addAll(favoriteLines(summary, tomorrow));
+                    lines.addAll(resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds));
+                }
                 Set<String> already = new HashSet<>();
                 lines.forEach(line -> already.add(line.announcementId()));
                 for (String slug : row.areas()) {
+                    // 주간 브리핑: 일요일 저녁 묶음에만 다음 주(월~일) 접수 시작 공고 수를 넣는다.
+                    if (PushTopics.WEEKLY.equals(slug)) {
+                        if (today.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) continue;
+                        if (week[0] == null) week[0] = areas.startingCounts(today.plusDays(1), today.plusDays(7));
+                        if (week[0].total() > 0) lines.add(new PushMessage.Line("WEEKLY", null, weeklyText(week[0]), "이번 주 청약", slug, "이번 주 청약"));
+                        continue;
+                    }
                     var area = LivingAreas.bySlug(slug);
                     var topic = PushTopics.bySlug(slug);
                     if (area.isEmpty() && topic.isEmpty()) continue;
@@ -119,12 +134,68 @@ public class PushDigest {
         return new Report(sent, removed, retry, empty);
     }
 
-    private List<PushMessage.Line> memberLines(long user, LocalDate tomorrow) {
+    private List<PlannerSummary.Summary> memberSummaries(long user) {
         var account = users.findById(user).orElse(null);
         if (account == null || !"N".equals(account.getWithdrawalYn()) || !"N".equals(account.getLockYn())) return List.of();
+        return planner.list(user).stream().map(PlannerService.Favorite::summary).filter(summary -> !summary.unavailable()).toList();
+    }
+    static String weeklyText(PublicAreaPage.WeekCounts counts) {
+        List<String> parts = new ArrayList<>();
+        if (counts.apt() > 0) parts.add("아파트 " + counts.apt() + "건");
+        if (counts.unranked() > 0) parts.add("무순위·줍줍 " + counts.unranked() + "건");
+        if (counts.others() > 0) parts.add("기타 " + counts.others() + "건");
+        return "접수 시작 " + counts.total() + "건 · " + String.join(" · ", parts);
+    }
+
+    /** 결과 알림은 접수 마감 뒤 이 기간 안의 공고만 보낸다(오래된 공고를 새로 저장했을 때 지난 결과를 새 소식처럼 보내지 않는다). */
+    static final int RESULT_FRESH_DAYS = 30;
+    static final String RATE_SLUG = "result-rate", SCORE_SLUG = "result-score";
+    /** 관심 공고의 1순위 경쟁률·당첨가점이 마지막 알림 뒤 처음 공개됐으면 한 줄씩 만든다. 공개 시점은 TB_PUSH_AREA_SEEN에 결과 종류별로 기록한다. */
+    List<PushMessage.Line> resultLines(List<PlannerSummary.Summary> favorites, LocalDate today, LocalDateTime since, LocalDateTime now,
+            Map<String, com.toady.web.app.planner.AnnouncementResults.Result> cache, Map<String, LocalDateTime> seen, Set<String> started) {
+        List<PlannerSummary.Summary> fresh = favorites.stream().filter(summary -> summary.id().startsWith("apt/") && summary.endDate() != null
+            && !summary.endDate().isBefore(today.minusDays(RESULT_FRESH_DAYS)) && !summary.endDate().isAfter(today)).toList();
+        if (fresh.isEmpty()) return List.of();
+        // 두 결과 종류의 기록을 함께 시작한다. 시작한 실행에서 보이는 결과는 기준 시각으로 두고, 그 뒤 처음 보이는 결과만 새 소식이다.
+        for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
+        List<String> missing = fresh.stream().map(PlannerSummary.Summary::id).filter(id -> !cache.containsKey(id)).toList();
+        if (!missing.isEmpty()) {
+            Map<String, com.toady.web.app.planner.AnnouncementResults.Result> found = results.forIds(missing);
+            for (String id : missing) cache.put(id, found.get(id));
+        }
         List<PushMessage.Line> lines = new ArrayList<>();
-        for (var favorite : planner.list(user)) if (!favorite.summary().unavailable()) lines.addAll(favoriteLines(favorite.summary(), tomorrow));
+        for (PlannerSummary.Summary summary : fresh) {
+            var result = cache.get(summary.id());
+            if (result == null) continue;
+            if (result.ratePublished() && resultSeen(RATE_SLUG, summary.id(), now, seen, started).isAfter(since))
+                lines.add(new PushMessage.Line("RESULT", summary.id(), summary.houseNm(), "경쟁률 발표", null, null));
+            if (result.scorePublished() && resultSeen(SCORE_SLUG, summary.id(), now, seen, started).isAfter(since))
+                lines.add(new PushMessage.Line("RESULT", summary.id(), summary.houseNm(), "당첨가점 공개", null, null));
+        }
         return lines;
+    }
+    /** 결과 종류의 기록 시작 표시('*')를 확인하고, 이번 실행에서 처음 시작했으면 slug+"*"로 기억한다. */
+    private void startResults(String slug, Set<String> started) {
+        if (started.contains(slug) || started.contains(slug + "*")) return;
+        boolean before = jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID='*'", Integer.class, slug) > 0;
+        if (!before) {
+            try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,'*',?)", slug, Timestamp.valueOf(BASELINE)); }
+            catch (org.springframework.dao.DuplicateKeyException raced) { /* 다른 실행이 먼저 시작 */ }
+        }
+        started.add(before ? slug : slug + "*");
+    }
+    /** 결과 종류(slug)별 최초 확인 시각. 그 종류를 처음 기록하는 실행에서는 이미 공개된 결과를 새 소식으로 보지 않는다(기준 시각). */
+    private LocalDateTime resultSeen(String slug, String id, LocalDateTime now, Map<String, LocalDateTime> seen, Set<String> started) {
+        return seen.computeIfAbsent(slug + "|" + id, key -> {
+            List<Timestamp> found = jdbc.queryForList("SELECT FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID=?", Timestamp.class, slug, id);
+            if (!found.isEmpty()) { markSeen(slug, List.of(id), now); return found.get(0).toLocalDateTime(); }
+            // slug+"*": 이번 실행에서 기록을 시작했다 → 지금 공개돼 있는 결과는 모두 기준 시각으로 둔다.
+            LocalDateTime at = started.contains(slug + "*") ? BASELINE : now;
+            try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(at)); }
+            catch (org.springframework.dao.DuplicateKeyException raced) { at = BASELINE; }
+            markSeen(slug, List.of(id), now);
+            return at;
+        });
     }
     private Optional<PlannerSummary.Summary> guestSummary(String id, Map<String, Optional<PlannerSummary.Summary>> cache) {
         return cache.computeIfAbsent(id, key -> {

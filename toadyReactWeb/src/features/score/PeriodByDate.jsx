@@ -3,7 +3,9 @@ import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import DateDigitsField from './DateDigitsField';
 import AutoFixHighRounded from '@mui/icons-material/AutoFixHighRounded';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { accountFromDate, housingFromDates, periodPickUpdate } from './scoreRules';
+import { Button } from '@mui/material';
+import EventAvailableRounded from '@mui/icons-material/EventAvailableRounded';
+import { accountFromDate, housingFromDates, nextRise, periodPickUpdate, riseCalendarText } from './scoreRules';
 
 
 function Choice({ value, onChange, options, label }) {
@@ -26,6 +28,13 @@ export default function PeriodByDate({ kind, options, value, onPick, active = tr
   const set = (key, next) => { setDirty(true); setForm(previous => ({ ...previous, [key]: next })); };
   const result = useMemo(() => kind === 'housing' ? housingFromDates(form, today) : accountFromDate(form.joined, today), [kind, form, today]);
   const touched = kind === 'housing' ? Boolean(form.birth) : Boolean(form.joined);
+  const rise = useMemo(() => nextRise(kind, form, result, today), [kind, form, result, today]);
+  // 가점이 오르는 날을 캘린더 파일로 받아 두면 서버에 날짜를 저장하지 않고도 그날 알림을 받는다.
+  const saveRise = () => {
+    const url = URL.createObjectURL(new Blob([riseCalendarText(rise, window.location.origin)], { type: 'text/calendar;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `toady-score-${rise.date}.ics`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   // 계산된 구간이 바뀌면 바로 반영한다(같은 값이면 다시 저장하지 않는다).
   // 입력이 부족해지면 null 을 넘겨 점수 계산·저장에서 빠지게 한다. '직접 고르기'에서 돌아오면(active) 날짜 결과를 다시 반영한다.
   useEffect(() => {
@@ -51,5 +60,7 @@ export default function PeriodByDate({ kind, options, value, onPick, active = tr
     {touched && (result.error
       ? <p className="score-dates-result is-pending">{result.error}</p>
       : <p className="score-dates-result"><AutoFixHighRounded fontSize="inherit" /><span><b>{options[result.index].label} · {options[result.index].points}점</b>으로 골랐어요<small>{result.reason}</small></span></p>)}
+    {touched && rise && <p className="score-dates-next"><EventAvailableRounded fontSize="inherit" /><span><b>{rise.date.replaceAll('-', '.')}</b>에 {rise.label} 점수가 <b>+{rise.plus}점</b> 올라요</span>
+      <Button size="small" onClick={saveRise}>캘린더에 알림 추가</Button></p>}
   </div>;
 }

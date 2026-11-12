@@ -25,9 +25,12 @@ public final class PushTopics {
         new Topic("zupzup-capital", "수도권 줍줍", "/match/zupzup", true),
         new Topic("zupzup-all", "전국 줍줍", "/match/zupzup", false));
 
+    /** 일요일 저녁 묶음에 다음 주(월~일) 접수 시작 공고 수를 알려 주는 주간 브리핑. 새 공고 판정과 무관하다. */
+    public static final String WEEKLY = "weekly-brief";
+
     public static Optional<Topic> bySlug(String slug) { return ALL.stream().filter(topic -> topic.slug().equals(slug)).findFirst(); }
     /** 구독 범위에 저장할 수 있는 slug: 생활권 또는 알림 주제. */
-    public static boolean valid(String slug) { return LivingAreas.bySlug(slug).isPresent() || bySlug(slug).isPresent(); }
+    public static boolean valid(String slug) { return LivingAreas.bySlug(slug).isPresent() || bySlug(slug).isPresent() || WEEKLY.equals(slug); }
     /** 알림의 '새 공고 모아보기' 버튼 주소. */
-    public static String url(String slug) { return bySlug(slug).map(Topic::url).orElse("/areas/" + slug); }
+    public static String url(String slug) { return WEEKLY.equals(slug) ? "/weekly" : bySlug(slug).map(Topic::url).orElse("/areas/" + slug); }
 }

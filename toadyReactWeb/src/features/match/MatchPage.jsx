@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Skeleton, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Alert, Button, Skeleton, Snackbar, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import NotificationsActiveOutlined from '@mui/icons-material/NotificationsActiveOutlined';
 import TaskAltRounded from '@mui/icons-material/TaskAltRounded';
 import BoltRounded from '@mui/icons-material/BoltRounded';
+import IosShareRounded from '@mui/icons-material/IosShareRounded';
 import { Main } from '@/views/main/Main';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
@@ -105,6 +106,18 @@ export default function MatchPage({ tab = 'match' }) {
   const editing = Boolean(editLayer);
   const setEditing = open => setEditLayer(open ? true : null);
   const [filter, setFilter] = useState('possible');
+  const [shareMessage, setShareMessage] = useState('');
+  /** 개인 조건은 넣지 않고, 같은 진단을 해 볼 수 있는 주소만 공유한다. */
+  async function share(count) {
+    const url = new URL(tab === 'zupzup' ? '/match/zupzup' : '/match', window.location.origin).href;
+    const data = tab === 'zupzup'
+      ? { title: '무순위·줍줍 청약 모아보기 · TOADY', text: `지금 접수 중·예정인 줍줍 청약 ${count}건, 같이 확인해 봐요.`, url }
+      : { title: '내게 맞는 청약 · TOADY', text: `30초 자격 진단으로 지금 넣을 수 있는 청약을 찾아봤어요(${count}건). 내 조건으로도 확인해 보세요.`, url };
+    try {
+      if (navigator.share) { await navigator.share(data); trackAction('share', 'tool/match'); return; }
+      await navigator.clipboard.writeText(`${data.text} ${url}`); trackAction('share', 'tool/match'); setShareMessage('공유 문구와 링크를 복사했어요.');
+    } catch (error) { if (error?.name !== 'AbortError') setShareMessage('링크를 복사하지 못했어요.'); }
+  }
   const feed = useEligibilityFeed();
   const items = useMemo(() => (Array.isArray(feed.data?.items) ? feed.data.items : []), [feed.data]);
 
@@ -157,7 +170,10 @@ export default function MatchPage({ tab = 'match' }) {
       </section> : <>
         <div className="match-profile">
           <div className="match-profile-chips">{profileSummary(profile).map(text => <span key={text}>{text}</span>)}</div>
-          <Button size="small" startIcon={<EditOutlined />} onClick={() => setEditing(true)}>조건 수정</Button>
+          <div className="match-profile-actions">
+            <Button size="small" startIcon={<IosShareRounded />} onClick={() => share((counts.ok || 0) + (counts.check || 0))}>공유</Button>
+            <Button size="small" startIcon={<EditOutlined />} onClick={() => setEditing(true)}>조건 수정</Button>
+          </div>
         </div>
         {feed.isLoading ? <FeedSkeleton /> : feed.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => feed.refetch()}>다시 시도</Button>}>공고를 불러오지 못했어요.</Alert> : <>
           <div className="match-filter">
@@ -181,6 +197,7 @@ export default function MatchPage({ tab = 'match' }) {
 
     {tab === 'zupzup' && <>
       <ZupzupAlert />
+      {zupzup.length > 0 && <div className="match-share-row"><Button size="small" startIcon={<IosShareRounded />} onClick={() => share(zupzup.length)}>줍줍 목록 공유</Button></div>}
       {feed.isLoading ? <FeedSkeleton /> : feed.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => feed.refetch()}>다시 시도</Button>}>공고를 불러오지 못했어요.</Alert>
         : zupzup.length ? <ul className="match-list">{zupzup.map(item => <FeedCard key={item.id} item={item} result={complete ? evaluate(profile, item, today) : null} today={today} onOpen={openDetail} />)}</ul>
           : <div className="match-empty"><p>지금 접수 중이거나 예정된 무순위·줍줍 공고가 없어요. 새 공고는 매일 반영돼요.</p></div>}
@@ -188,6 +205,7 @@ export default function MatchPage({ tab = 'match' }) {
     </>}
 
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}
+    <Snackbar open={Boolean(shareMessage)} autoHideDuration={4000} onClose={() => setShareMessage('')} message={shareMessage} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
   </div>;
 }
 

@@ -21,6 +21,7 @@ import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -135,6 +136,15 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
               </ListItem>
             );
           })}
+        </List>
+        {/* 자주 묻는 질문은 서버 HTML 페이지라 앱 라우터가 아닌 일반 링크로 연다. */}
+        <List disablePadding sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #f1f5f9' }}>
+          <ListItem disablePadding>
+            <ListItemButton component="a" href="/faq" sx={{ borderRadius: 1.5, py: 1, px: 1.5, color: '#475569', '&:hover': { bgcolor: '#f8fafc' } }}>
+              <ListItemIcon sx={{ minWidth: 36, color: '#64748b' }}><HelpOutlineIcon /></ListItemIcon>
+              <ListItemText primary="자주 묻는 질문" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
+            </ListItemButton>
+          </ListItem>
         </List>
       </Box>
 

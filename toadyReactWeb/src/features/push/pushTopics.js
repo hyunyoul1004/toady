@@ -10,3 +10,10 @@ export function withZupzup(areas = [], next) {
   return next ? [...rest, next].slice(0, 6) : rest;
 }
 export function zupzupTopic(areas = []) { return areas.find(slug => SLUGS.has(slug)) || null; }
+
+/** 일요일 저녁 묶음 알림에 다음 주 접수 시작 공고 수를 넣는 주간 브리핑(서버 PushTopics.WEEKLY). */
+export const WEEKLY_BRIEF = 'weekly-brief';
+export function withWeekly(areas = [], on) {
+  const rest = areas.filter(slug => slug !== WEEKLY_BRIEF);
+  return on ? [...rest, WEEKLY_BRIEF].slice(0, 6) : rest;
+}

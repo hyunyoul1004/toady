@@ -403,3 +403,8 @@ ALTER TABLE TB_PUSH_AREA_SEEN ADD COLUMN IF NOT EXISTS LAST_SEEN_DT DATETIME(6) 
 CREATE INDEX IF NOT EXISTS IX_PUSH_AREA_LAST_SEEN ON TB_PUSH_AREA_SEEN (LAST_SEEN_DT);
 -- 컬럼을 추가한 직후에는 모든 행이 NULL이다. 적용 시점을 마지막 확인으로 채워, 첫 묶음 발송 전에 보관 정리가 돌아도 지워지지 않게 한다.
 UPDATE TB_PUSH_AREA_SEEN SET LAST_SEEN_DT = CURRENT_TIMESTAMP(6) WHERE LAST_SEEN_DT IS NULL;
+
+-- 16. 나의 청약 진행 단계 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- 관심 공고마다 '관심 → 신청 예정 → 신청 완료 → 당첨/미당첨 → 계약 완료'를 기록해 단계별 다음 할 일과 결과 확인을 안내한다.
+-- 0 관심, 1 신청 예정, 2 신청 완료, 3 당첨, 4 미당첨, 5 계약 완료. 미적용이면 회원의 단계 저장만 건너뛴다(비회원은 브라우저에 저장).
+ALTER TABLE TB_FAVORITE ADD COLUMN IF NOT EXISTS STAGE TINYINT NOT NULL DEFAULT 0 COMMENT '청약 진행 단계 0~5';

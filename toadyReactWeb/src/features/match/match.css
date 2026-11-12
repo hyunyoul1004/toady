@@ -36,6 +36,8 @@
 .match-profile{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#f8fafc;border:1px solid var(--m-line);border-radius:14px;padding:10px 12px;margin-bottom:14px;flex-wrap:wrap}
 .match-profile-chips{display:flex;flex-wrap:wrap;gap:6px}
 .match-profile-chips span{font-size:12.5px;font-weight:700;background:#fff;border:1px solid #dbe3ec;border-radius:999px;padding:3px 10px;color:#334155}
+.match-profile-actions{display:flex;gap:4px}
+.match-share-row{display:flex;justify-content:flex-end;margin:-6px 0 8px}
 .match-filter{margin-bottom:12px;overflow-x:auto}
 .match-filter .MuiToggleButtonGroup-root{gap:6px}
 .match-filter .MuiToggleButton-root{border:1px solid #dbe3ec !important;border-radius:999px !important;margin:0 !important;padding:5px 14px;font-weight:700;color:#475569;font-size:13px;text-transform:none;white-space:nowrap}

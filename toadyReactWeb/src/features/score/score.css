@@ -114,6 +114,8 @@
 .score-dates-row .score-choice{flex-wrap:nowrap}
 .score-dates-row>span{font-size:13px;font-weight:700;color:#334155;white-space:nowrap}
 .score-dates-result{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0 !important;padding:10px 12px;border-radius:10px;background:#eef4ff;color:#1e3a8a;font-size:13px;line-height:1.5;word-break:keep-all}
+.score-dates-next{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 0 !important;padding:8px 12px;border-radius:10px;background:#f0fdf9;color:#0f766e;font-size:12.5px;line-height:1.5;word-break:keep-all}
+.score-dates-next span{flex:1;min-width:180px}.score-dates-next .MuiButton-root{padding:2px 8px;min-width:0}
 .score-dates-result svg{margin-top:2px;flex-shrink:0}
 .score-dates-result small{display:block;color:#475569;font-size:12px;margin-top:2px}
 .score-dates-result.is-pending{background:#fff;border:1px dashed #d6dee8;color:#64748b}

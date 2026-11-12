@@ -34,7 +34,8 @@ export function usePlanner() {
     if (!ID_PATTERN.test(item.id)) throw Error('공고 식별자를 확인해 주세요.');
     const existing = items.find(x => x.id === item.id);
     if (userSeq) {
-      await apiClient.post(`/api/v1/me/favorites/${item.id}`, { note: item.note || '', checklist: item.checklist || 0, emailEnabled: Boolean(item.emailEnabled) });
+      // stage를 보내지 않으면 서버가 기존 단계를 유지한다(공고 저장·메모 수정).
+      await apiClient.post(`/api/v1/me/favorites/${item.id}`, { note: item.note || '', checklist: item.checklist || 0, emailEnabled: Boolean(item.emailEnabled), ...(item.stage !== undefined ? { stage: item.stage } : {}) });
       await client.invalidateQueries({ queryKey: key });
     } else {
       const current = guest.getState().items;

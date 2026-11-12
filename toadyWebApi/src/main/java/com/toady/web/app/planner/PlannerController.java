@@ -16,13 +16,13 @@ import org.springframework.validation.annotation.Validated;
 public class PlannerController {
     private final PlannerService service;
     public PlannerController(PlannerService service) { this.service=service; }
-    public record Save(@NotNull @Size(max=2000) String note,@Min(0) @Max(31) int checklist,boolean emailEnabled) { }
+    public record Save(@NotNull @Size(max=2000) String note,@Min(0) @Max(31) int checklist,boolean emailEnabled,@Min(0) @Max(PlannerService.MAX_STAGE) Integer stage) { }
     @GetMapping public ResData<?> list(@AuthenticationPrincipal CustomUserDetails user) { return ResData.of(service.list(user.getUserSeq()),"SUCCESS","성공"); }
     @PostMapping("/{type}/{house}/{notice}") public ResData<?> save(@AuthenticationPrincipal CustomUserDetails user,
             @PathVariable @Pattern(regexp="apt|urban|remaining|public-rental|optional") String type,
             @PathVariable @Pattern(regexp="[a-zA-Z0-9_-]{1,40}") String house,
             @PathVariable @Pattern(regexp="[a-zA-Z0-9_-]{1,40}") String notice,@Valid @RequestBody Save request) {
-        service.save(user.getUserSeq(),type,house,notice,request.note(),request.checklist(),request.emailEnabled());
+        service.save(user.getUserSeq(),type,house,notice,request.note(),request.checklist(),request.emailEnabled(),request.stage());
         return ResData.of(null,"SUCCESS","저장했습니다.");
     }
     @DeleteMapping("/{type}/{house}/{notice}") public ResData<?> delete(@AuthenticationPrincipal CustomUserDetails user,@PathVariable String type,@PathVariable String house,@PathVariable String notice) {

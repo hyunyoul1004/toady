@@ -122,6 +122,44 @@ export function accountFromDate(joined, today) {
   return { index, months, reason: `가입일(${dot(joined)})부터 ${periodText(months)}` };
 }
 
+/** YYYY-MM-DD에 n개월을 더한다. 없는 날(예: 8월 31일 + 6개월)은 다음 달로 넘어간다(꽉 찬 개월 계산과 맞는다). */
+export function addMonths(value, months) {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 + months, d)).toISOString().slice(0, 10);
+}
+/**
+ * 날짜 입력으로 계산한 구간이 다음에 오르는 날. 가점이 그대로 늘어나는 두 항목(무주택 기간 2점, 통장 가입기간 1점)만 본다.
+ * 반환: { date, plus, label } 또는 이미 최고 구간·입력 부족이면 null.
+ */
+export function nextRise(kind, form, result, today) {
+  if (!result || result.error || result.index === undefined) return null;
+  if (kind === 'housing') {
+    if (result.index >= HOUSING_OPTIONS.length - 1) return null;
+    // 만 30세 미만 미혼: 만 30세가 되는 날 1년 미만 구간(2점)이 된다.
+    const date = result.start ? addYears(result.start, Math.floor(result.months / 12) + 1) : validDate(form.birth) ? addYears(form.birth, 30) : null;
+    if (!date || date <= today) return null;
+    const next = result.start ? Math.min(HOUSING_OPTIONS.length - 1, result.index + 1) : 1;
+    return { date, plus: HOUSING_OPTIONS[next].points - HOUSING_OPTIONS[result.index].points, label: '무주택 기간' };
+  }
+  if (result.index >= ACCOUNT_OPTIONS.length - 1 || !validDate(form.joined)) return null;
+  const date = result.months < 6 ? addMonths(form.joined, 6) : addYears(form.joined, Math.floor(result.months / 12) + 1);
+  if (date <= today) return null;
+  return { date, plus: ACCOUNT_OPTIONS[result.index + 1].points - ACCOUNT_OPTIONS[result.index].points, label: '청약통장 가입기간' };
+}
+/** 가점이 오르는 날 하루 일정(오전 9시 알림)을 담은 캘린더 파일 내용. */
+export function riseCalendarText(rise, origin = 'https://www.toady.co.kr') {
+  const day = rise.date.replaceAll('-', '');
+  const end = new Date(`${rise.date}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TOADY//Score//KO', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+    `UID:score-${rise.label === '무주택 기간' ? 'housing' : 'account'}-${day}@toady.co.kr`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`,
+    `DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${end.toISOString().slice(0, 10).replaceAll('-', '')}`,
+    `SUMMARY:청약 가점 +${rise.plus}점 (${rise.label})`,
+    `DESCRIPTION:오늘부터 ${rise.label} 구간이 올라 가점이 ${rise.plus}점 늘어요. 공개 당첨가점과 다시 비교해 보세요.`,
+    `URL:${origin}/score`, 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:청약 가점이 올랐어요', 'TRIGGER:PT9H', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n') + '\r\n';
+}
+
 /** 숫자만 받아 YYYY.MM.DD로 보여 준다. 8자리가 되면 YYYY-MM-DD로 넘기고, 아니면 빈 값을 넘긴다. */
 export function formatDigits(raw) {
   const digits = String(raw || '').replace(/\D/g, '').slice(0, 8);

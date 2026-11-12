@@ -141,6 +141,9 @@ class PlannerIntegrationTest {
         var regions=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/regions")).andExpect(status().isOk())));
         assertEquals("경기",regions.get(0).path("sido").asText());
         assertEquals("파주시",regions.get(0).path("districts").get(0).path("name").asText());
+        com.toady.web.app.planner.PublicPagesCache.clear(benchmarks); com.toady.web.app.planner.PublicPagesCache.clear();
+        String area=html(mvc.perform(get("/api/v1/public/areas/unjeong")).andExpect(status().isOk()));
+        assertTrue(area.contains("운정 최근 공개 당첨가점") && area.contains("최저 47점 · 최고 74점") && area.contains("/announcements/apt/S1/N1?tabType=rate"),area);
     }
     @Test void eligibilityFeedListsActiveAnnouncementsWithSupplyConditions() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
@@ -230,6 +233,30 @@ class PlannerIntegrationTest {
                 .andExpect(jsonPath("$.actualRate").value(45.2)).andExpect(jsonPath("$.actualChoice").value(4)).andExpect(jsonPath("$.myChoice").value(4));
         mvc.perform(get("/api/v1/polls/rate/apt/NOPE/N1")).andExpect(status().isNotFound());
     }
+    @Test void favoriteStageIsKeptWhenOmittedAndIgnoredUntilColumnExists() throws Exception {
+        user("stage@example.test");String bearer=token("stage@example.test");
+        jdbc.execute("ALTER TABLE TB_FAVORITE DROP COLUMN IF EXISTS STAGE");
+        // database.sql 16번 적용 전: 단계는 저장하지 않지만 나머지 저장은 그대로 동작한다.
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":1,\"emailEnabled\":false,\"stage\":2}")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/me/favorites").header("Authorization",bearer)).andExpect(jsonPath("$.data[0].stage").value(0)).andExpect(jsonPath("$.data[0].checklist").value(1));
+        jdbc.execute("ALTER TABLE TB_FAVORITE ADD COLUMN IF NOT EXISTS STAGE TINYINT NOT NULL DEFAULT 0");
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":1,\"emailEnabled\":false,\"stage\":2}")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/me/favorites").header("Authorization",bearer)).andExpect(jsonPath("$.data[0].stage").value(2));
+        // 단계를 보내지 않는 저장(메모만 수정)은 기존 단계를 지우지 않는다.
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"메모\",\"checklist\":1,\"emailEnabled\":false}")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/me/favorites").header("Authorization",bearer)).andExpect(jsonPath("$.data[0].stage").value(2)).andExpect(jsonPath("$.data[0].note").value("메모"));
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":1,\"emailEnabled\":false,\"stage\":6}")).andExpect(status().isBadRequest());
+    }
+    @Test void plannerResultsSummarizePublishedRatesAndScores() throws Exception {
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('P1','N1','01','1','01','12.5'),('P1','N1','02','1','01','(△2)'),('P1','N1','01','2','01','80')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE) VALUES ('P1','N1','01','01','48','69'),('P1','N1','02','01','-','0')");
+        mvc.perform(post("/api/v1/planner/results").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/P1/N1\",\"apt/NONE/X\",\"remaining/R1/N1\"]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].id").value("apt/P1/N1")).andExpect(jsonPath("$[0].ratePublished").value(true)).andExpect(jsonPath("$[0].topRate").value(12.5))
+            .andExpect(jsonPath("$[0].scoreLow").value("48")).andExpect(jsonPath("$[0].scoreHigh").value("69")).andExpect(jsonPath("$[0].scorePublished").value(true))
+            .andExpect(jsonPath("$[1].ratePublished").value(false)).andExpect(jsonPath("$[1].scorePublished").value(false));
+        mvc.perform(post("/api/v1/planner/results").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"../etc\"]}")).andExpect(status().isBadRequest());
+    }
     @Test void favoritesArePrivateValidatedAndUseAuthoritativeSummary() throws Exception {
         user("owner@example.test");user("other@example.test");String owner=token("owner@example.test"),other=token("other@example.test");
         mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",owner).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"비공개 조사\",\"checklist\":5,\"emailEnabled\":true}"))
@@ -239,7 +266,7 @@ class PlannerIntegrationTest {
         mvc.perform(delete("/api/v1/me/favorites/apt/P1/N1").header("Authorization",other)).andExpect(status().isOk());
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE",Integer.class));
         long ownerId=users.findByUserEmail("owner@example.test").getUserSeq();
-        planner.save(ownerId,"apt","P1","N1","비공개 조사",5,true); // 동일 값 재저장도 새 INSERT가 아니다.
+        planner.save(ownerId,"apt","P1","N1","비공개 조사",5,true,null); // 동일 값 재저장도 새 INSERT가 아니다.
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE",Integer.class));
         mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",owner).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"x\",\"checklist\":32}"))
                 .andExpect(status().isBadRequest());
@@ -306,7 +333,9 @@ class PlannerIntegrationTest {
         byte[] after=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         assertFalse(java.util.Arrays.equals(before,after));
         String detail=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andReturn().getResponse().getContentAsString();
-        assertFalse(detail.contains("최저 56점"));
+        assertFalse(detail.contains("공개 당첨가점 · 최저 56점"),"일정 탭의 검색 설명에는 가점을 넣지 않는다");
+        assertTrue(detail.contains("<h2>청약 결과</h2>") && detail.contains("최저 56점 · 최고 74점"),"공개된 결과는 본문 카드로 보여준다");
+        assertTrue(detail.contains("/match'>이 공고, 내가 넣을 수 있을까?"),"자격 진단으로 연결한다");
     }
     @Test void rollingQuotaIsAtomicAndReservesAuthenticationCapacity() throws Exception {
         ExecutorService pool=Executors.newFixedThreadPool(6);
@@ -320,14 +349,14 @@ class PlannerIntegrationTest {
     }
     @Test void missingAnnouncementCannotBeSaved() throws Exception {
         var account=user("missing@example.test");
-        assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false));
+        assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false,null));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE",Integer.class));
     }
     @Test void reminderBundlesEventsAndDoesNotSendTwiceOrAfterOptOut() throws Exception {
         var account=user("reminder@example.test");
         var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=?,RCEPT_ENDDE=?",today.toString(),today.plusDays(1).toString());
-        planner.save(account.getUserSeq(),"apt","P1","N1","개인 메모는 이메일에 넣지 않음",3,true);
+        planner.save(account.getUserSeq(),"apt","P1","N1","개인 메모는 이메일에 넣지 않음",3,true,null);
         var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr");
         reminder.send();reminder.send();
         org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(1)).sendReminder(org.mockito.ArgumentMatchers.eq("reminder@example.test"),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.argThat(body -> body.contains("접수 시작") && body.contains("접수 마감") && !body.contains("개인 메모")));
@@ -339,7 +368,7 @@ class PlannerIntegrationTest {
         var account=user("quota@example.test");
         var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=?",today.toString());
-        planner.save(account.getUserSeq(),"apt","P1","N1","",0,true);
+        planner.save(account.getUserSeq(),"apt","P1","N1","",0,true,null);
         var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr");
         org.mockito.Mockito.doThrow(new MailQuotaException()).when(mail).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
         reminder.send();assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_REMINDER_DELIVERY",Integer.class));
