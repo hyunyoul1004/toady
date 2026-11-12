@@ -16,9 +16,10 @@ public class PublicAnnouncementPage {
     private final ShareScores shareScores;
     private final String domain;
     private final AnnouncementResults results;
+    private final PriceGapStore gaps;
     private final com.google.common.cache.Cache<String,byte[]> images=com.google.common.cache.CacheBuilder.newBuilder()
         .maximumWeight(64L*1024*1024).weigher((String key,byte[] value)->value.length).expireAfterWrite(Duration.ofMinutes(10)).build();
-    public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain,AnnouncementResults results) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");this.results=results;}
+    public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain,AnnouncementResults results,PriceGapStore gaps) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");this.results=results;this.gaps=gaps;}
     /** APT 공고의 공개 결과 카드(1순위 최고 경쟁률·당첨가점). 공개 전이면 비운다. */
     String resultCard(String id) {
         AnnouncementResults.Result result=results.forIds(java.util.List.of(id)).get(id);
@@ -56,7 +57,11 @@ public class PublicAnnouncementPage {
         StringBuilder events=new StringBuilder();
         for(var e:s.events())events.append("<li><strong>").append(PublicHtml.esc(e.label())).append("</strong><span>").append(e.date()).append("</span></li>");
         String nav="<nav aria-label='현재 위치'><a href='"+PublicHtml.esc(domain)+"/'>TOADY</a>"+area.map(value -> "<span>›</span><a href='"+PublicHtml.esc(domain+"/areas/"+value.slug())+"'>"+PublicHtml.esc(value.label())+" 청약</a>").orElse("")+"</nav>";
-        String priceCard=price.isEmpty()?"":"<section class='card'><h2>주택형별 최고 공급금액</h2><p class='price'>"+PublicHtml.esc(price)+"</p><p class='muted'>각 주택형의 최고 금액을 모은 범위이며 최저 분양가가 아닙니다. 층·타입별 금액은 모집공고를 확인해 주세요.</p></section>";
+        // 미리 계산한 주변 시세 비교(신뢰도 보통 이상)가 있으면 공급금액 아래에 한 줄로 덧붙인다.
+        var gap=gaps.forIds(java.util.List.of(s.id())).get(s.id());
+        String gapLine=gap==null?"":"<p><strong>"+PublicHtml.esc("주변 "+("new".equals(gap.basis())?"신축 ":"")+("비슷".equals(gap.text())?"시세와 비슷해요":"시세 대비 "+gap.text()))+"</strong></p><p class='muted'>"
+            +PublicHtml.esc("전용 "+gap.area()+"㎡ 기준 · "+("DONG".equals(gap.scope())?gap.dong():"같은 시·군·구")+" "+("new".equals(gap.basis())?"준공 10년 이내 ":"")+gap.basisCount()+"건 · 최근 "+gap.months()+"개월 실거래 · 실제 차익을 보장하지 않는 참고 비교예요.")+"</p>";
+        String priceCard=price.isEmpty()?"":"<section class='card'><h2>주택형별 최고 공급금액</h2><p class='price'>"+PublicHtml.esc(price)+"</p>"+gapLine+"<p class='muted'>각 주택형의 최고 금액을 모은 범위이며 최저 분양가가 아닙니다. 층·타입별 금액은 모집공고를 확인해 주세요.</p></section>";
         String areaLink=area.map(value -> "<a class='cta secondary' href='"+PublicHtml.esc(domain+"/areas/"+value.slug())+"'>"+PublicHtml.esc(value.label())+" 생활권 청약 더 보기</a>").orElse("");
         String html="""
             <!doctype html><html lang='ko'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>

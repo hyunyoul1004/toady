@@ -59,3 +59,21 @@ export function gapText(row) {
   const a = roughEok(Math.abs(below ? low : high)), b = roughEok(Math.abs(below ? high : low));
   return `${a === b ? `약 ${a}` : `약 ${a}~${b}`} ${below ? '낮아요' : '높아요'}`;
 }
+
+/**
+ * 미리 계산한 주변 시세 비교 뱃지 문구. 서버 text: '약 1.0억~1.4억 낮음' 또는 '비슷'.
+ * 신뢰도 '참고'는 서버가 내려주지 않는다.
+ */
+export function gapBadge(gap) {
+  if (!gap || !gap.text) return null;
+  const label = `주변 ${gap.basis === 'new' ? '신축 ' : ''}시세`;
+  return { tone: gap.tone, text: gap.text === '비슷' ? `${label}와 비슷` : `${label} 대비 ${gap.text}` };
+}
+/** 줍줍 정렬: 'gap'이면 시세보다 많이 낮은 순(비교가 없는 공고는 뒤), 아니면 접수 상태·날짜 순. */
+export function sortZupzup(items = [], sort = 'date') {
+  const byDate = (a, b) => (a.status === 'OPEN' ? 0 : 1) - (b.status === 'OPEN' ? 0 : 1)
+    || String(a.status === 'OPEN' ? a.end : a.start).localeCompare(String(b.status === 'OPEN' ? b.end : b.start));
+  if (sort !== 'gap') return [...items].sort(byDate);
+  const saving = item => (item.gap ? Math.min(item.gap.diffLow, item.gap.diffHigh) : Number.NEGATIVE_INFINITY);
+  return [...items].sort((a, b) => saving(b) - saving(a) || byDate(a, b));
+}

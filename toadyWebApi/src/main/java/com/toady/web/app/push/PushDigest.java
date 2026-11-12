@@ -41,16 +41,19 @@ public class PushDigest {
     private final PlannerService planner; private final PlannerSummary summaries; private final PublicAreaPage areas;
     private final UserRepository users; private final ObjectMapper mapper; private final Clock clock;
     private final com.toady.web.app.planner.AnnouncementResults results;
+    private final com.toady.web.app.planner.PriceGapStore gapStore;
 
     @Autowired
     public PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results) {
-        this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, Clock.system(PushSubscriptions.KST));
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results,
+            com.toady.web.app.planner.PriceGapStore gapStore) {
+        this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, gapStore, Clock.system(PushSubscriptions.KST));
     }
     PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results, Clock clock) {
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results,
+            com.toady.web.app.planner.PriceGapStore gapStore, Clock clock) {
         this.store = store; this.sender = sender; this.jdbc = jdbc; this.planner = planner; this.summaries = summaries;
-        this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.clock = clock;
+        this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.gapStore = gapStore; this.clock = clock;
     }
 
     static final int STALE_DAYS = 180;
@@ -77,6 +80,7 @@ public class PushDigest {
         Map<String, List<Seen>> news = new HashMap<>();
         Map<Long, List<PlannerSummary.Summary>> members = new HashMap<>();
         Map<String, LocalDateTime> resultSeen = new HashMap<>();
+        Map<String, Optional<com.toady.web.app.planner.PriceGapStore.Gap>> gapMemo = new HashMap<>();
         Map<String, com.toady.web.app.planner.AnnouncementResults.Result> resultCache = new HashMap<>();
         Set<String> startedResultKinds = new HashSet<>();
         PublicAreaPage.WeekCounts[] week = new PublicAreaPage.WeekCounts[1];
@@ -123,7 +127,7 @@ public class PushDigest {
                     List<Seen> seenList = news.getOrDefault(slug, List.of());
                     for (Seen seen : seenList)
                         if (seen.firstSeen().isAfter(since) && already.add(seen.id()))
-                            lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), "새 공고", slug, label));
+                            lines.add(new PushMessage.Line("AREA", seen.id(), seen.item().houseNm(), newLabel(seen.id(), gapMemo), slug, label));
                 }
                 var message = PushMessage.digest(lines);
                 // 보낼 내용이 없어도 오늘 확인을 마친 것으로 기록해, 저녁 30분마다 같은 구독을 다시 계산하지 않는다.
@@ -171,6 +175,11 @@ public class PushDigest {
             if (result.ratePublished()) resultSeen(RATE_SLUG, id, now, seen, started);
             if (result.scorePublished()) resultSeen(SCORE_SLUG, id, now, seen, started);
         }
+    }
+    /** 새 공고 줄 이름. 미리 계산한 주변 시세 비교가 있으면 '시세 대비 약 1.2억 낮음'을 붙인다(없으면 '새 공고'). */
+    private String newLabel(String id, Map<String, Optional<com.toady.web.app.planner.PriceGapStore.Gap>> memo) {
+        var gap = memo.computeIfAbsent(id, key -> Optional.ofNullable(gapStore.forIds(List.of(key)).get(key)));
+        return gap.map(value -> "비슷".equals(value.text()) ? "새 공고 · 주변 시세와 비슷" : "새 공고 · 주변 시세 대비 " + value.text()).orElse("새 공고");
     }
     static String weeklyText(PublicAreaPage.WeekCounts counts) {
         List<String> parts = new ArrayList<>();

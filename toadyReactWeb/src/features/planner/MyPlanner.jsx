@@ -16,6 +16,7 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useMyScore } from '@/features/score/myScore';
+import { gapBadge } from '@/features/match/priceGapRules';
 import { usePlanner } from './usePlanner';
 import { CHECKS, koreaToday, upcomingGroups } from './plannerUtils';
 import CalendarConnect from './CalendarConnect';
@@ -73,6 +74,11 @@ export default function MyPlanner() {
   const resultQuery=useQuery({queryKey:['plannerResults',aptIds.join(',')],enabled:aptIds.length>0,staleTime:600000,retry:1,
     queryFn:()=>apiClient.post('/api/v1/planner/results',{ids:aptIds},{auth:false})});
   const results=new Map((Array.isArray(resultQuery.data)?resultQuery.data:[]).map(result=>[result.id,result]));
+  // 미리 계산한 주변 시세 비교(서버에 있을 때만). 카드와 비교표에 같은 값을 쓴다.
+  const savedIds=planner.items.map(x=>x.id).sort();
+  const gapQuery=useQuery({queryKey:['plannerGaps',savedIds.join(',')],enabled:savedIds.length>0,staleTime:600000,retry:1,
+    queryFn:()=>apiClient.post('/api/v1/planner/price-gaps',{ids:savedIds},{auth:false})});
+  const gaps=new Map((Array.isArray(gapQuery.data)?gapQuery.data:[]).map(gap=>[gap.id,gap]));
   const myScore=useMyScore();
   const compared=planner.items.filter(item=>selected.includes(item.id));
   const completed=planner.items.reduce((total,item)=>total+CHECKS.filter((_,i)=>item.checklist & (1<<i)).length,0);
@@ -91,9 +97,10 @@ export default function MyPlanner() {
     {planner.isLoading ? <div className="planner-loading"><CircularProgress size={26} /><p>나의 청약을 불러오고 있어요.</p></div> : <>
       <div className="planner-stats"><div><span>관심 공고</span><strong>{planner.items.length}<small>/ 50</small></strong></div><div><span>예정 일정</span><strong>{groups.reduce((n,g)=>n+g.events.length,0)}<small>개</small></strong></div><div><span>확인한 준비 항목</span><strong>{completed}<small>/ {planner.items.length*CHECKS.length}</small></strong></div></div>
       {planner.items.length>0 && <UpcomingSchedule key={planner.scope} groups={groups} today={today} />}
-      {compared.length>=2 && <section ref={comparisonRef} className="planner-section planner-comparison" aria-labelledby="compare-heading"><div className="planner-section-heading"><div><h2 id="compare-heading"><CompareArrowsRounded />공고 비교</h2><p>공개된 공고 정보 기준입니다. 상세 조건은 원문을 확인하세요.</p></div><Button size="small" onClick={()=>setSelected([])} endIcon={<CloseRounded />}>비교 닫기</Button></div><p className="planner-table-hint">표를 좌우로 밀어 선택한 공고의 조건을 비교하세요.</p><TableContainer role="region" aria-label="관심 공고 비교 표 · 좌우로 스크롤" tabIndex={0}><Table size="small" aria-label="관심 공고 비교"><TableHead><TableRow><TableCell>비교 항목</TableCell>{compared.map(x=><TableCell key={x.id}>{x.summary.houseNm}</TableCell>)}</TableRow></TableHead><TableBody>{[['주소','address'],['APT 공급금액 · 주택형별 최고가','priceSummary'],['주택 유형','housingType'],['공급 세대수','supply'],['접수 시작','startDate'],['접수 마감','endDate'],['당첨자 발표','winnerDate']].map(([label,key])=><TableRow key={key}><TableCell>{label}</TableCell>{compared.map(x=><TableCell key={x.id}>{key==='priceSummary'?formatSupplySummary(x.summary[key]):x.summary[key] || '미제공'}</TableCell>)}</TableRow>)}</TableBody></Table></TableContainer></section>}
+      {compared.length>=2 && <section ref={comparisonRef} className="planner-section planner-comparison" aria-labelledby="compare-heading"><div className="planner-section-heading"><div><h2 id="compare-heading"><CompareArrowsRounded />공고 비교</h2><p>공개된 공고 정보 기준입니다. 상세 조건은 원문을 확인하세요.</p></div><Button size="small" onClick={()=>setSelected([])} endIcon={<CloseRounded />}>비교 닫기</Button></div><p className="planner-table-hint">표를 좌우로 밀어 선택한 공고의 조건을 비교하세요.</p><TableContainer role="region" aria-label="관심 공고 비교 표 · 좌우로 스크롤" tabIndex={0}><Table size="small" aria-label="관심 공고 비교"><TableHead><TableRow><TableCell>비교 항목</TableCell>{compared.map(x=><TableCell key={x.id}>{x.summary.houseNm}</TableCell>)}</TableRow></TableHead><TableBody>{[['주소','address'],['APT 공급금액 · 주택형별 최고가','priceSummary'],['주택 유형','housingType'],['공급 세대수','supply'],['접수 시작','startDate'],['접수 마감','endDate'],['당첨자 발표','winnerDate']].map(([label,key])=><TableRow key={key}><TableCell>{label}</TableCell>{compared.map(x=><TableCell key={x.id}>{key==='priceSummary'?formatSupplySummary(x.summary[key]):x.summary[key] || '미제공'}</TableCell>)}</TableRow>)}
+        <TableRow><TableCell>주변 시세 대비</TableCell>{compared.map(x=>{const badge=gapBadge(gaps.get(x.id));return <TableCell key={x.id}>{badge?<>{badge.text}<br/><small>전용 {gaps.get(x.id).area}㎡ · 참고 비교</small></>:'비교 자료 없음'}</TableCell>;})}</TableRow></TableBody></Table></TableContainer></section>}
       <section className="planner-section" aria-labelledby="favorites-heading"><div className="planner-section-heading"><div><h2 id="favorites-heading">저장한 공고 <span className="planner-count">{planner.items.length}</span></h2><p>준비 노트에서 체크리스트와 메모, 알림을 관리하세요.</p></div>{selected.length>0 && <span className="planner-selection-count">비교 {selected.length}/3</span>}</div>
-      <div className="planner-favorite-grid">{planner.items.map(item=><FavoriteCard key={`${planner.scope}/${item.id}`} item={item} planner={planner} report={report} selected={selected.includes(item.id)} onSelect={()=>select(item.id)} result={results.get(item.id)} myScore={myScore.score?.total} />)}</div>
+      <div className="planner-favorite-grid">{planner.items.map(item=><FavoriteCard key={`${planner.scope}/${item.id}`} item={item} planner={planner} report={report} selected={selected.includes(item.id)} onSelect={()=>select(item.id)} result={results.get(item.id)} gap={gaps.get(item.id)} myScore={myScore.score?.total} />)}</div>
       {!planner.error && !planner.items.length && <div className="planner-empty"><div><BookmarkBorderRounded /></div><h3>어떤 집이 마음에 드세요?</h3><p>공고를 저장하면 일정과 준비 노트를<br />이곳에서 함께 관리할 수 있어요.</p><Button variant="contained" disableElevation component={Link} to="/" endIcon={<ArrowForwardRounded />}>청약 찾아보기</Button></div>}</section>
     </>}
     {detailId && <Main detailOnly onDetailClose={closeDetail}/>}

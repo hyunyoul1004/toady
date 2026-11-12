@@ -63,7 +63,7 @@ class PushIntegrationTest {
 
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired ObjectMapper json; @Autowired UserRepository users;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
-    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas; @Autowired com.toady.web.app.planner.AnnouncementResults results;
+    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas; @Autowired com.toady.web.app.planner.AnnouncementResults results; @Autowired com.toady.web.app.planner.PriceGapStore gapStore;
     @MockitoBean EmailUtilService mail;
 
     KeyPair browser; byte[] auth = new byte[16];
@@ -104,7 +104,7 @@ class PushIntegrationTest {
         return json.readTree(new String(padded, 0, padded.length - 1, StandardCharsets.UTF_8));
     }
     PushDigest digest(String kst) {
-        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
+        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, gapStore, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
     }
 
     @Test void subscribeLookupTestSendAndUnsubscribe() throws Exception {

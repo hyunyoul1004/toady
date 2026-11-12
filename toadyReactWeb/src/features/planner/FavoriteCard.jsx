@@ -13,6 +13,7 @@ import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRound
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { CHECKS, daysUntil, downloadCalendar, koreaToday } from './plannerUtils';
 import { STAGES, nextStep, normalizeStage, resultFacts } from './stageRules';
+import { gapBadge } from '@/features/match/priceGapRules';
 
 /** 단계의 다음 할 일 버튼: 단계 바꾸기·청약홈·앱 화면·공고 탭. */
 function StepAction({ action, item, busy, onStage }) {
@@ -23,7 +24,7 @@ function StepAction({ action, item, busy, onStage }) {
   return <Button size="small" component={Link} to={`/my?subscriptSeq=${encodeURIComponent(item.id)}${action.tab === 'rate' ? '&tabType=rate' : ''}`} state={{ plannerDetail: true }}>{action.label}</Button>;
 }
 
-export default function FavoriteCard({ item, planner, selected, onSelect, report, result, myScore }) {
+export default function FavoriteCard({ item, planner, selected, onSelect, report, result, myScore, gap }) {
   const [note,setNote] = useState(item.note || '');
   const [checks,setChecks] = useState(item.checklist || 0);
   const [email,setEmail] = useState(Boolean(item.emailEnabled));
@@ -51,7 +52,8 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
     finally { setBusy(false); }
   }
   const step = s.unavailable ? null : nextStep(stage, s, today, result);
-  const facts = resultFacts(result, myScore);
+  const gapText = gapBadge(gap)?.text;
+  const facts = [...(gapText ? [gapText] : []), ...resultFacts(result, myScore)];
   async function save() { setBusy(true);try {await planner.save({...item,note,checklist:checks,emailEnabled:email});report('준비 노트를 저장했습니다.',false);}catch(e){report(e.message,true);}finally{setBusy(false);} }
   async function remove() { setBusy(true);try {await planner.remove(item.id);report('관심 공고를 해제했습니다.',false);}catch(e){report(e.message,true);setBusy(false);}setConfirm(false); }
   return <article className={`planner-favorite-card ${selected?'is-selected':''}`}>
@@ -66,7 +68,7 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
           className={stage === option.value ? `is-active is-${option.value}` : ''} onClick={() => changeStage(option.value)}>{option.label}</button>)}
       </div>
       {step && <div className={`planner-next is-${step.tone}`} role="status"><span>{step.text}</span><StepAction action={step.action} item={item} busy={busy} onStage={changeStage} /></div>}
-      {facts.length > 0 && <ul className="planner-results" aria-label="공개된 청약 결과">{facts.map(text => <li key={text}>{text}</li>)}</ul>}
+      {facts.length > 0 && <ul className="planner-results" aria-label="시세 비교와 공개된 청약 결과">{facts.map(text => <li key={text}>{text}</li>)}</ul>}
     </div>}
     <div className="planner-progress-line"><span>청약 준비 <strong>{completed}/{CHECKS.length}</strong></span><span>{completed===CHECKS.length?'준비 항목 확인 완료':`${CHECKS.length-completed}개 항목을 확인해 주세요`}</span></div>
     <LinearProgress variant="determinate" value={completed/CHECKS.length*100} sx={{height:4,borderRadius:4,bgcolor:'#eef2f7',mb:2.5}} />

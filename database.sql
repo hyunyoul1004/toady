@@ -429,3 +429,28 @@ ALTER TABLE TB_FAVORITE ADD COLUMN IF NOT EXISTS STAGE TINYINT NOT NULL DEFAULT 
 -- 늘리기만 하므로 기존 값은 그대로이며 다시 실행해도 된다.
 ALTER TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET MODIFY MODEL_NO VARCHAR(4) NOT NULL COMMENT '모델번호';
 ALTER TABLE TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET MODIFY MODEL_NO VARCHAR(4) NOT NULL COMMENT '모델번호';
+
+-- 18. 공고별 주변 시세 비교 요약 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- API가 매일 17:20(한국시간) 접수 중·예정 공고의 공급 주소를 카카오 로컬 REST API로 확인하고(정확한 지번만),
+-- 국토교통부 실거래로 '주변 (신축) 시세 대비' 범위를 계산해 둔다. 맞춤 청약·줍줍 목록 뱃지, 나의 청약 비교표, 공개 페이지, 줍줍 알림이 쓴다.
+-- STATUS: READY(요약 있음) · NO_LOCATION(정확한 위치 미확인) · NO_TRADES(신뢰할 거래 부족) · UNAVAILABLE(제공처 오류, 다음 날 다시 계산).
+-- 금액은 만원, 시세 범위는 같은 면적(전용 ±5㎡) 거래의 1~3사분위다. 180일 지난 행은 API가 정리한다.
+-- API 환경변수 KAKAO_REST_API_KEY가 있어야 계산하며, 앱 계정에 SELECT·INSERT·UPDATE·DELETE 권한이 필요하다.
+CREATE TABLE IF NOT EXISTS TB_PRICE_GAP (
+    ANNOUNCEMENT_ID VARCHAR(110) NOT NULL COMMENT '유형/주택관리번호/공고번호',
+    STATUS VARCHAR(12) NOT NULL COMMENT 'READY·NO_LOCATION·NO_TRADES·UNAVAILABLE',
+    BCODE CHAR(10) NULL COMMENT '법정동 코드',
+    DONG VARCHAR(40) NULL COMMENT '법정동 이름',
+    AREA SMALLINT NULL COMMENT '대표 주택형 전용면적(반올림)',
+    SUPPLY_MANWON INT NULL COMMENT '대표 주택형 최고 공급금액',
+    BASIS VARCHAR(4) NULL COMMENT 'new(준공 10년 이내) 또는 all',
+    SCOPE VARCHAR(10) NULL COMMENT 'DONG 또는 DISTRICT',
+    BASIS_COUNT INT NULL COMMENT '비교에 쓴 거래 수',
+    CONFIDENCE VARCHAR(8) NULL COMMENT 'high·medium',
+    Q1_MANWON INT NULL COMMENT '시세 1사분위',
+    Q3_MANWON INT NULL COMMENT '시세 3사분위',
+    MONTHS TINYINT NULL COMMENT '반영한 개월 수',
+    COMPUTED_DT DATETIME(6) NOT NULL COMMENT '한국시간 계산 시각',
+    PRIMARY KEY (ANNOUNCEMENT_ID),
+    INDEX IX_PRICE_GAP_COMPUTED (COMPUTED_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='공고별 주변 시세 비교 요약';

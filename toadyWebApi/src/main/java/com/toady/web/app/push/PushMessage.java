@@ -55,8 +55,10 @@ public record PushMessage(String title, String body, String url, String tag, Lis
             }
             if (!news.isEmpty()) {
                 Line only = news.get(0);
+                // 주변 시세 비교가 있으면 본문에 함께 적는다(라벨: '새 공고 · 주변 시세 대비 약 1.2억 낮음').
+                String gap = only.label() != null && only.label().startsWith("새 공고 · ") ? " " + only.label().substring("새 공고 · ".length()) + "." : "";
                 return Optional.of(new PushMessage(only.areaLabel() + " 새 청약 공고",
-                    "‘" + name(only.houseNm()) + "’ 공고가 올라왔어요. 눌러서 일정과 분양가를 확인하세요.", detailUrl(only.announcementId()), tag, List.of()));
+                    "‘" + name(only.houseNm()) + "’ 공고가 올라왔어요." + gap + " 눌러서 일정과 분양가를 확인하세요.", detailUrl(only.announcementId()), tag, List.of()));
             }
             return Optional.of(new PushMessage("이번 주 청약 브리핑", weekly.get(0).houseNm() + ". 눌러서 이번 주 일정을 확인하세요.", "/weekly", tag, List.of()));
         }

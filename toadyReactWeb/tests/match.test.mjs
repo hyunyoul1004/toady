@@ -156,3 +156,17 @@ test('FAQ 답 문장: 문단 나누기와 허용된 링크만 변환', async () 
   assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr' });
   assert.equal(parts[1].some(part => part.href?.startsWith('javascript')), false, '허용하지 않은 주소는 링크로 만들지 않는다');
 });
+
+test('목록 시세 뱃지와 줍줍 정렬', async () => {
+  const { gapBadge, sortZupzup } = await import('../src/features/match/priceGapRules.js');
+  assert.equal(gapBadge(null), null);
+  assert.deepEqual(gapBadge({ basis: 'new', text: '약 1.2억 낮음', tone: 'below' }), { tone: 'below', text: '주변 신축 시세 대비 약 1.2억 낮음' });
+  assert.equal(gapBadge({ basis: 'all', text: '비슷', tone: 'same' }).text, '주변 시세와 비슷');
+  const items = [
+    { id: 'a', status: 'OPEN', end: '2026-11-20' },
+    { id: 'b', status: 'OPEN', end: '2026-11-25', gap: { diffLow: 12000, diffHigh: 15000 } },
+    { id: 'c', status: 'UPCOMING', start: '2026-11-18', gap: { diffLow: 3000, diffHigh: 5000 } }
+  ];
+  assert.deepEqual(sortZupzup(items, 'gap').map(x => x.id), ['b', 'c', 'a'], '시세보다 많이 낮은 순, 비교 없는 공고는 뒤');
+  assert.deepEqual(sortZupzup(items, 'date').map(x => x.id), ['a', 'b', 'c']);
+});

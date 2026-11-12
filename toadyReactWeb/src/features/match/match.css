@@ -37,7 +37,13 @@
 .match-profile-chips{display:flex;flex-wrap:wrap;gap:6px}
 .match-profile-chips span{font-size:12.5px;font-weight:700;background:#fff;border:1px solid #dbe3ec;border-radius:999px;padding:3px 10px;color:#334155}
 .match-profile-actions{display:flex;gap:4px}
-.match-share-row{display:flex;justify-content:flex-end;margin:-6px 0 8px}
+.match-share-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:-6px 0 8px}
+.match-share-row>.MuiButton-root{margin-left:auto}
+.match-sort .MuiToggleButton-root{text-transform:none;padding:4px 11px;font-weight:700;font-size:12.5px}
+.match-gap-badge{align-self:flex-start;font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px}
+.match-gap-badge.is-below{background:#e7f6f3;color:#0f766e}
+.match-gap-badge.is-above{background:#fff1f2;color:#be123c}
+.match-gap-badge.is-same{background:#f1f5f9;color:#475569}
 .match-filter{margin-bottom:12px;overflow-x:auto}
 .match-filter .MuiToggleButtonGroup-root{gap:6px}
 .match-filter .MuiToggleButton-root{border:1px solid #dbe3ec !important;border-radius:999px !important;margin:0 !important;padding:5px 14px;font-weight:700;color:#475569;font-size:13px;text-transform:none;white-space:nowrap}

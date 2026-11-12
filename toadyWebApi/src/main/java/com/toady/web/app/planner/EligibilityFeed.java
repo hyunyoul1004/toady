@@ -33,11 +33,12 @@ public class EligibilityFeed {
     private final AnnouncementSearchService search;
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final PriceGapStore gapStore;
     private final Cache<String, Map<String, Object>> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(10)).build();
 
     @Autowired
-    public EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc) { this(search, jdbc, Clock.system(ZoneId.of("Asia/Seoul"))); }
-    EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, Clock clock) { this.search = search; this.jdbc = jdbc; this.clock = clock; }
+    public EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore) { this(search, jdbc, gapStore, Clock.system(ZoneId.of("Asia/Seoul"))); }
+    EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore, Clock clock) { this.search = search; this.jdbc = jdbc; this.gapStore = gapStore; this.clock = clock; }
 
     public record Unit(String type, BigDecimal area, Integer general, Integer special, Long amountManwon) { }
     /** 특별공급 유형별 세대수 합계(주택형 합산). */
@@ -52,7 +53,12 @@ public class EligibilityFeed {
                        String start, String end, String specialStart, String rank1, String rank1Gg, String rank1Etc, String rank2,
                        String winner, String contract, String moveIn, Integer totalSupply,
                        boolean national, boolean speculative, boolean adjusted, boolean priceCap,
-                       Special special, List<Unit> units) { }
+                       Special special, List<Unit> units, PriceGapStore.Gap gap) {
+        Item withGap(PriceGapStore.Gap value) {
+            return new Item(id, type, houseNm, address, region, status, start, end, specialStart, rank1, rank1Gg, rank1Etc, rank2, winner, contract, moveIn, totalSupply,
+                national, speculative, adjusted, priceCap, special, units, value);
+        }
+    }
 
     @GetMapping("/api/v1/public/eligibility/announcements")
     public ResponseEntity<Map<String, Object>> announcements() {
@@ -93,11 +99,14 @@ public class EligibilityFeed {
             }
         });
 
-        List<Item> items = active.stream().map(entry -> {
+        List<Item> built = active.stream().map(entry -> {
             AnnouncementListItem source = entry.source();
             String id = source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo();
             return item(id, source, entry.status().name(), details.getOrDefault(id, Map.of()), models.getOrDefault(id, List.of()));
         }).toList();
+        // 미리 계산한 주변 시세 비교(database.sql 18번)를 붙인다. 없으면 null이고 화면은 뱃지를 숨긴다.
+        Map<String, PriceGapStore.Gap> gaps = gapStore.forIds(built.stream().map(Item::id).toList());
+        List<Item> items = built.stream().map(item -> item.withGap(gaps.get(item.id()))).toList();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("checkedAt", clock.instant().toString());
         body.put("today", today.toString());
@@ -124,7 +133,7 @@ public class EligibilityFeed {
             date(text.apply("PRZWNER_PRESNATN_DE")), date(text.apply("CNTRCT_CNCLS_BGNDE")), month(text.apply("MVN_PREARNGE_YM")),
             number(source.totalSupplyHouseholds()),
             dtl.contains("국민"), "Y".equals(text.apply("SPECLT_RDN_EARTH_AT")), "Y".equals(text.apply("MDAT_TRGET_AREA_SECD")), "Y".equals(text.apply("PARCPRC_ULS_AT")),
-            special, units);
+            special, units, null);
     }
 
     private static int count(Map<String, Object> row, String key) { Integer value = number(row.get(key)); return value == null ? 0 : value; }

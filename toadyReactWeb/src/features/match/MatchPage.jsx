@@ -20,6 +20,7 @@ import { evaluate, monthsFromAccountIndex, profileComplete, rankFeed } from './e
 import { clearProfile, saveProfile, useEligibilityProfile } from './eligibilityProfile';
 import EligibilityForm, { accountChoice, ACCOUNT_CHOICES } from './EligibilityForm';
 import { priceRange, receiptBadge, shortDate, TYPE_LABEL, useEligibilityFeed } from './matchShared';
+import { gapBadge, sortZupzup } from './priceGapRules';
 import './match.css';
 
 const SEO = {
@@ -52,6 +53,7 @@ function FeedCard({ item, result, today, onOpen }) {
     <strong className="match-card-title">{item.houseNm}</strong>
     <span className="match-card-meta">{[item.region, item.totalSupply ? `${item.totalSupply.toLocaleString('ko-KR')}세대` : null, `접수 ${shortDate(item.start)}${item.end && item.end !== item.start ? ` ~ ${shortDate(item.end)}` : ''}`].filter(Boolean).join(' · ')}</span>
     {price && <span className="match-card-price">최고 공급금액 <b>{price}</b></span>}
+    {gapBadge(item.gap) && <span className={`match-gap-badge is-${item.gap.tone}`}>{gapBadge(item.gap).text}</span>}
     {possible.length > 0 && <span className="match-tracks">{possible.slice(0, 4).map(t => <em key={t.key} className={`is-${t.status}`}>{t.label.replace(/ \d+세대$/, '')}</em>)}</span>}
     <ChevronRightRounded className="match-card-go" />
   </button></li>;
@@ -141,8 +143,15 @@ export default function MatchPage({ tab = 'match' }) {
   const ranked = useMemo(() => (complete ? rankFeed(items.filter(item => item.type === 'apt'), profile, today) : []), [complete, items, profile, today]);
   const counts = useMemo(() => ranked.reduce((all, { result }) => ({ ...all, [result.best]: (all[result.best] || 0) + 1 }), {}), [ranked]);
   const shown = ranked.filter(({ result }) => (filter === 'all' ? true : filter === 'ok' ? result.best === 'ok' : result.best === 'ok' || result.best === 'check'));
-  const zupzup = useMemo(() => items.filter(item => item.type !== 'apt')
-    .sort((a, b) => (a.status === 'OPEN' ? 0 : 1) - (b.status === 'OPEN' ? 0 : 1) || String(a.status === 'OPEN' ? a.end : a.start).localeCompare(String(b.status === 'OPEN' ? b.end : b.start))), [items]);
+  // 줍줍 정렬도 주소(?sort=gap)에 둬서 상세를 열었다 돌아와도 유지한다.
+  const zupzupSort = searchParams.get('sort') === 'gap' ? 'gap' : 'date';
+  const zupzup = useMemo(() => sortZupzup(items.filter(item => item.type !== 'apt'), zupzupSort), [items, zupzupSort]);
+  const hasGap = zupzup.some(item => item.gap);
+  const setZupzupSort = value => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'gap') next.set('sort', 'gap'); else next.delete('sort');
+    setSearchParams(next, { replace: true, state: location.state });
+  };
 
   const prefill = useMemo(() => {
     const months = monthsFromAccountIndex(score.selection?.account);
@@ -204,7 +213,12 @@ export default function MatchPage({ tab = 'match' }) {
 
     {tab === 'zupzup' && <>
       <ZupzupAlert />
-      {zupzup.length > 0 && <div className="match-share-row"><Button size="small" startIcon={<IosShareRounded />} onClick={() => share(zupzup.length)}>줍줍 목록 공유</Button></div>}
+      {zupzup.length > 0 && <div className="match-share-row">
+        {hasGap && <ToggleButtonGroup exclusive size="small" value={zupzupSort} onChange={(_, value) => value && setZupzupSort(value)} aria-label="줍줍 정렬" className="match-sort">
+          <ToggleButton value="date">접수일 순</ToggleButton><ToggleButton value="gap">시세 대비 낮은 순</ToggleButton>
+        </ToggleButtonGroup>}
+        <Button size="small" startIcon={<IosShareRounded />} onClick={() => share(zupzup.length)}>줍줍 목록 공유</Button>
+      </div>}
       {feed.isLoading ? <FeedSkeleton /> : feed.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => feed.refetch()}>다시 시도</Button>}>공고를 불러오지 못했어요.</Alert>
         : zupzup.length ? <ul className="match-list">{zupzup.map(item => <FeedCard key={item.id} item={item} result={complete ? evaluate(profile, item, today) : null} today={today} onOpen={openDetail} />)}</ul>
           : <div className="match-empty"><p>지금 접수 중이거나 예정된 무순위·줍줍 공고가 없어요. 새 공고는 매일 반영돼요.</p></div>}

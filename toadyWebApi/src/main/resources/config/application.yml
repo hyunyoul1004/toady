@@ -46,6 +46,10 @@ server:
 toady:
   research:
     molit-service-key: ${MOLIT_TRADE_SERVICE_KEY:}
+    # 카카오 로컬 REST API 키(서버 전용). 있으면 매일 접수 중·예정 공고의 주변 시세 비교를 미리 계산한다.
+    kakao-rest-key: ${KAKAO_REST_API_KEY:}
+    # 미리 계산 시각(한국시간). 저녁 묶음 알림(18시) 전에 끝나도록 둔다. '-'이면 끈다.
+    gap-cron: ${PRICE_GAP_CRON:0 20 17 * * *}
   planner:
     # 테이블 적용과 기존 Gmail 설정 확인 후 활성화한다. 외부 메일 업체를 사용하지 않는다.
     reminders-enabled: ${PLANNER_REMINDERS_ENABLED:false}
