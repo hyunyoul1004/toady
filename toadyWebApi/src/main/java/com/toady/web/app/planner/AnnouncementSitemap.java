@@ -35,10 +35,12 @@ public class AnnouncementSitemap {
         },(long)page*5000);
         xml.append("</urlset>");return response(xml.toString());
     }
-    /** 생활권·모음 공개 페이지. 생활권 목록·각 생활권, 무순위·이번 주, 가점 계산기를 포함한다. */
+    /** 홈과 생활권·모음 공개 페이지. 홈, 생활권 목록·각 생활권, 무순위·이번 주, 가점 계산기, 맞춤 청약, 자주 묻는 질문을 포함한다. */
     @GetMapping(value="/api/v1/public/sitemaps/areas.xml",produces="application/xml;charset=UTF-8")
     public ResponseEntity<String> areas() {
         StringBuilder xml=new StringBuilder("<?xml version='1.0' encoding='UTF-8'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
+        // 홈(청약 캘린더)을 맨 앞에 둔다. /sitemap.xml이 이 색인을 가리키므로 홈도 여기서 알려야 한다.
+        xml.append("<url><loc>").append(esc(domain+"/")).append("</loc></url>");
         xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
         for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
         // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기

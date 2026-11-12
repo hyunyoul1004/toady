@@ -7,6 +7,8 @@
 
     <!-- 검색엔진 크롤링 최적화 -->
     <meta name="robots" content="index, follow" />
+    <!-- 네이버 서치어드바이저 사이트 소유 확인 -->
+    <meta name="naver-site-verification" content="6bfa4b81191d35109251f284a094115d843b2122" />
     <meta name="googlebot" content="index, follow" />
     <meta name="Yeti" content="index, follow" />
     <meta name="Daumoa" content="index, follow" />
@@ -72,7 +74,17 @@
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- 앱이 뜨기 전 잠깐 보이고, 자바스크립트를 실행하지 않는 검색 봇이 읽는 기본 본문. React가 시작하면 이 내용을 바꾼다. -->
+      <main style="max-width:760px;margin:0 auto;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#0f172a;line-height:1.65">
+        <h1 style="font-size:22px;margin:0 0 8px">TOADY 두껍아 · 청약 일정과 분양 정보를 한 화면에서</h1>
+        <p style="margin:0 0 12px;color:#475569">청약홈 공고 일정, 분양가, 경쟁률·당첨가점, 위치와 동네 실거래가를 한곳에서 확인하는 청약 정보 서비스예요. 내 조건으로 넣을 수 있는 공고와 무순위·줍줍 청약도 모아 보여 드려요.</p>
+        <nav aria-label="바로가기" style="display:flex;flex-wrap:wrap;gap:8px 14px">
+          <a href="/match">내게 맞는 청약</a><a href="/zupzup">무순위·줍줍 청약</a><a href="/weekly">이번 주 청약 일정</a>
+          <a href="/areas">생활권별 청약</a><a href="/score">청약 가점 계산기</a><a href="/help/faq">청약 자주 묻는 질문</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

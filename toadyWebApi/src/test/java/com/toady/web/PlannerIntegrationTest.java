@@ -190,6 +190,7 @@ class PlannerIntegrationTest {
         assertTrue(html.contains("<link rel='canonical' href='") && html.contains("/help/faq'>"),"검색용 서버 HTML의 대표 주소는 /help/faq");
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
         assertTrue(sitemap.contains("/help/faq</loc>") && sitemap.contains("/match</loc>"),sitemap);
+        assertTrue(sitemap.contains("<url><loc>http") && sitemap.indexOf("/</loc>")>0,"홈 주소도 사이트맵에 넣는다");
         // 앱 화면(/faq)은 같은 문장을 JSON으로 받는다.
         var items=json.readTree(html(mvc.perform(get("/api/v1/public/faq-items")).andExpect(status().isOk())));
         assertEquals(com.toady.web.app.planner.PublicFaqPageAccess.count(),java.util.stream.StreamSupport.stream(items.spliterator(),false).mapToInt(group->group.path("items").size()).sum());
