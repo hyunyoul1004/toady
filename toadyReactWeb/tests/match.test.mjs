@@ -153,7 +153,10 @@ test('FAQ 답 문장: 문단 나누기와 허용된 링크만 변환', async () 
   const parts = answerParts('첫 줄 [가점 계산기](/score)에서 확인\n둘째 줄 [청약홈](https://www.applyhome.co.kr) · [위험](javascript:alert(1))');
   assert.equal(parts.length, 2);
   assert.deepEqual(parts[0], [{ text: '첫 줄 ' }, { text: '가점 계산기', to: '/score' }, { text: '에서 확인' }]);
-  assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr' });
+  assert.deepEqual(parts[1][1], { text: '청약홈', href: 'https://www.applyhome.co.kr', external: true });
+  // 서버가 만드는 공개 페이지는 앱 라우터가 아닌 일반 링크(같은 창)로 연다(앱 라우터로 열면 홈으로 튕긴다).
+  assert.deepEqual(answerParts('[이번 주 청약](/weekly)')[0][0], { text: '이번 주 청약', href: '/weekly' });
+  assert.deepEqual(answerParts('[생활권](/areas/unjeong)')[0][0], { text: '생활권', href: '/areas/unjeong' });
   assert.equal(parts[1].some(part => part.href?.startsWith('javascript')), false, '허용하지 않은 주소는 링크로 만들지 않는다');
 });
 
@@ -169,4 +172,39 @@ test('목록 시세 뱃지와 줍줍 정렬', async () => {
   ];
   assert.deepEqual(sortZupzup(items, 'gap').map(x => x.id), ['b', 'c', 'a'], '시세보다 많이 낮은 순, 비교 없는 공고는 뒤');
   assert.deepEqual(sortZupzup(items, 'date').map(x => x.id), ['a', 'b', 'c']);
+});
+
+test('시세 비교 방향: 서버와 같은 경계(0을 가로지르거나 1천만원 미만이면 비슷)', async () => {
+  const { gapTone, gapText } = await import('../src/features/match/priceGapRules.js');
+  assert.equal(gapTone({ diffLow: 0, diffHigh: 3000 }), 'same');
+  assert.equal(gapTone({ diffLow: 100, diffHigh: 400 }), 'same', '반올림하면 0원이면 비슷');
+  assert.equal(gapTone({ diffLow: 2000, diffHigh: 5000 }), 'below');
+  assert.equal(gapTone({ diffLow: -3000, diffHigh: -1 }), 'above');
+  assert.equal(gapText({ diffLow: 200, diffHigh: 8000 }), '최대 약 8,000만원 낮아요', '가까운 쪽이 0원이면 "0원~" 대신 "최대"');
+  assert.equal(gapText({ diffLow: 100, diffHigh: 400 }), '주변 시세와 비슷해요');
+});
+
+test('메뉴: 공용 이름·활성 판정·같은 탭 다시 누르기', async () => {
+  const { MAIN_NAV, MORE_NAV, isNavActive, isMoreActive, retapAction } = await import('../src/components/layout/navItems.js');
+  assert.deepEqual(MAIN_NAV.map(item => item.label), ['청약 캘린더', '맞춤 청약', '가점 계산기', '나의 청약']);
+  assert.deepEqual(MORE_NAV.map(item => item.label), ['이번 주 청약', '생활권별 청약', '자주 묻는 질문', '알림 설정']);
+  assert.equal(isNavActive('/', '/announcements/apt/1/2'), true, '공유 상세 주소는 캘린더 탭');
+  assert.equal(isNavActive('/', '/showSubscriptDetail'), true);
+  assert.equal(isNavActive('/match', '/match/zupzup'), true);
+  assert.equal(isNavActive('/my', '/myother'), false);
+  assert.equal(isMoreActive('/faq'), true, '자주 묻는 질문은 더보기');
+  assert.equal(isMoreActive('/score'), false);
+  assert.equal(retapAction('/score', { pathname: '/my', search: '', state: null }), 'push');
+  assert.equal(retapAction('/my', { pathname: '/my', search: '?subscriptSeq=apt/1/1', state: { plannerDetail: true } }), 'back', '상세가 열려 있으면 닫는다');
+  assert.equal(retapAction('/match', { pathname: '/match', search: '', state: { overlayLayers: [{ id: 'match-edit', value: true }] } }), 'back');
+  assert.equal(retapAction('/match', { pathname: '/match/zupzup', search: '?sort=gap', state: null }), 'replace', '히스토리를 쌓지 않고 처음 화면으로');
+  assert.equal(retapAction('/', { pathname: '/', search: '', state: null }), 'none');
+});
+
+test('오늘의 요약 숫자', async () => {
+  const { summaryNumbers } = await import('../src/features/planner/todaySummaryRules.js');
+  const items = [{ type: 'apt', status: 'OPEN' }, { type: 'remaining', status: 'OPEN' }, { type: 'optional', status: 'UPCOMING' }];
+  const ranked = [{ item: { status: 'OPEN' }, result: { best: 'ok' } }, { item: { status: 'UPCOMING' }, result: { best: 'check' } }, { item: { status: 'OPEN' }, result: { best: 'no' } }];
+  assert.deepEqual(summaryNumbers({ items, ranked, winners: 4 }), { winners: 4, zupzup: 2, zupzupOpen: 1, possible: 2, possibleOpen: 1 });
+  assert.equal(summaryNumbers({ winners: undefined }).winners, 0, '서버가 아직 값을 주지 않으면 0');
 });

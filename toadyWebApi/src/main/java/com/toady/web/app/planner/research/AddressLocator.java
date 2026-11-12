@@ -35,7 +35,7 @@ public class AddressLocator {
         if (!enabled()) return Optional.empty();
         String address = normalize(rawAddress);
         for (String candidate : parcelCandidates(address).stream().limit(3).toList()) {
-            URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?analyze_type=exact&size=10&query=" + URLEncoder.encode(candidate, StandardCharsets.UTF_8));
+            URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?size=10&query=" + URLEncoder.encode(candidate, StandardCharsets.UTF_8));
             JsonNode body = json.readTree(transport.get(uri, Map.of("Authorization", "KakaoAK " + key)));
             for (JsonNode row : body.path("documents")) {
                 if (!precise(row, address, candidate)) continue;

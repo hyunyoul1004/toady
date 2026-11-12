@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Skeleton, Snackbar, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Skeleton, Snackbar, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import NotificationsActiveOutlined from '@mui/icons-material/NotificationsActiveOutlined';
@@ -108,6 +108,8 @@ export default function MatchPage({ tab = 'match' }) {
   const [editLayer, setEditLayer] = useHistoryOverlay('match-edit');
   const editing = Boolean(editLayer);
   const setEditing = open => setEditLayer(open ? true : null);
+  // 진단 기록 지우기는 되돌릴 수 없어 확인 창을 한 단계 띄운다(뒤로가기로 취소).
+  const [clearLayer, setClearLayer] = useHistoryOverlay('match-clear');
   // 필터는 주소(?filter=)에 둬서 상세·다른 화면에 갔다가 뒤로 와도 그대로 보이게 한다.
   const filter = ['ok', 'possible', 'all'].includes(searchParams.get('filter')) ? searchParams.get('filter') : 'possible';
   const setFilter = value => {
@@ -206,7 +208,7 @@ export default function MatchPage({ tab = 'match' }) {
                 <Button size="small" component={Link} to="/match/zupzup">무순위·줍줍 보기</Button></div>
             </div>}
           <p className="match-disclaimer">공통 요건만 단순화해 본 신청 가능성이에요. 소득·자산·예치금·거주기간 등 세부 자격은 모집공고 원문과 청약홈에서 꼭 확인하세요. 카드를 누르면 공고별 판정 이유를 볼 수 있어요. 기준이 궁금하면 <Link to="/faq">청약 자주 묻는 질문</Link>을 참고하세요.</p>
-          <Button size="small" color="inherit" className="match-reset" onClick={() => clearProfile()}>진단 기록 지우기</Button>
+          <Button size="small" color="inherit" className="match-reset" onClick={() => setClearLayer(true)}>진단 기록 지우기</Button>
         </>}
       </>}
     </>}
@@ -226,6 +228,12 @@ export default function MatchPage({ tab = 'match' }) {
     </>}
 
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}
+    <Dialog open={Boolean(clearLayer)} onClose={() => setClearLayer(null)} aria-labelledby="match-clear-title" maxWidth="xs" fullWidth>
+      <DialogTitle id="match-clear-title">진단 기록을 지울까요?</DialogTitle>
+      <DialogContent><p className="match-clear-text">이 기기에 저장한 나이·세대·무주택·통장 조건이 지워지고, 처음부터 다시 입력해야 해요. 가점 계산기 점수는 그대로 남아요.</p></DialogContent>
+      <DialogActions><Button onClick={() => setClearLayer(null)}>취소</Button>
+        <Button color="error" variant="contained" disableElevation onClick={() => { clearProfile(); setClearLayer(null); }}>지우기</Button></DialogActions>
+    </Dialog>
     <Snackbar open={Boolean(shareMessage)} autoHideDuration={4000} onClose={() => setShareMessage('')} message={shareMessage} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
   </div>;
 }

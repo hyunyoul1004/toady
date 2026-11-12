@@ -50,14 +50,30 @@ export function roughEok(manwon) {
   return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}억`;
 }
 
-/** "약 1.0억~1.4억 낮음" 같은 범위 문구. 범위가 0을 가로지르면 '비슷해요'. */
+/**
+ * 비교 결과의 방향. below: 시세 범위 전체가 분양가보다 높음(분양가가 낮음), above: 전체가 낮음,
+ * same: 범위가 분양가에 걸치거나 차이가 1천만원 미만으로 반올림됨. 서버 PriceGapRules.tone과 같은 규칙이다.
+ */
+export function gapTone(row) {
+  if (!row) return 'same';
+  const low = Math.min(row.diffLow, row.diffHigh), high = Math.max(row.diffLow, row.diffHigh);
+  if (Math.round(Math.max(Math.abs(low), Math.abs(high)) / 1000) === 0) return 'same';
+  if (low > 0) return 'below';
+  if (high < 0) return 'above';
+  return 'same';
+}
+
+/** "약 1.0억~1.4억 낮아요" 같은 범위 문구. 범위가 0을 가로지르면 '주변 시세와 비슷해요'. 가까운 쪽이 1천만원 미만이면 "최대 약 …". */
 export function gapText(row) {
   if (!row) return '';
+  const tone = gapTone(row);
+  if (tone === 'same') return '주변 시세와 비슷해요';
   const low = Math.min(row.diffLow, row.diffHigh), high = Math.max(row.diffLow, row.diffHigh);
-  if (low < 0 && high > 0) return '주변 시세와 비슷해요';
-  const below = high > 0; // 시세 − 분양가가 양수 → 분양가가 낮다
+  const below = tone === 'below';
   const a = roughEok(Math.abs(below ? low : high)), b = roughEok(Math.abs(below ? high : low));
-  return `${a === b ? `약 ${a}` : `약 ${a}~${b}`} ${below ? '낮아요' : '높아요'}`;
+  const word = below ? '낮아요' : '높아요';
+  if (a === '0원') return `최대 약 ${b} ${word}`;
+  return `${a === b ? `약 ${a}` : `약 ${a}~${b}`} ${word}`;
 }
 
 /**

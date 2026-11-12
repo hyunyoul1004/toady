@@ -72,12 +72,12 @@ final class PublicHtml {
     static String footer(String domain) {
         return "<footer class='site-foot'><div class='site-in'><p><strong>TOADY</strong> · 청약 공고 일정과 분양가·경쟁률·위치·동네 실거래가를 한 화면에서 확인하는 청약 정보 서비스</p>"
             + "<p>데이터 출처: 청약홈·국토교통부 공개 데이터. 일정·가격·신청 자격은 공식 모집공고를 함께 확인해 주세요.</p>"
-            + "<p class='foot-links'><a href='" + esc(domain + "/faq") + "'>자주 묻는 질문</a><a href='" + esc(domain + "/privacy") + "'>개인정보처리방침</a><a href='" + esc(domain + "/terms") + "'>이용약관</a>"
+            + "<p class='foot-links'><a href='" + esc(domain + "/help/faq") + "'>자주 묻는 질문</a><a href='" + esc(domain + "/privacy") + "'>개인정보처리방침</a><a href='" + esc(domain + "/terms") + "'>이용약관</a>"
             + "<a href='mailto:dukkeoba@gmail.com'>문의 dukkeoba@gmail.com</a></p></div></footer>";
     }
     /** 공개 페이지끼리 서로 이어지도록 하단에 같은 탐색 묶음을 둔다. current는 지금 페이지라 링크에서 뺀다. */
     static String explore(String domain, String current) {
-        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"}, {"/faq", "청약 자주 묻는 질문"} };
+        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"}, {"/help/faq", "청약 자주 묻는 질문"} };
         StringBuilder out = new StringBuilder("<section class='card'><h2>더 알아보기</h2><div class='chips'>");
         for (String[] link : links) if (!link[0].equals(current))
             out.append("<a class='chip' href='").append(esc(domain + link[0])).append("'>").append(esc(link[1])).append("</a>");

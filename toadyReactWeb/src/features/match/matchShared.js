@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { daysUntil } from '@/features/planner/plannerUtils';
 import { formatManwon } from '@/features/planner/researchUtils';
+import { RCEPT_SE_META } from '@/views/main/calendar/calendarGroup';
 
 /** 전국 접수 중·예정 공고와 자격 판정용 조건. 10분 캐시(서버도 같은 주기). */
 export function useEligibilityFeed(enabled = true) {
@@ -27,4 +28,5 @@ export function priceRange(units = []) {
 }
 
 export const shortDate = date => (date ? date.slice(5).replace('-', '.') : '미정');
-export const TYPE_LABEL = { apt: 'APT', remaining: '무순위·잔여세대', optional: '임의공급' };
+// 공급 유형 이름은 달력·공급유형 필터와 같은 곳(RCEPT_SE_META)에서 가져온다.
+export const TYPE_LABEL = { apt: 'APT', remaining: RCEPT_SE_META['06'].label, optional: RCEPT_SE_META['07'].label };

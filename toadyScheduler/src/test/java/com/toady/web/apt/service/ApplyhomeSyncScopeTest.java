@@ -27,4 +27,22 @@ class ApplyhomeSyncScopeTest {
         verify(persistence, never()).replaceModels(any(), anyList(), anyList());
         verify(persistence, never()).upsertUrbanModels(anyList(), anyList());
     }
+
+    @Test void oneFailedModelDoesNotSkipTheOtherDatasetTypes() throws Exception {
+        var api = mock(ApplyhomeApiClient.class);
+        var persistence = mock(ApplyhomeDataPersistenceService.class);
+        var lock = mock(ApplyhomeSyncLock.class);
+        var mapper = new ObjectMapper();
+        var a = mapper.readTree("{\"HOUSE_MANAGE_NO\":\"A\",\"PBLANC_NO\":\"A\"}");
+        when(api.getPage(anyString(), anyInt(), anyMap())).thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        when(api.getPage(eq("getAPTLttotPblancDetail"), eq(1), anyMap())).thenReturn(new ApplyhomeApiPage(List.of(a), 1, 1));
+        when(api.getPage(eq("getAPTLttotPblancMdl"), eq(1), anyMap())).thenThrow(new IllegalStateException("timeout"));
+        doAnswer(call -> { ((Runnable) call.getArgument(0)).run(); return null; }).when(lock).execute(any());
+        var service = new ApplyhomeSyncService(api, new ApplyhomeEntityMapper(), persistence, lock);
+        var failure = assertThrows(ApplyhomeSyncService.PartialFailureException.class, () -> service.synchronize(LocalDate.of(2026,1,1), LocalDate.of(2026,1,31)));
+        assertTrue(failure.getMessage().contains("1건"), failure.getMessage());
+        // 아파트 주택형 하나가 실패해도 오피스텔·무순위·임대·임의공급 목록은 모두 조회한다.
+        for (String endpoint : List.of("getUrbtyOfctlLttotPblancDetail", "getRemndrLttotPblancDetail", "getPblPvtRentLttotPblancDetail", "getOPTLttotPblancDetail"))
+            verify(api).getPage(eq(endpoint), eq(1), anyMap());
+    }
 }

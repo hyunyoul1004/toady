@@ -194,7 +194,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await waitFor(()=>!document.querySelector('.announcement-info'),'browser back returns to existing planner');
     assert.equal(document.querySelector('.planner-page'),plannerElement);
     assert.equal(JSON.parse(localStorage.getItem('toady.planner.guest')).find(item=>item.id==='apt/NAV1/NAV1').note,'실거래가와 현장 동선 확인');
-    await click('청약캘린더');
+    await click('청약 캘린더');
     await waitFor(()=>findButton('달력')?.getAttribute('aria-pressed')==='true','calendar menu explicitly selects calendar view');
     assert.equal(findButton('목록').getAttribute('aria-pressed'),'false');
     await click('목록');
@@ -219,7 +219,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await waitFor(()=>document.querySelector('[role=tab][aria-selected=true]')?.textContent.includes('경쟁률'),'direct competition link selects competition');
     await act(async()=>win.history.back());
     await waitFor(()=>win.location.pathname==='/' && !document.querySelector('[data-testid=announcement-scroll]'),'first back from shared URL stays on site');
-    await click('청약캘린더');
+    await click('청약 캘린더');
     await waitFor(()=>findButton('달력')?.getAttribute('aria-pressed')==='true','calendar link after shared URL selects real calendar');
     assert.equal(findButton('목록').getAttribute('aria-pressed'),'false');
     await click('이번달');
@@ -235,7 +235,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','mobile calendar selects a matching date when today has no results');
     const beforeReturnCount=findButton('조회된 공고 1').textContent;
     await click('나의 청약');
-    await click('청약캘린더');
+    await click('청약 캘린더');
     await waitFor(()=>document.querySelector('[aria-label="모바일 청약 달력"]')?.dataset.selectedDate==='2026-11-16','Paju search survives planner round trip and selects a populated date');
     assert.equal(findButton('조회된 공고 1').textContent,beforeReturnCount);
     assert.equal(JSON.parse(localStorage.getItem('toady.searchAreas'))[0].districtName,'파주시');

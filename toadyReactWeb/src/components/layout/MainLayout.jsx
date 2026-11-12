@@ -7,6 +7,7 @@
  */
 import React from 'react';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { useScrollTopOnNavigate } from '@/hooks/useScrollTopOnNavigate';
 import { Outlet, Link } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
@@ -26,6 +27,7 @@ import { SignUp, FindPassword } from '@/views/signup';
 
 export function MainLayout() {
   const [overlay, setOverlay] = useHistoryOverlay('layout');
+  useScrollTopOnNavigate();
   const mobileOpen = overlay === 'menu';
   const loginModalOpen = overlay === 'login';
   const signUpModalOpen = overlay === 'signup';

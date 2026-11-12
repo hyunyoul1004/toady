@@ -60,7 +60,7 @@ public class PublicAnnouncementPage {
         // 미리 계산한 주변 시세 비교(신뢰도 보통 이상)가 있으면 공급금액 아래에 한 줄로 덧붙인다.
         var gap=gaps.forIds(java.util.List.of(s.id())).get(s.id());
         String gapLine=gap==null?"":"<p><strong>"+PublicHtml.esc("주변 "+("new".equals(gap.basis())?"신축 ":"")+("비슷".equals(gap.text())?"시세와 비슷해요":"시세 대비 "+gap.text()))+"</strong></p><p class='muted'>"
-            +PublicHtml.esc("전용 "+gap.area()+"㎡ 기준 · "+("DONG".equals(gap.scope())?gap.dong():"같은 시·군·구")+" "+("new".equals(gap.basis())?"준공 10년 이내 ":"")+gap.basisCount()+"건 · 최근 "+gap.months()+"개월 실거래 · 실제 차익을 보장하지 않는 참고 비교예요.")+"</p>";
+            +PublicHtml.esc("전용 "+gap.area()+"㎡ 기준 · "+("DONG".equals(gap.scope())?gap.dong():"같은 시·군·구")+" "+("new".equals(gap.basis())?"준공 10년 이내 ":"")+gap.basisCount()+"건 · 최근 "+gap.months()+"개월 실거래("+gap.computedDate().replace('-','.')+" 계산) · 실제 차익을 보장하지 않는 참고 비교예요.")+"</p>";
         String priceCard=price.isEmpty()?"":"<section class='card'><h2>주택형별 최고 공급금액</h2><p class='price'>"+PublicHtml.esc(price)+"</p>"+gapLine+"<p class='muted'>각 주택형의 최고 금액을 모은 범위이며 최저 분양가가 아닙니다. 층·타입별 금액은 모집공고를 확인해 주세요.</p></section>";
         String areaLink=area.map(value -> "<a class='cta secondary' href='"+PublicHtml.esc(domain+"/areas/"+value.slug())+"'>"+PublicHtml.esc(value.label())+" 생활권 청약 더 보기</a>").orElse("");
         String html="""

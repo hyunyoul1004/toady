@@ -3,15 +3,13 @@ import { Box, Paper, Typography, Button, Divider, Autocomplete, TextField, Input
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import TuneRounded from '@mui/icons-material/TuneRounded';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { REGION_SEOUL, REGION_METRO, REGION_PROVINCE, ALL_REGIONS, SUPPLY_FILTER_ITEMS } from '../announcementFilters';
 
 export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
-  // 모바일 첫 화면이 필터로 가득 차지 않게 유형·지역 필터를 접어 두고 검색창만 보여 준다.
-  const isMobile = useMediaQuery('(max-width:599px)');
+  // 첫 화면은 검색창 한 줄만 보여 주고, 유형·지역 필터는 필터 버튼으로 펼친다.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const showFilters = !isMobile || filtersOpen;
+  const showFilters = filtersOpen;
   const offTypes = Array.from({ length: 8 }, (_, index) => paramInfo[`rceptSe${String(index + 1).padStart(2, '0')}`]).filter(value => value !== 'Y').length;
   const activeFilters = (offTypes > 0 ? 1 : 0) + (selectedRegions.length < ALL_REGIONS.length ? 1 : 0);
 
@@ -105,185 +103,9 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
               }}
             >
-              {/* 모바일 전용: 유형·지역 필터 펼치기 */}
-              <Box sx={{ display: { xs: 'flex', sm: 'none' }, alignItems: 'center', justifyContent: 'space-between', mb: showFilters ? 1.2 : 1 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b' }}>공고 찾기</Typography>
-                <Button size="small" variant={activeFilters ? 'contained' : 'outlined'} disableElevation startIcon={<TuneRounded />}
-                  endIcon={<ExpandMoreIcon sx={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}
-                  aria-expanded={filtersOpen} onClick={() => setFiltersOpen(open => !open)}
-                  sx={{ borderRadius: 999, fontWeight: 700, textTransform: 'none', fontSize: '0.8rem', py: 0.3 }}>
-                  {activeFilters ? `필터 ${activeFilters}개 적용` : '유형·지역 필터'}
-                </Button>
-              </Box>
-
-              {/* [섹션 1] 공급유형 필터 (모던 칩 UI) */}
-              <Box sx={{ mb: 1.5, display: showFilters ? 'block' : 'none' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.6 }}>
-                    <span style={{ color: '#2563eb' }}>●</span> 공급유형
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => handleRceptSeToggle('01ALL')}
-                      sx={{
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        color: isAllAptChecked ? '#2563eb' : '#64748b',
-                        minWidth: 0,
-                        py: 0.2,
-                        px: 0.8,
-                        borderRadius: 1,
-                        bgcolor: isAllAptChecked ? '#eff6ff' : 'transparent',
-                        '&:hover': { bgcolor: '#eff6ff' }
-                      }}
-                    >
-                      {isAllAptChecked ? 'APT 해제' : 'APT 전체'}
-                    </Button>
-                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.7rem' }}>|</Typography>
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => handleRceptSeToggle('ALL')}
-                      sx={{
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        color: '#2563eb',
-                        minWidth: 0,
-                        py: 0.2,
-                        px: 0.8,
-                        borderRadius: 1,
-                        '&:hover': { bgcolor: '#eff6ff' }
-                      }}
-                    >
-                      {isAllChecked ? '전체 해제' : '전체 선택'}
-                    </Button>
-                  </Box>
-                </Box>
-
-                {/* 칩 리스트 */}
-                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.8 }}>
-                  {/* 공급 유형별 알약형 칩 */}
-                  {SUPPLY_FILTER_ITEMS.map((item) => {
-                    const isChecked = paramInfo[`rceptSe${item.id}`] === 'Y';
-                    return (
-                      <Box
-                        key={item.id}
-                        onClick={() => handleRceptSeToggle(item.id)}
-                        sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 0.6,
-                          px: 1.3,
-                          py: 0.55,
-                          borderRadius: '16px',
-                          cursor: 'pointer',
-                          fontSize: '0.8rem',
-                          fontWeight: isChecked ? 700 : 500,
-                          border: isChecked ? '1.5px solid #94a3b8' : '1px solid #e2e8f0',
-                          bgcolor: isChecked ? '#ffffff' : '#f8fafc',
-                          color: isChecked ? '#0f172a' : '#94a3b8',
-                          boxShadow: isChecked ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
-                          transition: 'all 0.15s ease',
-                          userSelect: 'none',
-                          '&:hover': {
-                            borderColor: '#64748b',
-                            bgcolor: '#ffffff'
-                          }
-                        }}
-                      >
-                        {/* 공급 유형 컬러 닷 */}
-                        <Box
-                          sx={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: '50%',
-                            bgcolor: isChecked ? item.color : '#cbd5e1',
-                            transition: 'background-color 0.15s ease'
-                          }}
-                        />
-                        {item.label}
-                      </Box>
-                    );
-                  })}
-                </Box>
-              </Box>
-
-              <Divider sx={{ mb: 1.2, borderStyle: 'dashed', display: showFilters ? 'block' : 'none' }} />
-
-              {/* [섹션 2] 공급지역 필터 헤더 + 우측 구/군/단지명 검색 (인라인 통합) */}
-              <Box>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: { xs: 'stretch', sm: 'center' },
-                    justifyContent: 'space-between',
-                    flexDirection: { xs: 'column', sm: 'row' },
-                    gap: 1.5,
-                    py: 0.5
-                  }}
-                >
-                  {/* 좌측: 공급지역 타이틀 + 선택 카운트 뱃지 + 지역 선택 토글 버튼 */}
-                  <Box
-                    onClick={() => setIsRegionOpen((prev) => !prev)}
-                    sx={{
-                      display: showFilters ? 'inline-flex' : 'none',
-                      alignItems: 'center',
-                      gap: 1,
-                      cursor: 'pointer',
-                      py: 0.5,
-                      px: 0.6,
-                      borderRadius: 1.5,
-                      transition: 'all 0.15s ease',
-                      '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.03)' }
-                    }}
-                  >
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <span style={{ color: '#16a34a' }}>●</span> 공급지역
-                    </Typography>
-                    <Box
-                      sx={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        px: 1,
-                        py: 0.2,
-                        borderRadius: 1,
-                        bgcolor: selectedRegions.length === ALL_REGIONS.length ? '#f1f5f9' : '#eff6ff',
-                        color: selectedRegions.length === ALL_REGIONS.length ? '#64748b' : '#2563eb'
-                      }}
-                    >
-                      {selectedRegions.length === ALL_REGIONS.length
-                        ? '전국 (17개)'
-                        : `${selectedRegions.length}개 선택됨`}
-                    </Box>
-                    <Button
-                      size="small"
-                      variant="text"
-                      endIcon={
-                        <ExpandMoreIcon
-                          sx={{
-                            transform: isRegionOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                            transition: 'transform 0.2s ease',
-                            fontSize: '1.1rem'
-                          }}
-                        />
-                      }
-                      sx={{
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        color: isRegionOpen ? '#16a34a' : '#64748b',
-                        p: 0,
-                        minWidth: 'auto',
-                        '&:hover': { bgcolor: 'transparent', color: '#16a34a' }
-                      }}
-                    >
-                      {isRegionOpen ? '접기' : '지역 선택'}
-                    </Button>
-                  </Box>
-
-                  {/* 우측: 구/군/단지명 통합 검색 (인라인 수납) */}
-                  <Box sx={{ width: { xs: '100%', sm: 380, md: 440 }, flexShrink: 0 }}>
+              {/* 한 줄 검색 + 필터 버튼. 유형·지역 필터는 눌렀을 때만 아래로 펼친다(첫 화면이 필터로 가득 차지 않게). */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: showFilters ? 1.5 : 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Autocomplete
                       className="announcement-search"
                       multiple
@@ -489,6 +311,181 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                       )}
                     />
                   </Box>
+                <Button variant={activeFilters ? 'contained' : 'outlined'} disableElevation startIcon={<TuneRounded />}
+                  endIcon={<ExpandMoreIcon sx={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}
+                  aria-expanded={filtersOpen} aria-controls="announcement-filter-panel" onClick={() => setFiltersOpen(open => !open)}
+                  sx={{ flexShrink: 0, borderRadius: 999, fontWeight: 700, textTransform: 'none', fontSize: '0.8rem', py: 0.6, px: { xs: 1.2, sm: 1.6 }, whiteSpace: 'nowrap', '& .MuiButton-startIcon': { mr: { xs: 0.3, sm: 0.6 } }, '& .MuiButton-endIcon': { display: { xs: 'none', sm: 'inherit' } } }}>
+                  {activeFilters ? `필터 ${activeFilters}` : <>필터<Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>&nbsp;· 유형·지역</Box></>}
+                </Button>
+              </Box>
+              <div id="announcement-filter-panel" hidden={!showFilters}>
+
+              {/* [섹션 1] 공급유형 필터 (모던 칩 UI) */}
+              <Box sx={{ mb: 1.5, display: showFilters ? 'block' : 'none' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                    <span style={{ color: '#2563eb' }}>●</span> 공급유형
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => handleRceptSeToggle('01ALL')}
+                      sx={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: isAllAptChecked ? '#2563eb' : '#64748b',
+                        minWidth: 0,
+                        py: 0.2,
+                        px: 0.8,
+                        borderRadius: 1,
+                        bgcolor: isAllAptChecked ? '#eff6ff' : 'transparent',
+                        '&:hover': { bgcolor: '#eff6ff' }
+                      }}
+                    >
+                      {isAllAptChecked ? 'APT 해제' : 'APT 전체'}
+                    </Button>
+                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.7rem' }}>|</Typography>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => handleRceptSeToggle('ALL')}
+                      sx={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#2563eb',
+                        minWidth: 0,
+                        py: 0.2,
+                        px: 0.8,
+                        borderRadius: 1,
+                        '&:hover': { bgcolor: '#eff6ff' }
+                      }}
+                    >
+                      {isAllChecked ? '전체 해제' : '전체 선택'}
+                    </Button>
+                  </Box>
+                </Box>
+
+                {/* 칩 리스트 */}
+                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.8 }}>
+                  {/* 공급 유형별 알약형 칩 */}
+                  {SUPPLY_FILTER_ITEMS.map((item) => {
+                    const isChecked = paramInfo[`rceptSe${item.id}`] === 'Y';
+                    return (
+                      <Box
+                        key={item.id}
+                        onClick={() => handleRceptSeToggle(item.id)}
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.6,
+                          px: 1.3,
+                          py: 0.55,
+                          borderRadius: '16px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: isChecked ? 700 : 500,
+                          border: isChecked ? '1.5px solid #94a3b8' : '1px solid #e2e8f0',
+                          bgcolor: isChecked ? '#ffffff' : '#f8fafc',
+                          color: isChecked ? '#0f172a' : '#94a3b8',
+                          boxShadow: isChecked ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
+                          transition: 'all 0.15s ease',
+                          userSelect: 'none',
+                          '&:hover': {
+                            borderColor: '#64748b',
+                            bgcolor: '#ffffff'
+                          }
+                        }}
+                      >
+                        {/* 공급 유형 컬러 닷 */}
+                        <Box
+                          sx={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            bgcolor: isChecked ? item.color : '#cbd5e1',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                        />
+                        {item.label}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+
+              <Divider sx={{ mb: 1.2, borderStyle: 'dashed', display: showFilters ? 'block' : 'none' }} />
+
+              {/* [섹션 2] 공급지역 필터 헤더 + 우측 구/군/단지명 검색 (인라인 통합) */}
+              <Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1.5,
+                    py: 0.5
+                  }}
+                >
+                  {/* 좌측: 공급지역 타이틀 + 선택 카운트 뱃지 + 지역 선택 토글 버튼 */}
+                  <Box
+                    onClick={() => setIsRegionOpen((prev) => !prev)}
+                    sx={{
+                      display: showFilters ? 'inline-flex' : 'none',
+                      alignItems: 'center',
+                      gap: 1,
+                      cursor: 'pointer',
+                      py: 0.5,
+                      px: 0.6,
+                      borderRadius: 1.5,
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.03)' }
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <span style={{ color: '#16a34a' }}>●</span> 공급지역
+                    </Typography>
+                    <Box
+                      sx={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        px: 1,
+                        py: 0.2,
+                        borderRadius: 1,
+                        bgcolor: selectedRegions.length === ALL_REGIONS.length ? '#f1f5f9' : '#eff6ff',
+                        color: selectedRegions.length === ALL_REGIONS.length ? '#64748b' : '#2563eb'
+                      }}
+                    >
+                      {selectedRegions.length === ALL_REGIONS.length
+                        ? '전국 (17개)'
+                        : `${selectedRegions.length}개 선택됨`}
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="text"
+                      endIcon={
+                        <ExpandMoreIcon
+                          sx={{
+                            transform: isRegionOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s ease',
+                            fontSize: '1.1rem'
+                          }}
+                        />
+                      }
+                      sx={{
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        color: isRegionOpen ? '#16a34a' : '#64748b',
+                        p: 0,
+                        minWidth: 'auto',
+                        '&:hover': { bgcolor: 'transparent', color: '#16a34a' }
+                      }}
+                    >
+                      {isRegionOpen ? '접기' : '지역 선택'}
+                    </Button>
+                  </Box>
+
                 </Box>
 
                 {/* 공급지역 상세 체크박스 레이어 (Collapse 애니메이션 적용) */}
@@ -685,6 +682,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, selectedR
                 </Box>
                 </Collapse>
               </Box>
+              </div>
             </Paper>
   );
 }

@@ -3,7 +3,7 @@ import { Button, Skeleton, ToggleButton, ToggleButtonGroup } from '@mui/material
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import TrendingDownRounded from '@mui/icons-material/TrendingDownRounded';
 import { formatManwon } from '@/features/planner/researchUtils';
-import { CONFIDENCE_TEXT, gapRows, gapText, representative } from './priceGapRules';
+import { CONFIDENCE_TEXT, gapRows, gapText, gapTone, representative } from './priceGapRules';
 import { usePriceGap } from './usePriceGap';
 import './match.css';
 
@@ -22,7 +22,7 @@ export function PriceGapSummary({ detail, onMore }) {
   if (!gap.ready) return null;
   const row = representative(gapRows(gap.units, gap.data.areas));
   if (!row) return null;
-  const tone = row.diffLow > 0 && row.diffHigh > 0 ? 'below' : row.diffLow < 0 && row.diffHigh < 0 ? 'above' : 'same';
+  const tone = gapTone(row);
   return <button type="button" className={`match-gap-summary is-${tone}`} onClick={onMore}>
     <TrendingDownRounded fontSize="small" />
     <span><b>{tone === 'same' ? `주변 ${row.basis === 'new' ? '신축 ' : ''}시세와 비슷해요` : `주변 ${row.basis === 'new' ? '신축 ' : ''}시세 대비 ${gapText(row)}`}</b>
@@ -57,7 +57,7 @@ export default function PriceGapCard({ detail, onShowTrades, id }) {
         <span>시세 범위 <b>{formatManwon(row.q1)}{row.q1 !== row.q3 ? ` ~ ${formatManwon(row.q3)}` : ''}</b></span>
         <span className="is-new">{CONFIDENCE_TEXT[row.confidence]}</span>
       </div>
-      <span className={`match-gap-diff is-${row.diffLow > 0 && row.diffHigh > 0 ? 'below' : row.diffLow < 0 && row.diffHigh < 0 ? 'above' : 'same'}`}>{gapText(row)}</span>
+      <span className={`match-gap-diff is-${gapTone(row)}`}>{gapText(row)}</span>
     </div>)}</div>
     <p className="match-gap-note">실제 차익을 보장하지 않는 참고 비교예요. 발코니 확장·옵션·중도금 이자와 전매제한·실거주 의무는 반영하지 않았어요.{onShowTrades && <> <Button size="small" onClick={onShowTrades}>거래 목록 보기</Button></>}</p>
   </section>;

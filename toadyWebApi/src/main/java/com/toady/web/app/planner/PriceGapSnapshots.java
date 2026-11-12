@@ -35,7 +35,7 @@ import java.util.*;
 @Validated
 public class PriceGapSnapshots {
     private static final Logger log = LoggerFactory.getLogger(PriceGapSnapshots.class);
-    static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180;
+    static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180, MAX_MINUTES = 20;
     @org.springframework.context.annotation.Configuration @org.springframework.scheduling.annotation.EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc;
     private final PriceGapStore store;
@@ -43,6 +43,7 @@ public class PriceGapSnapshots {
     private final AddressLocator locator;
     private final NeighborhoodResearchService research;
     private final Clock clock;
+    @Autowired(required = false) private org.springframework.transaction.support.TransactionTemplate transactions;
 
     @Autowired
     public PriceGapSnapshots(JdbcTemplate jdbc, PriceGapStore store, EligibilityFeed feed, AddressLocator locator, NeighborhoodResearchService research) {
@@ -64,8 +65,10 @@ public class PriceGapSnapshots {
         try {
             var report = run();
             log.info("주변 시세 비교 미리 계산: ready={}, noLocation={}, noTrades={}, unavailable={}", report.get("READY"), report.get("NO_LOCATION"), report.get("NO_TRADES"), report.get("UNAVAILABLE"));
-        } catch (DataAccessException missing) {
+        } catch (org.springframework.jdbc.BadSqlGrammarException missing) {
             log.warn("TB_PRICE_GAP을 사용할 수 없어 주변 시세 비교를 미리 계산하지 않습니다. database.sql 18번을 적용하세요.");
+        } catch (DataAccessException failure) {
+            log.warn("주변 시세 비교 저장 실패: error={}", failure.getMostSpecificCause().getMessage());
         }
     }
 
@@ -77,17 +80,21 @@ public class PriceGapSnapshots {
         @SuppressWarnings("unchecked")
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.load(today).get("items");
         Map<String, Object[]> previous = new HashMap<>();
-        jdbc.query("SELECT ANNOUNCEMENT_ID,STATUS,COMPUTED_DT FROM TB_PRICE_GAP", (org.springframework.jdbc.core.RowCallbackHandler) r ->
-            previous.put(r.getString(1), new Object[]{r.getString(2), r.getTimestamp(3).toLocalDateTime()}));
+        jdbc.query("SELECT ANNOUNCEMENT_ID,STATUS,COMPUTED_DT,AREA,SUPPLY_MANWON FROM TB_PRICE_GAP", (org.springframework.jdbc.core.RowCallbackHandler) r ->
+            previous.put(r.getString(1), new Object[]{r.getString(2), r.getTimestamp(3).toLocalDateTime(), r.getObject(4) == null ? null : r.getInt(4), r.getObject(5) == null ? null : r.getLong(5)}));
         // 접수 중인 공고를 먼저 계산한다.
         List<EligibilityFeed.Item> ordered = items.stream().sorted(Comparator.comparing((EligibilityFeed.Item item) -> "OPEN".equals(item.status()) ? 0 : 1)).toList();
         int processed = 0;
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MINUTES.toNanos(MAX_MINUTES);
         for (EligibilityFeed.Item item : ordered) {
-            if (processed >= MAX_PER_RUN) break;
+            // 제공처가 느려도 저녁 알림 작업을 오래 막지 않도록 한 번 실행 시간을 제한한다(남은 공고는 다음 날).
+            if (processed >= MAX_PER_RUN || System.nanoTime() > deadline) break;
             Map<Integer, Long> supplies = supplies(item);
             if (supplies.isEmpty()) continue;
             Object[] before = previous.get(item.id());
-            if (before != null && fresh((String) before[0], (LocalDateTime) before[1], now)) continue;
+            // 정정 공고로 분양가가 바뀌었으면 기간과 상관없이 다시 계산한다.
+            boolean changed = before != null && "READY".equals(before[0]) && !Objects.equals(supplies.get((Integer) before[2]), before[3]);
+            if (before != null && !changed && fresh((String) before[0], (LocalDateTime) before[1], now)) continue;
             processed++;
             String status = compute(item, supplies, now);
             report.merge(status, 1, Integer::sum);
@@ -96,15 +103,17 @@ public class PriceGapSnapshots {
         return report;
     }
 
+    /** 날짜 기준으로 판단한다(매일 같은 시각에 돌므로 시각 비교면 하루씩 밀린다). UNAVAILABLE은 다음 날 다시 계산한다. */
     static boolean fresh(String status, LocalDateTime computed, LocalDateTime now) {
         int days = "READY".equals(status) ? READY_DAYS : "UNAVAILABLE".equals(status) ? 1 : RETRY_DAYS;
-        return computed.isAfter(now.minusDays(days));
+        return java.time.temporal.ChronoUnit.DAYS.between(computed.toLocalDate(), now.toLocalDate()) < days;
     }
     /** 전용면적(반올림) → 그 면적 주택형의 최고 공급금액. */
     static Map<Integer, Long> supplies(EligibilityFeed.Item item) {
         Map<Integer, Long> out = new TreeMap<>();
         for (var unit : item.units()) {
-            if (unit.area() == null || unit.amountManwon() == null || unit.amountManwon() <= 0) continue;
+            // 화면(usePriceGap)과 같이 전용 10㎡ 미만 표기는 비교 면적에서 뺀다.
+            if (unit.area() == null || unit.area().doubleValue() < 10 || unit.amountManwon() == null || unit.amountManwon() <= 0) continue;
             out.merge((int) Math.round(unit.area().doubleValue()), unit.amountManwon(), Math::max);
         }
         return out;
@@ -116,7 +125,8 @@ public class PriceGapSnapshots {
             if (location.isEmpty()) { save(item.id(), "NO_LOCATION", null, null, null, now); return "NO_LOCATION"; }
             List<BigDecimal> areas = supplies.keySet().stream().limit(8).map(BigDecimal::valueOf).toList();
             var gap = research.priceGap(location.get().bcode(), location.get().dong(), areas);
-            if ("UNAVAILABLE".equals(gap.status()) || "NOT_CONFIGURED".equals(gap.status())) { save(item.id(), "UNAVAILABLE", location.get(), null, null, now); return "UNAVAILABLE"; }
+            // 응답 시간 한도로 일부 달만 받은 결과는 저장하지 않고 다음 날 다시 계산한다(며칠씩 고정하지 않게).
+            if ("UNAVAILABLE".equals(gap.status()) || "NOT_CONFIGURED".equals(gap.status()) || gap.partial()) { save(item.id(), "UNAVAILABLE", location.get(), null, null, now); return "UNAVAILABLE"; }
             var row = PriceGapRules.representative(PriceGapRules.rows(supplies, gap.areas()));
             if (row.isEmpty()) { save(item.id(), "NO_TRADES", location.get(), null, null, now); return "NO_TRADES"; }
             save(item.id(), "READY", location.get(), row.get(), gap.months(), now);
@@ -130,7 +140,12 @@ public class PriceGapSnapshots {
         }
     }
 
+    /** 지우고 다시 넣는 두 문장을 한 트랜잭션으로 묶어, 넣기가 실패해도 기존 값이 사라지지 않게 한다. */
     private void save(String id, String status, AddressLocator.Location location, PriceGapRules.Row row, Integer months, LocalDateTime now) {
+        if (transactions == null) { saveNow(id, status, location, row, months, now); return; }
+        transactions.executeWithoutResult(tx -> saveNow(id, status, location, row, months, now));
+    }
+    private void saveNow(String id, String status, AddressLocator.Location location, PriceGapRules.Row row, Integer months, LocalDateTime now) {
         jdbc.update("DELETE FROM TB_PRICE_GAP WHERE ANNOUNCEMENT_ID=?", id);
         jdbc.update("INSERT INTO TB_PRICE_GAP (ANNOUNCEMENT_ID,STATUS,BCODE,DONG,AREA,SUPPLY_MANWON,BASIS,SCOPE,BASIS_COUNT,CONFIDENCE,Q1_MANWON,Q3_MANWON,MONTHS,COMPUTED_DT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             id, status, location == null ? null : location.bcode(), location == null ? null : location.dong(),

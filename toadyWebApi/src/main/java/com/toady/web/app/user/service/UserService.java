@@ -125,7 +125,11 @@ public class UserService {
                 existing.setUserPassword(passwordEncoder.encode(param.getUserPassword()));
                 existing.setUserNicName(param.getUserNicName());
                 existing.setUpdateDt(LocalDateTime.now());
-                userRepository.save(existing);
+                try {
+                    userRepository.saveAndFlush(existing);
+                } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+                    throw new NicknameTakenException();
+                }
                 certifyService.reissueAccountVerification(existing);
                 return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(), "["+param.getUserEmail()+"]로 인증 URL을 보냈습니다.<br/>메일의 링크를 열고 방금 정한 비밀번호를 입력하면 가입이 완료됩니다.<br/>인증 링크는 발급 후 24시간 동안 유효합니다."));
             }
@@ -147,7 +151,10 @@ public class UserService {
             try {
                 userRepository.saveAndFlush(userParam);
             } catch (org.springframework.dao.DataIntegrityViolationException raced) {
-                // 같은 닉네임·이메일로 동시에 가입하면 유니크 제약이 먼저 막는다. 500 대신 이미 사용 중으로 안내한다.
+                // 같은 닉네임·이메일로 동시에 가입하면 유니크 제약이 먼저 막는다. 500 대신 어느 쪽이 겹쳤는지 안내한다.
+                // 실패한 저장 뒤에는 세션을 다시 쓰지 않고 제약 이름으로 구분한다.
+                if (String.valueOf(raced.getMostSpecificCause().getMessage()).toLowerCase(java.util.Locale.ROOT).contains("uk_subscript_email"))
+                    throw new EmailTakenException();
                 throw new NicknameTakenException();
             }
 
@@ -164,6 +171,9 @@ public class UserService {
 
         } catch (EmailDeliveryException e) {
             throw e;
+        } catch (EmailTakenException e) {
+            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
         } catch (NicknameTakenException e) {
             org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
@@ -178,13 +188,15 @@ public class UserService {
     /** 이 기간이 지나도록 인증하지 않은 계정의 닉네임은 다른 사람이 쓸 수 있게 놓아준다. */
     static final int STALE_UNVERIFIED_DAYS = 7;
     static final class NicknameTakenException extends RuntimeException { }
+    static final class EmailTakenException extends RuntimeException { }
 
     /** 닉네임을 가진 계정이 오래 인증하지 않은 계정이면 닉네임을 비워 주고 true를 돌려준다. */
     private boolean releaseStaleNickname(UserEntity owner) {
         if ("Y".equals(owner.getEmailCertifyYn())) return false;
         LocalDateTime last = owner.getUpdateDt() != null ? owner.getUpdateDt() : owner.getCreateDt();
         if (last == null || last.plusDays(STALE_UNVERIFIED_DAYS).isAfter(LocalDateTime.now())) return false;
-        owner.setUserNicName("미인증" + owner.getUserSeq());
+        // 가입 규칙(한글·영문·숫자)으로는 만들 수 없는 값이라 새 가입 닉네임과 겹치지 않는다.
+        owner.setUserNicName("미인증_" + owner.getUserSeq());
         owner.setUpdateDt(LocalDateTime.now());
         userRepository.saveAndFlush(owner);
         return true;

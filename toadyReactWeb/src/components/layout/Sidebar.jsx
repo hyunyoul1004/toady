@@ -22,6 +22,9 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import EventNoteOutlinedIcon from '@mui/icons-material/EventNoteOutlined';
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -29,6 +32,10 @@ import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
+import { MAIN_NAV, MORE_NAV, isNavActive } from './navItems';
+
+const MAIN_ICONS = { calendar: <CalendarMonthIcon />, match: <FactCheckOutlinedIcon />, score: <CalculateOutlinedIcon />, my: <BookmarkBorderIcon /> };
+const MORE_ICONS = { weekly: <EventNoteOutlinedIcon />, areas: <PlaceOutlinedIcon />, faq: <HelpOutlineIcon />, push: <NotificationsNoneOutlinedIcon /> };
 
 export const DRAWER_WIDTH = 240;
 
@@ -41,12 +48,17 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
 
   const nickname = user?.userNicName || user?.sub || '회원';
 
-  const menuItems = [
-    { text: '청약캘린더', icon: <CalendarMonthIcon />, path: '/' },
-    { text: '내게 맞는 청약', icon: <FactCheckOutlinedIcon />, path: '/match' },
-    { text: '가점 계산기', icon: <CalculateOutlinedIcon />, path: '/score' },
-    { text: '나의 청약', icon: <BookmarkBorderIcon />, path: '/my' }
-  ];
+  const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
+  function openMore(item) {
+    if (item.external) { window.location.assign(item.path); return; }
+    if (item.overlay) {
+      // 나의 청약을 한 단계 쌓은 뒤 알림 설정 창을 연다(닫으면 나의 청약에 머문다).
+      if (location.pathname !== item.path) navigate(item.path, { replace: mobileOpen });
+      navigate(item.path, { replace: mobileOpen && location.pathname === item.path, state: { overlayLayers: [{ id: item.overlay, value: true }] } });
+      return;
+    }
+    navigate(item.path, { replace: mobileOpen });
+  }
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#ffffff' }}>
@@ -102,9 +114,9 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         </Typography>
         <List disablePadding>
           {menuItems.map((item) => {
-            const isSelected = item.path==='/'?location.pathname==='/' || location.pathname.startsWith('/announcements/') || location.pathname==='/showSubscriptDetail':location.pathname===item.path || location.pathname.startsWith(`${item.path}/`);
+            const isSelected = isNavActive(item.path, location.pathname);
             return (
-              <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+              <ListItem key={item.key} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
                   aria-current={isSelected?'page':undefined}
                   selected={isSelected}
@@ -137,16 +149,19 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
             );
           })}
         </List>
-        {/* 도움말: 주요 메뉴와 구분해 아래에 둔다. */}
-        <List disablePadding sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #f1f5f9' }}>
-          <ListItem disablePadding>
-            <ListItemButton aria-current={location.pathname === '/faq' ? 'page' : undefined} selected={location.pathname === '/faq'}
-              onClick={() => navigate('/faq', { replace: mobileOpen })}
-              sx={{ borderRadius: 1.5, py: 1, px: 1.5, bgcolor: location.pathname === '/faq' ? '#eff6ff' : 'transparent', color: location.pathname === '/faq' ? '#2563eb' : '#475569', '&:hover': { bgcolor: location.pathname === '/faq' ? '#eff6ff' : '#f8fafc' } }}>
-              <ListItemIcon sx={{ minWidth: 36, color: location.pathname === '/faq' ? '#2563eb' : '#64748b' }}><HelpOutlineIcon /></ListItemIcon>
-              <ListItemText primary="자주 묻는 질문" primaryTypographyProps={{ fontWeight: location.pathname === '/faq' ? 800 : 600, fontSize: '0.9rem' }} />
-            </ListItemButton>
-          </ListItem>
+        {/* 더보기: 주요 메뉴와 구분해 아래에 둔다. 하단 탭의 '더보기'도 이 목록을 연다. */}
+        <Typography variant="caption" sx={{ px: 1.5, mt: 2, mb: 1, display: 'block', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>더보기</Typography>
+        <List disablePadding>
+          {MORE_NAV.map(item => {
+            const selected = !item.external && !item.overlay && location.pathname === item.path;
+            return <ListItem key={item.key} disablePadding sx={{ mb: 0.25 }}>
+              <ListItemButton aria-current={selected ? 'page' : undefined} selected={selected} onClick={() => openMore(item)}
+                sx={{ borderRadius: 1.5, py: 0.75, px: 1.5, bgcolor: selected ? '#eff6ff' : 'transparent', color: selected ? '#2563eb' : '#475569', '&:hover': { bgcolor: selected ? '#eff6ff' : '#f8fafc' } }}>
+                <ListItemIcon sx={{ minWidth: 36, color: selected ? '#2563eb' : '#64748b' }}>{MORE_ICONS[item.key]}</ListItemIcon>
+                <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 800 : 600, fontSize: '0.86rem' }} />
+              </ListItemButton>
+            </ListItem>;
+          })}
         </List>
       </Box>
 

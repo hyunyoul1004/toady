@@ -1,0 +1,27 @@
+.today-summary{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px 14px 12px;margin-top:4px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+.today-summary-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.today-summary-head h2{margin:0;font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
+.today-summary-head h2 span{margin-left:6px;font-size:12.5px;font-weight:600;color:#64748b}
+.today-summary-saved{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;font-weight:700;color:#475569;text-decoration:none;border:1px solid #e2e8f0;border-radius:999px;padding:4px 8px 4px 11px;white-space:nowrap}
+.today-summary-saved b{color:#2563eb}
+.today-summary-saved:hover{border-color:#cbd5e1;background:#f8fafc}
+.today-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.today-tile{font:inherit;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0;padding:11px 12px;border-radius:12px;border:1px solid #e7edf5;background:#f8fafc;color:#0f172a;text-decoration:none;cursor:pointer;transition:border-color .15s,background .15s}
+.today-tile:hover{border-color:#bfd3f5;background:#f2f7ff}
+.today-tile:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.today-tile:disabled{cursor:default;opacity:.7}
+.today-tile>span{font-size:12.5px;font-weight:700;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.today-tile strong{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2;color:#1e3a8a}
+.today-tile strong em{font-style:normal;font-size:13px;font-weight:700;margin-left:2px;color:#64748b}
+.today-tile strong.is-text{font-size:18px;line-height:1.55;color:#2563eb}
+.today-tile small{font-size:11.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.today-tile.is-zupzup strong{color:#b45309}
+.today-tile.is-match{background:#eef4ff;border-color:#d7e5fb}
+.today-tile.is-cta small{color:#2563eb;font-weight:700}
+@media (max-width:600px){
+  .today-summary{padding:12px 10px 10px;border-radius:14px}
+  .today-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .today-tile{padding:9px 10px}
+  .today-tile strong{font-size:21px}
+  .today-tile strong.is-text{font-size:16px;line-height:1.6}
+}

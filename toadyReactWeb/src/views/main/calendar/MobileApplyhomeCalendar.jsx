@@ -20,17 +20,6 @@ const SHORT_LABEL = { '07': '임의공급', '08': '재공급', '05': '오피스�
 const RCEPT_SE_STYLE = Object.fromEntries(Object.entries(RCEPT_SE_META).map(([code, meta]) =>
   [code, { label: SHORT_LABEL[code] || meta.label, bg: meta.tint, color: meta.text, border: meta.accent }]));
 
-// 정렬 우선순위
-const RCEPT_SE_ORDER = {
-  '01': 1,
-  '02': 2,
-  '03': 3,
-  '04': 4,
-  '05': 5,
-  '06': 6,
-  '07': 7,
-  '08': 8
-};
 
 const WEEKDAY_NAMES = ['월', '화', '수', '목', '금'];
 
@@ -102,7 +91,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
       map[dateStr].push({
         ...item,
         effectiveRceptSe,
-        order: RCEPT_SE_ORDER[effectiveRceptSe] || 99
+        // PC 달력·범례·공급유형 필터와 같은 순서(RCEPT_SE_META.order)
+        order: RCEPT_SE_META[effectiveRceptSe]?.order ?? 99
       });
     });
 

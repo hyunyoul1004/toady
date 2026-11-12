@@ -14,6 +14,11 @@ const PAGE = 12;
 function readFilter() {
   try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(FILTER_KEY) || '{}') }; } catch { return DEFAULT_FILTER; }
 }
+const SEARCH_KEY = 'toady.score.search';
+/** 검색어와 펼친 개수는 이 탭에서만 기억한다(상세를 보고 돌아오거나 메뉴를 왕복해도 이어서 보게). */
+function readSearch() {
+  try { const value = JSON.parse(sessionStorage.getItem(SEARCH_KEY) || '{}'); return { keyword: String(value.keyword || ''), shown: Math.max(PAGE, Number(value.shown) || PAGE) }; } catch { return { keyword: '', shown: PAGE }; }
+}
 const yearsText = years => years === 0 ? '전체 기간' : `최근 ${years}년`;
 
 /**
@@ -22,8 +27,12 @@ const yearsText = years => years === 0 ? '전체 기간' : `최근 ${years}년`;
  */
 export default function ScoreBenchmarkSearch({ total, onOpen }) {
   const [filter, setFilter] = useState(readFilter);
-  const [keyword, setKeyword] = useState('');
-  const [shown, setShown] = useState(PAGE);
+  const [initial] = useState(readSearch);
+  const [keyword, setKeyword] = useState(initial.keyword);
+  const [shown, setShown] = useState(initial.shown);
+  useEffect(() => {
+    try { sessionStorage.setItem(SEARCH_KEY, JSON.stringify({ keyword, shown })); } catch { /* 저장소가 막혀도 이번 화면에서는 동작한다 */ }
+  }, [keyword, shown]);
   const update = patch => {
     const next = { ...filter, ...patch };
     setFilter(next); setShown(PAGE);
@@ -31,7 +40,7 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
   };
   const regions = useQuery({ queryKey: ['scoreRegions'], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/regions'), staleTime: 3600000, retry: 1 });
   // 글자를 칠 때마다 요청하지 않도록 입력이 300ms 멈춘 뒤의 검색어만 조회 키에 쓴다.
-  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState(initial.keyword.trim());
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
     return () => clearTimeout(timer);
@@ -103,7 +112,7 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
           })}</ul>
           {items.length > shown && <Button fullWidth variant="outlined" className="score-more" onClick={() => setShown(value => value + PAGE)}>더 보기 ({items.length - shown}건)</Button>}
         </> : <div className="score-empty">
-          <p>{q ? `'${q}'와 맞는 공고가 ${data.scope}에 없어요.` : `${data.scope}에는 아직 공개된 아파트 당첨가점이 없어요.`}</p>
+          <p>{q ? `검색어 '${q}'에 맞는 공고가 ${data.scope}에 없어요.` : `${data.scope}에는 아직 공개된 아파트 당첨가점이 없어요.`}</p>
           {data.suggestion && <Button size="small" variant="contained" disableElevation onClick={() => update({ district: '', area: '' })}>{data.suggestion.sido} 전체 보기 ({data.suggestion.count}건)</Button>}
           {!data.suggestion && (filter.sido || filter.area) && <Button size="small" onClick={() => update({ sido: '', district: '', area: '' })}>전국으로 보기</Button>}
         </div>}

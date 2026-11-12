@@ -129,11 +129,18 @@ public class AdminJobService {
                         switch (job.kind()) {
                             case ALL -> {
                                 // 전체 수집은 공고·주택형을 먼저 반영한 뒤 같은 기간의 결과 데이터를 가져온다.
+                                ApplyhomeSyncService.PartialFailureException partial = null;
                                 if (!announcementsDone) {
-                                    announcements.synchronize(chunk.start(), chunk.end());
+                                    try {
+                                        announcements.synchronize(chunk.start(), chunk.end());
+                                    } catch (ApplyhomeSyncService.PartialFailureException failure) {
+                                        // 일부 주택형만 실패했으면 나머지는 저장됐으므로 결과 데이터 수집까지 마친 뒤 실패를 알린다.
+                                        partial = failure;
+                                    }
                                     announcementsDone = true;
                                 }
                                 competition.synchronize(chunk.start(), chunk.end());
+                                if (partial != null) throw partial;
                             }
                             case ANNOUNCEMENTS -> announcements.synchronize(chunk.start(), chunk.end());
                             case COMPETITION -> competition.synchronize(chunk.start(), chunk.end());

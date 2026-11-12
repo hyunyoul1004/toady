@@ -75,7 +75,7 @@ export function ResearchTabs({value,onChange}) {
   return <Tabs value={tab} onChange={(_,value)=>onChange(value)} variant="fullWidth" className="research-tabs" aria-label="청약 조사 정보"><Tab value="info" label="청약 정보"/><Tab value="trades" label="동네 실거래"/></Tabs>;
 }
 
-export default function ResearchPanel({detail,children,tab:controlledTab,onTabChange,showTabs=true}) {
+export default function ResearchPanel({detail,children,after,tab:controlledTab,onTabChange,showTabs=true}) {
   const unitSection=useRef(null);
   const [localTab,setLocalTab]=useState('info'),[area,setArea]=useState('');
   const tab=controlledTab ?? localTab, setTab=onTabChange || setLocalTab;
@@ -106,16 +106,18 @@ export default function ResearchPanel({detail,children,tab:controlledTab,onTabCh
         <Box sx={{display:'flex',justifyContent:'flex-end',mb:1.5}}><ImageExportButton detail={detail} sections={detailImageSections(detail)} label="청약정보 이미지 저장"/></Box>
         {amounts.length>0 && <div className="announcement-price-highlight"><span>주택형별 최고 공급금액</span><strong>{formatManwon(min)}{min!==max && <> ~ {formatManwon(max)}</>}</strong><div><span>{units.length}개 주택형 · 층·타입별 금액은 원문 확인</span><Button size="small" onClick={()=>unitSection.current?.scrollIntoView({behavior:'smooth',block:'start'})}>주택형별 보기 ↓</Button></div></div>}
         {amounts.length>0 && <PriceGapSummary detail={detail} onMore={()=>document.getElementById('price-gap-card')?.scrollIntoView({behavior:'smooth',block:'start'})}/>}
+        {/* 순서: 핵심 요약 → 공급금액·시세 한 줄 → 내 신청 가능성 → 일정 → 주택형·자금 계획 → 원문 */}
         <EligibilityCard detail={detail}/>
         {children}
         <section ref={unitSection} className="announcement-unit-section" aria-label="주택형과 분양가"><h3>주택형·분양가</h3>
         <div className="research-section-caption"><span>주택형별 최고 공급금액</span><span>청약홈 공개 자료</span></div>
 
-        {units.length ? <div className="research-price-list">{units.map(unit=><div className="research-price-row" key={unit.id}><div><strong>{unit.label}</strong><span>전용면적{unit.general || unit.special?` · 일반 ${unit.general} / 특별 ${unit.special}세대`:''}</span></div><div><strong>{unit.amountManwon?formatManwon(unit.amountManwon):'금액 미제공'}</strong><span>최고 공급금액</span></div></div>)}</div>:<p className="research-explanation">이 공급 유형의 금액과 납부 조건은 청약 정보 탭의 모집공고 원문에서 확인해 주세요.</p>}
+        {units.length ? <div className="research-price-list">{units.map(unit=><div className="research-price-row" key={unit.id}><div><strong>{unit.label}</strong><span>전용면적{unit.general || unit.special?` · 일반 ${unit.general} / 특별 ${unit.special}세대`:''}</span></div><div><strong>{unit.amountManwon?formatManwon(unit.amountManwon):'금액 미제공'}</strong><span>최고 공급금액</span></div></div>)}</div>:<p className="research-explanation">이 공급 유형의 금액과 납부 조건은 아래 모집공고 원문에서 확인해 주세요.</p>}
         <PriceGapCard id="price-gap-card" detail={detail} onShowTrades={()=>setTab('trades')}/>
         <FundPlanner key={summary.id} detail={detail}/>
         <Notes items={['표시 금액은 각 주택형의 최고 공급금액이며 최저 분양가가 아니에요.','층·타입별 금액과 발코니 확장 등 옵션 비용은 모집공고에서 확인해 주세요.','출처: 청약홈 공개 자료']} />
         </section>
+        {after}
       </>}
       {tab==='trades' && <>
         <div className="research-section-caption"><span>{research.location.data?.dong || '같은 법정동'} 아파트 매매</span><span>국토교통부 신고 자료</span></div>

@@ -241,24 +241,6 @@ Authorization: Bearer <JWT>
 
 회원가입 및 인증 코드는 이메일로 발송됩니다. 비밀번호는 6~20자이며 영문과 숫자 또는 특수문자를 포함해야 합니다. 비밀번호 찾기 인증코드는 이메일로 받고 확인 후 비밀번호를 변경합니다.
 
-## 게시판 목록
-
-`GET /webApi/boards/board-list`
-
-| 쿼리 | 필수 | 설명 |
-|---|---:|---|
-| `boardType` | 예 | `NOTICE` 또는 `FREE` |
-| `boardLocation` | 예 | `ALL`, `SEOUL`, `PAJU` |
-| `boardTitle` | 아니오 | 제목 검색어 |
-| `pageNumber` | 예 | 1부터 시작 |
-| `recordPerCount` | 예 | 페이지당 건수, 1~100 |
-
-```http
-GET /webApi/boards/board-list?boardType=NOTICE&boardLocation=ALL&boardTitle=&pageNumber=1&recordPerCount=10
-```
-
-성공 응답의 `data.resultList`는 게시글 페이지이고, `data.pagination`은 페이지 이동 정보입니다. 게시글에는 `boardSeq`, `boardType`, `boardLocation`, `boardTitle`, `boardContents`, `fileSeq`, `createDt` 등이 포함됩니다.
-
 ## 레거시 유형별 공고 목록
 
 `GET /api/v1/{type}/announcements` 경로는 하위 호환을 위해 유지되지만 Swagger에는 노출하지 않습니다. 프론트엔드 신규 연동은 유형 선택이 가능한 `GET /api/v1/announcements?types=...` 사용을 권장합니다.

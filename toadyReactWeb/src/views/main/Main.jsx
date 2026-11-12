@@ -14,7 +14,6 @@ import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/pla
 import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview';
 import AreaSubscribe from '@/features/planner/AreaSubscribe';
 import ServiceIntro from '@/features/intro/ServiceIntro';
-import MatchStrip from '@/features/match/MatchStrip';
 import '@/features/planner/planner.css';
 import { initialBrowseState, monthRange } from '@/features/planner/browseState';
 import { safeRead, isoDate } from '@/features/planner/plannerUtils';
@@ -382,10 +381,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   return (
     <>
       {!detailOnly && <div>
-        <ServiceIntro onSearchFocus={() => {
-          const input = document.querySelector('.announcement-search input');
-          input?.scrollIntoView({ behavior: 'smooth', block: 'center' }); input?.focus({ preventScroll: true });
-        }} />
+        {/* 첫 화면: ① 검색 한 줄 → ② 오늘의 요약 → ③ 달력·목록 (소개는 처음 온 사람에게만 한 줄) */}
+        <ServiceIntro />
         <Box sx={{ pt: 0.5 }}>
           <ThemeProvider theme={theme}>
             {/* 상단 통합 필터 카드 (공급유형 + 공급지역을 한 화면에 조화롭게 배치) */}
@@ -405,7 +402,6 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         </Box>
 
         <AreaSubscribe targets={paramInfo.citys} />
-        <MatchStrip />
         <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
@@ -705,7 +701,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             </Alert>
           ) : (
             <>
-              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={setResearchTab} showTabs={false}><AnnouncementNotice mainDetail={mainDetail} /></ResearchPanel>}
+              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={setResearchTab} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
               {detailTabValue === 1 && currentSubscriptDetail && (
                 <SubscriptRate subscriptDetail={currentSubscriptDetail} />
               )}

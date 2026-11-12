@@ -179,7 +179,11 @@ public class PushDigest {
     /** 새 공고 줄 이름. 미리 계산한 주변 시세 비교가 있으면 '시세 대비 약 1.2억 낮음'을 붙인다(없으면 '새 공고'). */
     private String newLabel(String id, Map<String, Optional<com.toady.web.app.planner.PriceGapStore.Gap>> memo) {
         var gap = memo.computeIfAbsent(id, key -> Optional.ofNullable(gapStore.forIds(List.of(key)).get(key)));
-        return gap.map(value -> "비슷".equals(value.text()) ? "새 공고 · 주변 시세와 비슷" : "새 공고 · 주변 시세 대비 " + value.text()).orElse("새 공고");
+        // 화면 뱃지(gapBadge)와 같은 문구: 신축 기준이면 '신축'을 밝히고, 참고 비교임을 덧붙인다.
+        return gap.map(value -> {
+            String label = "주변 " + ("new".equals(value.basis()) ? "신축 " : "") + "시세";
+            return "새 공고 · " + ("비슷".equals(value.text()) ? label + "와 비슷" : label + " 대비 " + value.text()) + "(참고)";
+        }).orElse("새 공고");
     }
     static String weeklyText(PublicAreaPage.WeekCounts counts) {
         List<String> parts = new ArrayList<>();

@@ -47,11 +47,16 @@ public final class PriceGapRules {
         String eok = String.format("%.1f", value / 10000.0);
         return (eok.endsWith(".0") ? eok.substring(0, eok.length() - 2) : eok) + "억";
     }
-    /** below(분양가가 낮음)·above(높음)·same(범위가 분양가를 가로지름). */
+    /**
+     * below(분양가가 시세 범위 전체보다 낮음)·above(전체보다 높음)·same(범위가 분양가에 걸치거나 차이가 1천만원 미만으로 반올림됨).
+     * 화면(priceGapRules.js gapTone)과 같은 규칙이다.
+     */
     public static String tone(long diffLow, long diffHigh) {
         long low = Math.min(diffLow, diffHigh), high = Math.max(diffLow, diffHigh);
-        if (low < 0 && high > 0) return "same";
-        return high > 0 ? "below" : "above";
+        if (Math.round(Math.max(Math.abs(low), Math.abs(high)) / 1000.0) == 0) return "same";
+        if (low > 0) return "below";
+        if (high < 0) return "above";
+        return "same";
     }
     /** "약 1.0억~1.4억 낮음" / "비슷". 화면 gapText와 같은 반올림. */
     public static String text(long diffLow, long diffHigh) {
@@ -60,6 +65,8 @@ public final class PriceGapRules {
         if ("same".equals(tone)) return "비슷";
         boolean below = "below".equals(tone);
         String a = roughEok(Math.abs(below ? low : high)), b = roughEok(Math.abs(below ? high : low));
+        // 가까운 쪽 차이가 1천만원 미만이면 "0원~"이 아니라 "최대 약 …"로 쓴다.
+        if ("0원".equals(a)) return "최대 약 " + b + (below ? " 낮음" : " 높음");
         return (a.equals(b) ? "약 " + a : "약 " + a + "~" + b) + (below ? " 낮음" : " 높음");
     }
 }

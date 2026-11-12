@@ -62,16 +62,22 @@ public class ApplyhomeSyncService {
 			throw new IllegalArgumentException("A valid start and end date range is required");
 		}
 		syncLock.execute(() -> {
+			// 한 유형에서 일부 공고의 주택형이 실패해도 나머지 유형은 계속 수집하고, 실패는 끝에서 한 번에 알린다(한도 20건은 전체 기준).
+			List<String> failures = new ArrayList<>();
 			synchronizeDataset("getAPTLttotPblancDetail", AptLttotPblancDetail.class,
-					"getAPTLttotPblancMdl", AptLttotPblancMdl.class, startDate, endDate, false, false);
+					"getAPTLttotPblancMdl", AptLttotPblancMdl.class, startDate, endDate, false, false, failures);
 			synchronizeDataset("getUrbtyOfctlLttotPblancDetail", UrbtyOfctlLttotPblancDetail.class,
-					"getUrbtyOfctlLttotPblancMdl", UrbtyOfctlLttotPblancMdl.class, startDate, endDate, false, true);
+					"getUrbtyOfctlLttotPblancMdl", UrbtyOfctlLttotPblancMdl.class, startDate, endDate, false, true, failures);
 			synchronizeDataset("getRemndrLttotPblancDetail", RemndrLttotPblancDetail.class,
-					"getRemndrLttotPblancMdl", RemndrLttotPblancMdl.class, startDate, endDate, false, false);
+					"getRemndrLttotPblancMdl", RemndrLttotPblancMdl.class, startDate, endDate, false, false, failures);
 			synchronizeDataset("getPblPvtRentLttotPblancDetail", PblPvtRentLttotPblancDetail.class,
-					"getPblPvtRentLttotPblancMdl", PblPvtRentLttotPblancMdl.class, startDate, endDate, true, false);
+					"getPblPvtRentLttotPblancMdl", PblPvtRentLttotPblancMdl.class, startDate, endDate, true, false, failures);
 			synchronizeDataset("getOPTLttotPblancDetail", OptLttotPblancDetail.class,
-					"getOPTLttotPblancMdl", OptLttotPblancMdl.class, startDate, endDate, true, false);
+					"getOPTLttotPblancMdl", OptLttotPblancMdl.class, startDate, endDate, true, false, failures);
+			if (!failures.isEmpty()) {
+				throw new PartialFailureException("주택형 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+						+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
+			}
 		});
 	}
 
@@ -87,7 +93,8 @@ public class ApplyhomeSyncService {
 			LocalDate startDate,
 			LocalDate endDate,
 			boolean compactDate,
-			boolean urbanModel) {
+			boolean urbanModel,
+			List<String> failures) {
 		Map<String, String> dateFilters = dateFilters(startDate, endDate, compactDate);
 		List<JsonNode> detailRows = fetchAllPages(detailEndpoint, dateFilters);
 		List<D> details = detailRows.stream().map(row -> mapper.toEntity(row, detailType)).toList();
@@ -109,7 +116,6 @@ public class ApplyhomeSyncService {
 		Set<JsonNode> distinctUrbanRows = new LinkedHashSet<>();
 		// 주택형 조회에 실패한 공고는 이번 교체에서 빼고(기존 주택형 유지) 나머지 공고는 반영한 뒤 실패를 알린다.
 		List<AnnouncementKey> fetched = new ArrayList<>();
-		List<String> failures = new ArrayList<>();
 		for (AnnouncementKey key : announcementKeys) {
 			Map<String, String> filters = Map.of(
 					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
@@ -130,7 +136,7 @@ public class ApplyhomeSyncService {
 			} catch (RuntimeException failure) {
 				// 다른 공고의 주택형이 섞여 오면 제공처 전체 이상으로 보고 아무것도 바꾸지 않고 멈춘다(개별 오류만 건너뛴다).
 				if (failure instanceof ResponseMismatchException || Thread.currentThread().isInterrupted()) throw failure;
-				failures.add(key.houseManageNo() + "/" + key.pblancNo());
+				failures.add(modelEndpoint.replace("get", "").replace("LttotPblancMdl", "") + ":" + key.houseManageNo() + "/" + key.pblancNo());
 				log.warn("Applyhome model sync failed for one announcement endpoint={} key={}/{} error={}",
 						modelEndpoint, key.houseManageNo(), key.pblancNo(), failure.getMessage());
 				if (failures.size() >= 20) throw new IllegalStateException("주택형 수집 실패가 20건을 넘어 중단했습니다: " + failure.getMessage(), failure);
@@ -151,10 +157,6 @@ public class ApplyhomeSyncService {
 		}
 		log.info("Upserted Applyhome endpoint={} announcements={} rows={}",
 				modelEndpoint, announcementKeys.size(), models.size());
-		if (!failures.isEmpty()) {
-			throw new IllegalStateException("주택형 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
-					+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
-		}
 	}
 
 	/**
@@ -189,5 +191,10 @@ public class ApplyhomeSyncService {
 	/** 요청한 공고와 다른 공고의 응답. 개별 공고 오류가 아니라 제공처 이상이므로 전체 수집을 멈춘다. */
 	static final class ResponseMismatchException extends IllegalStateException {
 		ResponseMismatchException(String message) { super(message); }
+	}
+
+	/** 일부 공고의 주택형만 실패했고 나머지는 저장된 경우. 호출하는 쪽은 이어지는 수집(결과 데이터)을 계속한 뒤 알린다. */
+	public static class PartialFailureException extends IllegalStateException {
+		public PartialFailureException(String message) { super(message); }
 	}
 }

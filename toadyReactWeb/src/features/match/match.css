@@ -161,29 +161,16 @@
 .match-fund-total.is-short small{color:#fda4af}
 .match-fund-total.is-ok small{color:#5eead4}
 
-/* 메인 화면 맞춤 안내 */
-.match-strip{display:flex;align-items:center;gap:12px;min-width:0;background:linear-gradient(135deg,#eef4ff,#f5f9ff);border:1px solid #d7e5fb;border-radius:16px;padding:12px 14px;margin-top:12px;text-decoration:none;color:#172b42}
-.match-strip:hover{border-color:#a9c4f5}
-.match-strip:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-.match-strip>svg:first-child{color:#2563eb;flex-shrink:0}
-.match-strip div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.match-strip strong{font-size:14px;font-weight:800;word-break:keep-all}
-.match-strip strong b{color:#2563eb}
-.match-strip span{font-size:12.5px;color:#475569;word-break:keep-all;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.match-strip>svg:last-child{color:#94a3b8;flex-shrink:0}
-.match-strip.is-zupzup{background:linear-gradient(135deg,#fff7ed,#fffbeb);border-color:#fde4c3}
-.match-strip.is-zupzup>svg:first-child{color:#d97706}
-.match-strips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.match-strips .match-strip{margin-top:12px}
 
 @media (max-width:900px){
   .match-hero h1{font-size:24px}
   .match-form{padding:4px 16px 16px}
-  .match-q-row,.match-fund-controls,.match-strips{grid-template-columns:minmax(0,1fr)}
-  .match-strips{gap:0}
+  .match-q-row,.match-fund-controls{grid-template-columns:minmax(0,1fr)}
   .match-gap-row{grid-template-columns:1fr auto}
   .match-gap-values{grid-column:1/-1;grid-row:2}
   .match-alert,.match-detail.is-cta{grid-template-columns:auto 1fr}
   .match-alert-actions,.match-detail.is-cta .MuiButton-root{grid-column:1/-1}
   .match-form-actions .MuiButton-contained{flex:1}
 }
+
+.match-clear-text{margin:0;color:#475569;font-size:14px;line-height:1.6}

@@ -1,4 +1,9 @@
 spring:
+  # 시세 미리 계산·저녁 알림·정리 작업이 서로 기다리지 않도록 예약 작업 스레드를 둘 이상 둔다.
+  task:
+    scheduling:
+      pool:
+        size: 3
   config:
     import: optional:file:.env[.properties]
   datasource:

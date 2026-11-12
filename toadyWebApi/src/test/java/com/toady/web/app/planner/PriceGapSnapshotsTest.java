@@ -105,5 +105,51 @@ class PriceGapSnapshotsTest {
         assertEquals("약 1.4억~2.2억 낮음", PriceGapRules.text(55000 - 41110, 63000 - 41110));
         assertEquals("비슷", PriceGapRules.text(-3000, 2000));
         assertEquals("약 8,000만원~1.2억 높음", PriceGapRules.text(-12000, -8000));
+        // 화면 gapTone과 같은 경계: 0을 가로지르거나 1천만원 미만으로 반올림되면 비슷, 가까운 쪽이 0으로 반올림되면 '최대'.
+        assertEquals("same", PriceGapRules.tone(0, 3000));
+        assertEquals("same", PriceGapRules.tone(100, 400));
+        assertEquals("최대 약 8,000만원 낮음", PriceGapRules.text(200, 8000));
+        assertEquals("above", PriceGapRules.tone(-3000, -1));
+    }
+
+    @Test void freshnessComparesCalendarDaysAndStaleOrChangedValuesAreHidden() throws Exception {
+        var computed = LocalDateTime.of(2026, 11, 10, 17, 20, 30);
+        assertTrue(PriceGapSnapshots.fresh("READY", computed, LocalDateTime.of(2026, 11, 12, 17, 20, 1)));
+        assertFalse(PriceGapSnapshots.fresh("READY", computed, LocalDateTime.of(2026, 11, 13, 17, 20, 1)), "3일째 같은 시각 실행에서 다시 계산한다(초 단위로 하루 밀리지 않게)");
+        assertFalse(PriceGapSnapshots.fresh("UNAVAILABLE", computed, LocalDateTime.of(2026, 11, 11, 17, 20, 0)), "실패는 다음 날 다시");
+
+        var now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        String insert = "INSERT INTO TB_PRICE_GAP (ANNOUNCEMENT_ID,STATUS,AREA,SUPPLY_MANWON,BASIS,SCOPE,BASIS_COUNT,CONFIDENCE,Q1_MANWON,Q3_MANWON,MONTHS,DONG,COMPUTED_DT) VALUES (?,'READY',85,?,'new','DONG',5,'high',60000,62000,6,'역삼동',?)";
+        jdbc.update(insert, "apt/G1/N1", 50000, java.sql.Timestamp.valueOf(now.minusDays(8)));
+        assertTrue(store.forIds(java.util.List.of("apt/G1/N1")).isEmpty(), "7일이 지난 값은 보여주지 않는다");
+        jdbc.update("DELETE FROM TB_PRICE_GAP");
+        jdbc.update(insert, "apt/G1/N1", 45000, java.sql.Timestamp.valueOf(now.minusHours(1)));
+        assertNotNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
+        feed.invalidate();
+        var items = json.readTree(mvc.perform(get("/api/v1/public/eligibility/announcements")).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8)).path("items");
+        var g1 = java.util.stream.StreamSupport.stream(items.spliterator(), false).filter(item -> item.path("id").asText().equals("apt/G1/N1")).findFirst().orElseThrow();
+        assertTrue(g1.path("gap").isNull() || g1.path("gap").isMissingNode(), "저장할 때 분양가(4.5억)와 지금 공고(5억)가 다르면 목록에 붙이지 않는다");
+    }
+
+    @Test void failedOrPartialTradeResultsAreRetriedNextDay() {
+        var transport = (com.toady.web.app.planner.research.ResearchTransport) (uri, headers) -> {
+            if (uri.getHost().equals("dapi.kakao.com")) return KAKAO.getBytes(StandardCharsets.UTF_8);
+            String month = uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6);
+            if (month.endsWith("1") || month.endsWith("3")) throw new java.io.UncheckedIOException(new java.io.IOException("timeout"));
+            return trade(month);
+        };
+        var snapshots = new PriceGapSnapshots(jdbc, store, feed, new AddressLocator(transport, "kakao-key"), new NeighborhoodResearchService(transport, "molit-key"));
+        var report = snapshots.run();
+        assertEquals(0, report.get("READY"), "일부 달만 받은 결과는 READY로 고정하지 않는다: " + report);
+        assertNull(store.forIds(java.util.List.of("apt/G1/N1")).get("apt/G1/N1"));
+    }
+
+    @Test void feedCountsThisWeeksAptWinnerAnnouncements() throws Exception {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDate monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET PRZWNER_PRESNATN_DE=? WHERE HOUSE_MANAGE_NO='G1'", monday.plusDays(3).toString());
+        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET PRZWNER_PRESNATN_DE=? WHERE HOUSE_MANAGE_NO='G2'", monday.plusDays(7).toString().replace("-", ""));
+        feed.invalidate();
+        mvc.perform(get("/api/v1/public/eligibility/announcements")).andExpect(status().isOk()).andExpect(jsonPath("$.winnersThisWeek").value(1));
     }
 }

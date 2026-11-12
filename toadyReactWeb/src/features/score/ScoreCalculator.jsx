@@ -53,6 +53,8 @@ export default function ScoreCalculator() {
     // 날짜 입력이 부족해져 항목이 비면 예전에 계산된 점수도 지운다. 공고 상세의 '내 가점 비교'가 잘못된 점수로 보이지 않게 하기 위해서다.
     // 공유받은 점수를 보는 중에는 내 저장값을 건드리지 않는다.
     else if ((value === null || value === undefined) && saved.selection && !showingShared) clearMyScore();
+    // 공유 주소(h·d·a)를 지우지 않으면 새로고침·뒤로가기 때 공유받은 값이 다시 적용돼 방금 고친 값이 덮인다.
+    clearShared();
   };
   const clearShared = () => { if (searchParams.has('h')) { const next = new URLSearchParams(searchParams); ['h', 'd', 'a'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); } };
   // 공유 점수를 보는 중이면 내 저장값은 지우지 않고 내 점수로 돌아간다.

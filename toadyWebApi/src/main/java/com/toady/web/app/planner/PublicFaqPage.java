@@ -90,6 +90,12 @@ public class PublicFaqPage {
                 + "여러 채를 가지게 되면 중과세율이 적용될 수 있어요. 정확한 세액은 잔금일·보유 주택 수에 따라 달라 세무 상담이나 지자체 안내를 확인하세요.")
         )),
         new Group("toady", "TOADY 이용", List.of(
+            new Faq("about", "TOADY에서는 무엇을 할 수 있나요?",
+                "청약홈·국토교통부 공개 데이터를 매일 모아 청약을 고민할 때 필요한 정보를 한 화면에 정리했어요.\n"
+                + "지역·단지명으로 찾기: 서울·강남·과천·분당처럼 지역이나 생활권, 단지 이름으로 공고를 찾아요. [생활권별 청약](/areas)\n"
+                + "한 화면에서 판단: 일정·분양가·경쟁률·당첨가점·위치·주변 실거래를 공고 상세에서 함께 봐요. [이번 주 청약](/weekly)\n"
+                + "내 가점과 비교: 날짜만 넣으면 가점을 계산하고 지역별 당첨가점과 비교해요. [가점 계산기](/score)\n"
+                + "놓치지 않게: 관심 공고 저장, 캘린더 구독, 접수·발표 전날 알림을 받아요. [나의 청약](/my)"),
             new Faq("eligibility", "'내게 맞는 청약'의 판정은 정확한가요?",
                 "사는 곳·무주택·세대주·통장 기간·가족 조건으로 공통 요건을 단순화해 본 1차 판정이에요. "
                 + "소득·자산, 예치금, 거주 기간, 재당첨 제한처럼 공고마다 다르거나 묻지 않은 조건은 '확인할 것'으로 알려 드려요. "
@@ -180,7 +186,7 @@ public class PublicFaqPage {
                     .append(answerHtml(faq.answer())).append("</div></details>");
             body.append("</section>");
         }
-        body.append(PublicHtml.explore(domain, "/faq"))
+        body.append(PublicHtml.explore(domain, "/help/faq"))
             .append("<small>이 페이지는 이해를 돕기 위한 안내이며 법령·공고 해석의 기준이 아니에요. 문의: dukkeoba@gmail.com</small>");
         String head = STYLE + jsonLd();
         return PublicHtml.page(domain, "/help/faq", "청약 자주 묻는 질문 · 1순위·예치금·특별공급·무순위 · TOADY",

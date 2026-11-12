@@ -10,7 +10,7 @@ import './faq.css';
 function Answer({ text }) {
   return answerParts(text).map((parts, index) => <p key={index}>{parts.map((part, i) => part.to
     ? <Link key={i} to={part.to}>{part.text}</Link>
-    : part.href ? <a key={i} href={part.href} target="_blank" rel="noopener noreferrer">{part.text}</a>
+    : part.href ? <a key={i} href={part.href} {...(part.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{part.text}</a>
       : <span key={i}>{part.text}</span>)}</p>);
 }
 
@@ -23,7 +23,8 @@ export default function FaqPage() {
   const faq = useQuery({ queryKey: ['faqItems'], queryFn: () => apiClient.get('/api/v1/public/faq-items'), staleTime: 3600000, retry: 1 });
   const groups = Array.isArray(faq.data) ? faq.data : [];
   const [open, setOpen] = useState(() => new Set());
-  const hash = decodeURIComponent(location.hash.slice(1));
+  // 손으로 고친 주소의 잘못된 %표기에도 화면이 깨지지 않게 한다.
+  const hash = (() => { try { return decodeURIComponent(location.hash.slice(1)); } catch { return location.hash.slice(1); } })();
 
   useEffect(() => {
     // 검색 결과의 대표 주소는 내용이 서버 HTML에 그대로 있는 /help/faq로 둔다.
