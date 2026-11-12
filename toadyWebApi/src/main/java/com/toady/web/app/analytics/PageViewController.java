@@ -40,8 +40,8 @@ public class PageViewController {
     private volatile long legacyUntil = 0;
 
     @PostMapping
-    public ResponseEntity<Void> record(@Valid @RequestBody PageView event) {
-        if (!enabled) return ResponseEntity.noContent().build();
+    public ResponseEntity<Void> record(@Valid @RequestBody PageView event, jakarta.servlet.http.HttpServletRequest request) {
+        if (!enabled || BotFilter.isBot(request)) return ResponseEntity.noContent().build();
         // 시각과 집계 날짜는 클라이언트 시계가 아닌 서버의 한국시간을 사용한다.
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         try {

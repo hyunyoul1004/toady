@@ -2,6 +2,8 @@ package com.toady.admin.members
 
 import com.toady.admin.Kst
 import org.slf4j.LoggerFactory
+import com.toady.admin.announcements.AnnouncementService
+import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import java.sql.Timestamp
@@ -12,7 +14,28 @@ import java.time.LocalDateTime
  * 비밀번호·인증 코드는 다루지 않으며, 조치는 관리자 이름과 함께 로그로 남긴다.
  */
 @Service
-class MemberService(private val jdbc: JdbcTemplate) {
+class MemberService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
+	/** 관심 공고 한 줄. 회원의 비공개 메모는 관리자 화면에도 보여 주지 않는다. */
+	data class Favorite(val id: String, val houseNm: String?, val stage: Int, val savedAt: LocalDateTime?) {
+		val stageLabel get() = STAGES.getOrElse(stage) { "관심" }
+		val adminPath get() = "/admin/announcements/$id"
+	}
+	data class Detail(val member: Member, val updatedAt: LocalDateTime?, val favorites: List<Favorite>?, val pushSubscriptions: Long?)
+
+	fun detail(seq: Long): Detail? {
+		val member = search(null, null, 0, 1, seq).items.firstOrNull() ?: return null
+		val updated = jdbc.queryForObject("SELECT UPDATE_DT FROM TB_USER WHERE USER_SEQ=?", java.sql.Timestamp::class.java, seq)?.toLocalDateTime()
+		val favorites = try {
+			val rows = jdbc.query("SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, STAGE, REG_DT FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", { r, _ ->
+				Favorite("${r.getString(1)}/${r.getString(2)}/${r.getString(3)}", null, r.getInt(4), r.getTimestamp(5)?.toLocalDateTime())
+			}, seq)
+			val names = announcements.names(rows.map { it.id })
+			rows.map { it.copy(houseNm = names[it.id]) }
+		} catch (missing: DataAccessException) { null }
+		val push = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=?", Long::class.java, seq) } catch (missing: DataAccessException) { null }
+		return Detail(member, updated, favorites, push)
+	}
+
 	data class Member(val seq: Long, val email: String, val nickname: String, val certified: Boolean, val locked: Boolean, val withdrawn: Boolean,
 	                  val createdAt: LocalDateTime?, val lockedAt: LocalDateTime?, val favorites: Long, val comments: Long) {
 		val status get() = when {
@@ -27,8 +50,9 @@ class MemberService(private val jdbc: JdbcTemplate) {
 	}
 
 	/** filter: all · certified · unverified · locked · withdrawn. 검색어는 이메일·닉네임 부분 일치. */
-	fun search(query: String?, filter: String?, page: Int, size: Int = PAGE_SIZE): Page {
+	fun search(query: String?, filter: String?, page: Int, size: Int = PAGE_SIZE, seq: Long? = null): Page {
 		val where = StringBuilder(" WHERE 1=1"); val args = ArrayList<Any>()
+		seq?.let { where.append(" AND U.USER_SEQ=?"); args += it }
 		query?.trim()?.takeIf { it.isNotEmpty() }?.take(100)?.let {
 			// LIKE 특수문자는 글자 그대로 찾도록 이스케이프한다.
 			val like = "%" + it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -64,6 +88,8 @@ class MemberService(private val jdbc: JdbcTemplate) {
 
 	companion object {
 		const val PAGE_SIZE = 30
+		/** 서비스 나의 청약 진행 단계(stageRules.js와 같은 순서). */
+		val STAGES = listOf("관심", "신청 예정", "신청 완료", "당첨", "미당첨", "계약 완료")
 		private val log = LoggerFactory.getLogger(MemberService::class.java)
 	}
 }

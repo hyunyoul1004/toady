@@ -65,7 +65,14 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 			block()
 		} catch (failure: RestClientResponseException) {
 			log.warn("스케줄러 내부 API 오류: status={}", failure.statusCode.value())
-			throw SchedulerException(if (failure.statusCode.value() == 403) "스케줄러 연결 토큰이 맞지 않습니다." else "스케줄러가 요청을 처리하지 못했습니다(${failure.statusCode.value()}).")
+			throw SchedulerException(when {
+				// 토큰 검사(AdminInternalApi)가 거절하면 사유 본문이 오고, 스케줄러 관리 기능이 꺼져 있으면 보안 설정이 본문 없이 막는다.
+				failure.statusCode.value() == 403 && failure.responseBodyAsString.contains("허용되지 않은 요청") ->
+					"스케줄러 연결 토큰이 맞지 않습니다. 두 서비스의 SCHEDULER_INTERNAL_TOKEN이 같은지, 바꾼 뒤 컨테이너를 다시 만들었는지 확인하세요."
+				failure.statusCode.value() == 403 || failure.statusCode.value() == 404 ->
+					"스케줄러 관리 기능이 꺼져 있습니다. 스케줄러의 SCHEDULER_ADMIN_ENABLED=true와 토큰을 설정한 뒤 스케줄러 컨테이너를 다시 만드세요."
+				else -> "스케줄러가 요청을 처리하지 못했습니다(${failure.statusCode.value()})."
+			})
 		} catch (failure: RestClientException) {
 			log.warn("스케줄러 내부 API 연결 실패: {}", failure.javaClass.simpleName)
 			throw SchedulerException("스케줄러에 연결하지 못했습니다. 스케줄러가 실행 중인지 확인하세요.")

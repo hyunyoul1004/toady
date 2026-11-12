@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('수집')}"></head>
-<body>
-<header th:replace="~{admin/fragments :: topbar}"></header>
-<main class="shell" th:with="active=${state != null ? state.active : null}">
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="active=${state != null ? state.active : null}">
     <section class="page-heading"><div><p class="eyebrow">DATA OPERATIONS</p><h1>수집을 실행하고,<br class="mobile-only"> 일정을 관리하세요.</h1><p class="muted">필요한 기간을 다시 수집하고 자동 실행 상태를 한곳에서 확인합니다. 실행은 스케줄러가 맡습니다.</p></div><span class="timezone">● Asia/Seoul · 한국시간</span></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <div class="alert error" th:if="${schedulerError}" th:text="${schedulerError}"></div>
@@ -38,4 +38,4 @@
     </section>
     </th:block>
     <footer>TOADY · 관리자 <span>데이터는 원본 공개 상태와 API 호출 한도에 영향을 받습니다.</span></footer>
-</main><script th:src="@{/admin/admin.js}" defer></script></body></html>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

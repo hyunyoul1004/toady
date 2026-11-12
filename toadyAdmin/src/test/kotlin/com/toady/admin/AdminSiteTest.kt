@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** 관리자 사이트: 로그인 보호·CSRF·회원 잠금·댓글 숨김/복구·화면 렌더링·스케줄러 연결 실패 안내. 외부 연결은 쓰지 않는다. */
@@ -30,10 +31,20 @@ import kotlin.test.assertTrue
 class AdminSiteTest {
 	@Autowired lateinit var mvc: MockMvc
 	@Autowired lateinit var jdbc: JdbcTemplate
+	@Autowired lateinit var metrics: MetricsService
 	private val admin = user("operator").roles("ADMIN")
 
 	@BeforeEach fun setup() {
-		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT").forEach { jdbc.update("DELETE FROM $it") }
+		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_OPT_LTTOT_PBLANC_DETAIL",
+			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR").forEach { jdbc.update("DELETE FROM $it") }
+		val today = Kst.today()
+		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
+			today.minusDays(1).toString(), today.plusDays(1).toString())
+		// 임의공급은 날짜가 YYYYMMDD 형식이다.
+		jdbc.update("INSERT INTO TB_OPT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('O1','Q1','임의 단지','경기도 파주시 1',?,?)",
+			today.plusDays(10).toString().replace("-", ""), today.plusDays(10).toString().replace("-", ""))
+		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_MDL VALUES ('H1','P1','01','084.9500A','120','95000')")
+		jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,REG_DT,STAGE) VALUES (1,'apt','H1','P1','SECRET-NOTE-123',CURRENT_TIMESTAMP,2)")
 		jdbc.update("INSERT INTO TB_USER (USER_SEQ,USER_EMAIL,USER_PASSWORD,USER_NIC_NAME,EMAIL_CERTIFY_YN,CREATE_DT) VALUES (1,'a@example.test','x','가람','Y',CURRENT_TIMESTAMP),(2,'b@example.test','x','나래_10%','N',CURRENT_TIMESTAMP)")
 		jdbc.update("INSERT INTO TB_USER (USER_SEQ,USER_EMAIL,USER_PASSWORD,USER_NIC_NAME,EMAIL_CERTIFY_YN,WITHDRAWAL_YN) VALUES (3,'c@example.test','x','탈퇴회원','Y','Y')")
 		jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (COMMENT_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,CREATE_USER_SEQ) VALUES (10,'APT','H1','P1','<script>alert(1)</script> 원댓글',1)")
@@ -61,11 +72,11 @@ class AdminSiteTest {
 		mvc.perform(get("/admin/members").param("q", "10%").with(admin)).andExpect(status().isOk)
 			.andExpect(content().string(org.hamcrest.Matchers.containsString("나래_10%")))
 			.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("a@example.test"))))
-		mvc.perform(post("/admin/members/1/lock").param("locked", "true").param("back", "q=&filter=all&page=0").with(admin).with(csrf()))
+		mvc.perform(post("/admin/members/1/lock").param("locked", "true").param("next", "/admin/members?q=&filter=all&page=0").with(admin).with(csrf()))
 			.andExpect(redirectedUrl("/admin/members?q=&filter=all&page=0")).andExpect(flash().attributeExists("notice"))
 		assertEquals("Y", jdbc.queryForObject("SELECT LOCK_YN FROM TB_USER WHERE USER_SEQ=1", String::class.java))
 		// 탈퇴 회원은 바꾸지 않고, 외부 주소로 돌려보내는 back 값은 무시한다.
-		mvc.perform(post("/admin/members/3/lock").param("locked", "true").param("back", "//evil.example").with(admin).with(csrf()))
+		mvc.perform(post("/admin/members/3/lock").param("locked", "true").param("next", "//evil.example").with(admin).with(csrf()))
 			.andExpect(redirectedUrl("/admin/members")).andExpect(flash().attributeExists("error"))
 		assertEquals("N", jdbc.queryForObject("SELECT LOCK_YN FROM TB_USER WHERE USER_SEQ=3", String::class.java))
 		mvc.perform(get("/admin/members").param("filter", "locked").with(admin)).andExpect(content().string(org.hamcrest.Matchers.containsString("a@example.test")))
@@ -75,7 +86,9 @@ class AdminSiteTest {
 		mvc.perform(get("/admin/comments").with(admin)).andExpect(status().isOk)
 			// 댓글 내용은 글자 그대로(이스케이프) 표시한다.
 			.andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;script&gt;")))
-			.andExpect(content().string(org.hamcrest.Matchers.containsString("public-rental/H1/P1")))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("/admin/announcements/apt/H1/P1")))
+			// 공고 ID 대신 단지명을 보여 준다.
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("역삼 새 단지")))
 		mvc.perform(post("/admin/comments/10/hide").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
 		mvc.perform(post("/admin/comments/11/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
@@ -87,7 +100,9 @@ class AdminSiteTest {
 	@Test fun dashboardOperationsAndJobsRenderEvenWhenTheSchedulerIsDown() {
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('e1','v1','s1','/',?,?,CURRENT_TIMESTAMP),('e2','v1','s2','/',NULL,?,CURRENT_TIMESTAMP)", "www.google.com", today, today.minusDays(8))
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('u1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)", today)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("검색 · 구글")))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("역삼 새 단지")))  // 많이 본 공고
 		// 수집이 멈췄는지는 작업 이력(마지막 성공)으로 판단한다: 어제 성공 → 정상, 사흘 전 성공뿐 → 확인 필요.
 		jdbc.update("DELETE FROM TB_SCHEDULER_ADMIN_JOB")
 		jdbc.update("INSERT INTO TB_SCHEDULER_ADMIN_JOB (JOB_ID,JOB_KIND,JOB_SOURCE,START_DATE,END_DATE,STATUS,TOTAL_CHUNKS,REQUESTED_BY,MESSAGE,CREATED_AT,FINISHED_AT,HEARTBEAT_AT) VALUES ('j1','ANNOUNCEMENTS','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?),('j2','COMPETITION','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?)",
@@ -97,6 +112,38 @@ class AdminSiteTest {
 		mvc.perform(get("/admin/jobs").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("스케줄러에 연결하지 못했습니다")))
 		mvc.perform(post("/admin/jobs").param("kind", "SCORES").param("startDate", "2020-01-01").param("endDate", "2020-01-02").with(admin).with(csrf()))
 			.andExpect(redirectedUrl("/admin/jobs")).andExpect(flash().attribute("error", "스케줄러에 연결하지 못했습니다. 스케줄러가 실행 중인지 확인하세요."))
+	}
+	@Test fun announcementsAreListedAcrossTypesAndShowOperationalDetail() {
+		mvc.perform(get("/admin/announcements").param("status", "open").with(admin)).andExpect(status().isOk)
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("역삼 새 단지")))
+			.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("임의 단지"))))
+		mvc.perform(get("/admin/announcements").param("status", "upcoming").param("type", "optional").with(admin))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("임의 단지")))
+		jdbc.update("INSERT INTO TB_RATE_POLL VALUES ('apt/H1/P1','v9',3,CURRENT_TIMESTAMP)")
+		val html = mvc.perform(get("/admin/announcements/apt/H1/P1").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(html.contains("95,000만원") && html.contains("1표") && html.contains("원댓글"), "주택형·투표·댓글을 함께 보여 준다")
+		assertFalse(html.contains("alert notice"), "공고번호(경로 변수)가 알림 메시지로 보이지 않는다")
+		mvc.perform(get("/admin/announcements/apt/NOPE/P1").with(admin)).andExpect(status().isNotFound)
+		mvc.perform(get("/admin/announcements/evil/H1/P1").with(admin)).andExpect(status().isNotFound)
+	}
+
+	@Test fun memberDetailShowsFavoritesWithoutPrivateNotes() {
+		val html = mvc.perform(get("/admin/members/1").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(html.contains("역삼 새 단지") && html.contains("신청 완료"), "관심 공고 이름과 진행 단계")
+		assertTrue(!html.contains("SECRET-NOTE-123"), "회원의 메모는 관리자에게도 보여 주지 않는다")
+		mvc.perform(get("/admin/members/999").with(admin)).andExpect(status().isNotFound)
+	}
+
+	@Test fun registeredOperatorBrowsersAreRemovedFromVisitorCounts() {
+		val today = Kst.today()
+		val me = "11111111-1111-4111-8111-111111111111"
+		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('p1',?,'s1','/',NULL,?,CURRENT_TIMESTAMP),('p2','22222222-2222-4222-8222-222222222222','s2','/',NULL,?,CURRENT_TIMESTAMP)", me, today, today)
+		assertEquals(2L, metrics.today().visitors)
+		mvc.perform(post("/admin/exclusions").param("visitorId", me).param("label", "맥북 크롬").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(1L, metrics.today().visitors, "등록한 브라우저는 과거 기록까지 빠진다")
+		mvc.perform(post("/admin/exclusions").param("visitorId", "not-a-uuid").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/exclusions/remove").param("visitorId", me).with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(2L, metrics.today().visitors)
 	}
 }
 

@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('회원')}"></head>
-<body>
-<header th:replace="~{admin/fragments :: topbar}"></header>
-<main class="shell" th:with="back=${'q=' + #uris.escapeQueryParam(q) + '&filter=' + filter + '&page=' + result.page}, base=${'/admin/members?q=' + #uris.escapeQueryParam(q) + '&filter=' + filter}">
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="back=${'/admin/members?q=' + #uris.escapeQueryParam(q) + '&filter=' + filter + '&page=' + result.page}, base=${'/admin/members?q=' + #uris.escapeQueryParam(q) + '&filter=' + filter}">
     <section class="page-heading"><div><p class="eyebrow">MEMBERS</p><h1>회원</h1><p class="muted">이메일·닉네임으로 찾고, 문제가 있는 계정은 잠급니다. 잠긴 계정은 다음 로그인부터 막힙니다.</p></div><span class="timezone" th:text="${'전체 ' + #numbers.formatInteger(result.total,1,'COMMA') + '명'}"></span></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <form class="filters" th:action="@{/admin/members}" method="get">
@@ -17,15 +17,15 @@
     <section class="panel">
         <div class="empty" th:if="${#lists.isEmpty(result.items)}"><span class="empty-icon">○</span><h3>조건에 맞는 회원이 없습니다</h3></div>
         <div class="table-wrap" th:unless="${#lists.isEmpty(result.items)}"><table><thead><tr><th>회원</th><th>상태</th><th>가입</th><th>관심 · 댓글</th><th>관리</th></tr></thead><tbody>
-            <tr th:each="m : ${result.items}"><td><strong th:text="${m.nickname}"></strong><small th:text="${m.email}"></small><small class="mono" th:text="${'#' + m.seq}"></small></td>
+            <tr th:each="m : ${result.items}"><td><a class="row-link" th:href="@{/admin/members/{seq}(seq=${m.seq})}"><strong th:text="${m.nickname}"></strong></a><small th:text="${m.email}"></small><small class="mono" th:text="${'#' + m.seq}"></small></td>
                 <td><span class="badge" th:classappend="${m.locked or m.withdrawn} ? 'FAILED' : (${m.certified} ? 'SUCCEEDED' : 'WAITING')" th:text="${m.status}"></span><small th:if="${m.lockedAt != null}" th:text="${'잠금 ' + #temporals.format(m.lockedAt, 'yyyy.MM.dd HH:mm')}"></small></td>
                 <td th:text="${m.createdAt != null ? #temporals.format(m.createdAt, 'yyyy.MM.dd') : '—'}"></td>
                 <td th:text="${m.favorites + ' · ' + m.comments}"></td>
                 <td><form th:unless="${m.withdrawn}" th:action="@{/admin/members/{seq}/lock(seq=${m.seq})}" method="post" class="confirm" th:attr="data-confirm=${m.locked ? m.nickname + ' 회원의 잠금을 풀까요?' : m.nickname + ' 회원을 잠글까요? 다음 로그인부터 막힙니다.'}">
-                    <input type="hidden" name="locked" th:value="${!m.locked}"><input type="hidden" name="back" th:value="${back}">
+                    <input type="hidden" name="locked" th:value="${!m.locked}"><input type="hidden" name="next" th:value="${back}">
                     <button th:class="${m.locked ? 'secondary' : 'danger'}" type="submit" th:text="${m.locked ? '잠금 해제' : '잠그기'}"></button></form></td></tr>
         </tbody></table></div>
         <nav th:replace="~{admin/fragments :: pager(${result}, ${base})}"></nav>
     </section>
     <footer>TOADY · 관리자 <span>비밀번호·인증 코드는 관리자 화면에서 다루지 않습니다.</span></footer>
-</main><script th:src="@{/admin/admin.js}" defer></script></body></html>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

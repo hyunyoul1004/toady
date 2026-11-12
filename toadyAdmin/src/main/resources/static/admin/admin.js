@@ -27,3 +27,26 @@ if (document.getElementById('history')) {
   };
   setInterval(refresh, 5000);
 }
+
+// 내 방문 제외: 사이트(같은 주소)가 이 브라우저에 저장한 방문자 ID를 읽어 등록 폼에 넣는다. ID는 화면에 다 보여 주지 않는다.
+(() => {
+  const input = document.getElementById('this-visitor');
+  const state = document.getElementById('this-visitor-state');
+  if (!state) return;
+  let id = null;
+  try { id = localStorage.getItem('toady.analytics.visitor'); } catch { /* 저장소 차단 */ }
+  const valid = /^[0-9a-f-]{36}$/i.test(id || '');
+  if (input) input.value = valid ? id : '';
+  const listed = valid && document.querySelector(`[data-visitor="${id.toLowerCase()}"]`);
+  const button = document.getElementById('exclude-button');
+  if (!valid) {
+    state.textContent = '이 브라우저에는 아직 사이트 방문 기록이 없습니다. www.toady.co.kr을 한 번 연 뒤 등록하세요.';
+    if (button) button.disabled = true;
+  } else if (listed) {
+    state.textContent = '✓ 이 브라우저는 이미 지표에서 제외되어 있습니다.';
+    listed.classList.add('current');
+    if (button) button.disabled = true;
+  } else {
+    state.textContent = `이 브라우저 방문자 ID: ${id.slice(0, 8)}… (아직 집계에 포함됨)`;
+  }
+})();

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head(${detail.member.nickname})}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="d=${detail}, m=${detail.member}, here=${'/admin/members/' + detail.member.seq}">
+    <p class="crumbs"><a th:href="@{/admin/members}">회원</a> › <span th:text="${'#' + m.seq}"></span></p>
+    <section class="page-heading"><div><h1 th:text="${m.nickname}"></h1><p class="muted" th:text="${m.email}"></p>
+        <div class="chips" style="margin-top:10px"><span class="chip" th:classappend="${m.locked or m.withdrawn} ? 'off' : (${m.certified} ? 'on' : 'warn')" th:text="${m.status}"></span>
+            <span class="chip" th:text="${'가입 ' + (m.createdAt != null ? #temporals.format(m.createdAt, 'yyyy.MM.dd') : '—')}"></span>
+            <span class="chip" th:if="${m.lockedAt != null}" th:text="${'잠금 ' + #temporals.format(m.lockedAt, 'yyyy.MM.dd HH:mm')}"></span></div></div>
+        <form th:unless="${m.withdrawn}" th:action="@{/admin/members/{seq}/lock(seq=${m.seq})}" method="post" class="confirm" th:attr="data-confirm=${m.locked ? m.nickname + ' 회원의 잠금을 풀까요?' : m.nickname + ' 회원을 잠글까요? 다음 로그인부터 막힙니다.'}">
+            <input type="hidden" name="locked" th:value="${!m.locked}"><input type="hidden" name="next" th:value="${here}">
+            <button th:class="${m.locked ? 'secondary' : 'danger'}" type="submit" th:text="${m.locked ? '잠금 해제' : '이 회원 잠그기'}"></button></form></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <section class="kpis">
+        <div class="kpi"><span>관심 공고</span><strong th:text="${d.favorites != null ? #lists.size(d.favorites) : '—'}">0</strong><small>최대 50개</small></div>
+        <div class="kpi"><span>댓글</span><strong th:text="${comments.total}">0</strong><small>숨긴 댓글 포함</small></div>
+        <div class="kpi"><span>알림 구독(회원 연결)</span><strong th:text="${d.pushSubscriptions != null ? d.pushSubscriptions : '—'}">0</strong><small>브라우저 수</small></div>
+        <div class="kpi"><span>마지막 변경</span><strong style="font-size:18px" th:text="${d.updatedAt != null ? #temporals.format(d.updatedAt, 'MM.dd HH:mm') : '—'}">—</strong><small>정보·잠금 변경 시각</small></div>
+    </section>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>관심 공고</h2><span class="muted" style="font-size:11px">비공개 메모는 보여 주지 않습니다</span></div>
+            <p class="muted" th:if="${d.favorites == null or #lists.isEmpty(d.favorites)}">저장한 공고가 없습니다.</p>
+            <ul class="mini" th:unless="${d.favorites == null or #lists.isEmpty(d.favorites)}"><li th:each="f : ${d.favorites}"><a th:href="@{${f.adminPath}}" th:text="${f.houseNm != null ? f.houseNm : f.id}"></a>
+                <small th:text="${f.stageLabel + (f.savedAt != null ? ' · ' + #temporals.format(f.savedAt, 'MM.dd') : '')}"></small></li></ul>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>작성한 댓글</h2></div>
+            <p class="muted" th:if="${#lists.isEmpty(comments.items)}">작성한 댓글이 없습니다.</p>
+            <ul class="comment-list" th:unless="${#lists.isEmpty(comments.items)}">
+                <li th:each="c : ${comments.items}" th:classappend="${c.deleted} ? 'is-hidden'">
+                    <div class="comment-meta"><a th:href="@{${c.adminPath}}"><strong th:text="${c.houseNm != null ? c.houseNm : c.announcementId}"></strong></a><span th:if="${c.deleted}" class="badge FAILED">숨김</span>
+                        <small th:text="${c.createdAt != null ? #temporals.format(c.createdAt, 'yyyy.MM.dd HH:mm') : ''}"></small></div>
+                    <p class="comment-body" th:text="${c.content}"></p>
+                    <div class="comment-actions">
+                        <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${here}"><button class="danger" type="submit">숨기기</button></form>
+                        <form th:if="${c.deleted}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="next" th:value="${here}"><button class="secondary" type="submit">되살리기</button></form></div>
+                </li>
+            </ul>
+        </section>
+    </div>
+    <footer>TOADY · 관리자 <span>비밀번호·인증 코드·메모는 관리자 화면에서 다루지 않습니다.</span></footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

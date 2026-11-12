@@ -17,8 +17,8 @@ public class UsageEventController {
     public record Event(@NotNull UUID eventId,@NotNull UUID visitorId,
         @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share|score_save|poll_vote|push_enable|match_save") String action,
         @NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}|tool/[a-z0-9-]{1,40}") String subject) { }
-    @PostMapping("/api/v1/analytics/events") public ResponseEntity<Void> record(@Valid @RequestBody Event event) {
-        if(!enabled) return ResponseEntity.noContent().build();
+    @PostMapping("/api/v1/analytics/events") public ResponseEntity<Void> record(@Valid @RequestBody Event event, jakarta.servlet.http.HttpServletRequest request) {
+        if(!enabled || BotFilter.isBot(request)) return ResponseEntity.noContent().build();
         LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         try { jdbc.update("INSERT INTO TB_USAGE_EVENT (EVENT_ID,VISITOR_ID,ACTION_NAME,SUBJECT_ID,VISIT_DATE,REG_DT) VALUES (?,?,?,?,?,?)",event.eventId().toString(),event.visitorId().toString(),event.action(),event.subject(),java.sql.Date.valueOf(now.toLocalDate()),java.sql.Timestamp.valueOf(now)); }
         catch(org.springframework.dao.DuplicateKeyException ignored) { }

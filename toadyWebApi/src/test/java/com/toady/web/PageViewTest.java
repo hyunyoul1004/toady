@@ -27,8 +27,18 @@ class PageViewTest {
         mvc = build(true);
     }
     MockMvc build(boolean enabled) {
+        // 실제 브라우저처럼 User-Agent를 보낸다(로봇·자동화 요청은 저장하지 않는다).
         return MockMvcBuilders.standaloneSetup(new PageViewController(jdbc, enabled))
+                .defaultRequest(post("/").header("User-Agent", BROWSER))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
+    }
+    static final String BROWSER = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+    @Test void searchBotsAndLinkPreviewsAreAcceptedButNotStored() throws Exception {
+        for (String agent : new String[]{"Mozilla/5.0 (compatible; Googlebot/2.0; +http://www.google.com/bot.html)", "Mozilla/5.0 (compatible; Yeti/1.1; +https://naver.me/spd)",
+                "facebookexternalhit/1.1", "Mozilla/5.0 HeadlessChrome/120.0", ""}) {
+            mvc.perform(post("/api/v1/analytics/page-views").header("User-Agent", agent).contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isNoContent());
+        }
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class), "로봇 요청은 방문으로 세지 않는다");
     }
     @Test void duplicateDeliveryCountsOnceAndUsesServerDate() throws Exception {
         for (int i = 0; i < 2; i++) mvc.perform(post("/api/v1/analytics/page-views").contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isNoContent());

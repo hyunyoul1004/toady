@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('공고')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="base=${'/admin/announcements?q=' + #uris.escapeQueryParam(q) + '&type=' + type + '&status=' + status}">
+    <section class="page-heading"><div><p class="eyebrow">ANNOUNCEMENTS</p><h1>공고</h1><p class="muted">수집한 5개 유형의 공고를 한 목록에서 찾습니다. 공고를 누르면 조회수·관심·댓글·시세 비교를 함께 봅니다.</p></div><span class="timezone" th:text="${#numbers.formatInteger(result.total,1,'COMMA') + '건'}"></span></section>
+    <form class="filters three" th:action="@{/admin/announcements}" method="get">
+        <label>검색<input name="q" th:value="${q}" maxlength="100" placeholder="단지명 또는 주소"></label>
+        <label>유형<select name="type"><option value="all" th:selected="${type == 'all'}">전체</option><option th:each="t : ${types}" th:value="${t.key}" th:text="${t.label}" th:selected="${type == t.key}"></option></select></label>
+        <label>접수 상태<select name="status"><option value="all" th:selected="${status == 'all'}">전체</option><option value="open" th:selected="${status == 'open'}">접수 중</option>
+            <option value="upcoming" th:selected="${status == 'upcoming'}">접수 예정</option><option value="closed" th:selected="${status == 'closed'}">마감</option></select></label>
+        <button class="primary" type="submit">찾기</button>
+    </form>
+    <section class="panel">
+        <div class="empty" th:if="${#lists.isEmpty(result.items)}"><span class="empty-icon">○</span><h3>조건에 맞는 공고가 없습니다</h3></div>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(result.items)}"><table><thead><tr><th>공고</th><th>유형</th><th>접수</th><th>상태</th><th>공급</th></tr></thead><tbody>
+            <tr th:each="a : ${result.items}"><td><a class="row-link" th:href="@{'/admin/announcements/' + ${a.id}}"><strong th:text="${a.houseNm}"></strong></a><small th:text="${a.address}"></small></td>
+                <td th:text="${a.typeLabel}"></td>
+                <td class="range"><span th:text="${a.start != null ? #temporals.format(a.start, 'yyyy.MM.dd') : '—'}"></span><span th:if="${a.end != null and a.end != a.start}" th:text="${'~ ' + #temporals.format(a.end, 'MM.dd')}"></span></td>
+                <td><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span></td>
+                <td th:text="${(a.area != null ? a.area + ' · ' : '') + (a.supply != null ? a.supply + '세대' : '')}"></td></tr>
+        </tbody></table></div>
+        <nav th:replace="~{admin/fragments :: pager(${result}, ${base})}"></nav>
+    </section>
+    <footer>TOADY · 관리자 <span>청약홈 수집 데이터 기준</span></footer>
+</main></div></body></html>

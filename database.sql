@@ -474,4 +474,20 @@ CREATE TABLE IF NOT EXISTS TB_PRICE_GAP (
 -- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_CMPET TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_SCORE TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_SCHEDULER_ADMIN_JOB TO 'toady_admin'@'%';
+-- 공고 상세(주택형·분양가)와 경쟁률 예상 투표 조회, 내 방문 제외 목록(20번) 관리
+-- GRANT SELECT ON toady.TB_APT_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_URBTY_OFCTL_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_REMNDR_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_PBL_PVT_RENT_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_OPT_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
+-- GRANT SELECT (ANNOUNCEMENT_ID, CHOICE) ON toady.TB_RATE_POLL TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, DELETE ON toady.TB_ANALYTICS_EXCLUDED_VISITOR TO 'toady_admin'@'%';
 -- 권한 확인: SHOW GRANTS FOR 'toady_admin'@'%';
+
+-- 20. 지표에서 뺄 운영자 브라우저 (관리자 사이트 배포 전 실행 권장, 미적용이어도 지표는 모든 방문을 센다)
+-- 방문자는 브라우저 저장소의 무작위 ID로 센다(IP는 저장하지 않는다). 운영자가 관리자 화면에서 자기 브라우저를 등록하면 과거 기록까지 지표에서 뺀다.
+CREATE TABLE IF NOT EXISTS TB_ANALYTICS_EXCLUDED_VISITOR (
+    VISITOR_ID CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+    LABEL VARCHAR(50) NOT NULL COMMENT '구분용 이름(예: 맥북 크롬)',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 등록 시각'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='지표에서 제외할 운영자 브라우저';

@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('댓글')}"></head>
-<body>
-<header th:replace="~{admin/fragments :: topbar}"></header>
-<main class="shell" th:with="back=${'q=' + #uris.escapeQueryParam(q) + '&state=' + state + '&page=' + result.page}, base=${'/admin/comments?q=' + #uris.escapeQueryParam(q) + '&state=' + state}">
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="back=${'/admin/comments?q=' + #uris.escapeQueryParam(q) + '&state=' + state + '&page=' + result.page}, base=${'/admin/comments?q=' + #uris.escapeQueryParam(q) + '&state=' + state}">
     <section class="page-heading"><div><p class="eyebrow">COMMUNITY</p><h1>댓글</h1><p class="muted">공고별 이야기를 최신순으로 봅니다. 숨기면 서비스에서 보이지 않고, 원댓글을 숨기면 답글도 함께 숨깁니다. 숨긴 댓글은 되살릴 수 있습니다.</p></div><span class="timezone" th:text="${#numbers.formatInteger(result.total,1,'COMMA') + '개'}"></span></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <form class="filters" th:action="@{/admin/comments}" method="get">
@@ -15,15 +15,15 @@
         <div class="empty" th:if="${#lists.isEmpty(result.items)}"><span class="empty-icon">○</span><h3>조건에 맞는 댓글이 없습니다</h3></div>
         <ul class="comment-list" th:unless="${#lists.isEmpty(result.items)}">
             <li th:each="c : ${result.items}" th:classappend="${c.deleted} ? 'is-hidden'">
-                <div class="comment-meta"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${c.deleted}" class="badge FAILED">숨김</span>
+                <div class="comment-meta"><a th:href="@{/admin/members/{seq}(seq=${c.authorSeq})}"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong></a><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${c.deleted}" class="badge FAILED">숨김</span>
                     <small th:text="${(c.createdAt != null ? #temporals.format(c.createdAt, 'yyyy.MM.dd HH:mm') : '') + ' · #' + c.seq}"></small></div>
                 <p class="comment-body" th:text="${c.content}"></p>
-                <div class="comment-actions"><a class="secondary" th:href="${c.appPath}" target="_blank" rel="noopener noreferrer" th:text="${c.announcementId + ' 열기 ↗'}"></a>
-                    <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="back" th:value="${back}"><button class="danger" type="submit">숨기기</button></form>
-                    <form th:if="${c.deleted}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="back" th:value="${back}"><button class="secondary" type="submit">되살리기</button></form></div>
+                <div class="comment-actions"><a class="secondary" th:href="@{${c.adminPath}}" th:text="${c.houseNm != null ? c.houseNm : c.announcementId}"></a><a class="quiet" th:href="${c.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
+                    <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${back}"><button class="danger" type="submit">숨기기</button></form>
+                    <form th:if="${c.deleted}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="next" th:value="${back}"><button class="secondary" type="submit">되살리기</button></form></div>
             </li>
         </ul>
         <nav th:replace="~{admin/fragments :: pager(${result}, ${base})}"></nav>
     </section>
     <footer>TOADY · 관리자 <span>내용은 화면에 글자 그대로 표시합니다.</span></footer>
-</main><script th:src="@{/admin/admin.js}" defer></script></body></html>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

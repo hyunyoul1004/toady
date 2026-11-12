@@ -3,6 +3,7 @@ package com.toady.admin.comments
 import com.toady.admin.Kst
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.JdbcTemplate
+import com.toady.admin.announcements.AnnouncementService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.sql.Timestamp
@@ -13,19 +14,29 @@ import java.time.LocalDateTime
  * 숨긴 댓글은 지우지 않으므로 복구할 수 있다.
  */
 @Service
-class CommentService(private val jdbc: JdbcTemplate) {
+class CommentService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
 	data class Comment(val seq: Long, val announcementId: String, val parentSeq: Long?, val content: String, val deleted: Boolean,
-	                   val authorSeq: Long, val author: String?, val createdAt: LocalDateTime?, val updatedAt: LocalDateTime?) {
+	                   val authorSeq: Long, val author: String?, val createdAt: LocalDateTime?, val updatedAt: LocalDateTime?, val houseNm: String? = null) {
 		/** 앱 공고 상세 주소(새 창). */
 		val appPath get() = "/?subscriptSeq=" + java.net.URLEncoder.encode(announcementId, Charsets.UTF_8)
+		/** 관리자 공고 상세 주소. */
+		val adminPath get() = "/admin/announcements/$announcementId"
 	}
 	data class Page(val items: List<Comment>, val total: Long, val page: Int, val size: Int) {
 		val pages get() = maxOf(1, ((total + size - 1) / size).toInt())
 	}
 
-	/** state: visible · hidden · all. 검색어는 내용·작성자 닉네임 부분 일치. */
-	fun search(query: String?, state: String?, page: Int, size: Int = PAGE_SIZE): Page {
+	/**
+	 * state: visible · hidden · all. 검색어는 내용·작성자 닉네임 부분 일치.
+	 * announcementId·authorSeq를 주면 그 공고·회원의 댓글만(상세 화면용).
+	 */
+	fun search(query: String?, state: String?, page: Int, size: Int = PAGE_SIZE, announcementId: String? = null, authorSeq: Long? = null): Page {
 		val where = StringBuilder(" WHERE 1=1"); val args = ArrayList<Any>()
+		announcementId?.split('/')?.takeIf { it.size == 3 }?.let { (type, house, notice) ->
+			where.append(" AND C.ANNOUNCEMENT_TYPE=? AND C.HOUSE_MANAGE_NO=? AND C.PBLANC_NO=?")
+			args += type.uppercase().replace('-', '_'); args += house; args += notice
+		}
+		authorSeq?.let { where.append(" AND C.CREATE_USER_SEQ=?"); args += it }
 		when (state) {
 			"hidden" -> where.append(" AND C.DELETE_YN='Y'")
 			"all" -> {}
@@ -44,7 +55,9 @@ class CommentService(private val jdbc: JdbcTemplate) {
 				parent, r.getString("CONTENT"), r.getString("DELETE_YN") == "Y", r.getLong("CREATE_USER_SEQ"), r.getString("USER_NIC_NAME"),
 				r.getTimestamp("REG_DT")?.toLocalDateTime(), r.getTimestamp("UPDATE_DT")?.toLocalDateTime())
 		}, *(args + size + safePage * size).toTypedArray())
-		return Page(items, total, safePage, size)
+		// 공고 ID 대신 단지명을 함께 보여 준다.
+		val names = announcements.names(items.map { it.announcementId }.distinct())
+		return Page(items.map { it.copy(houseNm = names[it.announcementId]) }, total, safePage, size)
 	}
 
 	/** 숨긴다. 원댓글이면 답글도 함께 숨긴다. 바뀐 댓글 수를 돌려준다. */

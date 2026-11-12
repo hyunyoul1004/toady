@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head(${detail.row.houseNm})}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" th:with="d=${detail}, a=${detail.row}, here=${'/admin/announcements/' + detail.row.id}">
+    <p class="crumbs"><a th:href="@{/admin/announcements}">공고</a> › <span th:text="${a.typeLabel}"></span></p>
+    <section class="page-heading"><div><h1 th:text="${a.houseNm}"></h1><p class="muted" th:text="${a.address}"></p>
+        <div class="chips" style="margin-top:10px"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
+        <div class="chips"><a class="secondary" th:href="${d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <section class="kpis">
+        <div class="kpi primary"><span>상세 열람 · 30일</span><strong th:text="${d.viewers30 != null ? d.viewers30 + '명' : '—'}">0</strong><small th:text="${d.views30 != null ? d.views30 + '회 열람' : ''}"></small></div>
+        <div class="kpi"><span>관심 저장 · 회원</span><strong th:text="${d.favorites != null ? d.favorites : '—'}">0</strong><small>비회원 기기 저장은 제외</small></div>
+        <div class="kpi"><span>댓글</span><strong th:text="${comments.total}">0</strong><small th:text="${state == 'all' ? '숨긴 댓글 포함' : '보이는 댓글'}"></small></div>
+        <div class="kpi"><span>경쟁률 예상 투표</span><strong th:text="${d.polls != null ? d.pollTotal + '표' : '—'}">0</strong><small th:text="${a.type == 'apt' ? '' : 'APT 공고만'}"></small></div>
+    </section>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>공고 정보</h2></div>
+            <dl class="facts">
+                <div><dt>접수</dt><dd th:text="${(a.start != null ? #temporals.format(a.start, 'yyyy.MM.dd') : '—') + (a.end != null and a.end != a.start ? ' ~ ' + #temporals.format(a.end, 'MM.dd') : '')}"></dd></div>
+                <div><dt>모집공고일</dt><dd th:text="${d.noticeDate != null ? d.noticeDate : '—'}"></dd></div>
+                <div><dt>당첨자 발표</dt><dd th:text="${d.winnerDate != null ? d.winnerDate : '—'}"></dd></div>
+                <div><dt>계약 시작</dt><dd th:text="${d.contract != null ? d.contract : '—'}"></dd></div>
+                <div><dt>입주 예정</dt><dd th:text="${d.moveIn != null ? d.moveIn : '—'}"></dd></div>
+                <div><dt>공급 지역 · 규모</dt><dd th:text="${(a.area != null ? a.area : '—') + (a.supply != null ? ' · ' + a.supply + '세대' : '')}"></dd></div>
+                <div><dt>주택 구분</dt><dd th:text="${d.kind != null ? d.kind : '—'}"></dd></div>
+                <div><dt>처음 수집</dt><dd th:text="${d.collectedAt != null ? #temporals.format(d.collectedAt, 'yyyy.MM.dd HH:mm') : '—'}"></dd></div>
+            </dl>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>주변 시세 비교</h2></div>
+            <p class="muted" th:if="${d.gap == null}">계산 기록이 없습니다(접수 중·예정 APT·무순위·임의공급 공고를 매일 17:20 계산).</p>
+            <dl class="facts" th:if="${d.gap != null}" th:with="g=${d.gap}">
+                <div><dt>상태</dt><dd th:text="${g.status}"></dd></div>
+                <div><dt>계산 시각</dt><dd th:text="${g.computedAt != null ? #temporals.format(g.computedAt, 'yyyy.MM.dd HH:mm') : '—'}"></dd></div>
+                <div><dt>법정동 · 대표 면적</dt><dd th:text="${(g.dong != null ? g.dong : '—') + (g.area != null ? ' · 전용 ' + g.area + '㎡' : '')}"></dd></div>
+                <div><dt>분양가(최고)</dt><dd th:text="${g.supply != null ? #numbers.formatInteger(g.supply,1,'COMMA') + '만원' : '—'}"></dd></div>
+                <div><dt>시세 범위(1~3사분위)</dt><dd th:text="${g.q1 != null ? #numbers.formatInteger(g.q1,1,'COMMA') + ' ~ ' + #numbers.formatInteger(g.q3,1,'COMMA') + '만원' : '—'}"></dd></div>
+                <div><dt>기준 · 신뢰도</dt><dd th:text="${(g.basis == 'new' ? '신축' : (g.basis != null ? '전체 연식' : '—')) + (g.confidence != null ? ' · ' + g.confidence : '')}"></dd></div>
+            </dl>
+            <div th:if="${d.polls != null and d.pollTotal > 0}" style="margin-top:18px"><p class="side-group" style="margin-left:0">경쟁률 예상 투표</p>
+                <ul class="rank"><li th:each="c, s : ${d.polls}"><span class="name" th:text="${{'미달','1~5 : 1','5~10 : 1','10~30 : 1','30~100 : 1','100 : 1 이상'}[s.index]}"></span><span class="bar"><i th:style="${'width:' + (c * 100 / d.pollTotal) + '%'}"></i></span><em th:text="${c + '표'}"></em></li></ul></div>
+        </section>
+    </div>
+    <section class="panel spaced"><div class="panel-head"><h2>주택형 · 분양가</h2><span class="muted" style="font-size:11px">청약홈 공개 값(만원)</span></div>
+        <p class="muted" th:if="${#lists.isEmpty(d.units)}">주택형 자료가 없습니다.</p>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(d.units)}"><table><thead><tr><th>주택형</th><th th:if="${d.hasUnitArea}">전용면적</th><th>공급 세대</th><th>최고 공급금액</th></tr></thead><tbody>
+            <tr th:each="u : ${d.units}"><td><strong th:text="${u.label}"></strong></td><td th:if="${d.hasUnitArea}" th:text="${u.area != null ? u.area + '㎡' : '—'}"></td><td th:text="${u.households != null ? u.households + '세대' : '—'}"></td><td th:text="${u.amountLabel}"></td></tr>
+        </tbody></table></div>
+    </section>
+    <section class="panel spaced"><div class="panel-head"><h2 th:text="${'댓글 ' + comments.total + '개'}">댓글</h2>
+            <div class="tabs" style="margin:0"><a th:href="@{${here}(state='all')}" th:classappend="${state == 'all'} ? 'active'">전체</a><a th:href="@{${here}(state='visible')}" th:classappend="${state == 'visible'} ? 'active'">보이는 것</a><a th:href="@{${here}(state='hidden')}" th:classappend="${state == 'hidden'} ? 'active'">숨긴 것</a></div></div>
+        <p class="muted" th:if="${#lists.isEmpty(comments.items)}">댓글이 없습니다.</p>
+        <ul class="comment-list" th:unless="${#lists.isEmpty(comments.items)}">
+            <li th:each="c : ${comments.items}" th:classappend="${c.deleted} ? 'is-hidden'">
+                <div class="comment-meta"><a th:href="@{/admin/members/{seq}(seq=${c.authorSeq})}"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong></a><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${c.deleted}" class="badge FAILED">숨김</span>
+                    <small th:text="${(c.createdAt != null ? #temporals.format(c.createdAt, 'yyyy.MM.dd HH:mm') : '') + ' · #' + c.seq}"></small></div>
+                <p class="comment-body" th:text="${c.content}"></p>
+                <div class="comment-actions">
+                    <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${here + '?state=' + state}"><button class="danger" type="submit">숨기기</button></form>
+                    <form th:if="${c.deleted}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="next" th:value="${here + '?state=' + state}"><button class="secondary" type="submit">되살리기</button></form></div>
+            </li>
+        </ul>
+    </section>
+    <footer>TOADY · 관리자 <span>조회 수는 사람 방문 기준이며 ‘내 방문 제외’에 등록한 브라우저는 뺍니다.</span></footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>
