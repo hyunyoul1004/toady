@@ -317,3 +317,21 @@ CREATE TABLE IF NOT EXISTS TB_USAGE_EVENT (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='익명 청약 이용 행동';
 -- SELECT VISIT_DATE,ACTION_NAME,COUNT(*),COUNT(DISTINCT VISITOR_ID) FROM TB_USAGE_EVENT GROUP BY VISIT_DATE,ACTION_NAME;
 -- 공식 페이지 이동은 실제 청약 신청 완료를 의미하지 않습니다.
+
+-- 10. 페이지 조회 유입 도메인 (API 배포 전 실행 권장, 미적용이어도 API는 유입 없이 조회를 저장)
+-- 세션 첫 조회의 외부 도메인(예: www.google.com, m.search.naver.com)만 저장하고 전체 URL·검색어는 저장하지 않는다.
+ALTER TABLE TB_PAGE_VIEW ADD COLUMN IF NOT EXISTS REFERRER_HOST VARCHAR(100) NULL COMMENT '세션 첫 조회의 외부 유입 도메인';
+-- 주간 유입 경로 예시: SELECT REFERRER_HOST, COUNT(DISTINCT SESSION_ID) FROM TB_PAGE_VIEW
+-- WHERE VISIT_DATE >= CURRENT_DATE - INTERVAL 7 DAY AND REFERRER_HOST IS NOT NULL GROUP BY REFERRER_HOST;
+
+-- 11. 회원 캘린더 구독 주소 (API 배포 전에 생성)
+-- 주소 자체가 열람 권한이므로 256비트 무작위 토큰을 쓰고, 다시 보여줄 수 있도록 원문으로 보관한다. 재발급 시 이전 주소는 즉시 무효.
+CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (
+    USER_SEQ BIGINT NOT NULL COMMENT '회원 번호',
+    FEED_TOKEN CHAR(43) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '구독 주소용 무작위 토큰(base64url)',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 발급 시각',
+    LAST_READ_DT DATETIME(6) NULL COMMENT '캘린더 앱이 마지막으로 가져간 한국시간',
+    PRIMARY KEY (USER_SEQ),
+    UNIQUE (FEED_TOKEN)
+) ENGINE=InnoDB COMMENT='회원별 캘린더 구독 주소';
+-- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.

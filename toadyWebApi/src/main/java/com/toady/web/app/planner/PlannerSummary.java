@@ -16,8 +16,13 @@ public class PlannerSummary {
     private final ObjectMapper mapper;
     public PlannerSummary(AnnouncementService announcements, ObjectMapper mapper) { this.announcements = announcements; this.mapper = mapper; }
     public record Event(String label, LocalDate date) { }
+    /** minPriceManwon/maxPriceManwon은 APT 주택형별 최고 공급금액 중 최저·최고값이다. 최저 분양가가 아니다. */
     public record Summary(String id, String houseNm, String address, String supply, String housingType,
-            LocalDate startDate, LocalDate endDate, LocalDate winnerDate, String priceSummary, List<Event> events, boolean unavailable) { }
+            LocalDate startDate, LocalDate endDate, LocalDate winnerDate, String priceSummary, List<Event> events, boolean unavailable,
+            Long minPriceManwon, Long maxPriceManwon) {
+        /** 원본 공고가 사라진 저장 항목을 화면·메일·캘린더에서 같은 모양으로 표시한다. */
+        public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null); }
+    }
     public Summary get(String type, String house, String notice) {
         Map<String,Object> data = announcements.getDetail(AnnouncementType.fromPath(type), house, notice);
         Map<String,Object> a = mapper.convertValue(data.get("announcement"), new TypeReference<>() {});
@@ -36,14 +41,19 @@ public class PlannerSummary {
         add(events,"2순위 기타지역",date(value(a,"gnrlRnk2EtcAreaRcptde")));
         add(events,"계약 시작",date(value(a,"cntrctCnclsBgnde"))); add(events,"계약 마감",date(value(a,"cntrctCnclsEndde")));
         String prices="";
+        Long min=null,max=null;
         if(type.equals("apt")) {
             List<Map<String,Object>> models=mapper.convertValue(data.get("models"),new TypeReference<>() {});
             prices=models.stream().filter(m -> !value(m,"lttotTopAmount").isBlank()).limit(5)
                 .map(m -> value(m,"houseTy")+": "+value(m,"lttotTopAmount")+"만원 (최고가)").collect(java.util.stream.Collectors.joining(" / "));
+            LongSummaryStatistics amounts=models.stream().map(m -> manwon(value(m,"lttotTopAmount"))).filter(Objects::nonNull).mapToLong(Long::longValue).summaryStatistics();
+            if(amounts.getCount()>0) { min=amounts.getMin(); max=amounts.getMax(); }
         }
-        return new Summary(id,value(a,"houseNm"),value(a,"hssplyAdres","hssplyHshldco"),value(a,"totSuplyHshldco"),value(a,"houseSecdNm"),start,end,winner,prices,ScheduleEvents.normalize(events),false);
+        return new Summary(id,value(a,"houseNm"),value(a,"hssplyAdres","hssplyHshldco"),value(a,"totSuplyHshldco"),value(a,"houseSecdNm"),start,end,winner,prices,ScheduleEvents.normalize(events),false,min,max);
     }
     private static void add(List<Event> events,String label,LocalDate date) { if(date != null) events.add(new Event(label,date)); }
     private static String value(Map<String,Object> a,String...keys) { for(String key:keys) { Object v=a.get(key); if(v!=null && !v.toString().isBlank()) return v.toString(); } return ""; }
+    /** 0·음수·숫자가 아닌 금액은 공개되지 않은 값으로 본다. */
+    static Long manwon(String value) { try { long amount=Long.parseLong(value.replace(",","").trim()); return amount>0?amount:null; } catch(Exception ignored) { return null; } }
     static LocalDate date(String value) { try { return LocalDate.parse(value.replace("-",""),DateTimeFormatter.BASIC_ISO_DATE); } catch(Exception ignored) { return null; } }
 }

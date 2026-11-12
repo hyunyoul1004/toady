@@ -43,6 +43,17 @@ export default defineConfig({
       '/webApi': {
         target: 'http://localhost:8081',
         changeOrigin: true
+      },
+      // 운영 nginx와 같은 공개 경로를 개발 서버에서도 API로 연결한다.
+      '^/areas(/[a-z0-9-]+)?/?(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/areas\/?([a-z0-9-]*)\/?/, (_, slug) => `/api/v1/public/areas${slug ? `/${slug}` : ''}`)
+      },
+      '^/calendar/[A-Za-z0-9_-]{43}\\.ics(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/calendar\//, '/api/v1/public/calendar/')
       }
     }
   },

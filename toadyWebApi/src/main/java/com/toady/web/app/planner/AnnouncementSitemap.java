@@ -21,6 +21,7 @@ public class AnnouncementSitemap {
             long count=jdbc.queryForObject("SELECT COUNT(*) FROM "+entry.getValue(),Long.class);
             for(long page=0;page<(count+4999)/5000;page++) xml.append("<sitemap><loc>").append(esc(domain+"/sitemaps/"+entry.getKey()+"/"+page+".xml")).append("</loc></sitemap>");
         }
+        xml.append("<sitemap><loc>").append(esc(domain+"/sitemaps/areas.xml")).append("</loc></sitemap>");
         xml.append("</sitemapindex>");return response(xml.toString());
     }
     @GetMapping(value="/api/v1/public/sitemaps/{type}/{page}.xml",produces="application/xml;charset=UTF-8")
@@ -32,6 +33,14 @@ public class AnnouncementSitemap {
             String house=r.getString(1),notice=r.getString(2);
             if(house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}")) xml.append("<url><loc>").append(esc(domain+"/announcements/"+type+"/"+house+"/"+notice)).append("</loc></url>");
         },(long)page*5000);
+        xml.append("</urlset>");return response(xml.toString());
+    }
+    /** 생활권 공개 페이지. 목록 페이지와 각 생활권 페이지만 포함한다. */
+    @GetMapping(value="/api/v1/public/sitemaps/areas.xml",produces="application/xml;charset=UTF-8")
+    public ResponseEntity<String> areas() {
+        StringBuilder xml=new StringBuilder("<?xml version='1.0' encoding='UTF-8'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
+        xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
+        for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
         xml.append("</urlset>");return response(xml.toString());
     }
     private static String esc(String value) { return HtmlUtils.htmlEscape(value); }

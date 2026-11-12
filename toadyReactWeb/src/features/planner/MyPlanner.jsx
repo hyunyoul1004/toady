@@ -6,18 +6,21 @@ import { Main } from '@/views/main/Main';
 import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, Menu, MenuItem, Snackbar,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
-import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
+import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded';
 import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { usePlanner } from './usePlanner';
-import { CHECKS, downloadCalendar, koreaToday, upcomingGroups } from './plannerUtils';
+import { CHECKS, koreaToday, upcomingGroups } from './plannerUtils';
+import CalendarConnect from './CalendarConnect';
 import FavoriteCard from './FavoriteCard';
 import {formatSupplySummary} from './researchUtils';
 import UpcomingSchedule from './UpcomingSchedule';
 import './planner.css';
+
+const CALENDAR_INTENT='toady.calendarIntent';
 
 export default function MyPlanner() {
   const planner = usePlanner();
@@ -32,6 +35,22 @@ export default function MyPlanner() {
   const menuButtonRef=useRef(null);
   const [menuOpen,setMenuOpen] = useHistoryOverlay('planner-settings');
   const setMenu = anchor => setMenuOpen(Boolean(anchor));
+  const [calendarOpen,setCalendarOpen] = useHistoryOverlay('calendar-connect');
+  const overlayCount = location.state?.overlayLayers?.length || 0;
+  // 비회원이 연결을 시작하면 연결 창 자리를 로그인 창으로 바꾼다. 로그인 후에는 연결 창을 다시 열고, 로그인을 취소하면 의도를 지운다.
+  const openLoginForCalendar = () => {
+    try { sessionStorage.setItem(CALENDAR_INTENT,'1'); } catch { /* 저장소 차단 시 로그인 후 자동 재개만 생략 */ }
+    const layers=(location.state?.overlayLayers || []).filter(layer=>layer.id!=='calendar-connect');
+    navigate(location.pathname + location.search + location.hash, { replace:true, state:{ ...location.state, overlayLayers:[...layers,{ id:'layout', value:'login' }] } });
+  };
+  useEffect(() => {
+    let intent=false;
+    try { intent=sessionStorage.getItem(CALENDAR_INTENT)==='1'; } catch { return; }
+    if(!intent || overlayCount>0) return;
+    try { sessionStorage.removeItem(CALENDAR_INTENT); } catch { /* 무시 */ }
+    if(planner.loggedIn) setCalendarOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[planner.loggedIn,overlayCount]);
   const report = (text,error) => setMessage({text,error});
   useEffect(() => {setSelected([]);setMessage(null);},[planner.scope]);
   const availableIds = planner.items.map(x=>x.id).sort().join(',');
@@ -46,7 +65,7 @@ export default function MyPlanner() {
     setSelected(previous=>previous.includes(id)?previous.filter(value=>value!==id):[...previous,id]);
   }
   return <Box className="planner-page">
-    <header className="planner-hero"><div><span className="planner-eyebrow">MY HOME PLAN</span><h1>나의 청약</h1><p>관심 있는 집을 모으고, 다음 청약을 차근차근 준비하세요.</p></div><div className="planner-hero-actions"><Button variant="outlined" startIcon={<FileDownloadOutlined />} disabled={!planner.items.length} onClick={()=>downloadCalendar(planner.items.map(x=>x.summary))}>일정 내려받기</Button><IconButton ref={menuButtonRef} aria-label="나의 청약 설정" onClick={e=>setMenu(e.currentTarget)} disabled={busy}><MoreHorizRounded /></IconButton></div></header>
+    <header className="planner-hero"><div><span className="planner-eyebrow">MY HOME PLAN</span><h1>나의 청약</h1><p>관심 있는 집을 모으고, 다음 청약을 차근차근 준비하세요.</p></div><div className="planner-hero-actions"><Button variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>setCalendarOpen(true)}>캘린더 연결</Button><IconButton ref={menuButtonRef} aria-label="나의 청약 설정" onClick={e=>setMenu(e.currentTarget)} disabled={busy}><MoreHorizRounded /></IconButton></div></header>
     {!planner.loggedIn && <div className="planner-storage-notice"><BookmarkBorderRounded fontSize="small" /><span>이 브라우저에 저장 중이에요. <strong>로그인하면 다른 기기에서도 이어볼 수 있어요.</strong></span></div>}
     {planner.guestRefreshError && <Alert severity="warning" sx={{mb:2}}>최신 일정을 확인하지 못해 저장 당시 정보를 표시합니다. 원문에서 일정을 확인해 주세요.</Alert>}
     {planner.error && <Alert severity="error" action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>{planner.error.message}</Alert>}
@@ -59,6 +78,7 @@ export default function MyPlanner() {
       {!planner.error && !planner.items.length && <div className="planner-empty"><div><BookmarkBorderRounded /></div><h3>어떤 집이 마음에 드세요?</h3><p>공고를 저장하면 일정과 준비 노트를<br />이곳에서 함께 관리할 수 있어요.</p><Button variant="contained" disableElevation component={Link} to="/" endIcon={<ArrowForwardRounded />}>청약 찾아보기</Button></div>}</section>
     </>}
     {detailId && <Main detailOnly onDetailClose={closeDetail}/>}
+    <CalendarConnect open={Boolean(calendarOpen)} onClose={()=>setCalendarOpen(false)} loggedIn={planner.loggedIn} summaries={planner.items.map(item=>item.summary)} onLogin={openLoginForCalendar} />
     <Menu anchorEl={()=>menuButtonRef.current} open={Boolean(menuOpen)} onClose={()=>setMenu(null)}>
       {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>action(planner.importGuest,'기기 공고를 가져왔습니다. 계정의 기존 메모는 유지합니다.')}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
       {planner.loggedIn && <MenuItem disabled={busy} onClick={()=>action(planner.disableEmails,'모든 이메일 알림을 해제했습니다.')}>이메일 알림 전체 해제</MenuItem>}

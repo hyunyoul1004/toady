@@ -47,6 +47,7 @@ class AdminConsoleTest {
     @Autowired AdminJobRepository repository;
     @Autowired AdminJobService jobs;
     @Autowired AdminScheduleManager schedules;
+    @Autowired AdminMetrics metrics;
     @MockitoBean ApplyhomeSyncService announcements;
     @MockitoBean ApplyhomeCompetitionSyncService competition;
 
@@ -185,5 +186,44 @@ class AdminConsoleTest {
                     .andExpect(view().name("admin/index"))
                     .andExpect(content().string(containsString("href=\"/admin/\"")));
         }
+    }
+
+    private void pageView(int event, int visitor, int session, LocalDate date, String referrer) {
+        jdbc.update("INSERT INTO TB_PAGE_VIEW (EVENT_ID,VISITOR_ID,SESSION_ID,PAGE_PATH,VISIT_DATE,REG_DT,REFERRER_HOST) VALUES (?,?,?,?,?,?,?)",
+                "%036d".formatted(event), "%036d".formatted(1000 + visitor), "%036d".formatted(2000 + session), "/", date, date.atStartOfDay(), referrer);
+    }
+    private void action(int event, int visitor, String action, String subject, LocalDate date) {
+        jdbc.update("INSERT INTO TB_USAGE_EVENT (EVENT_ID,VISITOR_ID,ACTION_NAME,SUBJECT_ID,VISIT_DATE,REG_DT) VALUES (?,?,?,?,?,?)",
+                "%036d".formatted(500 + event), "%036d".formatted(1000 + visitor), action, subject, date, date.atStartOfDay());
+    }
+
+    @Test @WithMockUser(roles = "ADMIN")
+    void metricsPageSummarizesReturningVisitorsExplorersAndSources() throws Exception {
+        jdbc.update("DELETE FROM TB_PAGE_VIEW"); jdbc.update("DELETE FROM TB_USAGE_EVENT");
+        LocalDate monday = AdminJobService.today().with(java.time.DayOfWeek.MONDAY);
+        // 방문자 1: 지난주 구글로 처음 방문 후 이번 주 재방문. 방문자 2: 이번 주 첫 방문에서 공고 2개를 본 활성 탐색자.
+        pageView(1, 1, 1, monday.minusDays(7), "www.google.com");
+        pageView(2, 1, 2, monday, null);
+        pageView(3, 2, 3, monday, "m.search.naver.com");
+        action(1, 2, "detail_view", "apt/A/1", monday);
+        action(2, 2, "detail_view", "apt/B/1", monday);
+        action(3, 1, "detail_view", "apt/A/1", monday);
+        action(4, 1, "share", "apt/A/1", monday);
+        AdminMetrics.Report report = metrics.report(AdminJobService.today());
+        AdminMetrics.Week week = report.getCurrent();
+        assertEquals(2, week.visitors());
+        assertEquals(1, week.returning());
+        assertEquals(50, week.getReturningRate());
+        assertEquals(1, week.activeExplorers(), "공고를 하나만 본 방문자는 활성 탐색자가 아니다");
+        assertEquals(1, week.shares());
+        assertEquals(3, report.sourceSessions());
+        assertEquals(66, report.getSearchPercent());
+        mvc.perform(get("/admin/metrics")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("주간 추이")))
+                .andExpect(content().string(containsString("검색 · 구글")))
+                .andExpect(content().string(containsString("검색 · 네이버")))
+                .andExpect(content().string(containsString("직접 방문·알 수 없음")))
+                .andExpect(content().string(containsString("50%")));
+        mvc.perform(get("/admin")).andExpect(status().isOk()).andExpect(content().string(containsString("/admin/metrics")));
     }
 }

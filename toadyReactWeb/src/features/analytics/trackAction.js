@@ -1,5 +1,5 @@
 import config from 'config';
-const ACTIONS = new Set(['detail_view','favorite_add','alert_enable','official_click','research_click','compare']);
+const ACTIONS = new Set(['detail_view','favorite_add','alert_enable','official_click','research_click','compare','share']);
 export function trackAction(action, subject) {
   if (!ACTIONS.has(action) || !/^(apt|urban|remaining|public-rental|optional)\/[a-zA-Z0-9_-]{1,40}\/[a-zA-Z0-9_-]{1,40}$/.test(subject || '')) return;
   try {

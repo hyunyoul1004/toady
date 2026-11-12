@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TOADY 주간 지표</title><link rel="stylesheet" th:href="@{/admin/style.css}"></head>
+<body>
+<header class="topbar"><div class="shell nav"><a class="brand" th:href="@{/admin/}"><span class="brand-mark">T</span> TOADY <span class="muted">/ 주간 지표</span></a><div class="account"><a class="nav-link" th:href="@{/admin/}">수집 관리</a><a class="nav-link active" th:href="@{/admin/metrics}">주간 지표</a><span th:text="${username}">admin</span><form th:action="@{/admin/logout}" method="post"><button class="quiet" type="submit">로그아웃</button></form></div></div></header>
+<main class="shell">
+    <section class="page-heading"><div><p class="eyebrow">GROWTH</p><h1>사람들이 들어오고,<br class="mobile-only"> 다시 오고 있나요?</h1><p class="muted">익명 조회·행동 로그를 월~일 한국시간 주 단위로 모았습니다. 이번 주는 오늘까지의 값입니다.</p></div><span class="timezone">● Asia/Seoul · 한국시간</span></section>
+    <div class="alert error" th:if="${report.error}" th:text="${report.error}"></div>
+    <th:block th:if="${report.error == null}" th:with="now=${report.current}, before=${report.previous}">
+    <section class="kpis">
+        <div class="kpi"><span>방문자</span><strong th:text="${#numbers.formatInteger(now.visitors,1,'COMMA')}">0</strong><small th:text="${'지난주 ' + #numbers.formatInteger(before.visitors,1,'COMMA')}"></small></div>
+        <div class="kpi primary"><span>활성 탐색자</span><strong th:text="${#numbers.formatInteger(now.activeExplorers,1,'COMMA')}">0</strong><small th:text="${'지난주 ' + #numbers.formatInteger(before.activeExplorers,1,'COMMA')}"></small></div>
+        <div class="kpi"><span>재방문 비율</span><strong th:text="${now.returningRate + '%'}">0%</strong><small th:text="${'지난주 ' + before.returningRate + '%'}"></small></div>
+        <div class="kpi"><span>검색 유입 비중 · 28일</span><strong th:text="${report.sourceNotice == null ? report.searchPercent + '%' : '—'}">0%</strong><small th:text="${'세션 ' + #numbers.formatInteger(report.sourceSessions,1,'COMMA') + '개 기준'}"></small></div>
+    </section>
+    <section class="panel"><div class="section-title"><span class="section-number">01</span><div><h2>주간 추이</h2><p>최근 8주 · 최신 주가 위</p></div></div>
+        <div class="table-wrap"><table class="metrics"><thead><tr><th>주</th><th>방문자</th><th>세션</th><th>페이지뷰</th><th>재방문</th><th>활성 탐색자</th><th>상세 열람</th><th>관심 저장</th><th>공유</th></tr></thead><tbody>
+            <tr th:each="week, stat : ${report.weeks}" th:classappend="${stat.first} ? 'current'"><td><strong th:text="${week.label}"></strong><small th:if="${stat.first}">이번 주</small></td>
+                <td th:text="${#numbers.formatInteger(week.visitors,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.sessions,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.pageViews,1,'COMMA')}"></td>
+                <td th:text="${week.returning + ' (' + week.returningRate + '%)'}"></td><td><strong th:text="${#numbers.formatInteger(week.activeExplorers,1,'COMMA')}"></strong></td>
+                <td th:text="${#numbers.formatInteger(week.detailViews,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.favorites,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.shares,1,'COMMA')}"></td></tr>
+        </tbody></table></div>
+        <p class="hint">활성 탐색자: 한 주에 서로 다른 공고 상세를 2개 이상 보거나 관심 공고를 저장한 방문자. 재방문: 그 주 마지막 방문 이전(최근 9주 안)에 다른 날에도 방문한 방문자. 방문자는 브라우저 저장소 기준이라 기기·브라우저가 바뀌면 다른 사람으로 셉니다.</p>
+    </section>
+    <section class="panel" style="margin-top:22px"><div class="section-title"><span class="section-number">02</span><div><h2>유입 경로</h2><p>최근 28일 · 세션 첫 조회의 외부 도메인 기준</p></div></div>
+        <div class="alert notice" th:if="${report.sourceNotice}" th:text="${report.sourceNotice}"></div>
+        <div class="empty" th:if="${report.sourceNotice == null and report.sourceSessions == 0}"><span class="empty-icon">↗</span><h3>아직 방문 기록이 없습니다</h3><p>검색 등록과 공유가 시작되면 이곳에 경로별 세션이 쌓입니다.</p></div>
+        <ul class="sources" th:if="${report.sourceNotice == null and report.sourceSessions > 0}">
+            <li th:each="source : ${report.sources}"><div><strong th:text="${source.label}"></strong><small th:if="${source.host != '' and source.host != source.label}" th:text="${source.host}"></small></div><span class="bar"><i th:style="${'width:' + source.percent + '%'}"></i></span><em th:text="${source.sessions + ' · ' + source.percent + '%'}"></em></li>
+        </ul>
+        <p class="hint">공고·생활권 공개 페이지를 거쳐 앱으로 들어온 경우 원래 검색·메신저 도메인으로 집계합니다. 카카오톡 인앱 브라우저 등은 유입 정보를 보내지 않아 ‘직접 방문’으로 보일 수 있습니다.</p>
+    </section>
+    </th:block>
+    <footer>TOADY · 서비스 지표 <span>회원 정보·검색어·전체 URL은 수집하지 않습니다.</span></footer>
+</main>
+</body>
+</html>

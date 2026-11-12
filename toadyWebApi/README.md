@@ -202,6 +202,9 @@ docker run --rm -p 8080:8080 \
 - 인증된 `/api/v1/me/favorites`: GET 목록, POST `/{type}/{house}/{notice}` 저장/수정, DELETE 같은 경로 해제. 사용자 번호는 JWT에서만 가져옵니다. 최대 50개, 메모 2,000자, 체크리스트 비트 0~31입니다. 공고 요약과 날짜는 서버의 원본으로 계산합니다.
 - POST `/api/v1/me/favorites/disable-emails`: 해당 회원의 모든 공고 알림을 해제합니다. 메일 하단에서 `/my` 설정으로 이동할 수 있습니다.
 - 공개 `/api/v1/living-areas`, `/api/v1/planner/settings`, POST `/api/v1/planner/summaries`(최대 50개 키)로 비회원 조회를 지원합니다. 공유 HTML은 `/api/v1/public/announcements/{type}/{house}/{notice}`, 사이트맵은 `/api/v1/public/sitemap.xml`과 `/api/v1/public/sitemaps/{type}/{page}.xml`입니다. HTML에는 회원 메모를 포함하지 않습니다.
+- 생활권 공개 HTML은 `/api/v1/public/areas`, `/api/v1/public/areas/{slug}`이고 생활권 사이트맵은 `/api/v1/public/sitemaps/areas.xml`입니다. 공고 HTML과 같은 `LivingAreas.match` 기준(주소·단지명의 생활권 보조 키워드)을 사용합니다.
+- 회원 캘린더 구독: `GET/POST/DELETE /api/v1/me/calendar-feed`(조회·발급 또는 재발급·해지), 공개 `GET /api/v1/public/calendar/{token}.ics`. 토큰은 256비트 무작위 값이며 재발급·해지·탈퇴·잠금 시 404를 반환합니다. 메모는 내보내지 않습니다. `database.sql` 11번 테이블이 필요합니다.
+- `POST /api/v1/analytics/page-views`는 선택 필드 `referrerHost`(소문자 도메인만)를 받습니다. `REFERRER_HOST` 컬럼이 없으면 경고 로그를 남기고 10분간 유입 없이 저장한 뒤 다시 시도합니다.
 - `PLANNER_REMINDERS_ENABLED=true`일 때 API 서버에서 한국시간 08:00~18:30, 30분마다 알림을 검사합니다. 오늘/내일 관심 공고 일정이 있는 인증·정상 회원에게 하루 한 통을 보냅니다. 서버 중단 후 같은 시간대에 복구하면 재검사합니다. 개인별 공급 자격에 따른 맞춤 판정이 아닌 공개된 접수·발표·계약 일정 안내입니다. 변경 감지 알림이나 지역 신규 공고 추천은 포함하지 않습니다.
 - SMTP는 기존 Gmail 하나만 사용합니다. `GMAIL_ROLLING_LIMIT=400`, `GMAIL_AUTH_RESERVE=100`이 기본값입니다. 실제 Gmail 할당량 보장이 아니라 보수적인 애플리케이션 제한입니다. 최근 24시간의 AUTH/REMINDER 시도량을 DB 잠금 아래 함께 계산하며, 실패한 SMTP 시도도 차감합니다. 인증 용량 확보를 위해 REMINDER는 최대 300회입니다. 이 계정에서 별도로 보내는 개인 메일은 집계하지 못합니다.
 - 알림 할당량 부족은 다음 검사로 미룹니다. SMTP 결과가 불명확하면 UNKNOWN, 다른 실패는 FAILED로 남기고 그 날짜에는 자동 재전송하지 않습니다. 프로세스 중단 후 15분 넘은 SENDING도 UNKNOWN으로 정리합니다. 중복·누락이 전혀 없는 전달 보장은 아니며 재시도보다 중복 방지를 우선합니다. DB를 조회해 상태를 점검할 수 있습니다. 주소·본문이 없는 발송 시도 이력은 7일 이후 정리합니다. 알림 수신 이력과 관심 메모는 별도 보관 정책이 필요합니다.

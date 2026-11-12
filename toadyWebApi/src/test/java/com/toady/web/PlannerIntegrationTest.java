@@ -36,7 +36,8 @@ class PlannerIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (ID INT PRIMARY KEY)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_ATTEMPT (ID CHAR(36) PRIMARY KEY,MAIL_KIND VARCHAR(10),REG_DT TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_REMINDER_DELIVERY (USER_SEQ BIGINT,SEND_DATE DATE,STATUS VARCHAR(12),UPDATED_AT TIMESTAMP,PRIMARY KEY(USER_SEQ,SEND_DATE))");
-        for(String table:List.of("TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (USER_SEQ BIGINT PRIMARY KEY,FEED_TOKEN CHAR(43) NOT NULL UNIQUE,REG_DT TIMESTAMP NOT NULL,LAST_READ_DT TIMESTAMP)");
+        for(String table:List.of("TB_CALENDAR_FEED","TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
         jdbc.update("INSERT INTO TB_MAIL_BUDGET VALUES (1)");
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
@@ -49,6 +50,52 @@ class PlannerIntegrationTest {
         String body=mvc.perform(post("/webApi/user/login").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("userEmail",email,"userPassword","Password123!"))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return "Bearer "+json.readTree(body).path("data").path("accessToken").asText();
+    }
+    static String feedToken(String body) { var matcher=java.util.regex.Pattern.compile("/calendar/([A-Za-z0-9_-]{43})\\.ics").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
+    @Test void calendarFeedIsPrivateRotatableAndStopsForWithdrawnAccounts() throws Exception {
+        UserEntity owner=user("feed@example.test");String auth=token("feed@example.test");
+        mvc.perform(get("/api/v1/me/calendar-feed")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/me/calendar-feed").header("Authorization",auth)).andExpect(status().isOk()).andExpect(jsonPath("$.data.subscribed").value(false));
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",auth).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"비공개 메모\",\"checklist\":0,\"emailEnabled\":false}")).andExpect(status().isOk());
+        String first=feedToken(mvc.perform(post("/api/v1/me/calendar-feed").header("Authorization",auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.webcalUrl").value(org.hamcrest.Matchers.startsWith("webcal://")))
+                .andExpect(jsonPath("$.data.googleUrl").value(org.hamcrest.Matchers.startsWith("https://calendar.google.com/calendar/r?cid=webcal%3A%2F%2F")))
+                .andReturn().getResponse().getContentAsString());
+        String ics=mvc.perform(get("/api/v1/public/calendar/"+first+".ics")).andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",org.hamcrest.Matchers.startsWith("text/calendar")))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8).replace("\r\n ","");
+        assertTrue(ics.contains("SUMMARY:<운정 테스트> · "),ics);
+        assertFalse(ics.contains("비공개 메모"),"메모는 캘린더로 내보내지 않는다");
+        assertNotNull(jdbc.queryForObject("SELECT LAST_READ_DT FROM TB_CALENDAR_FEED",java.sql.Timestamp.class));
+        String second=feedToken(mvc.perform(post("/api/v1/me/calendar-feed").header("Authorization",auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertNotEquals(first,second);
+        mvc.perform(get("/api/v1/public/calendar/"+first+".ics")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/calendar/"+second+".ics")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/public/calendar/short.ics")).andExpect(status().isNotFound());
+        owner.setWithdrawalYn("Y");users.save(owner);
+        mvc.perform(get("/api/v1/public/calendar/"+second+".ics")).andExpect(status().isNotFound());
+        owner.setWithdrawalYn("N");users.save(owner);
+        mvc.perform(delete("/api/v1/me/calendar-feed").header("Authorization",auth)).andExpect(status().isOk()).andExpect(jsonPath("$.data.subscribed").value(false));
+        mvc.perform(get("/api/v1/public/calendar/"+second+".ics")).andExpect(status().isNotFound());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_CALENDAR_FEED",Integer.class));
+    }
+    @Test void livingAreaAndAnnouncementPagesShareTheSameAreaRule() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P2','N2','운정 예정 단지','경기도 파주시 야당동 10',?,?,?)",
+                today.plusDays(5).toString(),today.plusDays(7).toString(),today.plusDays(14).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P3','N3','강남 단지','서울특별시 강남구 역삼동 1',?,?,?)",
+                today.plusDays(5).toString(),today.plusDays(7).toString(),today.plusDays(14).toString());
+        String area=mvc.perform(get("/api/v1/public/areas/unjeong")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(area.contains("운정 청약 일정"));
+        assertTrue(area.contains("/announcements/apt/P2/N2"),"주소의 동 이름으로 생활권 공고를 모은다");
+        assertFalse(area.contains("/announcements/apt/P3/N3"));
+        assertTrue(area.contains("/?area=unjeong&amp;month="+today.plusDays(5).toString().substring(0,7)),"앱 이동 시 가장 이른 접수월을 넘긴다");
+        mvc.perform(get("/api/v1/public/areas/unknown")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/areas")).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/areas/dongtan")));
+        String detail=mvc.perform(get("/api/v1/public/announcements/apt/P2/N2")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(detail.contains("/areas/unjeong") && detail.contains("운정 생활권"),detail);
+        assertTrue(detail.contains("data-app"),"공개 페이지에서 앱으로 갈 때 유입처를 넘길 링크를 표시한다");
+        mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/areas/gwanggyo")));
     }
     @Test void favoritesArePrivateValidatedAndUseAuthoritativeSummary() throws Exception {
         user("owner@example.test");user("other@example.test");String owner=token("owner@example.test"),other=token("other@example.test");
@@ -105,7 +152,7 @@ class PlannerIntegrationTest {
     @Test void shareMetadataAndPngDependOnAnnouncementAndSelectedTab() throws Exception {
         String detail=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String rate=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertTrue(detail.contains(org.springframework.web.util.HtmlUtils.htmlEscape("청약 일정·분양 정보")));assertTrue(rate.contains("청약 경쟁률"));
+        assertTrue(detail.contains("청약 일정·분양 정보"));assertTrue(rate.contains("청약 경쟁률"));
         assertTrue(rate.contains("?tabType=rate"));assertTrue(rate.contains("twitter:card"));assertTrue(rate.contains("summary_large_image"));
         assertTrue(rate.contains("announcement-images/apt/P1/N1.png?tabType=rate&amp;v=2"));
         assertFalse(rate.contains("<운정 테스트>"));
@@ -120,9 +167,9 @@ class PlannerIntegrationTest {
         byte[] before=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andReturn().getResponse().getContentAsByteArray();
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE,AVRG_SCORE) VALUES ('P1','N1','01','01','56','74','65')");
         String html=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertTrue(html.contains(org.springframework.web.util.HtmlUtils.htmlEscape("청약 경쟁률·당첨가점")));
+        assertTrue(html.contains("청약 경쟁률·당첨가점"));
         assertTrue(html.contains("최저 56점 / 최고 74점"));
-        assertTrue(html.contains(org.springframework.web.util.HtmlUtils.htmlEscape("공개 주택형·지역 전체 기준")));
+        assertTrue(html.contains("공개 주택형·지역 전체 기준"));
         byte[] after=mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png").param("tabType","rate")).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         assertFalse(java.util.Arrays.equals(before,after));
         String detail=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andReturn().getResponse().getContentAsString();

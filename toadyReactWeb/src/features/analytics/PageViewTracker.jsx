@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import config from 'config';
-import { createPageViewTracker } from './pageViews';
+import { createPageViewTracker, externalReferrer } from './pageViews';
 
 let tracker;
 function track(path) {
@@ -9,7 +9,8 @@ function track(path) {
     apiUrl: config.apiUrl,
     // localStorage 접근 자체가 금지된 브라우저에서도 추적 실패가 렌더링을 막지 않는다.
     storage: { getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value) },
-    fetcher: (...args) => fetch(...args), randomUUID: () => crypto.randomUUID()
+    fetcher: (...args) => fetch(...args), randomUUID: () => crypto.randomUUID(),
+    referrerHost: () => externalReferrer(document.referrer, window.location.search, window.location.hostname)
   });
   void tracker(path);
 }

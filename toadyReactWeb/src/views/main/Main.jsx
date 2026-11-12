@@ -6,6 +6,8 @@ import { announcementShareUrl, shareLabel, scoreShareText } from '@/features/pla
  */
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '@/api/client';
 
 import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
@@ -120,6 +122,27 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
   const { searchInputValue, setSearchInputValue, allSearchOptions, subscriptList } =
     useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions);
+
+  // 생활권 공개 페이지(/areas/{slug})에서 넘어오면 같은 생활권 검색과 첫 접수월을 한 번만 적용하고 주소에서 지운다.
+  // 새로고침·뒤로가기에서 사용자가 바꾼 검색 조건을 다시 덮어쓰지 않게 하기 위해서다.
+  const areaSlug = detailOnly ? null : searchParams.get('area');
+  const livingAreaQuery = useQuery({ queryKey:['livingAreas'], queryFn:() => apiClient.get('/api/v1/living-areas'), staleTime:3600000, enabled:Boolean(areaSlug) });
+  useEffect(() => {
+    if (!areaSlug || (!Array.isArray(livingAreaQuery.data) && !livingAreaQuery.isError)) return;
+    const area = Array.isArray(livingAreaQuery.data) ? livingAreaQuery.data.find(item => item.slug === areaSlug) : null;
+    const month = searchParams.get('month');
+    if (area) {
+      setSelectedRegions(ALL_REGIONS);
+      setSearchInputValue('');
+      setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([{ type:'living_area', label:area.label, key:`area_${area.label}`, terms:area.terms }]) }));
+      // 달력은 첫 표시 월만 받아 두므로, 검색 결과 이동과 같은 jumpToDate 경로로 월을 옮긴다.
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) setJumpToDate(`${month}-01`);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('area'); next.delete('month');
+    setSearchParams(next, { replace:true, state:location.state });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaSlug, livingAreaQuery.data, livingAreaQuery.isError]);
 
   const resetBrowseFilters = () => {
     setSelectedRegions(ALL_REGIONS);
@@ -248,6 +271,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     if (navigator.share) {
       try {
         await navigator.share(shareData);
+        trackAction('share', seq);
         return;
       } catch (err) {
         if (err.name === 'AbortError') return;
@@ -256,6 +280,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
     try {
       await navigator.clipboard.writeText(shareUrl);
+      trackAction('share', seq);
       setSnackbar({ open: true, message: '공고 링크가 클립보드에 복사되었습니다.', severity: 'success' });
     } catch {
       setSnackbar({ open: true, message: '링크 복사에 실패했습니다.', severity: 'error' });

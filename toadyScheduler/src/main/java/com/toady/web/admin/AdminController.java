@@ -20,8 +20,15 @@ public class AdminController {
     private final AdminJobService jobs;
     private final AdminJobRepository repository;
     private final AdminScheduleManager schedules;
-    public AdminController(AdminJobService jobs, AdminJobRepository repository, AdminScheduleManager schedules) {
-        this.jobs = jobs; this.repository = repository; this.schedules = schedules;
+    private final AdminMetrics metrics;
+    public AdminController(AdminJobService jobs, AdminJobRepository repository, AdminScheduleManager schedules, AdminMetrics metrics) {
+        this.jobs = jobs; this.repository = repository; this.schedules = schedules; this.metrics = metrics;
+    }
+    /** 서비스 유입·재방문 주간 지표. 조회 전용이며 수집 작업과 무관하다. */
+    @GetMapping("/admin/metrics") String metrics(Model model, Principal user) {
+        model.addAttribute("report", metrics.report(AdminJobService.today()));
+        model.addAttribute("username", user.getName());
+        return "admin/metrics";
     }
     @GetMapping("/") String root() { return "redirect:/admin/"; }
     @GetMapping("/admin/login") String login() { return "admin/login"; }

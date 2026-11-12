@@ -18,7 +18,7 @@ public class PlannerService {
             String type=r.getString("ANNOUNCEMENT_TYPE"),house=r.getString("HOUSE_MANAGE_NO"),notice=r.getString("PBLANC_NO");
             PlannerSummary.Summary summary;
             try { summary=summaries.get(type,house,notice); }
-            catch(EntityNotFoundException e) { summary=new PlannerSummary.Summary(type+"/"+house+"/"+notice,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true); }
+            catch(EntityNotFoundException e) { summary=PlannerSummary.Summary.missing(type+"/"+house+"/"+notice); }
             return new Favorite(summary.id(),r.getString("NOTE"),r.getInt("CHECKLIST"),r.getBoolean("EMAIL_ENABLED"),summary);
         },user);
     }

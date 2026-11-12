@@ -3,6 +3,7 @@ package com.toady.web.app.analytics;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +32,12 @@ public class PageViewController {
     }
 
     public record PageView(@NotNull UUID eventId, @NotNull UUID visitorId, @NotNull UUID sessionId,
-            @NotNull @Pattern(regexp = "^(/|/my|/announcements|/login|/certify|/showSubscriptDetail)$") String path) { }
+            @NotNull @Pattern(regexp = "^(/|/my|/announcements|/login|/certify|/showSubscriptDetail)$") String path,
+            // 세션 첫 조회의 외부 유입 도메인만 받는다. 전체 URL·검색어는 받지 않는다.
+            @Pattern(regexp = "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$") @Size(max = 100) String referrerHost) { }
+
+    /** 운영 DB에 유입 컬럼을 추가하기 전에 배포돼도 조회 기록이 끊기지 않게 한다. 컬럼이 생기면 재시작 없이 다시 시도한다. */
+    private volatile long legacyUntil = 0;
 
     @PostMapping
     public ResponseEntity<Void> record(@Valid @RequestBody PageView event) {
@@ -39,6 +45,17 @@ public class PageViewController {
         // 시각과 집계 날짜는 클라이언트 시계가 아닌 서버의 한국시간을 사용한다.
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         try {
+            if (System.currentTimeMillis() >= legacyUntil) {
+                try {
+                    jdbc.update("INSERT INTO TB_PAGE_VIEW (EVENT_ID,VISITOR_ID,SESSION_ID,PAGE_PATH,VISIT_DATE,REG_DT,REFERRER_HOST) VALUES (?,?,?,?,?,?,?)",
+                            event.eventId().toString(), event.visitorId().toString(), event.sessionId().toString(),
+                            event.path(), java.sql.Date.valueOf(now.toLocalDate()), Timestamp.valueOf(now), event.referrerHost());
+                    return ResponseEntity.noContent().build();
+                } catch (org.springframework.jdbc.BadSqlGrammarException missingColumn) {
+                    legacyUntil = System.currentTimeMillis() + 600_000;
+                    log.warn("TB_PAGE_VIEW.REFERRER_HOST 컬럼이 없어 유입 경로 없이 저장합니다. database.sql의 컬럼 추가 SQL을 적용하세요.");
+                }
+            }
             jdbc.update("INSERT INTO TB_PAGE_VIEW (EVENT_ID,VISITOR_ID,SESSION_ID,PAGE_PATH,VISIT_DATE,REG_DT) VALUES (?,?,?,?,?,?)",
                     event.eventId().toString(), event.visitorId().toString(), event.sessionId().toString(),
                     event.path(), java.sql.Date.valueOf(now.toLocalDate()), Timestamp.valueOf(now));
