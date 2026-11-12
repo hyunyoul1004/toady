@@ -215,6 +215,14 @@ docker run --rm -p 8080:8080 \
 
 일정 요약은 `ScheduleEvents`에서 날짜별로 정리합니다. 같은 날의 해당·경기·기타지역 순위를 합치고, 상세 접수 일정과 겹치는 일반 시작/마감 표시는 생략합니다. 원래 접수 기간은 요약의 startDate/endDate로 유지합니다. `ScheduleEventsTest`는 예시 10개 일정이 6개 날짜로 합쳐져도 발표·계약 일정과 지역 구분이 남는지 검증합니다. 이 규칙은 API 요약·일정 이메일·공유 HTML에 함께 적용되며 DB 변경은 필요하지 않습니다.
 
+### 웹 푸시 알림
+
+- 구독: `GET /api/v1/push/config`(사용 여부·VAPID 공개키), `PUT /api/v1/push/subscription`(엔드포인트·키·범위 저장, 로그인 상태면 회원 관심 공고로 연결), `POST /api/v1/push/subscription/lookup`, `POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`(구독한 본인 브라우저에만, 30초에 한 번). 엔드포인트는 접근 로그에 남지 않도록 본문으로만 받고, 서버가 임의 주소로 요청하지 않도록 FCM·Mozilla·Apple·WNS 푸시 서비스 호스트만 허용합니다.
+- 발송: `PUSH_DIGEST_ENABLED=true`일 때 한국시간 18:00~20:30, 30분마다 확인해 구독마다 하루 한 번 '관심 공고의 내일 일정'과 '구독 생활권의 새 공고'를 하나의 알림으로 묶어 보냅니다. 같은 tag·Topic이라 재시도해도 겹쳐 쌓이지 않습니다. 푸시 서비스가 404·410을 주면 구독을 바로 삭제합니다. 생활권 새 공고는 `TB_PUSH_AREA_SEEN`에 처음 확인한 시각을 남겨, 구독자가 마지막으로 알림을 받은 뒤 처음 보인 공고만 보냅니다(첫 기록 때 기존 공고는 제외).
+- 암호화는 RFC 8291(aes128gcm)·RFC 8292(VAPID ES256)를 JDK 기본 암호 기능으로 직접 구현했습니다(`WebPushCrypto`). 필요한 연산이 P-256 ECDH·HKDF·AES-GCM·ES256뿐이라 BouncyCastle·비동기 HTTP 클라이언트를 끌어오는 라이브러리 없이 처리하고, RFC 8291 부록 A 테스트 벡터로 결과를 검증합니다.
+- 환경변수: `WEB_PUSH_VAPID_PUBLIC_KEY`(비압축 P-256 공개키 base64url), `WEB_PUSH_VAPID_PRIVATE_KEY`(32바이트 개인키 base64url), `WEB_PUSH_SUBJECT`(`mailto:` 또는 `https://`, 비우면 `TOADY_WEB_DOMAIN`), `PUSH_DIGEST_ENABLED`. 키가 없거나 서로 맞지 않으면 푸시 전체가 꺼지고 웹의 알림 켜기 화면도 숨겨집니다. 키를 바꾸면 기존 구독은 모두 무효가 되므로 한 번 정한 키를 유지합니다.
+- `database.sql` 13번 테이블(`TB_PUSH_SUBSCRIPTION`, `TB_PUSH_AREA_SEEN`)이 필요합니다. `PushIntegrationTest`는 실제 푸시 서비스 대신 전송을 가로채 브라우저처럼 복호화해 내용·410 삭제·하루 1회를 검증합니다.
+
 ### 접속할 때 브라우저 자체 로그인 창이 뜨는 경우
 
 일반 서비스 API는 Bearer JWT를 사용하고 HTTP Basic·폼 로그인은 비활성화합니다. 공개 API는 로그인 없이 조회하며, 회원 전용 API의 인증 실패는 WWW-Authenticate 헤더 없이 JSON 401로 반환합니다. 브라우저에 사용자 이름/비밀번호 창이 뜨면 응답의 `WWW-Authenticate: Basic` 여부와 실제 API 포트의 실행 프로세스를 확인합니다. 오래 실행 중인 백엔드에 최신 설정이 반영되지 않았다면 API를 재시작해야 합니다. 웹 로그인 계정을 브라우저 자체 인증 창에 입력하는 방식으로 해결하지 않습니다.

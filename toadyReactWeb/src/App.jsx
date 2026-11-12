@@ -14,6 +14,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import AppRoutes from '@/routes/AppRoutes';
 import { bindAuthQueryCache } from '@/features/auth/store/bindAuthQueryCache';
 import PageViewTracker from '@/features/analytics/PageViewTracker';
+import PushBootstrap from '@/features/push/PushBootstrap';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ export const App = () => {
         <CssBaseline />
         <BrowserRouter>
           <PageViewTracker />
+          <PushBootstrap />
           <AppRoutes />
         </BrowserRouter>
       </ThemeProvider>

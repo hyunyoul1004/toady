@@ -348,3 +348,35 @@ CREATE TABLE IF NOT EXISTS TB_RATE_POLL (
     INDEX IX_RATE_POLL_CHOICE (ANNOUNCEMENT_ID, CHOICE)
 ) ENGINE=InnoDB COMMENT='공고별 경쟁률 예상 투표';
 -- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE 권한이 필요합니다.
+
+-- 13. 웹 푸시 구독 (API 배포 전에 생성, 미적용 시 알림 켜기 화면만 숨겨진다)
+-- 엔드포인트 주소 자체가 발송 권한이라 원문은 서버에만 두고, 길이 제한 없이 고유 키로 쓰도록 SHA-256 해시를 PK로 쓴다.
+-- 회원은 USER_SEQ의 관심 공고(TB_FAVORITE)를, 비회원은 FAVORITE_IDS(브라우저에 저장한 관심 공고, 최대 50개)를 쓴다.
+-- AREA_SLUGS는 생활권 slug를 쉼표로 이은 값(예: unjeong,dongtan)이며, 그 생활권의 새 공고를 하루 1회 묶음에 넣는다.
+CREATE TABLE IF NOT EXISTS TB_PUSH_SUBSCRIPTION (
+    ENDPOINT_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'ENDPOINT의 SHA-256(hex)',
+    ENDPOINT VARCHAR(1000) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '브라우저 푸시 서비스 주소',
+    P256DH VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '브라우저 공개키(base64url)',
+    AUTH VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '브라우저 인증 비밀값(base64url)',
+    USER_SEQ BIGINT NULL COMMENT '로그인 상태로 구독한 회원 번호',
+    VISITOR_ID CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '브라우저 익명 방문자 ID',
+    FAVORITES_ENABLED BOOLEAN NOT NULL DEFAULT TRUE COMMENT '관심 공고 전날 일정 알림',
+    FAVORITE_IDS TEXT NULL COMMENT '비회원 관심 공고 ID(쉼표 구분)',
+    AREA_SLUGS VARCHAR(200) NOT NULL DEFAULT '' COMMENT '새 공고를 받을 생활권 slug(쉼표 구분)',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 최초 등록 시각',
+    UPDATED_DT DATETIME(6) NOT NULL COMMENT '한국시간 범위 변경 시각',
+    LAST_ATTEMPT_DATE DATE NULL COMMENT '하루 1회 묶음 발송을 시도한 한국 날짜',
+    LAST_DIGEST_DT DATETIME(6) NULL COMMENT '묶음 알림을 마지막으로 전달한 한국시간(생활권 새 공고 기준점)',
+    LAST_SUCCESS_DT DATETIME(6) NULL COMMENT '푸시 서비스가 마지막으로 수락한 한국시간',
+    PRIMARY KEY (ENDPOINT_HASH),
+    INDEX IX_PUSH_USER (USER_SEQ)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='웹 푸시 구독과 알림 범위';
+-- 생활권별로 공고를 처음 확인한 시각. 구독자가 마지막으로 알림을 받은 뒤 처음 보인 공고만 '새 공고'로 보낸다.
+CREATE TABLE IF NOT EXISTS TB_PUSH_AREA_SEEN (
+    AREA_SLUG VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    ANNOUNCEMENT_ID VARCHAR(110) NOT NULL COMMENT '유형/주택관리번호/공고번호',
+    FIRST_SEEN_DT DATETIME(6) NOT NULL COMMENT '한국시간 최초 확인 시각',
+    PRIMARY KEY (AREA_SLUG, ANNOUNCEMENT_ID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='생활권 새 공고 판정';
+-- 앱 계정에는 두 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
+-- 구독 현황: SELECT USER_SEQ IS NOT NULL AS MEMBER, COUNT(*), SUM(LAST_SUCCESS_DT IS NOT NULL) FROM TB_PUSH_SUBSCRIPTION GROUP BY 1;

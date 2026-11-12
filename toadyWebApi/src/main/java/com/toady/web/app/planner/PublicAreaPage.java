@@ -38,6 +38,12 @@ public class PublicAreaPage {
 
     Groups groups(LivingAreas.Area area, LocalDate today) { return groups(area.label(), null, today, PAST_DAYS); }
 
+    /** 생활권 공개 페이지와 같은 기준의 접수 중·예정 공고. 웹 푸시의 생활권 새 공고 판정에 쓴다. */
+    public List<AnnouncementListItem> active(LivingAreas.Area area, LocalDate today) {
+        Groups groups = groups(area.label(), null, today, 45);
+        return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+    }
+
     /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) {
         AnnouncementSearch query = new AnnouncementSearch();

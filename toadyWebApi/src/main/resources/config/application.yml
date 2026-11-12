@@ -47,6 +47,13 @@ toady:
     reminders-enabled: ${PLANNER_REMINDERS_ENABLED:false}
     mail-limit: ${GMAIL_ROLLING_LIMIT:400}
     auth-reserve: ${GMAIL_AUTH_RESERVE:100}
+  push:
+    # VAPID 키는 환경변수로만 받는다. 둘 중 하나라도 없으면 알림 켜기 화면이 숨겨진다.
+    vapid-public-key: ${WEB_PUSH_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${WEB_PUSH_VAPID_PRIVATE_KEY:}
+    subject: ${WEB_PUSH_SUBJECT:}
+    # 하루 1회 묶음 발송(18~20시). database.sql 13번 적용 후 활성화한다.
+    digest-enabled: ${PUSH_DIGEST_ENABLED:false}
   analytics:
     enabled: ${ANALYTICS_ENABLED:true}
   security:

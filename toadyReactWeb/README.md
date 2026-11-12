@@ -127,6 +127,8 @@ localStorage의 `toady.analytics.visitor`로 브라우저 방문자를 구분하
 
 `/score` 가점 계산기는 `features/score`의 규칙표(`scoreRules.js`)로 점수를 계산하고 `toady.myScore`에 저장합니다. 공유 주소(`?h=&d=&a=`)는 받은 사람의 저장값을 덮어쓰지 않습니다. 공고 경쟁률 탭에는 내 가점 비교 카드와 경쟁률 예상 투표(`features/story/RatePoll.jsx`)를, 이야기 탭에는 일정 단계별 질문 칩(말머리 `[주제]`)을 둡니다. 동네 실거래 탭에서 면적을 고르면 같은 면적 공급금액과 실거래 중간값을 나란히 보여줍니다. `/zupzup`·`/weekly`에서 넘어온 `?focus=unranked`, `?month=`는 한 번만 적용하고 주소에서 지웁니다.
 
+웹 푸시는 `features/push`에 있습니다. `public/sw.js`는 알림 표시와 클릭 이동만 처리하고 화면·API를 캐시하지 않습니다. 알림을 누르면 열린 TOADY 창은 새로고침 없이 앱 라우터로 공고 상세(`/?subscriptSeq=`)를 열고, 창이 없으면 새 창을 엽니다. `public/manifest.webmanifest`와 같은 출처 PNG 아이콘(192·512, 애플 터치 180, 알림 배지 96)으로 홈 화면 추가를 지원합니다. 권한은 사용자가 '알림 켜기'를 눌렀을 때만 요청하며, 안내 카드는 닫으면 `toady.push.promptDismissed`로 기억해 다시 보이지 않습니다(나의 청약 › 더보기 › 알림 설정은 계속 사용 가능). 운영 Nginx는 `/sw.js`·`/manifest.webmanifest`를 장기 캐시하지 않습니다.
+
 ICS는 날짜별 종일 일정이며 종료일 다음 날을 DTEND로 지정합니다. UTF-8 75바이트 줄 접기와 텍스트 이스케이프를 적용합니다. 내려받기 시점의 일정 사본으로, 이후 변경은 자동 동기화하지 않습니다.
 
 운영 Nginx는 독립 공고 URL에서 API의 HTML 요약을 제공합니다. 서버 요약에서 전체 기능으로 이동할 수 있고 React 내부 이동에서는 상세 패널을 엽니다. 개발 Vite는 React 경로만 처리하므로 서버 HTML은 API 경로에서 별도 확인합니다. 외부 EC2 Nginx도 `/announcements/`, `/announcement-sitemap.xml`, `/sitemaps/` 요청을 프론트 컨테이너로 전달해야 합니다.
