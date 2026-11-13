@@ -3,7 +3,7 @@ import { Button, Skeleton, ToggleButton, ToggleButtonGroup } from '@mui/material
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import TrendingDownRounded from '@mui/icons-material/TrendingDownRounded';
 import { formatManwon } from '@/features/planner/researchUtils';
-import { CONFIDENCE_TEXT, gapRows, gapText, gapTone, representative } from './priceGapRules';
+import { CONFIDENCE_TEXT, LAND_LEASE_TEXT, gapRows, gapText, gapTone, representative } from './priceGapRules';
 import { usePriceGap } from './usePriceGap';
 import './match.css';
 
@@ -18,6 +18,7 @@ const scopeText = (row, dong) => (row.scope === 'DONG' ? dong : '같은 시·군
 export function PriceGapSummary({ detail, onMore }) {
   const gap = usePriceGap(detail);
   if (!gap.enabled) return null;
+  if (gap.landLease) return <div className="match-gap-summary is-same" role="note"><span><b>주변 시세 비교 제외</b><small>{LAND_LEASE_TEXT}</small></span></div>;
   if (gap.loading) return <div className="match-gap-summary is-loading" aria-busy="true"><Skeleton variant="text" width="70%" /></div>;
   if (!gap.ready) return null;
   const row = representative(gapRows(gap.units, gap.data.areas));
@@ -40,6 +41,8 @@ export default function PriceGapCard({ detail, onShowTrades, id }) {
   const [basis, setBasis] = useState('auto');
   if (!gap.enabled) return null;
   if (gap.loading) return <section className="match-gap" aria-busy="true"><Skeleton variant="text" width="40%" /><Skeleton variant="rounded" height={90} /></section>;
+  if (gap.landLease) return <section className="match-gap" id={id} aria-labelledby="match-gap-heading"><h3 id="match-gap-heading"><CompareArrowsRounded />분양가 vs 주변 시세</h3><p className="match-gap-note">{LAND_LEASE_TEXT}</p></section>;
+  if (gap.failed) return <section className="match-gap" id={id} aria-labelledby="match-gap-heading"><h3 id="match-gap-heading"><CompareArrowsRounded />분양가 vs 주변 시세</h3><p className="match-gap-note">주변 실거래를 지금 불러오지 못했어요. <Button size="small" onClick={() => gap.retry()}>다시 시도</Button></p></section>;
   if (!gap.ready) return null;
   const rows = gapRows(gap.units, gap.data.areas, basis);
   if (!rows.length) return null;

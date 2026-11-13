@@ -36,7 +36,7 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 	}
 	data class GapStatus(val status: String, val count: Long, val latest: LocalDateTime?) {
 		val label get() = when (status) {
-			"READY" -> "비교 가능"; "NO_LOCATION" -> "위치 미확인"; "NO_TRADES" -> "거래 부족"; "UNAVAILABLE" -> "제공처 실패·재시도"; else -> status
+			"READY" -> "비교 가능"; "NO_LOCATION" -> "위치 미확인"; "NO_TRADES" -> "거래 부족"; "UNAVAILABLE" -> "제공처 실패·재시도"; "LAND_LEASE" -> "토지임대부(비교 제외)"; else -> status
 		}
 	}
 	data class GapRow(val id: String, val status: String, val dong: String?, val area: Int?, val supply: Long?, val confidence: String?, val computedAt: LocalDateTime?)

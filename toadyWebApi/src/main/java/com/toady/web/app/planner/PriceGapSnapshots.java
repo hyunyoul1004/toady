@@ -76,7 +76,7 @@ public class PriceGapSnapshots {
     public Map<String, Integer> run() {
         LocalDate today = LocalDate.now(clock);
         LocalDateTime now = LocalDateTime.now(clock);
-        Map<String, Integer> report = new LinkedHashMap<>(Map.of("READY", 0, "NO_LOCATION", 0, "NO_TRADES", 0, "UNAVAILABLE", 0, "KEPT", 0));
+        Map<String, Integer> report = new LinkedHashMap<>(Map.of("READY", 0, "NO_LOCATION", 0, "NO_TRADES", 0, "UNAVAILABLE", 0, "KEPT", 0, "LAND_LEASE", 0));
         @SuppressWarnings("unchecked")
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.load(today).get("items");
         Map<String, Object[]> previous = new HashMap<>();
@@ -92,6 +92,11 @@ public class PriceGapSnapshots {
             Map<Integer, Long> supplies = supplies(item);
             if (supplies.isEmpty()) continue;
             Object[] before = previous.get(item.id());
+            // 토지임대부는 비교하지 않는다. 운영 화면에서 이유가 보이도록 상태만 남긴다(외부 호출 없음).
+            if (PriceGapRules.landLease(item.houseNm())) {
+                if (before == null || !"LAND_LEASE".equals(before[0])) { save(item.id(), "LAND_LEASE", null, null, null, now); report.merge("LAND_LEASE", 1, Integer::sum); }
+                continue;
+            }
             // 정정 공고로 분양가가 바뀌었으면 기간과 상관없이 다시 계산한다.
             boolean changed = before != null && "READY".equals(before[0]) && !Objects.equals(supplies.get((Integer) before[2]), before[3]);
             if (before != null && !changed && fresh((String) before[0], (LocalDateTime) before[1], now)) continue;

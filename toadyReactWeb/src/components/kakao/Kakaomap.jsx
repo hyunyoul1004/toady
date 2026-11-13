@@ -13,6 +13,7 @@ import {usePriceMap} from '@/features/announcement/location/usePriceMap';
 import {GROUP_LEVELS,northOf,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,NearbySummary,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
+import {PriceGapSummary} from '@/features/match/PriceGapCard';
 import './kakao.css';
 
 /**
@@ -39,7 +40,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
   const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');navigate({pathname:routeLocation.pathname,search:`?${next}`},{state:routeLocation.state});};
   const today=koreaToday();
-  const saleBubbles=useRef(new Map());
+  const saleBubbles=useRef(new Map()),salePanelRef=useRef(null);
   const showPrices=priceMap.ready;
   const supply=supplyForBand(detail.unitPrices || [],priceMap.filters);
   // 표시 단계: 축소 레벨 + 화면 밀도(레벨 5에서도 화면 안 단지가 많으면 법정동 묶음).
@@ -334,6 +335,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         {location.data.area?` 지도는 ${location.data.area.name} 일대를 추정으로 보여 주고, 공고 위치 핀은 놓지 않아요.`:''}</Typography>}
     </Paper>
     {announced && !manualResult && <NearbySummary query={nearby} onFocus={focusPlace}/>}
+    {/* 분양가 적정성 한 줄(상세 탭과 같은 요약). 누르면 지도 아래 주택형별 비교로 내려간다. */}
+    {announced && !manualResult && <Box className="pm-gap-summary"><PriceGapSummary detail={detail} onMore={()=>{priceMap.select(null);setTimeout(()=>salePanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),0);}}/></Box>}
     {(location.isLoading || location.isFetching) && <Box sx={{p:3,display:'flex',gap:1}}><CircularProgress size={20}/>공급위치를 확인하고 있어요.</Box>}
     {location.error && <Alert severity="warning" action={<Button onClick={()=>location.refetch()}>다시 확인</Button>}>위치 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</Alert>}
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:1}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}
@@ -365,7 +368,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         {priceMap.selectedSale?<SalePanel detail={detail} sale={priceMap.selectedSale} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}
             onClose={()=>priceMap.select(null)} onOpen={sale=>openSale(sale.id)}/>
           :priceMap.selected?<ComplexPanel row={priceMap.selected} supply={supply} unit={priceMap.filters.unit} onClose={()=>priceMap.select(null)}/>
-          :!manualResult && <SalePanel detail={detail} precise={announced} siteStatus={siteStatus} siteComplex={priceMap.siteComplex} onSelectComplex={chooseFromList} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
+          :!manualResult && <SalePanel panelRef={salePanelRef} detail={detail} precise={announced} siteStatus={siteStatus} siteComplex={priceMap.siteComplex} onSelectComplex={chooseFromList} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
         <ComplexList rows={priceMap.rows} filters={priceMap.filters} setFilters={priceMap.setFilters} selectedKey={selectedKey} onSelect={chooseFromList}/>
       </>}
       {precise && tradesOff && <PriceMapUnavailable reason="지금은 실거래 정보를 제공하지 않고 있어요."/>}

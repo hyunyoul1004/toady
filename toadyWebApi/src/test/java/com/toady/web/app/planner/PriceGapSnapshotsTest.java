@@ -91,6 +91,31 @@ class PriceGapSnapshotsTest {
         assertTrue(page.contains("주변 신축 시세 대비 약 9,000만원 낮음") && page.contains("참고 비교"), page);
     }
 
+    @Test void landLeaseAnnouncementsAreNotComparedWithOrdinarySales() throws Exception {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_AREA_CODE_NM,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('G3','N3','역삼 3단지 토지임대부(본청약)','서울특별시 강남구 역삼동 123-4','서울',?,?)", today.toString(), today.plusDays(2).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_MDL (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,HOUSE_TY,LTTOT_TOP_AMOUNT) VALUES ('G3','N3','01','084.9500A','30000')");
+        // 예전 규칙으로 이미 READY가 저장돼 있어도 목록 뱃지에는 붙이지 않는다.
+        jdbc.update("INSERT INTO TB_PRICE_GAP (ANNOUNCEMENT_ID,STATUS,AREA,SUPPLY_MANWON,BASIS,SCOPE,BASIS_COUNT,CONFIDENCE,Q1_MANWON,Q3_MANWON,MONTHS,COMPUTED_DT) VALUES ('apt/G3/N3','READY',85,30000,'new','DONG',9,'high',90000,100000,6,?)", java.sql.Timestamp.valueOf(java.time.LocalDateTime.now(ZoneId.of("Asia/Seoul"))));
+        feed.invalidate();
+        @SuppressWarnings("unchecked")
+        var items = (java.util.List<EligibilityFeed.Item>) feed.load(today).get("items");
+        assertNull(items.stream().filter(item -> item.id().equals("apt/G3/N3")).findFirst().orElseThrow().gap(), "토지임대부는 뱃지를 붙이지 않는다");
+
+        AtomicInteger kakaoCalls = new AtomicInteger();
+        var transport = (com.toady.web.app.planner.research.ResearchTransport) (uri, headers) -> {
+            if (uri.getHost().equals("dapi.kakao.com")) { kakaoCalls.incrementAndGet(); return KAKAO.getBytes(StandardCharsets.UTF_8); }
+            return trade(uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6));
+        };
+        var report = new PriceGapSnapshots(jdbc, store, feed, new AddressLocator(transport, "kakao-key"), new NeighborhoodResearchService(transport, "molit-key")).run();
+        assertEquals(1, report.get("LAND_LEASE"), report.toString());
+        assertEquals("LAND_LEASE", jdbc.queryForObject("SELECT STATUS FROM TB_PRICE_GAP WHERE ANNOUNCEMENT_ID='apt/G3/N3'", String.class));
+        assertEquals(1, kakaoCalls.get(), "토지임대부는 위치·실거래를 조회하지 않는다(G1만)");
+        assertTrue(PriceGapRules.landLease("삼도이동 1지구 토지임대부 공공분양주택"));
+        assertTrue(PriceGapRules.landLease("고덕강일 토지 임대부"));
+        assertFalse(PriceGapRules.landLease("역삼 새 단지"));
+    }
+
     @Test void missingTableOrKeysAreHarmless() {
         jdbc.execute("DROP TABLE IF EXISTS TB_PRICE_GAP");
         assertTrue(store.forIds(java.util.List.of("apt/G1/N1")).isEmpty(), "테이블이 없으면 빈 결과");

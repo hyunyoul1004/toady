@@ -6,9 +6,9 @@ import SyncAltRounded from '@mui/icons-material/SyncAltRounded';
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { distanceMeters as distanceMetersSafe } from './priceMapRules';
-import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND } from './priceMapRules';
+import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND, groupSaleUnits, saleGroupText } from './priceMapRules';
 import { usePriceGapFor } from '@/features/match/usePriceGap';
-import { gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
+import { LAND_LEASE_TEXT, gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
 import './priceMap.css';
 
 const SELECTS = [
@@ -208,17 +208,21 @@ export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect }
  * 같은 동(적으면 같은 시·군·구), 준공 10년 이내 거래가 3건 이상이면 신축 기준, 가운데 절반 범위.
  * siteComplex: 이 공고와 같은 필지의 실거래 단지(무순위·잔여세대처럼 이미 지어진 단지).
  */
-export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale = null, siteStatus = null, siteComplex = null, origin, onOpen, onClose, onSelectComplex }) {
+export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale = null, siteStatus = null, siteComplex = null, origin, onOpen, onClose, onSelectComplex, panelRef }) {
   const rawUnits = sale ? (sale.units || []).map(unit => ({ ...unit, area: Number(unit.area), supplyArea: unit.supplyArea == null ? null : Number(unit.supplyArea) })) : (detail.unitPrices || []);
-  const gap = usePriceGapFor(rawUnits, sale ? (sale.bcode ? { bcode: sale.bcode, dong: sale.dong } : null) : precise);
+  const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
+  const target = sale ? (sale.bcode ? { bcode: sale.bcode, dong: sale.dong } : null) : precise;
+  const gap = usePriceGapFor(rawUnits, target, name);
   const units = gap.units;
   const rows = gap.ready ? gapRows(units, gap.data.areas, 'auto') : [];
-  const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
+  const groups = groupSaleUnits(units);
+  // 비교 칸을 아예 두지 않는 경우: 토지임대부, 부지 미확정(지구·블록 주소)·위치 없음.
+  const noCompare = gap.landLease ? LAND_LEASE_TEXT : !target ? '부지가 확정되지 않아(지구·블록 주소) 주변 시세와 비교하지 않아요. 지도는 주소의 법정동 일대를 참고로만 보여 줘요.' : '';
   const status = sale ? sale.status : siteStatus;
   const period = sale && sale.start ? [`접수 ${sale.start.replaceAll('-', '.')}${sale.end && sale.end !== sale.start ? ` ~ ${sale.end.slice(5).replaceAll('-', '.')}` : ''}`, moveInText(sale.moveIn)].filter(Boolean).join(' · ') : '';
   const distance = sale ? distanceText(distanceMetersSafe(origin, sale)) : '';
   const siteAreas = siteComplex ? [...(siteComplex.areas || [])].sort((a, b) => b.count - a.count).slice(0, 3) : [];
-  return <Paper variant="outlined" className={`price-map-panel is-sale${sale ? ' is-other' : ''}`} aria-label={`${name} 분양가`}>
+  return <Paper variant="outlined" ref={panelRef} className={`price-map-panel is-sale${sale ? ' is-other' : ''}`} aria-label={`${name} 분양가`}>
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
       <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}>{!sale && <span className="pm-sale-tag">이 공고</span>}{status && <span className={`pm-sale-tag${status === 'DONE' ? ' is-done' : ''}${sale ? '' : ' is-status'}`}>{saleStatusLabel(status)}</span>}{name}</Typography>
       {sale && <IconButton size="small" aria-label="청약 단지 정보 닫기" onClick={onClose}><CloseRounded fontSize="small" /></IconButton>}
@@ -230,23 +234,25 @@ export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale 
       {siteAreas.map(item => <span key={item.area}>{areaText(item.area, areaUnit)} <b>{shortPrice(monthPrice(item))}</b> <small>{monthLabel(item.month || String(item.latestDate || '').slice(0, 7))} {item.monthCount || 1}건 평균</small></span>)}
       {onSelectComplex && <Button size="small" onClick={() => onSelectComplex(siteComplex)}>거래 자세히</Button>}
     </Box>}
+    {noCompare && units.length > 0 && <Typography className="price-map-sale-note" variant="caption" component="p">{noCompare}</Typography>}
     {units.length ? <>
-      <Box className="price-map-areas is-sale" role="table" aria-label="주택형별 분양가와 주변 시세">
-        <div role="row" className="price-map-areas-head"><span role="columnheader">주택형</span><span role="columnheader">분양가(최고)</span><span role="columnheader">주변 시세</span></div>
-        {units.map(unit => {
-          const label = unitAreaLabel(unit, areaUnit);
-          const row = rows.find(item => item.area === Math.round(unit.area));
-          return <div role="row" key={unit.id || unit.type || unit.label}>
-            <span role="cell">{label.main}{label.sub && <small>{label.sub}</small>}</span>
-            <span role="cell"><b>{shortPrice(unit.amountManwon)}</b><small>{perLabel(areaUnit)} {shortPrice(perPyeong(unit.amountManwon, unit.area))}</small></span>
-            <span role="cell">{gap.loading ? <small>불러오는 중…</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
+      <Box className={`price-map-areas is-sale${noCompare ? ' is-plain' : ''}`} role="table" aria-label="주택형별 분양가와 주변 시세">
+        <div role="row" className="price-map-areas-head"><span role="columnheader">주택형</span><span role="columnheader">분양가(최고)</span>{!noCompare && <span role="columnheader">주변 시세</span>}</div>
+        {groups.map(group => {
+          const text = saleGroupText(group, areaUnit);
+          const row = rows.find(item => item.area === group.area);
+          return <div role="row" key={group.area}>
+            <span role="cell">{text.main}{text.sub && <small>{text.sub}</small>}</span>
+            <span role="cell"><b>{text.price}</b><small>{text.per}</small></span>
+            {!noCompare && <span role="cell">{gap.loading ? <small>불러오는 중…</small> : gap.failed ? <small>불러오지 못했어요</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
               <small>{row.basis === 'new' ? '신축' : '전체 연식'} {row.basisCount}건 · {row.scope === 'DONG' ? (gap.precise?.dong || '같은 동') : '같은 시·군·구'}</small>
-              <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>{gap.enabled ? '비교할 거래 부족' : sale || precise ? '비교 불가' : '부지 미확정이라 비교하지 않아요'}</small>}</span>
+              <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>비교할 거래 부족</small>}</span>}
           </div>;
         })}
       </Box>
+      {gap.failed && <Button size="small" onClick={() => gap.retry()} sx={{ mt: .5 }}>주변 시세 다시 불러오기</Button>}
       <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1, mb: 0 }}>
-        분양가는 주택형별 최고 공급금액이에요(발코니 확장·옵션 제외). 주변 시세는 상세 탭 ‘분양가 vs 주변 시세’와 같은 기준이에요: {gap.data ? `${String(gap.data.fromMonth || '').replace('-', '.')}~${String(gap.data.toMonth || '').replace('-', '.')} ` : ''}같은 면적(전용 ±5㎡) 매매, 같은 동(거래가 적으면 같은 시·군·구), 준공 10년 이내 거래가 3건 이상이면 신축 기준, 가운데 절반 범위.
+        분양가는 주택형별 최고 공급금액이에요(발코니 확장·옵션 제외). 3.3㎡당 금액은 공급면적 기준이에요(공급면적이 없으면 전용).{!noCompare && <> 주변 시세는 상세 탭 ‘분양가 vs 주변 시세’와 같은 기준이에요: {gap.data ? `${String(gap.data.fromMonth || '').replace('-', '.')}~${String(gap.data.toMonth || '').replace('-', '.')} ` : ''}같은 면적(전용 ±5㎡) 매매, 같은 동(거래가 적으면 같은 시·군·구), 준공 10년 이내 거래가 3건 이상이면 신축 기준, 가운데 절반 범위.</>}
       </Typography>
     </> : <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>이 공고는 주택형별 분양가 자료가 없어요.</Typography>}
   </Paper>;

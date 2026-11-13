@@ -6,6 +6,12 @@
  * diff = 시세 − 분양가. 양수면 분양가가 시세보다 낮다.
  */
 export const MIN_NEW_TRADES = 3;
+/**
+ * 토지임대부 분양은 건물만 분양하고 토지는 임대(월 임대료 별도)라 일반 아파트 매매가와 직접 비교하지 않는다.
+ * 서버 PriceGapRules.landLease와 같은 규칙: 주택명에 '토지임대부'(띄어쓰기 무관)가 있으면 제외.
+ */
+export const isLandLease = name => /토지\s*임대\s*부/.test(String(name || ''));
+export const LAND_LEASE_TEXT = '토지임대부 공고라 주변 아파트 매매가와 직접 비교하지 않아요. 토지는 임대(월 임대료 별도)라 같은 기준이 아니에요.';
 
 export function confidenceOf(row) {
   if (!row) return 'low';

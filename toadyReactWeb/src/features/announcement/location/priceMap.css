@@ -189,3 +189,17 @@
   .pm-nearby>button span>small:first-child{display:none}
   .pm-nearby>button{min-height:44px;padding:4px 10px}
 }
+
+/* 분양 패널: 비교 제외 안내, 비교 칸이 없는 표(2열), 모바일 카드형(주변 시세는 아랫줄 전체 폭) */
+.price-map-sale-note{display:block;margin:10px 0 0!important;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700}
+.price-map-areas.is-sale.is-plain>div{grid-template-columns:1.4fr 1fr}
+@media (max-width:600px){
+  .price-map-areas.is-sale:not(.is-plain)>div{grid-template-columns:1fr 1fr}
+  .price-map-areas.is-sale:not(.is-plain)>div>[role=cell]:nth-child(3){grid-column:1/-1;justify-content:flex-end;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;padding-top:2px}
+  .price-map-areas.is-sale:not(.is-plain)>div>[role=cell]:nth-child(3) small{display:inline}
+  .price-map-areas.is-sale:not(.is-plain)>.price-map-areas-head>[role=columnheader]:nth-child(3){display:none}
+}
+/* 위치 탭 맨 위의 분양가 비교 한 줄(상세 탭 요약 재사용): 아래 여백만 맞춘다 */
+.pm-gap-summary{margin:0 0 10px}
+.pm-gap-summary:empty{display:none}
+.pm-gap-summary .match-gap-summary{margin-top:0}

@@ -459,3 +459,38 @@ export function isSameComplex(complex, location, { type = '', year = new Date().
   if (['remaining', 'optional'].includes(type)) return true;
   return /^\d{4}$/.test(complex?.buildYear || '') && year - Number(complex.buildYear) <= 3;
 }
+
+/**
+ * 분양 주택형을 전용면적(반올림)이 같은 것끼리 한 줄로 묶는다(타입 A~F처럼 거의 같은 줄이 반복되지 않게).
+ * minAmount·maxAmount: 그 면적 주택형들의 최고 공급금액 범위. supplyArea: 공급면적(가장 큰 값, 평형 표시용).
+ * perMin·perMax: 3.3㎡당 분양가(공급면적이 있으면 공급 기준, 없으면 전용 기준 — perBasis로 알린다).
+ */
+export function groupSaleUnits(units = []) {
+  const groups = new Map();
+  units.forEach(unit => {
+    const key = Math.round(Number(unit.area));
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(unit);
+  });
+  return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([area, list]) => {
+    const amounts = list.map(unit => unit.amountManwon);
+    const letters = list.map(unit => String(unit.type || '').trim().match(/[A-Za-z]+$/)?.[0]).filter(Boolean);
+    const supplies = list.map(unit => Number(unit.supplyArea)).filter(value => Number.isFinite(value) && value >= 10);
+    const bySupply = supplies.length === list.length;
+    const pers = list.map(unit => perPyeong(unit.amountManwon, bySupply ? Number(unit.supplyArea) : Number(unit.area)));
+    return { area, count: list.length, letters, units: list, minAmount: Math.min(...amounts), maxAmount: Math.max(...amounts),
+      supplyArea: supplies.length ? Math.max(...supplies) : null, perBasis: bySupply ? 'supply' : 'exclusive', perMin: Math.min(...pers), perMax: Math.max(...pers) };
+  });
+}
+/** 묶은 주택형 줄의 글자: main(주택형), sub(보조), price(분양가 범위), per(3.3㎡당, 기준 명시). */
+export function saleGroupText(group, areaUnit = 'm2') {
+  const range = (low, high) => (low === high ? shortPrice(low) : `${shortPrice(low)}~${shortPrice(high)}`);
+  const per = `${group.perBasis === 'supply' ? '공급' : '전용'} 3.3㎡당 ${range(group.perMin, group.perMax)}`;
+  if (group.count === 1) { const label = unitAreaLabel(group.units[0], areaUnit); return { main: label.main, sub: label.sub, price: range(group.minAmount, group.maxAmount), per }; }
+  const pyeong = group.supplyArea ? `${Math.round(group.supplyArea / PYEONG)}평형` : `약 ${supplyPyeong(group.area)}평형(추정)`;
+  const letters = group.letters.length === group.count ? (group.count <= 3 ? group.letters.join('·') : `${group.letters[0]}~${group.letters[group.letters.length - 1]}`) : '';
+  const types = `${letters ? `${letters} ` : ''}${group.count}개 타입`;
+  return areaUnit === 'pyeong'
+    ? { main: pyeong, sub: `전용 ${group.area}㎡ · ${types}`, price: range(group.minAmount, group.maxAmount), per }
+    : { main: `전용 ${group.area}㎡`, sub: `${pyeong} · ${types}`, price: range(group.minAmount, group.maxAmount), per };
+}

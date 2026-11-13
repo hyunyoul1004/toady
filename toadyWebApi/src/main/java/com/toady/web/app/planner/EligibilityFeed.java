@@ -91,7 +91,8 @@ public class EligibilityFeed {
         Map<String, PriceGapStore.Gap> gaps = gapStore.forIds(built.stream().map(Item::id).toList());
         List<Item> items = built.stream().map(item -> {
             // 분양가가 바뀐 공고는 gapStore.forIds가 이미 빼고 돌려준다.
-            return item.withGap(gaps.get(item.id()));
+            // 토지임대부는 일반 매매가와 비교하지 않는다(이미 저장된 값이 있어도 뱃지를 붙이지 않는다).
+            return item.withGap(PriceGapRules.landLease(item.houseNm()) ? null : gaps.get(item.id()));
         }).toList();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("checkedAt", clock.instant().toString());

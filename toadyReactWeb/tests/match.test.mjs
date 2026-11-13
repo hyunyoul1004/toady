@@ -267,3 +267,11 @@ test('캘린더 지역 검색: 같은 이름의 구·글자 포함으로 다른 
   assert.equal(matchesRegionTarget({ hssplyAdres: '경기 파주시 동패동 1' }, { cityName: '경기도' }), true, '줄임말 시·도');
   assert.equal(matchesRegionTarget({ hssplyAdres: '파주운정3지구 A1블록', regionName: '경기' }, { cityName: '경기도', districtName: '파주시' }), false, '주소에 구·시가 없으면 단정하지 않는다');
 });
+
+test('토지임대부 공고는 일반 매매가와 비교하지 않는다(서버 PriceGapRules.landLease와 같은 규칙)', async () => {
+  const { isLandLease } = await import('../src/features/match/priceGapRules.js');
+  assert.equal(isLandLease('고덕강일지구 3단지 토지임대부(본청약)'), true);
+  assert.equal(isLandLease('삼도이동 1지구 토지 임대부 공공분양주택'), true);
+  assert.equal(isLandLease('GTX운정중앙역 시티프라디움 3단지'), false);
+  assert.equal(isLandLease(null), false);
+});

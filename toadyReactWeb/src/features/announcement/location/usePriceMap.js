@@ -83,11 +83,13 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
       queryKey: ['complexPrices', item.bcode.slice(0, 5), item.region || '', filters.months],
       queryFn: () => apiClient.get('/api/v1/research/complexes', { bcode: item.bcode, region: item.region, months: filters.months }),
       enabled: ready,
-      staleTime: 600000,
+      // 제공처 일시 실패(UNAVAILABLE)는 캐시하지 않고 15초 간격으로 몇 번만 다시 묻는다(다시 시도 단추도 그대로 둔다).
+      staleTime: q => (q.state.data?.status === 'UNAVAILABLE' ? 0 : 600000),
       retry: false,
       placeholderData: keepPreviousData,
       refetchInterval: q => {
         const data = q.state.data;
+        if (data?.status === 'UNAVAILABLE') return q.state.dataUpdateCount < 4 ? 15000 : false;
         return data && (data.pending > 0 || data.partial) && q.state.dataUpdateCount < MAX_FOLLOW_UPS ? 4000 : false;
       }
     }))

@@ -10,6 +10,11 @@ import java.util.*;
 public final class PriceGapRules {
     private PriceGapRules() { }
     static final int MIN_NEW_TRADES = 3;
+    /**
+     * 토지임대부 분양은 건물만 분양하고 토지는 임대(월 임대료 별도)라 땅까지 소유하는 일반 아파트 매매가와 직접 비교하지 않는다.
+     * 화면(priceGapRules.isLandLease)과 같은 규칙: 주택명에 '토지임대부'가 있으면 제외.
+     */
+    public static boolean landLease(String houseNm) { return houseNm != null && houseNm.replaceAll("\\s+", "").contains("토지임대부"); }
     public record Row(int area, long supply, String scope, String basis, int basisCount, String confidence, long q1, long q3, long diffLow, long diffHigh) { }
 
     static String confidence(String basis, String scope, int basisCount) {

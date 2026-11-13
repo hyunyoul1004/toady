@@ -46,7 +46,9 @@ public class NeighborhoodResearchService {
     /** 법정동 코드 앞 2자리(시·도). 12: 전남광주통합특별시(광주·전남 통합 뒤 새 코드). */
     static final java.util.Set<String> SIDO_CODES=java.util.Set.of("11","12","26","27","28","29","30","31","36","41","42","43","44","45","46","47","48","50","51","52");
     private final com.google.common.cache.Cache<String,Boolean> failedMonths=com.google.common.cache.CacheBuilder.newBuilder()
-        .maximumSize(5000).expireAfterWrite(3,TimeUnit.MINUTES).build();
+        // 제공처 일시 오류(초당 호출 제한 등)로 한 달이 실패해도 그 달만 잠깐(30초) 쉬고, 같은 시·군·구의 다른 달은 계속 쓴다.
+        .maximumSize(5000).expireAfterWrite(FAILED_MONTH_SECONDS,TimeUnit.SECONDS).build();
+    static final int FAILED_MONTH_SECONDS=30;
     public boolean tradesEnabled() {return !molitKey.isBlank();}
     public TradeResult trades(String bcode,String dong) {return trades(bcode,dong,null);}
     public TradeResult trades(String bcode,String dong,BigDecimal area) {
@@ -104,7 +106,8 @@ public class NeighborhoodResearchService {
             for(int month=0;month<GAP_MONTHS;month++) {
                 String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
                 String key=bcode.substring(0,5)+"/"+ymd;
-                if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
+                // 최근 실패한 달은 건너뛰고(부분 결과), 나머지 달로 비교한다.
+                if(failedMonths.getIfPresent(key)!=null) continue;
                 TradeMonth data=tradeCache.getIfPresent(key);
                 if(data==null) {
                     // 응답 시간 한도를 넘기면 제공처 실패로 기록하지 않고, 이미 받은 달까지만으로 결과를 만든다.
@@ -112,7 +115,7 @@ public class NeighborhoodResearchService {
                     try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
                     catch(Exception failure) {
                         if(deadlineExceeded(failure)) break;
-                        failedMonths.put(key,Boolean.TRUE); throw failure;
+                        failedMonths.put(key,Boolean.TRUE); continue;
                     }
                 }
                 all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
@@ -150,12 +153,13 @@ public class NeighborhoodResearchService {
             for(int month=0;month<months;month++) {
                 String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
                 String key=bcode.substring(0,5)+"/"+ymd;
-                if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
+                // 한 달이 실패해도 시·군·구 전체를 막지 않는다: 그 달만 건너뛰고 partial로 돌려주면 화면이 잠시 뒤 다시 부른다.
+                if(failedMonths.getIfPresent(key)!=null) continue;
                 TradeMonth data=tradeCache.getIfPresent(key);
                 if(data==null) {
                     if(System.nanoTime()>deadline) break;
                     try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
-                    catch(Exception failure) { if(deadlineExceeded(failure)) break; failedMonths.put(key,Boolean.TRUE); throw failure; }
+                    catch(Exception failure) { if(deadlineExceeded(failure)) break; failedMonths.put(key,Boolean.TRUE); continue; }
                 }
                 all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
             }
@@ -186,12 +190,21 @@ public class NeighborhoodResearchService {
         int middle=sorted.size()/2;
         return sorted.size()%2==1?sorted.get(middle):Math.round((sorted.get(middle-1)+sorted.get(middle))/2.0);
     }
+    /** 한 쪽을 받는다. 제공처 일시 오류면 0.4초 뒤 한 번만 다시 시도한다(응답 시간 한도 안에서). */
+    private Page fetchPage(URI uri,long deadline) throws Exception {
+        try { return parseTrades(transport.get(uri,Map.of())); }
+        catch(Exception first) {
+            if(System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(400)>deadline) throw first;
+            Thread.sleep(400);
+            return parseTrades(transport.get(uri,Map.of()));
+        }
+    }
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
         List<Trade> result=new ArrayList<>();int expected=-1,read=0;
         for(int number=1;number<=5;number++) {
             if(System.nanoTime()>deadline) throw new DeadlineExceeded();
             URI uri=URI.create("https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?LAWD_CD="+district+"&DEAL_YMD="+ymd+"&numOfRows=1000&pageNo="+number+"&serviceKey="+encode(molitKey));
-            Page page=parseTrades(transport.get(uri,Map.of()));
+            Page page=fetchPage(uri,deadline);
             if(expected==-1) expected=page.total();
             if(expected!=page.total() || expected>5000) throw new IllegalStateException("Incomplete provider response");
             if(page.trades().stream().anyMatch(trade -> !YearMonth.from(trade.date()).format(DateTimeFormatter.ofPattern("yyyyMM")).equals(ymd)))

@@ -74,9 +74,9 @@ class NeighborhoodResearchServiceTest {
         AtomicInteger calls=new AtomicInteger();
         var service=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();return "<response><resultCode>30</resultCode></response>".getBytes();},"key");
         assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());
-        // 실패는 '거래 없음'으로 바꾸지 않고, 같은 시군구·월은 몇 분간 다시 부르지 않아 일일 쿼터를 지킨다.
-        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(1,calls.get());
-        assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(1,calls.get());
+        // 실패는 '거래 없음'으로 바꾸지 않는다. 일시 오류일 수 있어 한 번만 다시 시도하고(2회), 같은 시군구·월은 잠시(30초) 다시 부르지 않아 쿼터를 지킨다.
+        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(2,calls.get());
+        assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(2,calls.get());
     }
     @Test void incompletePaginationAndWrongMonthsNeverReturnPartialResults() {
         var service=new NeighborhoodResearchService((uri,headers)->{
@@ -93,5 +93,33 @@ class NeighborhoodResearchServiceTest {
         var service=new NeighborhoodResearchService((uri,headers)->{throw new AssertionError("Unexpected outbound request");},"");
         assertEquals("NOT_CONFIGURED",service.trades("4148012800","동패동").status());
         assertThrows(Exception.class,()->NeighborhoodResearchService.parseTrades("<!DOCTYPE x [<!ENTITY external SYSTEM 'file:///etc/passwd'>]><x>&external;</x>".getBytes()));
+    }
+
+    /** 제공처 일시 오류: 한 번은 다시 시도하고, 계속 실패한 달만 빼고 받은 달로 돌려준다(시·군·구 전체를 막지 않는다). */
+    @Test void aFailingMonthIsRetriedOnceThenSkippedWithoutBlockingTheDistrict() {
+        java.time.YearMonth now=java.time.YearMonth.now(java.time.ZoneId.of("Asia/Seoul"));
+        String flaky=now.minusMonths(1).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
+        String broken=now.minusMonths(2).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
+        java.util.Map<String,AtomicInteger> calls=new java.util.concurrent.ConcurrentHashMap<>();
+        var service=new NeighborhoodResearchService((uri,headers)->{
+            String month=uri.getQuery().split("DEAL_YMD=")[1].substring(0,6);
+            int n=calls.computeIfAbsent(month,k->new AtomicInteger()).incrementAndGet();
+            if(month.equals(flaky) && n==1) throw new java.io.IOException("throttled");
+            if(month.equals(broken)) return "<response><header><resultCode>22</resultCode></header></response>".getBytes(StandardCharsets.UTF_8);
+            return response(month,"동패동","");
+        },"key");
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+        var district=service.districtTrades("4148012800",6,deadline);
+        assertEquals("READY",district.status());
+        assertEquals(5,district.months(),"계속 실패한 한 달만 빠진다");
+        assertTrue(district.partial(),"빠진 달이 있으면 partial이라 화면이 잠시 뒤 다시 부른다");
+        assertEquals(2,calls.get(flaky).get(),"일시 오류는 한 번 다시 시도해 받는다");
+        assertEquals(2,calls.get(broken).get());
+        int brokenCalls=calls.get(broken).get();
+        assertEquals("READY",service.districtTrades("4148012800",6,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)).status());
+        assertEquals(brokenCalls,calls.get(broken).get(),"실패한 달은 잠깐(30초) 다시 묻지 않는다");
+        var gap=service.priceGap("4148012800","동패동",java.util.List.of(new BigDecimal("84")));
+        assertEquals("READY",gap.status(),"분양가 비교도 실패한 달만 빼고 계산한다");
+        assertTrue(gap.partial());
     }
 }

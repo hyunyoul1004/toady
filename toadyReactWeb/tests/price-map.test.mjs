@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW, nearbyText, isSameComplex
+, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW, nearbyText, isSameComplex, groupSaleUnits, saleGroupText
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -323,4 +323,16 @@ test('같은 지번이라도 재건축 전 옛 아파트는 이 단지로 보지
   assert.equal(isSameComplex(built, location, { type: 'apt', year: 2026 }), true, '최근 준공 단지');
   assert.equal(isSameComplex(old, location, { type: 'remaining', year: 2026 }), true, '무순위는 이미 지어진 단지의 공고');
   assert.equal(isSameComplex({ ...built, jibun: '141-12' }, location, { type: 'remaining', year: 2026 }), false);
+});
+
+test('같은 전용면적 주택형은 한 줄로 묶고, 3.3㎡당은 공급면적 기준을 밝힌다', () => {
+  const units = ['A', 'B', 'C', 'D', 'E', 'F'].map((letter, i) => ({ type: `049.9${i}00${letter}`, area: 49.9, supplyArea: 68.4, amountManwon: 31000 + i * 100 }))
+    .concat([{ type: '059.9800', area: 59.98, supplyArea: 82.1, amountManwon: 39050 }]);
+  const groups = groupSaleUnits(units);
+  assert.equal(groups.length, 2);
+  assert.deepEqual([groups[0].area, groups[0].count, groups[0].minAmount, groups[0].maxAmount, groups[0].perBasis], [50, 6, 31000, 31500, 'supply']);
+  assert.deepEqual(saleGroupText(groups[0], 'm2'), { main: '전용 50㎡', sub: '21평형 · A~F 6개 타입', price: '3.1억~3.2억', per: `공급 3.3㎡당 ${Math.round(31000 / 68.4 * 3.305785).toLocaleString('ko-KR')}만~${Math.round(31500 / 68.4 * 3.305785).toLocaleString('ko-KR')}만` });
+  assert.equal(saleGroupText(groups[0], 'pyeong').main, '21평형');
+  assert.equal(saleGroupText(groups[1], 'm2').main, '전용 59.98㎡', '한 타입이면 그대로');
+  assert.match(saleGroupText(groupSaleUnits([{ area: 84.9, amountManwon: 60000 }])[0]).per, /^전용 3.3㎡당/, '공급면적이 없으면 전용 기준이라고 밝힌다');
 });
