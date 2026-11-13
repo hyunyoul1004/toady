@@ -30,8 +30,9 @@ class CompetitionSnapshotTest {
         service.replace("SNAPSHOT_TEST", columns, keys, "house", "notice", List.of(row));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM SNAPSHOT_TEST WHERE MODEL_NO='old'", Integer.class));
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM SNAPSHOT_TEST", Integer.class));
+        // 빈 응답은 일시 장애일 수 있어 이미 저장한 행을 지우지 않는다.
         service.replace("SNAPSHOT_TEST", columns, keys, "house", "notice", List.of());
-        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM SNAPSHOT_TEST", Integer.class));
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM SNAPSHOT_TEST", Integer.class));
     }
     @Test void failedInsertRestoresDeletedRows() throws Exception {
         var row = new ObjectMapper().readTree("{\"HOUSE_MANAGE_NO\":\"house\",\"PBLANC_NO\":\"notice\",\"MODEL_NO\":\"new\",\"RATE\":\"too-long-for-column\"}");

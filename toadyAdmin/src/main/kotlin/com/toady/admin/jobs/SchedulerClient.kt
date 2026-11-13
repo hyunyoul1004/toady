@@ -51,11 +51,16 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 
 	private fun post(path: String, body: Any?, vararg vars: Any): Map<*, *> = call {
 		val spec = client.post().uri(path, *vars).contentType(MediaType.APPLICATION_JSON)
-		(if (body != null) spec.body(body) else spec).retrieve()
-			// 업무 오류(400·409: 기간 오류·진행 중 작업 등)는 스케줄러가 준 사유를 그대로 보여 준다.
+		val entity = (if (body != null) spec.body(body) else spec).retrieve()
+			// 업무 오류(400·409: 기간 오류·진행 중 작업 등)는 스케줄러가 준 사유를 오류로 보여 준다.
+			// 성공 응답과 같은 message 키를 쓰므로 상태 코드로 구분해야 실패가 성공 알림으로 보이지 않는다.
 			// 403·404(토큰 불일치·관리 기능 꺼짐)는 예외로 넘겨 call{}에서 원인을 안내한다.
 			.onStatus({ it.value() == 400 || it.value() == 409 }) { _, _ -> }
-			.body(Map::class.java) ?: emptyMap<String, Any>()
+			.toEntity(Map::class.java)
+		val response = entity.body ?: emptyMap<String, Any>()
+		if (entity.statusCode.value() == 400 || entity.statusCode.value() == 409)
+			throw SchedulerException(response["message"]?.toString() ?: "스케줄러가 요청을 처리하지 못했습니다.")
+		response
 	}
 	private fun message(response: Map<*, *>, key: String): String =
 		response[key]?.toString() ?: throw SchedulerException(response["message"]?.toString() ?: "스케줄러가 요청을 처리하지 못했습니다.")

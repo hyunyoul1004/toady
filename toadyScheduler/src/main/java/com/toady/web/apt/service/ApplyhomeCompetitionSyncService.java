@@ -185,6 +185,8 @@ public class ApplyhomeCompetitionSyncService {
 			} catch (RuntimeException failure) {
 				// 중단 요청(배포·관리자 중지)은 그대로 멈춘다.
 				if (Thread.currentThread().isInterrupted()) throw failure;
+				// 인증키 오류·일일 한도 초과는 남은 공고도 모두 실패하므로 바로 멈추고 원인을 남긴다.
+				if (failure instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException) throw failure;
 				failures.add(table.table() + ":" + key.houseManageNo() + "/" + key.pblancNo());
 				log.warn("Applyhome competition sync failed for one announcement table={} key={}/{} error={}",
 						table.table(), key.houseManageNo(), key.pblancNo(), failure.getMessage());

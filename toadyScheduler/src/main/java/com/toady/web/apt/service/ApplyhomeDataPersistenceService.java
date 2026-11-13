@@ -89,7 +89,10 @@ public class ApplyhomeDataPersistenceService {
 		}
 	}
 
-    /** 일반 주택형도 공고별 전체 응답으로 교체해 삭제·모델번호 정정을 반영한다. */
+    /**
+     * 일반 주택형도 공고별 전체 응답으로 교체해 삭제·모델번호 정정을 반영한다.
+     * 응답에 주택형이 하나도 없는 공고는 일시적인 빈 응답일 수 있어 기존 주택형을 지우지 않는다.
+     */
     @Transactional
     public <T> void replaceModels(Class<T> type, List<AnnouncementKey> announcements, List<T> models) {
         Set<Class<?>> allowed = Set.of(com.toady.web.apt.entity.AptLttotPblancMdl.class,
@@ -106,7 +109,17 @@ public class ApplyhomeDataPersistenceService {
                 throw new IllegalArgumentException("Model is missing keys or belongs to another announcement");
             }
         }
+        Set<AnnouncementKey> present = new java.util.HashSet<>();
+        for (T model : models) {
+            var bean = new org.springframework.beans.BeanWrapperImpl(model);
+            present.add(new AnnouncementKey((String) bean.getPropertyValue("houseManageNo"), (String) bean.getPropertyValue("pblancNo")));
+        }
         for (AnnouncementKey key : scopes) {
+            if (!present.contains(key)) {
+                org.slf4j.LoggerFactory.getLogger(ApplyhomeDataPersistenceService.class)
+                        .warn("주택형 응답이 비어 기존 주택형을 유지: type={}, house={}, notice={}", type.getSimpleName(), key.houseManageNo(), key.pblancNo());
+                continue;
+            }
             entityManager.createQuery("delete from " + type.getSimpleName()
                     + " m where m.houseManageNo = :house and m.pblancNo = :notice")
                     .setParameter("house", key.houseManageNo()).setParameter("notice", key.pblancNo()).executeUpdate();

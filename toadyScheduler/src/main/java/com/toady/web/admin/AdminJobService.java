@@ -195,6 +195,14 @@ public class AdminJobService {
             }
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
             log.error("Manual scheduler job failed: id={}", id, exception);
+            Throwable cause = exception;
+            while (cause != null && !(cause instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException)) cause = cause.getCause();
+            if (cause instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException rejected) {
+                // 인증키 오류·일일 한도 초과는 원인을 그대로 알려 운영자가 다시 실행할 시점을 판단하게 한다.
+                repository.finish(id, "FAILED", "청약홈 API가 요청을 거절해 중단했습니다(HTTP " + rejected.status()
+                        + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", now());
+                return;
+            }
             String earlier = partialFailures.isEmpty() ? "" : " 앞 기간의 일부 실패: " + String.join(" / ", partialFailures);
             String message = "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요." + earlier;
             repository.finish(id, "FAILED", message.length() > 900 ? message.substring(0, 900) + "…" : message, now());

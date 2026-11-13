@@ -44,12 +44,15 @@ class ApplyhomeCompetitionPersistenceServiceTest {
         verifyNoInteractions(jdbc);
     }
 
-    @Test void emptySnapshotRemovesOldAnnouncementRows() {
+    @Test void emptySnapshotKeepsExistingAnnouncementRows() {
         var jdbc = mock(JdbcTemplate.class);
-        new ApplyhomeCompetitionPersistenceService(jdbc).replace("TEST_TABLE",
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any())).thenReturn(3);
+        boolean replaced = new ApplyhomeCompetitionPersistenceService(jdbc).replace("TEST_TABLE",
                 List.of("HOUSE_MANAGE_NO", "PBLANC_NO"), List.of("HOUSE_MANAGE_NO", "PBLANC_NO"),
                 "house", "notice", List.of());
-        verify(jdbc).update("DELETE FROM TEST_TABLE WHERE HOUSE_MANAGE_NO = ? AND PBLANC_NO = ?", "house", "notice");
+        org.junit.jupiter.api.Assertions.assertFalse(replaced);
+        verify(jdbc, never()).update(startsWith("DELETE"), any(Object[].class));
+        verify(jdbc, never()).update(startsWith("DELETE"), anyString(), anyString());
     }
 
     @Test void anotherAnnouncementsSnapshotCannotDeleteExistingRows() throws Exception {

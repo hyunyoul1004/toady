@@ -61,8 +61,10 @@ public class ApplyhomeCompetitionApiClient {
 					.retrieve()
 					.body(JsonNode.class);
 		} catch (RestClientResponseException exception) {
-			throw new IllegalStateException("Applyhome competition API returned HTTP "
-					+ exception.getStatusCode().value() + " for endpoint=" + endpoint);
+			int status = exception.getStatusCode().value();
+			// 인증·한도 오류는 공고마다 다시 불러도 같으므로 작업 전체를 멈추게 한다.
+			if (status == 401 || status == 403 || status == 429) throw new ApplyhomeApiClient.ProviderRejectedException(status, endpoint);
+			throw new IllegalStateException("Applyhome competition API returned HTTP " + status + " for endpoint=" + endpoint);
 		} catch (RestClientException exception) {
 			throw new IllegalStateException("Applyhome competition API request failed for endpoint=" + endpoint);
 		}

@@ -30,4 +30,40 @@ class ApplyhomeApiClientTest {
 				.contains("cond[RCRIT_PBLANC_DE::GTE]=2026-01-01");
 	}
 
+	/** 로컬 HTTP 서버가 순서대로 상태 코드를 돌려준다. */
+	private static com.sun.net.httpserver.HttpServer server(java.util.concurrent.atomic.AtomicInteger calls, int... statuses) throws Exception {
+		var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/", exchange -> {
+			int status = statuses[Math.min(calls.getAndIncrement(), statuses.length - 1)];
+			byte[] body = status == 200 ? "{\"data\":[],\"currentCount\":0,\"matchCount\":0}".getBytes(StandardCharsets.UTF_8) : new byte[0];
+			exchange.getResponseHeaders().add("Content-Type", "application/json");
+			exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
+			if (body.length > 0) exchange.getResponseBody().write(body);
+			exchange.close();
+		});
+		server.start();
+		return server;
+	}
+
+	@Test
+	void retriesServerErrorsAndStopsImmediatelyOnQuotaRejection() throws Exception {
+		var calls = new java.util.concurrent.atomic.AtomicInteger();
+		var flaky = server(calls, 503, 200);
+		try {
+			var client = new ApplyhomeApiClient("http://127.0.0.1:" + flaky.getAddress().getPort(), "key", 10);
+			client.retryDelaysMs = new long[]{1, 1};
+			assertThat(client.getPage("getAPTLttotPblancDetail", 1, Map.of()).matchCount()).isZero();
+			assertThat(calls.get()).isEqualTo(2);
+		} finally { flaky.stop(0); }
+
+		var quotaCalls = new java.util.concurrent.atomic.AtomicInteger();
+		var quota = server(quotaCalls, 429);
+		try {
+			var client = new ApplyhomeApiClient("http://127.0.0.1:" + quota.getAddress().getPort(), "key", 10);
+			client.retryDelaysMs = new long[]{1, 1};
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> client.getPage("getAPTLttotPblancDetail", 1, Map.of()))
+					.isInstanceOf(ApplyhomeApiClient.ProviderRejectedException.class).hasMessageNotContaining("key=");
+			assertThat(quotaCalls.get()).isEqualTo(1);
+		} finally { quota.stop(0); }
+	}
 }

@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 public class ApplyhomeCompetitionPersistenceService {
 
 	private static final int BATCH_SIZE = 500;
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ApplyhomeCompetitionPersistenceService.class);
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -22,10 +23,20 @@ public class ApplyhomeCompetitionPersistenceService {
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
-    /** 완전하게 조회한 공고별 스냅샷을 교체한다. 검증 실패 시 기존 데이터는 유지한다. */
+    /**
+     * 완전하게 조회한 공고별 스냅샷을 교체한다. 검증 실패 시 기존 데이터는 유지한다.
+     * 제공처가 일시적으로 0건을 돌려주면 이미 저장한 경쟁률·가점이 모두 사라지므로, 응답이 비어 있으면 교체하지 않는다.
+     * @return 교체했으면 true, 빈 응답이라 기존 행을 유지했으면 false
+     */
     @Transactional
-    public void replace(String table, List<String> columns, List<String> keyColumns,
+    public boolean replace(String table, List<String> columns, List<String> keyColumns,
             String houseManageNo, String pblancNo, List<JsonNode> rows) {
+        if (rows.isEmpty()) {
+            Integer existing = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE HOUSE_MANAGE_NO = ? AND PBLANC_NO = ?",
+                    Integer.class, houseManageNo, pblancNo);
+            if (existing != null && existing > 0) LOG.warn("빈 응답이라 기존 행을 유지: table={}, house={}, notice={}, rows={}", table, houseManageNo, pblancNo, existing);
+            return false;
+        }
         for (JsonNode row : rows) {
             for (String key : keyColumns) {
                 if (field(row, key) == null || field(row, key).isNull()) {
@@ -40,6 +51,7 @@ public class ApplyhomeCompetitionPersistenceService {
         jdbcTemplate.update("DELETE FROM " + table + " WHERE HOUSE_MANAGE_NO = ? AND PBLANC_NO = ?",
                 houseManageNo, pblancNo);
         upsert(table, columns, keyColumns, rows);
+        return true;
     }
 
 	@Transactional

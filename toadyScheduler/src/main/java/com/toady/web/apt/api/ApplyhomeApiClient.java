@@ -64,18 +64,7 @@ public class ApplyhomeApiClient {
 
 		URI uri = buildUri(baseUrl, endpoint, serviceKey, perPage, page, filters);
 
-		JsonNode response;
-		try {
-			response = restClient.get()
-					.uri(uri)
-					.retrieve()
-					.body(JsonNode.class);
-		} catch (RestClientResponseException exception) {
-			throw new IllegalStateException("Applyhome API returned HTTP "
-					+ exception.getStatusCode().value() + " for endpoint=" + endpoint);
-		} catch (RestClientException exception) {
-			throw new IllegalStateException("Applyhome API request failed for endpoint=" + endpoint);
-		}
+		JsonNode response = fetch(uri, endpoint);
 		if (response == null || !response.path("data").isArray()) {
 			throw new IllegalStateException("Applyhome API returned an invalid response for " + endpoint);
 		}
@@ -89,6 +78,44 @@ public class ApplyhomeApiClient {
 		}
 
 		return new ApplyhomeApiPage(List.copyOf(data), currentCount, matchCount);
+	}
+
+	/** 재시도 간격(테스트에서 줄인다). 통신 오류·5xx만 다시 시도한다. */
+	long[] retryDelaysMs = {1000, 3000};
+
+	/**
+	 * 인증·한도 오류(401·403·429)는 다시 불러도 같고 한도를 더 쓰므로 바로 이 예외로 알린다. 호출부는 작업 전체를 멈춘다.
+	 * 기존 호출부와 호환되도록 IllegalStateException을 상속한다.
+	 */
+	public static class ProviderRejectedException extends IllegalStateException {
+		private final int status;
+		public ProviderRejectedException(int status, String endpoint) {
+			super("Applyhome API rejected the request (HTTP " + status + ") for endpoint=" + endpoint + " — 인증키·일일 한도를 확인하세요");
+			this.status = status;
+		}
+		public int status() { return status; }
+	}
+
+	private JsonNode fetch(URI uri, String endpoint) {
+		IllegalStateException last = null;
+		for (int attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+			if (attempt > 0) {
+				try { Thread.sleep(retryDelaysMs[attempt - 1]); }
+				catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw last; }
+			}
+			try {
+				return restClient.get().uri(uri).retrieve().body(JsonNode.class);
+			} catch (RestClientResponseException exception) {
+				int status = exception.getStatusCode().value();
+				if (status == 401 || status == 403 || status == 429) throw new ProviderRejectedException(status, endpoint);
+				// 예외 메시지에 서비스 키가 담긴 URI를 남기지 않는다.
+				last = new IllegalStateException("Applyhome API returned HTTP " + status + " for endpoint=" + endpoint);
+				if (status < 500) throw last;
+			} catch (RestClientException exception) {
+				last = new IllegalStateException("Applyhome API request failed for endpoint=" + endpoint);
+			}
+		}
+		throw last;
 	}
 
 	/** 이미 인코딩된 서비스 키를 처리한 뒤 요청 파라미터를 한 번만 인코딩한다. */

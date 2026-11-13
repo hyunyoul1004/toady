@@ -82,13 +82,14 @@ class UrbanModelSnapshotTest {
         return jdbc.queryForObject("select count(*) from TB_URBTY_OFCTL_LTTOT_PBLANC_MDL", Integer.class);
     }
 
-    @Test void ordinaryModelSnapshotRemovesMissingAndEmptyModels() {
+    @Test void ordinaryModelSnapshotRemovesMissingModelsButKeepsThemOnEmptyResponse() {
         var first = aptModel("1", "50"); var second = aptModel("2", "60");
         persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(first, second));
         persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of(second));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_MDL", Integer.class));
+        // 응답에 이 공고의 주택형이 하나도 없으면 일시적인 빈 응답일 수 있어 기존 주택형을 유지한다.
         persistence.replaceModels(com.toady.web.apt.entity.AptLttotPblancMdl.class, List.of(key), List.of());
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_MDL", Integer.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_LTTOT_PBLANC_MDL", Integer.class));
     }
     @Test
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
@@ -124,9 +125,14 @@ class UrbanModelSnapshotTest {
             bean.setPropertyValue("modelNo", "1");
         }
         persistence.replaceModels(type, List.of(key, other), List.of(first, second));
-        persistence.replaceModels(type, List.of(key), List.of());
+        T replacement = type.getDeclaredConstructor().newInstance();
+        var bean = new org.springframework.beans.BeanWrapperImpl(replacement);
+        bean.setPropertyValue("houseManageNo", key.houseManageNo());
+        bean.setPropertyValue("pblancNo", key.pblancNo());
+        bean.setPropertyValue("modelNo", "2");
+        persistence.replaceModels(type, List.of(key), List.of(replacement));
         String table = type.getAnnotation(jakarta.persistence.Table.class).name();
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE HOUSE_MANAGE_NO='OTHER'", Integer.class));
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE HOUSE_MANAGE_NO='SNAPSHOT'", Integer.class));
+        assertEquals(List.of("2"), jdbc.queryForList("SELECT MODEL_NO FROM " + table + " WHERE HOUSE_MANAGE_NO='SNAPSHOT'", String.class));
     }
 }
