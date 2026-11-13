@@ -166,11 +166,8 @@ public class CertifyService {
         try {
             UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
 
-            if(userEntity == null){
-                return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_USER_ERROR.getCode(), ResultCode.EMPTY_USER_ERROR.getMessage()));
-            }
-
-            CertifyEntity certifyEntity = findCode("ACCOUNT", param.getCertifyCode(), userEntity.getUserSeq());
+            // 없는 이메일도 '인증 요청 없음'과 같은 응답을 준다(이 경로로 가입 여부를 대량 확인하지 못하게).
+            CertifyEntity certifyEntity = userEntity == null ? null : findCode("ACCOUNT", param.getCertifyCode(), userEntity.getUserSeq());
 
             if(certifyEntity == null){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));

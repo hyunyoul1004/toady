@@ -29,6 +29,7 @@ import MonthDatePicker from '@/components/datePicker/MonthDatePicker';
 import { dayjs } from '@/utils/date.util';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import MobileApplyhomeCalendar from './MobileApplyhomeCalendar';
+import { koreaToday } from '@/features/planner/plannerUtils';
 import { groupCalendarSchedules, groupsByDate, usedRceptSes, describeGroup, rceptSeMeta } from './calendarGroup';
 import './SubscriptionCalendar.css';
 
@@ -64,8 +65,8 @@ export function SubscriptionCalendar(props) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const calendarRef = useRef(null);
-  const [currentTitle, setCurrentTitle] = useState(() => props.initialMonth || dayjs().format('YYYY-MM'));
-  const [currentDate, setCurrentDate] = useState(() => props.initialMonth ? new Date(`${props.initialMonth}-01T12:00:00`) : new Date());
+  const [currentTitle, setCurrentTitle] = useState(() => props.initialMonth || koreaToday().slice(0, 7));
+  const [currentDate, setCurrentDate] = useState(() => new Date(`${props.initialMonth || koreaToday().slice(0, 7)}-01T12:00:00`));
 
   // 조회 기간(startStr/endStr)은 Main이 onMonthChange로 받은 월에서 monthRange로 한 곳에서만 계산한다.
 
@@ -151,7 +152,8 @@ export function SubscriptionCalendar(props) {
   };
 
   const handleToday = () => {
-    changeMonth(new Date());
+    // '이번달'은 기기 시간대가 아니라 한국 날짜 기준이다(해외 기기에서 지난달로 가지 않게).
+    changeMonth(new Date(`${koreaToday()}T12:00:00`));
   };
 
   const moveDate = (date) => {
@@ -396,6 +398,7 @@ export function SubscriptionCalendar(props) {
         <MobileApplyhomeCalendar
           currentDate={currentDate}
           subscriptList={props.subscriptList}
+          status={props.listStatus || 'ready'}
           handleOpen={props.handleOpen}
         />
       ) : (

@@ -19,7 +19,8 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        format_sql: true
+        # 운영 로그를 한 줄로 유지한다(로컬은 application-local.yml에서 보기 좋게 줄바꿈).
+        format_sql: false
     hibernate:
       ddl-auto: none
       naming:
@@ -89,4 +90,5 @@ config:
       jdbc: ${LOG_LEVEL_JDBC:OFF}
       jdbc-bind: ${LOG_LEVEL_JDBC_BIND:OFF}
       p6spy: ${LOG_LEVEL_P6SPY:OFF}
-      hibernate-sql: ${LOG_LEVEL_HIBERNATE_SQL:DEBUG}
+      # 운영 기본은 SQL 로그를 남기지 않는다(요청마다 여러 SQL이 기록되어 로그가 하루 수십 MB씩 쌓인다). 필요하면 환경변수로 켠다.
+      hibernate-sql: ${LOG_LEVEL_HIBERNATE_SQL:OFF}

@@ -73,6 +73,8 @@
             <maxFileSize>100MB</maxFileSize>
             <!-- 로그파일 삭제 (60일 초과 경과된 파일) -->
             <maxHistory>60</maxHistory>
+            <!-- 전체 보관 용량 상한(디스크가 가득 차 DB 쓰기가 실패하지 않게) -->
+            <totalSizeCap>2GB</totalSizeCap>
 
         </rollingPolicy>
 

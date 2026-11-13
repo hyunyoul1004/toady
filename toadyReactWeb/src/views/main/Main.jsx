@@ -405,7 +405,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         </Box>
 
         <AreaSubscribe targets={paramInfo.citys} />
-        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
+        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} isError={isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
           {isListError && <Alert severity="error" sx={{ mb: 2 }}
@@ -420,6 +420,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             paramInfo={paramInfo}
             fn_subscriptList={refetchAnnouncements}
             subscriptList={subscriptList}
+            listStatus={isListError ? 'error' : (announcementsRes == null || isListPlaceholder) ? 'loading' : 'ready'}
             handleOpen={(seq) => handleOpenDetail(seq)}
           />}
         </Box>

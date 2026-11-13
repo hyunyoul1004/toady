@@ -35,10 +35,23 @@ class PageViewTest {
     static final String BROWSER = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
     @Test void searchBotsAndLinkPreviewsAreAcceptedButNotStored() throws Exception {
         for (String agent : new String[]{"Mozilla/5.0 (compatible; Googlebot/2.0; +http://www.google.com/bot.html)", "Mozilla/5.0 (compatible; Yeti/1.1; +https://naver.me/spd)",
-                "facebookexternalhit/1.1", "Mozilla/5.0 HeadlessChrome/120.0", ""}) {
+                "facebookexternalhit/1.1", "Mozilla/5.0 HeadlessChrome/120.0", "", "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+                "Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)", "Mozilla/5.0 (compatible; Daumoa/4.0; +http://cs.daum.net/faq/15/4118.html)"}) {
             mvc.perform(post("/api/v1/analytics/page-views").header("User-Agent", agent).contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isNoContent());
         }
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class), "로봇 요청은 방문으로 세지 않는다");
+    }
+    @Test void inAppBrowsersAndPhonesWithBotInTheNameAreCountedAsPeople() throws Exception {
+        String[] people = {
+            "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 DaumApps/7.6.1 DaumDevice/mobile",
+            "Mozilla/5.0 (Linux; Android 12; CUBOT_X30 Build/SP1A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 KAKAOTALK 10.8.0",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 NAVER(inapp; search; 2000; 12.10.1)"};
+        for (int i = 0; i < people.length; i++) {
+            String body = BODY.replace("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-00000000001" + i);
+            mvc.perform(post("/api/v1/analytics/page-views").header("User-Agent", people[i]).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNoContent());
+        }
+        assertEquals(people.length, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class), "다음 앱·인앱 브라우저·기기명에 bot이 든 휴대폰은 사람 방문이다");
     }
     @Test void duplicateDeliveryCountsOnceAndUsesServerDate() throws Exception {
         for (int i = 0; i < 2; i++) mvc.perform(post("/api/v1/analytics/page-views").contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isNoContent());

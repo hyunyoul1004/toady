@@ -61,7 +61,9 @@ function generateMonthWeeks(targetDate) {
   return weeks;
 }
 
-export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen }) {
+export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen, status = 'ready' }) {
+  // 불러오는 중·오류일 때 빈 달력을 '0건/일정 없음'으로 보이지 않는다.
+  const ready = status === 'ready';
   const [selectedDate, setSelectedDate] = useState('');
   const [isListOpen, setIsListOpen] = useState(true);
   const userSelectedDate=useRef('');
@@ -115,8 +117,9 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
   const fallback=weeks[0]?.find(Boolean)?.dateStr || `${calendarMonth}-01`;
   useEffect(() => {
     setSelectedDate(calendarSelection(calendarMonth,Object.keys(eventsByDate),today,userSelectedDate.current,fallback));
-    setIsListOpen(true);
   }, [calendarMonth,eventsByDate,today,fallback]);
+  // 목록은 달이 바뀔 때만 다시 펼친다(필터·데이터만 바뀌면 사용자가 접은 상태를 유지).
+  useEffect(() => { setIsListOpen(true); }, [calendarMonth]);
 
   // 현재 선택된 날짜의 공고 목록
   const selectedEvents = useMemo(() => {
@@ -238,7 +241,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                           lineHeight: 1
                         }}
                       >
-                        {`(${count}건)`}
+                        {ready ? `(${count}건)` : '·'}
                       </Typography>
 
                       {/* 펼쳐졌을 때: 선택된 날짜와 하단 목록 박스의 테두리를 하나로 잇는 흰색 마스킹 바 */}
@@ -290,7 +293,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                     >
                       <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e40af', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
                         <CalendarMonthOutlinedIcon sx={{ fontSize: '1rem' }} aria-hidden="true" />
-                        {dayjs(selectedDate).format('M월 D일')} 청약 일정 ({selectedEvents.length}건)
+                        {dayjs(selectedDate).format('M월 D일')} 청약 일정{ready ? ` (${selectedEvents.length}건)` : ''}
                       </Typography>
                       <Box
                         onClick={(e) => {
@@ -401,7 +404,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                           color: '#64748b'
                         }}
                       >
-                        선택하신 날짜에 예정된 청약 일정이 없습니다.
+                        {status === 'loading' ? '일정을 불러오는 중입니다.' : status === 'error' ? '일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : '선택하신 날짜에 예정된 청약 일정이 없습니다.'}
                       </Typography>
                     )}
                   </Box>

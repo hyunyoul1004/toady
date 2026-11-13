@@ -44,6 +44,8 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     static List<Rule> rules(int mailShort, int mailDaily) {
         return List.of(
             new Rule("mail", Set.of("POST"), List.of(), Set.of("/webApi/user/regUser", "/webApi/certify/resend-account-verification", "/webApi/certify/find-password-request-certify"), mailShort, mailDaily),
+            // 인증 코드 확인(가입 인증·비밀번호 재설정)은 메일을 보내지 않지만 코드·가입 여부를 반복해 시험할 수 있으므로 따로 제한한다.
+            new Rule("certify", Set.of("POST"), List.of(), Set.of("/webApi/certify/certify-check", "/webApi/certify/certify-confrim-and-password-change"), 30, 200),
             new Rule("trade", Set.of("GET"), List.of("/api/v1/research/transactions"), Set.of(), 60, 500),
             // 분양가 비교는 요청 한 번이 시·군·구 6개월(외부 호출 6회 이상)을 읽으므로 실거래 목록보다 낮게 둔다.
             new Rule("gap", Set.of("GET"), List.of("/api/v1/research/price-gap"), Set.of(), 20, 150),

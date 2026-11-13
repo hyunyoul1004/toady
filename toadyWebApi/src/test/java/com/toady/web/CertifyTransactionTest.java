@@ -82,6 +82,11 @@ class CertifyTransactionTest {
         assertEquals("N", jdbc.queryForObject("SELECT EMAIL_CERTIFY_YN FROM TB_USER", String.class));
         assertEquals("SUCCESS", service.certifyCheck(check()).getBody().getResultCode());
     }
+    @Test void unknownEmailLooksTheSameAsAWrongCode() {
+        var empty = com.toady.web.core.constants.ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode();
+        assertEquals(empty, service.certifyCheck(new CertifyDTO.CheckParam("nobody@example.test", "code", "Signup123!")).getBody().getResultCode());
+        assertEquals(empty, service.certifyCheck(check()).getBody().getResultCode(), "가입자에게 코드가 틀린 경우와 같은 응답이다");
+    }
     @Test void validAccountCodeAuthenticatesUser() {
         code("ACCOUNT", LocalDateTime.now()); service.certifyCheck(check());
         assertEquals("Y", flag());

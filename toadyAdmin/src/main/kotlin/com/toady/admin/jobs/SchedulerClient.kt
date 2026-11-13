@@ -52,8 +52,9 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 	private fun post(path: String, body: Any?, vararg vars: Any): Map<*, *> = call {
 		val spec = client.post().uri(path, *vars).contentType(MediaType.APPLICATION_JSON)
 		(if (body != null) spec.body(body) else spec).retrieve()
-			// 4xx는 스케줄러가 준 사유(기간 오류·진행 중 작업 등)를 그대로 보여 준다.
-			.onStatus(HttpStatusCode::is4xxClientError) { _, _ -> }
+			// 업무 오류(400·409: 기간 오류·진행 중 작업 등)는 스케줄러가 준 사유를 그대로 보여 준다.
+			// 403·404(토큰 불일치·관리 기능 꺼짐)는 예외로 넘겨 call{}에서 원인을 안내한다.
+			.onStatus({ it.value() == 400 || it.value() == 409 }) { _, _ -> }
 			.body(Map::class.java) ?: emptyMap<String, Any>()
 	}
 	private fun message(response: Map<*, *>, key: String): String =
