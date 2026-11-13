@@ -3,7 +3,7 @@ import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { DEFAULT_FILTERS, mergeSales, migrateStoredFilters, normalizeFilters, splitComplexes } from './priceMapRules';
+import { DEFAULT_FILTERS, mergeSales, migrateStoredFilters, normalizeFilters, sameParcel, splitComplexes } from './priceMapRules';
 
 const STORAGE_KEY = 'toady.priceMap';
 /** 좌표 확인·기간 수집이 덜 끝났으면 몇 번만 다시 부른다(요청 제한을 아끼려고 횟수를 제한). */
@@ -80,6 +80,8 @@ export function usePriceMap(location, enabled, currentId = '') {
     queries.forEach(item => (item.data?.complexes || []).forEach(complex => { if (!seen.has(complex.key)) seen.set(complex.key, complex); }));
     return [...seen.values()];
   }, [queries.map(item => item.dataUpdatedAt).join(','), districts.length]);
+  // 이 공고와 같은 필지의 실거래 단지(무순위·잔여세대 등 이미 지어진 단지). 지도에서는 이 공고 말풍선 하나로 합친다.
+  const siteComplex = useMemo(() => complexes.find(complex => sameParcel(complex, location)) || null, [complexes, location?.address, location?.dong]);
   const loadingOthers = others.some(item => item.isFetching);
   const pending = queries.reduce((sum, item) => sum + (item.data?.pending || 0), 0);
 
@@ -92,5 +94,5 @@ export function usePriceMap(location, enabled, currentId = '') {
   const selected = selectedKey && !selectedSale ? complexes.find(item => item.key === selectedKey) || null : null;
   const selectedRow = selected ? rows.find(row => row.key === selected.key) || outside.find(row => row.key === selected.key) || { ...selected, rep: null, distance: Infinity } : null;
   return { capabilities, available: Boolean(bcode), ready, query, filters, setFilters, rows, outside, origin, year, selected: selectedRow, select: setSelectedKey,
-    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
+    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, siteComplex, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
 }

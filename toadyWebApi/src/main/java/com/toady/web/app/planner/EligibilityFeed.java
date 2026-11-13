@@ -40,7 +40,10 @@ public class EligibilityFeed {
     public EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore) { this(search, jdbc, gapStore, Clock.system(ZoneId.of("Asia/Seoul"))); }
     EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore, Clock clock) { this.search = search; this.jdbc = jdbc; this.gapStore = gapStore; this.clock = clock; }
 
-    public record Unit(String type, BigDecimal area, Integer general, Integer special, Long amountManwon) { }
+    /** supplyArea: 주택형 공급면적(㎡, 모집공고 SUPLY_AR). 평형은 이 값으로 계산한다(추정하지 않는다). 없으면 null. */
+    public record Unit(String type, BigDecimal area, Integer general, Integer special, Long amountManwon, BigDecimal supplyArea) {
+        public Unit(String type, BigDecimal area, Integer general, Integer special, Long amountManwon) { this(type, area, general, special, amountManwon, null); }
+    }
     /** 특별공급 유형별 세대수 합계(주택형 합산). */
     public record Special(int newlywed, int firstLife, int multiChild, int oldParents, int youth, int newborn, int institution) {
         static final Special NONE = new Special(0, 0, 0, 0, 0, 0, 0);
@@ -135,7 +138,7 @@ public class EligibilityFeed {
                 count(row, "OLD_PARNTS_SUPORT_HSHLDCO"), count(row, "YGMN_HSHLDCO"), count(row, "NWBB_HSHLDCO"), count(row, "INSTT_RECOMEND_HSHLDCO")));
             String houseTy = row.get("HOUSE_TY") == null ? "" : String.valueOf(row.get("HOUSE_TY")).trim();
             units.add(new Unit(houseTy, area(houseTy), number(row.get("SUPLY_HSHLDCO")), number(row.get("SPSPLY_HSHLDCO")),
-                Optional.ofNullable(number(row.get("LTTOT_TOP_AMOUNT"))).map(Integer::longValue).orElse(null)));
+                Optional.ofNullable(number(row.get("LTTOT_TOP_AMOUNT"))).map(Integer::longValue).orElse(null), decimal(row.get("SUPLY_AR"))));
         }
         String dtl = Optional.ofNullable(text.apply("HOUSE_DTL_SECD_NM")).orElse("");
         return new Item(id, type, source.houseNm(), source.hssplyAdres(), Optional.ofNullable(text.apply("SUBSCRPT_AREA_CODE_NM")).orElse(source.regionName()), status,
@@ -153,6 +156,14 @@ public class EligibilityFeed {
         String text = String.valueOf(value).replace(",", "").trim();
         if (!text.matches("\\d{1,9}")) return null;
         return Integer.parseInt(text);
+    }
+    /** 공급면적 등 소수 문자열 → BigDecimal(10㎡ 미만·숫자 아님은 null). */
+    static BigDecimal decimal(Object value) {
+        if (value == null) return null;
+        String text = String.valueOf(value).trim();
+        if (!text.matches("\\d{1,4}(?:\\.\\d+)?")) return null;
+        BigDecimal number = new BigDecimal(text).stripTrailingZeros();
+        return number.compareTo(BigDecimal.TEN) >= 0 ? number : null;
     }
     /** 주택형 '084.9500A' → 전용 84.95㎡. 숫자로 시작하지 않으면 면적을 모르는 것으로 둔다. */
     static BigDecimal area(String houseTy) {

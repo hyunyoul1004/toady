@@ -139,3 +139,12 @@
 .pm-group:hover{filter:brightness(1.1)}
 .pm-group:focus-visible{outline:3px solid #fde68a;outline-offset:2px}
 .pm-sale-tag.is-status{background:#ede9fe;color:#5b21b6}
+
+/* 분양 패널: 주변 시세 비교 문구와 같은 지번 실거래 */
+.price-map-areas.is-sale [role=cell] small{display:block}
+.pm-gap.is-below{color:#0f766e!important;font-weight:700}
+.pm-gap.is-above{color:#b45309!important;font-weight:700}
+.pm-gap.is-same{color:#475569!important}
+.price-map-site-trades{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:10px;padding:8px 10px;border-radius:8px;background:#f5f3ff;font-size:13px}
+.price-map-site-trades>p{flex-basis:100%}
+.price-map-site-trades small{color:#64748b}

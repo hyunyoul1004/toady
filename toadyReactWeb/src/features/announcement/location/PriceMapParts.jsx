@@ -6,7 +6,9 @@ import SyncAltRounded from '@mui/icons-material/SyncAltRounded';
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { distanceMeters as distanceMetersSafe } from './priceMapRules';
-import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, NEARBY_METERS, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, nearbyMedian, perPyeong, shortPrice } from './priceMapRules';
+import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice } from './priceMapRules';
+import { usePriceGapFor } from '@/features/match/usePriceGap';
+import { gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
 import './priceMap.css';
 
 const SELECTS = [
@@ -151,7 +153,7 @@ export function ComplexPanel({ row, onClose, supply, unit = 'm2' }) {
     {row.reason && <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: .5 }}>지금 조건에 맞는 거래가 없어요({outsideText(row, unit)}).</Typography>}
     {!Number.isFinite(row.lat) && <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: .5 }}>지번으로 위치를 확정하지 못해 지도에는 표시하지 않았어요.</Typography>}
     {supply && <Box className="price-map-compare">
-      <span>이 공고 분양가 ({unit === 'pyeong' ? areaText(supply.area, unit) : `전용 ${areaText(supply.area, unit)}`})</span><b>{fullPrice(supply.amount)}</b>
+      <span>이 공고 분양가 ({unitAreaLabel(supply, unit).main})</span><b>{fullPrice(supply.amount)}</b>
     </Box>}
     <Box className="price-map-areas" role="table" aria-label="면적별 실거래">
       <div role="row" className="price-map-areas-head"><span role="columnheader">{areaHead(unit)}</span><span role="columnheader">마지막 거래월 평균</span><span role="columnheader">1년 중간값</span><span role="columnheader">건수</span></div>
@@ -196,36 +198,50 @@ export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect }
 }
 
 /**
- * 지도에서 아무 단지도 고르지 않았을 때 보이는 '이 공고' 정보: 주택형별 분양가(최고 공급금액)와
- * 반경 1.5km 안 같은 면적 단지들의 최근 거래 중간값. 높다·낮다 판정 없이 숫자만 나란히 둔다.
+ * 분양 공고 정보(지도에서 아무 단지도 고르지 않았을 때의 '이 공고', 또는 지도에서 고른 다른 분양 공고).
+ * 주변 시세는 상세 탭 '분양가 vs 주변 시세'와 같은 조회·같은 규칙(gapRows)을 쓴다: 최근 6개월, 같은 면적(전용 ±5㎡),
+ * 같은 동(적으면 같은 시·군·구), 준공 10년 이내 거래가 3건 이상이면 신축 기준, 가운데 절반 범위.
+ * siteComplex: 이 공고와 같은 필지의 실거래 단지(무순위·잔여세대처럼 이미 지어진 단지).
  */
-export function SalePanel({ detail, complexes, origin, unit: areaUnit = 'm2', sale = null, siteStatus = null, onOpen, onClose }) {
-  // sale: 지도에서 고른 다른 청약 공고(없으면 지금 보고 있는 공고).
-  const source = sale ? sale.units.map(unit => ({ ...unit, area: Number(unit.area), label: `${Number(unit.area).toFixed(2)}㎡` })) : (detail.unitPrices || []);
-  const units = source.filter(unit => Number.isFinite(unit.amountManwon) && unit.amountManwon > 0 && unit.area >= 10);
+export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale = null, siteStatus = null, siteComplex = null, origin, onOpen, onClose, onSelectComplex }) {
+  const rawUnits = sale ? (sale.units || []).map(unit => ({ ...unit, area: Number(unit.area), supplyArea: unit.supplyArea == null ? null : Number(unit.supplyArea) })) : (detail.unitPrices || []);
+  const gap = usePriceGapFor(rawUnits, sale ? (sale.bcode ? { bcode: sale.bcode, dong: sale.dong } : null) : precise);
+  const units = gap.units;
+  const rows = gap.ready ? gapRows(units, gap.data.areas, 'auto') : [];
   const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
+  const status = sale ? sale.status : siteStatus;
   const period = sale && sale.start ? [`접수 ${sale.start.replaceAll('-', '.')}${sale.end && sale.end !== sale.start ? ` ~ ${sale.end.slice(5).replaceAll('-', '.')}` : ''}`, moveInText(sale.moveIn)].filter(Boolean).join(' · ') : '';
+  const distance = sale ? distanceText(distanceMetersSafe(origin, sale)) : '';
+  const siteAreas = siteComplex ? [...(siteComplex.areas || [])].sort((a, b) => b.count - a.count).slice(0, 3) : [];
   return <Paper variant="outlined" className={`price-map-panel is-sale${sale ? ' is-other' : ''}`} aria-label={`${name} 분양가`}>
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-      <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}>{!sale && <span className="pm-sale-tag">이 공고</span>}{(sale ? sale.status : siteStatus) && <span className={`pm-sale-tag${(sale ? sale.status : siteStatus) === 'DONE' ? ' is-done' : ''}${sale ? '' : ' is-status'}`}>{saleStatusLabel(sale ? sale.status : siteStatus)}</span>}{name}</Typography>
+      <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}>{!sale && <span className="pm-sale-tag">이 공고</span>}{status && <span className={`pm-sale-tag${status === 'DONE' ? ' is-done' : ''}${sale ? '' : ' is-status'}`}>{saleStatusLabel(status)}</span>}{name}</Typography>
       {sale && <IconButton size="small" aria-label="청약 단지 정보 닫기" onClick={onClose}><CloseRounded fontSize="small" /></IconButton>}
     </Box>
-    <Typography variant="caption" color="text.secondary">{sale ? [period, distanceText(distanceMetersSafe(origin, sale)) && `이 공고 위치에서 ${distanceText(distanceMetersSafe(origin, sale))}`].filter(Boolean).join(' · ') : '지도에서 다른 단지를 누르면 그 단지의 실거래를 보여 드려요.'}</Typography>
+    <Typography variant="caption" color="text.secondary">{sale ? [period, distance && `이 공고 위치에서 직선 ${distance}`].filter(Boolean).join(' · ') : '지도에서 다른 단지를 누르면 그 단지의 실거래를 보여 드려요.'}</Typography>
     {sale && <Button size="small" variant="contained" disableElevation onClick={() => onOpen(sale)} sx={{ display: 'flex', mt: 1 }}>이 공고 자세히 보기</Button>}
+    {siteAreas.length > 0 && <Box className="price-map-site-trades">
+      <Typography variant="caption" component="p" sx={{ m: 0, fontWeight: 800 }}>이 단지 최근 실거래(같은 지번)</Typography>
+      {siteAreas.map(item => <span key={item.area}>{areaText(item.area, areaUnit)} <b>{shortPrice(monthPrice(item))}</b> <small>{monthLabel(item.month || String(item.latestDate || '').slice(0, 7))} {item.monthCount || 1}건 평균</small></span>)}
+      {onSelectComplex && <Button size="small" onClick={() => onSelectComplex(siteComplex)}>거래 자세히</Button>}
+    </Box>}
     {units.length ? <>
-      <Box className="price-map-areas is-sale" role="table" aria-label="주택형별 분양가와 주변 거래">
-        <div role="row" className="price-map-areas-head"><span role="columnheader">주택형</span><span role="columnheader">분양가(최고)</span><span role="columnheader">주변 같은 면적</span></div>
+      <Box className="price-map-areas is-sale" role="table" aria-label="주택형별 분양가와 주변 시세">
+        <div role="row" className="price-map-areas-head"><span role="columnheader">주택형</span><span role="columnheader">분양가(최고)</span><span role="columnheader">주변 시세</span></div>
         {units.map(unit => {
-          const near = nearbyMedian(complexes, unit.area, sale ? { lat: sale.lat, lng: sale.lng } : origin);
-          return <div role="row" key={unit.id || unit.label}>
-            <span role="cell">{areaUnit === 'pyeong' ? `${areaText(unit.area, areaUnit)} (전용 ${Math.round(unit.area)}㎡)` : unit.label}</span>
+          const label = unitAreaLabel(unit, areaUnit);
+          const row = rows.find(item => item.area === Math.round(unit.area));
+          return <div role="row" key={unit.id || unit.type || unit.label}>
+            <span role="cell">{label.main}{label.sub && <small>{label.sub}</small>}</span>
             <span role="cell"><b>{shortPrice(unit.amountManwon)}</b><small>{perLabel(areaUnit)} {shortPrice(perPyeong(unit.amountManwon, unit.area))}</small></span>
-            <span role="cell">{near ? <>{shortPrice(near.median)}<small>{near.complexes}곳 최근 거래</small></> : <small>거래 부족</small>}</span>
+            <span role="cell">{gap.loading ? <small>불러오는 중…</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
+              <small>{row.basis === 'new' ? '신축' : '전체 연식'} {row.basisCount}건 · {row.scope === 'DONG' ? (gap.precise?.dong || '같은 동') : '같은 시·군·구'}</small>
+              <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>{gap.enabled ? '비교할 거래 부족' : '비교 불가'}</small>}</span>
           </div>;
         })}
       </Box>
       <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1, mb: 0 }}>
-        분양가는 주택형별 최고 공급금액이에요(발코니 확장·옵션 제외). 주변 값은 {sale ? '그 공고' : '공고'} 위치 {measureText(NEARBY_METERS)} 안 단지들의 같은 면적(±3㎡) 최근 신고 거래 중간값이며, 연식·입지 차이는 반영하지 않아요.
+        분양가는 주택형별 최고 공급금액이에요(발코니 확장·옵션 제외). 주변 시세는 상세 탭 ‘분양가 vs 주변 시세’와 같은 기준이에요: {gap.data ? `${String(gap.data.fromMonth || '').replace('-', '.')}~${String(gap.data.toMonth || '').replace('-', '.')} ` : ''}같은 면적(전용 ±5㎡) 매매, 같은 동(거래가 적으면 같은 시·군·구), 준공 10년 이내 거래가 3건 이상이면 신축 기준, 가운데 절반 범위.
       </Typography>
     </> : <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>이 공고는 주택형별 분양가 자료가 없어요.</Typography>}
   </Paper>;

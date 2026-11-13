@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS
+, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -63,7 +63,7 @@ test('말풍선·연식 색·분양가 대표값·거리', () => {
   assert.equal(ageTone('1999', 2026), 'old');
   assert.equal(ageTone('', 2026), 'unknown');
   const units = [{ area: 59.9, amountManwon: 50000 }, { area: 84.9, amountManwon: 70000 }, { area: 84.5, amountManwon: 69000 }, { area: 5, amountManwon: 1 }];
-  assert.deepEqual(supplyForBand(units, 'all'), { area: 85, amount: 69000, pyeong: Math.round(69000 / 84.5 * 3.305785) }, '84㎡에 가장 가까운 주택형');
+  assert.deepEqual(supplyForBand(units, 'all'), { area: 85, amount: 69000, pyeong: Math.round(69000 / 84.5 * 3.305785), supplyArea: null, type: '' }, '84㎡에 가장 가까운 주택형');
   assert.equal(supplyForBand(units, 'small').amount, 50000);
   assert.equal(supplyForBand(units, 'large'), null);
   assert.ok(Math.abs(distanceMeters({ lat: 37.5, lng: 127 }, { lat: 37.51, lng: 127 }) - 1112) < 5);
@@ -90,18 +90,6 @@ test('검색어가 주소인지 단지 이름인지 구분한다', () => {
   for (const text of ['한울마을1단지', '센트럴 2차', '운정', '동패', '힐스테이트 3']) assert.equal(isAddressLike(text), false, text);
 });
 
-test('분양가 옆 주변 시세: 반경 안 같은 면적 단지별 최근 거래의 중간값', () => {
-  const origin = { lat: 37.72, lng: 126.75 };
-  const list = [
-    complex('가', '2020', [area(84, 70000, 3, '2026-10-01'), area(59, 50000, 1)], 37.721, 126.751),
-    complex('나', '2010', [area(85, 60000, 9, '2026-09-01')], 37.725, 126.752),
-    complex('다', '2015', [area(84, 90000, 1)], 37.80, 126.90),
-    complex('라', '2015', [area(114, 99000, 1)], 37.722, 126.75)
-  ];
-  assert.deepEqual(nearbyMedian(list, 84.9, origin), { median: 65000, complexes: 2 }, '멀리 있는 단지·다른 면적은 빼고, 단지마다 한 건');
-  assert.equal(nearbyMedian(list, 59, origin), null, '2곳 미만이면 보여 주지 않는다');
-  assert.equal(nearbyMedian(list, 84, null), null);
-});
 
 test('면적은 전용 ㎡ 또는 추정 공급 평형으로 보여 준다', () => {
   assert.equal(areaText(84.97, 'm2'), '85㎡');
@@ -280,4 +268,26 @@ test('이 공고도 다른 분양 말풍선과 같은 규칙으로 접수 상태
   assert.equal(saleStatusOf('2026-11-13', '', '2026-11-14'), 'DONE');
   assert.equal(saleStatusOf(null, null, '2026-11-14'), null, '날짜를 모르면 상태를 붙이지 않는다');
   assert.equal(saleStatusLabel(saleStatusOf('2026-11-02', '2026-11-04', '2026-11-14')), saleStatusLabel('DONE'));
+});
+
+test('분양 주택형은 실제 공급면적으로 평형을 쓰고, 같은 84㎡도 전용 소수로 구분한다', () => {
+  const a = { area: 84.9594, supplyArea: 112.1593, type: '084.9594' }, b = { area: 84.4998, supplyArea: 111.8, type: '084.4998B' };
+  assert.deepEqual(unitAreaLabel(a, 'm2'), { main: '전용 84.96㎡', sub: '34평형' });
+  assert.deepEqual(unitAreaLabel(b, 'm2'), { main: '전용 84.5㎡ B', sub: '34평형' });
+  assert.deepEqual(unitAreaLabel(a, 'pyeong'), { main: '34평형', sub: '전용 84.96㎡' });
+  assert.deepEqual(unitAreaLabel({ area: 60.9995, supplyArea: 83.0332 }, 'pyeong').main, '25평형', '공급 83.03㎡ = 25평형');
+  assert.deepEqual(unitAreaLabel({ area: 84.9 }, 'pyeong'), { main: '약 34평형(추정)', sub: '전용 84.9㎡' }, '공급면적이 없을 때만 추정이라고 밝힌다');
+  const supply = supplyBand([{ area: 84.9594, supplyArea: 112.1593, amountManwon: 79800 }], 'all');
+  assert.equal(saleAreaText(supply, 'pyeong'), '34평형');
+  assert.equal(saleAreaText(supply, 'm2'), '85㎡');
+});
+
+test('같은 필지 판정은 법정동과 지번이 모두 같을 때만', () => {
+  const location = { address: '경기 파주시 동패동 2295', dong: '동패동' };
+  assert.equal(sameParcel({ dong: '동패동', jibun: '2295' }, location), true);
+  assert.equal(sameParcel({ dong: '동패동', jibun: '2295-1' }, location), false, '부번이 다르면 다른 필지');
+  assert.equal(sameParcel({ dong: '목동동', jibun: '2295' }, location), false);
+  assert.equal(sameParcel({ dong: '조리읍 봉일천리', jibun: '산 12' }, { address: '경기 파주시 조리읍 봉일천리 산 12', dong: '조리읍' }), true, '읍·면 아래 리와 산 지번');
+  assert.equal(sameParcel({ dong: '동패동', jibun: '' }, location), false);
+  assert.equal(sameParcel({ dong: '동패동', jibun: '2295' }, { address: '경기 파주시 동패동' }), false, '지번 없는 주소는 같다고 보지 않는다');
 });

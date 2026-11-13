@@ -19,7 +19,9 @@ const PRICED_TYPES=new Set(['apt','remaining','optional']);
 export function modelPrices(models=[],type='apt') {
   if(!PRICED_TYPES.has(type)) return [];
   return models.map((model,index)=>({
-    id:`${model.modelNo || index}/${index}`,area: Number.parseFloat(model.houseTy),
+    id:`${model.modelNo || index}/${index}`,area: Number.parseFloat(model.houseTy),type:String(model.houseTy || '').trim(),
+    // 공급면적(모집공고 SUPLY_AR). 평형은 이 값으로 계산한다.
+    supplyArea:Number.parseFloat(model.suplyAr)>=10?Number.parseFloat(model.suplyAr):null,
     label:unitLabel(model.houseTy,model.modelNo),
     amountManwon:parseManwon(model.lttotTopAmount),general:Number(model.suplyHshldco)||0,special:Number(model.spsplyHshldco)||0
   }));

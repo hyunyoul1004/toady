@@ -89,8 +89,17 @@ class SaleMapServiceTest {
         assertEquals(List.of("청약 중 단지:OPEN", "3단지:DONE"), result.sales().stream().map(s -> s.houseNm() + ":" + s.status()).toList(),
             "접수 중 공고는 한 번만, 접수를 마친 공고는 분양 완료로, 입주가 지난 공고는 빼고");
         assertEquals("2029-03", result.sales().get(1).moveIn());
+        assertEquals("4148011700", result.sales().get(1).bcode(), "상세 탭과 같은 주변 시세 비교를 부를 수 있게 법정동을 함께 준다");
+        assertEquals("동패동", result.sales().get(1).dong());
         assertEquals(List.of("블록 단지"), result.unlocated().stream().map(SaleMapService.Unlocated::houseNm).toList(), "지구·블록 주소는 지도에 놓지 않고 따로 알린다");
         verify(locator, never()).locate(moved);
         service.close();
+    }
+
+    @Test void supplyAreaIsReadFromTheAnnouncementModel() {
+        assertEquals(new java.math.BigDecimal("112.1593"), EligibilityFeed.decimal("112.1593 "));
+        assertNull(EligibilityFeed.decimal("-"));
+        assertNull(EligibilityFeed.decimal(null));
+        assertNull(EligibilityFeed.decimal("0.0"), "10㎡ 미만은 공급면적으로 보지 않는다");
     }
 }

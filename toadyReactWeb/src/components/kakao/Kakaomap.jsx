@@ -8,7 +8,7 @@ import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
 import {resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {GROUP_LEVELS,areaText,bubbleText,ageTone,groupRows,groupTier,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {GROUP_LEVELS,areaText,saleAreaText,bubbleText,ageTone,groupRows,groupTier,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
@@ -92,7 +92,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     const tag=document.createElement('i');tag.textContent=siteStatus?`이 공고 · ${saleStatusLabel(siteStatus)}`:'이 공고';
     const strong=document.createElement('b');
     const small=document.createElement('small');
-    if(supply){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(supply.pyeong):shortPrice(supply.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):areaText(supply.area,priceMap.filters.unit);}
+    if(supply){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(supply.pyeong):shortPrice(supply.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):saleAreaText(supply,priceMap.filters.unit);}
     else {strong.textContent='이 공고';small.textContent='분양가 미제공';}
     button.append(tag,strong,small);
     button.setAttribute('aria-label',`이 공고 ${detail.houseNm || ''} 분양 ${strong.textContent} ${small.textContent}`);
@@ -130,7 +130,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       bubbles.current=made;
       return()=>{overlays.forEach(overlay=>overlay.setMap(null));};
     }
-    const overlays=priceMap.rows.filter(row=>Number.isFinite(row.lat) && Number.isFinite(row.lng) && inView(row,view)).map(row=>{
+    const overlays=priceMap.rows.filter(row=>Number.isFinite(row.lat) && Number.isFinite(row.lng) && inView(row,view) && row.key!==priceMap.siteComplex?.key).map(row=>{
       const {price,sub}=bubbleText(row,priceMap.filters.mode,priceMap.filters.unit,today);
       const button=document.createElement('button');
       button.type='button';button.className=`pm-bubble tone-${ageTone(row.buildYear,priceMap.year)}${isStaleMonth(row.rep?.month,today)?' is-stale':''}`;
@@ -144,7 +144,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     });
     bubbles.current=made;
     return()=>{overlays.forEach(overlay=>overlay.setMap(null));bubbles.current=new Map();};
-  },[mapReady,showPrices,priceMap.rows,priceMap.filters.mode,priceMap.filters.unit,priceMap.year,today,tier,tier==='single'?view:null,priceMap.districtNames]);
+  },[mapReady,showPrices,priceMap.rows,priceMap.siteComplex?.key,priceMap.filters.mode,priceMap.filters.unit,priceMap.year,today,tier,tier==='single'?view:null,priceMap.districtNames]);
 
   // 조건 밖 단지: 거래는 있지만 고른 면적·연식·가격에 맞는 거래가 없는 단지를 작은 회색 점으로 둔다.
   // 말풍선이 없다고 '위치를 못 찾은 것'으로 오해하지 않게 하고, 누르면 그 단지의 면적별 거래를 볼 수 있다.
@@ -153,7 +153,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     if(!map || !kakao || !showPrices)return;
     // 넓게 볼 때는 조건 밖 점을 그리지 않는다(묶음과 섞여 읽기 어렵다).
     if(tier!=='single')return;
-    const overlays=priceMap.outside.filter(row=>Number.isFinite(row.lat) && Number.isFinite(row.lng) && inView(row,view)).map(row=>{
+    const overlays=priceMap.outside.filter(row=>Number.isFinite(row.lat) && Number.isFinite(row.lng) && inView(row,view) && row.key!==priceMap.siteComplex?.key).map(row=>{
       const label=`${row.name} · ${outsideText(row,priceMap.filters.unit)}`;
       const button=document.createElement('button');
       button.type='button';button.className='pm-dot';button.title=label;button.setAttribute('aria-label',label);
@@ -163,20 +163,20 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     });
     dots.current=made;
     return()=>{overlays.forEach(overlay=>overlay.setMap(null));dots.current=new Map();};
-  },[mapReady,showPrices,priceMap.outside,priceMap.filters.unit,tier,tier==='single'?view:null]);
+  },[mapReady,showPrices,priceMap.outside,priceMap.siteComplex?.key,priceMap.filters.unit,tier,tier==='single'?view:null]);
 
   // 다른 분양 공고 말풍선(같은 시·군·구, 접수 중·예정·종료). 눌러서 분양가와 주변 거래를 보고, 그 공고로 이동할 수 있다.
   useEffect(()=>{
     const map=mapRef.current,kakao=kakaoRef.current,made=new Map();
     if(!map || !kakao || !showPrices)return;
     const overlays=priceMap.sales.map(sale=>{
-      const units=(sale.units || []).map(unit=>({area:Number(unit.area),amountManwon:unit.amountManwon}));
+      const units=(sale.units || []).map(unit=>({area:Number(unit.area),amountManwon:unit.amountManwon,supplyArea:unit.supplyArea==null?null:Number(unit.supplyArea),type:unit.type}));
       const price=supplyForBand(units,priceMap.filters);
       const button=document.createElement('button');
       button.type='button';button.className=`pm-bubble pm-bubble--sale is-other is-${String(sale.status||'').toLowerCase()}`;
       const tag=document.createElement('i');tag.textContent=saleStatusLabel(sale.status);
       const strong=document.createElement('b'),small=document.createElement('small');
-      if(price){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(price.pyeong):shortPrice(price.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):areaText(price.area,priceMap.filters.unit);}
+      if(price){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(price.pyeong):shortPrice(price.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):saleAreaText(price,priceMap.filters.unit);}
       else {strong.textContent='분양';small.textContent='가격 미제공';}
       button.append(tag,strong,small);
       button.setAttribute('aria-label',`${sale.houseNm} ${tag.textContent} ${strong.textContent} ${small.textContent}`);button.title=sale.houseNm;
@@ -308,7 +308,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         {priceMap.selectedSale?<SalePanel detail={detail} sale={priceMap.selectedSale} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}
             onClose={()=>priceMap.select(null)} onOpen={sale=>openSale(sale.id)}/>
           :priceMap.selected?<ComplexPanel row={priceMap.selected} supply={supply} unit={priceMap.filters.unit} onClose={()=>priceMap.select(null)}/>
-          :!manualResult && <SalePanel detail={detail} siteStatus={siteStatus} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
+          :!manualResult && <SalePanel detail={detail} precise={announced} siteStatus={siteStatus} siteComplex={priceMap.siteComplex} onSelectComplex={chooseFromList} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
         <ComplexList rows={priceMap.rows} filters={priceMap.filters} setFilters={priceMap.setFilters} selectedKey={selectedKey} onSelect={chooseFromList}/>
       </>}
       {precise && tradesOff && <PriceMapUnavailable reason="지금은 실거래 정보를 제공하지 않고 있어요."/>}

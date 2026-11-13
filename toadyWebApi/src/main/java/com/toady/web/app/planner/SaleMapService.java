@@ -31,7 +31,9 @@ import java.util.concurrent.*;
 @Service
 public class SaleMapService {
     /** status: OPEN(청약 중) · UPCOMING(청약 예정) · DONE(분양 완료, 입주 전). moveIn: 입주 예정월(YYYY-MM, 없으면 null). */
-    public record Sale(String id, String type, String houseNm, String status, String start, String end, String moveIn, double lat, double lng, List<EligibilityFeed.Unit> units) { }
+    /** bcode·dong: 확정한 지번의 법정동(화면이 상세 탭과 같은 주변 시세 비교를 부를 때 쓴다). */
+    public record Sale(String id, String type, String houseNm, String status, String start, String end, String moveIn, double lat, double lng, List<EligibilityFeed.Unit> units,
+                       String bcode, String dong) { }
     /** 지번으로 위치를 확정하지 못한 공고(지구·블록 주소 등). 지도에는 놓지 않는다. */
     public record Unlocated(String id, String houseNm, String status, String start) { }
     public record Result(int pending, List<Sale> sales, List<Unlocated> unlocated) { }
@@ -106,7 +108,7 @@ public class SaleMapService {
             if (location.isEmpty()) { unlocated.add(new Unlocated(item.id(), item.houseNm(), item.status(), item.start())); continue; }
             AddressLocator.Location at = location.get();
             if (!at.bcode().startsWith(lawd5) || !Double.isFinite(at.lat()) || !Double.isFinite(at.lng())) continue;
-            sales.add(new Sale(item.id(), item.type(), item.houseNm(), item.status(), item.start(), item.end(), item.moveIn(), at.lat(), at.lng(), item.units()));
+            sales.add(new Sale(item.id(), item.type(), item.houseNm(), item.status(), item.start(), item.end(), item.moveIn(), at.lat(), at.lng(), item.units(), at.bcode(), at.dong()));
         }
         return new Result(pending, sales, unlocated);
     }

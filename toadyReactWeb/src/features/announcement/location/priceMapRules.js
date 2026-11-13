@@ -278,7 +278,13 @@ export function supplyForBand(unitPrices = [], areaSpec = 'all') {
   if (!units.length) return null;
   // 국민평형(84㎡)에 가장 가까운 주택형을 대표로 쓴다.
   const best = [...units].sort((a, b) => Math.abs(a.area - 84) - Math.abs(b.area - 84) || b.amountManwon - a.amountManwon)[0];
-  return { area: Math.round(best.area), amount: best.amountManwon, pyeong: perPyeong(best.amountManwon, best.area) };
+  return { area: Math.round(best.area), amount: best.amountManwon, pyeong: perPyeong(best.amountManwon, best.area),
+    supplyArea: Number(best.supplyArea) >= 10 ? Number(best.supplyArea) : null, type: best.type || '' };
+}
+/** 분양 말풍선의 면적 글자: 평 단위면 실제 공급면적의 평형(없으면 추정), ㎡ 단위면 전용 ㎡. */
+export function saleAreaText(supply, unit = 'm2') {
+  if (!supply) return '';
+  return unit === 'pyeong' && supply.supplyArea ? `${Math.round(supply.supplyArea / PYEONG)}평형` : areaText(supply.area, unit);
 }
 
 /** 걷기 약 4km/h(분당 67m), 자전거 약 16km/h(분당 267m) 기준의 대략적인 이동 시간(분, 최소 1분). */
@@ -308,22 +314,6 @@ export function isAddressLike(text) {
   return /(동|리|가|로|길)\s*(산\s*)?\d+(-\d+)?(\s|$)/.test(String(text || '').trim());
 }
 
-/** 분양가와 나란히 보여 줄 주변 거래 범위(m)와 같은 면적으로 보는 차이(㎡). */
-export const NEARBY_METERS = 1500, SAME_AREA = 3;
-/**
- * 공고 위치 반경 안 단지들의 같은 면적(±3㎡) 최근 거래가 중간값. 판정 없이 숫자만 준다.
- * 단지마다 그 면적의 '최근 거래' 한 건만 쓴다(거래 많은 단지가 값을 끌고 가지 않게). 2곳 미만이면 null.
- */
-export function nearbyMedian(complexes = [], area, origin, meters = NEARBY_METERS) {
-  if (!Number.isFinite(area) || !origin) return null;
-  const values = complexes
-    .filter(complex => distanceMeters(origin, complex) <= meters)
-    .map(complex => (complex.areas || []).filter(item => Math.abs(item.area - area) <= SAME_AREA).sort((a, b) => String(b.latestDate).localeCompare(String(a.latestDate)))[0])
-    .filter(Boolean).map(monthPrice).sort((a, b) => a - b);
-  if (values.length < 2) return null;
-  const middle = Math.floor(values.length / 2);
-  return { median: values.length % 2 ? values[middle] : Math.round((values[middle - 1] + values[middle]) / 2), complexes: values.length };
-}
 
 /**
  * 지도 분양 말풍선의 상태 이름. 앱의 다른 화면(관심 공고·준비 패널)과 같은 '접수 중·접수 예정·접수 종료'를 쓴다.
@@ -396,4 +386,34 @@ export function groupRows(rows = [], tier = 'dong', { mode = 'latest', names = {
       bounds: { swLat: Math.min(...lats), swLng: Math.min(...lngs), neLat: Math.max(...lats), neLng: Math.max(...lngs) }
     };
   }).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/**
+ * 분양 주택형 이름과 면적 글자. 평형은 모집공고의 실제 공급면적(supplyArea)으로 계산하고, 없을 때만 추정이라고 밝힌다.
+ * 같은 84㎡라도 84.96㎡·84.50㎡처럼 전용을 소수 둘째 자리까지 써서 주택형을 구분한다(타입 문자 A·B가 있으면 붙인다).
+ * areaUnit: 'm2'면 전용 ㎡가 앞, 'pyeong'이면 평형이 앞.
+ */
+export function unitAreaLabel(unit = {}, areaUnit = 'm2') {
+  const area = Number(unit.area), supply = Number(unit.supplyArea);
+  const letter = String(unit.type || '').trim().match(/[A-Za-z]+$/)?.[0] || '';
+  const exclusive = Number.isFinite(area) && area > 0 ? `${area.toFixed(2).replace(/\.?0+$/, '')}㎡${letter ? ` ${letter}` : ''}` : (unit.label || '주택형');
+  const pyeong = Number.isFinite(supply) && supply >= 10 ? `${Math.round(supply / PYEONG)}평형` : Number.isFinite(area) && area > 0 ? `약 ${supplyPyeong(area)}평형(추정)` : '';
+  return areaUnit === 'pyeong' ? { main: pyeong || exclusive, sub: pyeong ? `전용 ${exclusive}` : '' } : { main: `전용 ${exclusive}`, sub: pyeong };
+}
+
+const lastWord = value => String(value || '').trim().split(/\s+/).pop();
+const parcelOf = value => String(value || '').replace(/\s+/g, '').replace(/번지$/, '');
+/**
+ * 실거래 단지가 공고와 같은 필지인지: 법정동(마지막 단어)과 지번(본번-부번, 산 여부)이 같을 때만.
+ * 무순위·잔여세대처럼 이미 지어진 단지의 공고에서 '이 단지 최근 거래'를 함께 보여 줄 때 쓴다. 근처라는 이유로 같다고 보지 않는다.
+ * location: { dong, address: '경기 파주시 동패동 2295' }.
+ */
+export function sameParcel(complex, location) {
+  if (!complex?.jibun || !location?.address) return false;
+  // 주소의 마지막 지번과 그 앞 단어(동·리)를 쓴다('… 조리읍 봉일천리 산 12' → 봉일천리 / 산12).
+  const words = String(location.address).trim().split(/\s+/);
+  let jibun = words.pop();
+  if (words[words.length - 1] === '산') jibun = words.pop() + jibun;
+  const dong = words.pop();
+  return /^(산)?\d+(-\d+)?$/.test(parcelOf(jibun)) && parcelOf(jibun) === parcelOf(complex.jibun) && lastWord(dong) === lastWord(complex.dong);
 }
