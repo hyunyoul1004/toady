@@ -24,10 +24,14 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const [text,setText]=useState(''),[manualResult,setManualResult]=useState(null),[searchMessage,setSearchMessage]=useState(''),[searching,setSearching]=useState(false),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState(''),[attempt,setAttempt]=useState(0),[mapReady,setMapReady]=useState(0),[zoomedOut,setZoomedOut]=useState(false),[tier,setTier]=useState('single'),[view,setView]=useState(null);
   const result=manualResult || location.data;
   const precise=result?.status==='ADDRESS';
-  const visible=precise || (showCandidate && result?.status==='CANDIDATE');
+  // 지구·블록 주소: 부지는 확정하지 않고 주소의 법정동(또는 시·군·구) 일대만 '추정'으로 보여 준다(핀 없음).
+  const approx=!manualResult && result?.status==='UNRESOLVED' && result.area ? result.area : null;
+  const visible=precise || Boolean(approx) || (showCandidate && result?.status==='CANDIDATE');
   // 실거래 조회 지역과 '이 공고' 표시는 공고의 확정 주소로만 정한다(직접 검색한 주소로 바꾸지 않는다).
   const announced=location.data?.status==='ADDRESS'?location.data:null;
-  const priceMap=usePriceMap(announced,Boolean(announced),detail.subscriptSeq || '');
+  const approxArea=location.data?.status==='UNRESOLVED' && location.data.area ? location.data.area : null;
+  const priceLocation=announced || (approxArea && {status:'AREA',bcode:approxArea.bcode,region:approxArea.region,dong:approxArea.dong});
+  const priceMap=usePriceMap(priceLocation,Boolean(priceLocation),detail.subscriptSeq || '');
   const navigate=useNavigate(),routeLocation=useLocation();
   // 다른 분양 공고 열기: 지금 화면 주소에서 상세 값만 바꿔 히스토리 한 단계를 쌓는다(뒤로가기로 이 공고 지도에 돌아온다).
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
@@ -45,17 +49,23 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
 
   useEffect(()=>{setManualResult(null);setShowCandidate(false);setSearchMessage('');setText('');generation.current++;},[detail.subscriptSeq]);
   useEffect(()=>{
-    let active=true,marker,map,observer,kakaoApi;const listeners=[];
+    let active=true,marker,map,observer,kakaoApi;const listeners=[],areaShapes=[];
     setMapError('');
     if(visible && container.current) ensureKakaoLoaded().then(kakao=>{
       if(!active || !container.current)return;
       kakaoApi=kakao;
       const listen=(type,handler)=>{kakao.maps.event.addListener(map,type,handler);listeners.push([type,handler]);};
-      const coords=new kakao.maps.LatLng(result.latitude,result.longitude);
+      const coords=approx?new kakao.maps.LatLng(approx.latitude,approx.longitude):new kakao.maps.LatLng(result.latitude,result.longitude);
       // 확정 주소는 주변 단지가 함께 보이도록 조금 넓게(레벨 5) 연다.
-      map=new kakao.maps.Map(container.current,{center:coords,level:precise?5:6});
+      map=new kakao.maps.Map(container.current,{center:coords,level:precise?5:approx?(approx.level==='dong'?6:8):6});
+      // 대략 지역은 점선 원과 '○○ 일대(추정)' 이름표로만 표시한다. 확정 위치처럼 보이는 핀은 놓지 않는다.
+      if(approx && approx.level==='dong'){
+        areaShapes.push(new kakao.maps.Circle({map,center:coords,radius:700,strokeWeight:2,strokeColor:'#7c3aed',strokeOpacity:.8,strokeStyle:'dash',fillColor:'#7c3aed',fillOpacity:.05}));
+      }
+      if(approx){const tag=document.createElement('div');tag.className='pm-approx-tag';tag.textContent=`${approx.name} 일대(추정) · 부지 미확정`;
+        areaShapes.push(new kakao.maps.CustomOverlay({map,position:coords,content:tag,yAnchor:.5,zIndex:2}));}
       // 실거래 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시하므로 기본 핀은 직접 검색한 위치·가격 미제공일 때만 둔다.
-      if(!showPrices || manualResult)marker=new kakao.maps.Marker({map,position:coords});
+      if((!showPrices || manualResult) && !approx)marker=new kakao.maps.Marker({map,position:coords});
       map.addControl(new kakao.maps.ZoomControl(),kakao.maps.ControlPosition.RIGHT);
       const far=()=>container.current?.classList.toggle('is-far',map.getLevel()>=6);
       listen('zoom_changed',far);far();
@@ -74,11 +84,11 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     }).catch(()=>{if(active)setMapError('지도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');});
     // 다시 만들 때(가격 표시 여부·위치가 바뀔 때) 이전 지도의 이벤트와 화면을 지운다. 남겨 두면 같은 칸에 지도가 겹치고
     // 이전 지도의 확대·축소 단추가 지금 지도와 다른 축소 단계를 기록한다.
-    return()=>{active=false;observer?.disconnect();marker?.setMap(null);
+    return()=>{active=false;observer?.disconnect();marker?.setMap(null);areaShapes.forEach(shape=>shape.setMap(null));
       if(map && kakaoApi)listeners.forEach(([type,handler])=>kakaoApi.maps.event.removeListener(map,type,handler));
       if(container.current)container.current.replaceChildren();
       mapRef.current=null;};
-  },[visible,result,precise,attempt,showPrices]);
+  },[visible,result,precise,approx,attempt,showPrices]);
 
   // 이 공고 말풍선: 같은 면적 구간의 분양가. 상태는 다른 분양 말풍선과 같은 규칙(접수 중·예정·종료)으로 붙이고, '이 공고'와 꽉 찬 보라로 구분한다.
   // 아무 단지도 고르지 않았을 때는 이 공고가 선택된 상태다.
@@ -264,7 +274,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
 
   const original=detail.hssplyAdres || detail.supplyLocation || '공급위치 미제공';
   const tradesOff=priceMap.capabilities.data && priceMap.capabilities.data.tradesEnabled!==true;
-  const priceError=priceMap.query.isError || (priceMap.query.data && priceMap.query.data.status!=='READY' && priceMap.query.data.status!=='EMPTY');
+  const unsupported=priceMap.query.data?.status==='UNSUPPORTED';
+  const priceError=priceMap.query.isError || (priceMap.query.data && !['READY','EMPTY','UNSUPPORTED'].includes(priceMap.query.data.status));
   const searchBar=<Box component="form" onSubmit={search} sx={{display:'flex',gap:1,my:1.5}} role="search">
     <TextField fullWidth size="small" value={text} onChange={event=>changeText(event.target.value)}
       placeholder={showPrices?'단지명·동 이름 또는 지번·도로명':'지번·도로명으로 위치 찾기 (예: 동패동 400-7)'}
@@ -278,30 +289,40 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     : '';
 
   return <Box sx={{pt:.5}}>
-    <Paper variant="outlined" sx={{p:2,mb:1,borderRadius:2,bgcolor:'#f8fafc'}}><Typography variant="caption" color="text.secondary">모집공고 공급위치</Typography><Typography sx={{fontSize:14,fontWeight:700,mt:.5}}>{original}</Typography></Paper>
+    {/* 공급위치와 위치 판정 결과를 한 카드로(모바일 첫 화면에서 주소가 여러 번 반복되지 않게). */}
+    <Paper variant="outlined" className="loc-summary" sx={{p:1.5,mb:1,borderRadius:2,bgcolor:'#f8fafc'}}>
+      <Typography variant="caption" color="text.secondary">모집공고 공급위치</Typography>
+      <Typography sx={{fontSize:14,fontWeight:700,mt:.25,overflowWrap:'anywhere'}}>{original}</Typography>
+      {location.data?.status==='ADDRESS' && <Typography className="loc-status is-exact" variant="caption" component="p">지번 확인 · {location.data.address}</Typography>}
+      {location.data?.status==='UNRESOLVED' && <Typography className="loc-status is-approx" variant="caption" component="p">
+        {detail.hssplyAdres || detail.supplyLocation?'지구·블록 단위 주소라 정확한 부지는 확인되지 않았어요.':'청약홈에 공급 위치가 제공되지 않은 공고예요.'}
+        {location.data.area?` 지도는 ${location.data.area.name} 일대를 추정으로 보여 주고, 공고 위치 핀은 놓지 않아요.`:''}</Typography>}
+    </Paper>
     {(location.isLoading || location.isFetching) && <Box sx={{p:3,display:'flex',gap:1}}><CircularProgress size={20}/>공급위치를 확인하고 있어요.</Box>}
     {location.error && <Alert severity="warning" action={<Button onClick={()=>location.refetch()}>다시 확인</Button>}>위치 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</Alert>}
-    {result?.status==='UNRESOLVED' && <Alert severity="info" sx={{mb:1}}>정확한 위치 확인 중입니다. 지구·블록 주소는 부지를 특정하지 못할 수 있어 임의의 위치를 표시하지 않습니다. 아래에서 지번·도로명으로 직접 찾아볼 수 있어요.</Alert>}
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:1}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}
-    {location.data && location.data.status!=='ADDRESS' && <PriceMapUnavailable reason="주변 실거래가는 공급 주소(지번)가 확인된 공고에서만 보여 드려요. 확인되지 않은 위치 주변의 가격은 표시하지 않습니다."/>}
+    {location.data && location.data.status!=='ADDRESS' && !approxArea && <PriceMapUnavailable reason="주변 실거래가는 공급 주소(지번)가 확인된 공고에서만 보여 드려요. 확인되지 않은 위치 주변의 가격은 표시하지 않습니다."/>}
     {showPrices && <Typography component="h3" sx={{m:0,mt:2,fontSize:16,fontWeight:800}}>주변 아파트 실거래가</Typography>}
-    {(location.data || manualResult) && searchBar}
-    {searchHint && <Typography variant="caption" color="text.secondary" component="p" sx={{mt:-1,mb:1}}>{searchHint}</Typography>}
-    {searchMessage && <Alert severity="warning" sx={{mb:1}}>{searchMessage}</Alert>}
+    {!visible && <>{(location.data || manualResult) && searchBar}{searchHint && <Typography variant="caption" color="text.secondary" component="p" sx={{mt:-1,mb:1}}>{searchHint}</Typography>}{searchMessage && <Alert severity="warning" sx={{mb:1}}>{searchMessage}</Alert>}</>}
     {visible && <>
-      <Alert severity={precise?'info':'warning'} sx={{mb:1}} action={manualResult?<Button color="inherit" size="small" onClick={backToAnnouncement}>공고 위치로</Button>:null}>
+      {/* 공고 확정 위치는 위 카드에 한 번만 적는다. 직접 검색한 위치·검색 후보일 때만 따로 알린다. */}
+      {(manualResult || result?.status==='CANDIDATE') && <Alert severity="warning" sx={{mb:1}} action={manualResult?<Button color="inherit" size="small" onClick={backToAnnouncement}>공고 위치로</Button>:null}>
         {manualResult?'직접 검색한 위치 · 공고의 확정 위치가 아닙니다':result.label} · {result.address}
-      </Alert>
+      </Alert>}
       {showPrices && <PriceMapFilters filters={priceMap.filters} setFilters={priceMap.setFilters}/>}
       {/* 일시적인 네트워크 오류 뒤에도 탭을 나갔다 오지 않고 다시 불러올 수 있게 한다. */}
       {mapError?<Alert severity="error" action={<Button color="inherit" size="small" onClick={()=>{setMapError('');setAttempt(value=>value+1);}}>다시 시도</Button>}>{mapError}</Alert>
         :<Box className="price-map-wrap">
-          <div ref={container} className="price-map-canvas" aria-label={precise?'공급 주소 기준 지도':'미확인 위치 검색 후보 지도'}/>
+          <div ref={container} className="price-map-canvas" aria-label={precise?'공급 주소 기준 지도':approx?'주소의 법정동 일대 지도(추정, 부지 미확정)':'미확인 위치 검색 후보 지도'}/>
           {mapReady>0 && <MapToolbar tools={tools} originLabel={manualResult?'검색한 위치':'공고 위치'}>{showPrices && <PriceModeToggle filters={priceMap.filters} setFilters={priceMap.setFilters}/>}</MapToolbar>}
         </Box>}
-      <Typography variant="caption" color="text.secondary">표시 지점은 부지 경계·출입구를 뜻하지 않습니다.</Typography>
+      <Typography variant="caption" color="text.secondary">{approx?'점선 원은 주소의 법정동 일대를 대략 보여 줄 뿐 부지 위치가 아니에요.':'표시 지점은 부지 경계·출입구를 뜻하지 않습니다.'}</Typography>
+      {(location.data || manualResult) && searchBar}
+      {searchHint && <Typography variant="caption" color="text.secondary" component="p" sx={{mt:-1,mb:1}}>{searchHint}</Typography>}
+      {searchMessage && <Alert severity="warning" sx={{mb:1}}>{searchMessage}</Alert>}
       {showPrices && <>
-        {priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</Alert>
+        {unsupported?<Alert severity="info" sx={{mt:1}}>이 지역은 아직 주변 실거래 조회를 지원하지 않아요.</Alert>
+          :priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</Alert>
           :<PriceMapStatus query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} sales={priceMap.sales} unlocatedSales={priceMap.unlocatedSales} onOpenSale={openSale} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut} grouped={tier!=='single'?tier:''}/>}
         {priceMap.query.data?.status==='READY' && !priceMap.rows.length && <Alert severity="info" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>{clearText();priceMap.setFilters({areaMin:0,areaMax:165,priceMin:0,priceMax:400000,age:'all',query:''});}}>조건 풀기</Button>}>{priceMap.outside.length?`조건에 맞는 거래가 없어요. 거래가 있는 단지 ${priceMap.outside.length.toLocaleString('ko-KR')}곳은 지도에 회색 점으로 보여요. 조건을 풀어 보세요.`:'조건에 맞는 거래가 없어요. 조건을 풀어 보세요.'}</Alert>}
         {priceMap.query.data?.status==='EMPTY' && <Alert severity="info" sx={{mt:1}}>이 기간에 신고된 아파트 매매 거래가 없어요. 기간을 늘려 보세요.</Alert>}

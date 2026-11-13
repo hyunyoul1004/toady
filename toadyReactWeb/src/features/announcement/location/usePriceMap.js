@@ -26,7 +26,8 @@ const district = ({ bcode, region }) => ({ bcode, region: REGION.test(region || 
  */
 export function usePriceMap(location, enabled, currentId = '') {
   const capabilities = useQuery({ queryKey: ['researchCapabilities'], queryFn: () => apiClient.get('/api/v1/research/capabilities'), staleTime: 300000, retry: 1, enabled });
-  const bcode = location?.status === 'ADDRESS' && /^\d{10}$/.test(location?.bcode || '') ? location.bcode : '';
+  // ADDRESS: 지번이 확정된 공고. AREA: 지구·블록 주소라 법정동(또는 시·군·구) 일대만 아는 공고(거리·같은 필지 계산은 하지 않는다).
+  const bcode = ['ADDRESS', 'AREA'].includes(location?.status) && /^\d{10}$/.test(location?.bcode || '') ? location.bcode : '';
   const [filters, setFiltersState] = useState(readFilters);
   const setFilters = useCallback(patch => setFiltersState(current => normalizeFilters({ ...current, ...patch })), []);
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...filters, query: '', areaBasis: 'supply' })); } catch { /* 기억하지 못해도 지도는 쓸 수 있다 */ } }, [filters]);
@@ -85,7 +86,7 @@ export function usePriceMap(location, enabled, currentId = '') {
   const loadingOthers = others.some(item => item.isFetching);
   const pending = queries.reduce((sum, item) => sum + (item.data?.pending || 0), 0);
 
-  const origin = location && Number.isFinite(location.latitude) ? { lat: location.latitude, lng: location.longitude } : null;
+  const origin = location?.status === 'ADDRESS' && Number.isFinite(location.latitude) ? { lat: location.latitude, lng: location.longitude } : null;
   const year = Number(koreaToday().slice(0, 4));
   // 조건 밖 단지(outside)도 함께 돌려줘 지도가 '거래 없음'과 '위치 미확인'을 구분해 보여 준다.
   const { rows, outside } = useMemo(() => splitComplexes(complexes, filters, { origin, year }), [complexes, filters, origin?.lat, origin?.lng, year]);

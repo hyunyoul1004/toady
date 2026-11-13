@@ -37,6 +37,9 @@ class NeighborhoodResearchServiceTest {
         assertEquals("READY",service.trades("1286025024","진도읍 교동리").status());
         assertTrue(calls.get()>0);
         assertEquals("UNAVAILABLE",service.trades("9986025024","진도읍 교동리").status(),"없는 시·도 코드는 여전히 외부 호출 없이 거절");
+        int before=calls.get();
+        assertEquals("UNSUPPORTED",service.districtTrades("9986025024",3,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5)).status(),"지도는 지원하지 않는 지역을 일시 오류와 구분한다");
+        assertEquals(before,calls.get());
     }
     @Test void priceGapUsesSixMonthsDongFirstThenDistrictAndReusesCache() {
         AtomicInteger calls=new AtomicInteger();

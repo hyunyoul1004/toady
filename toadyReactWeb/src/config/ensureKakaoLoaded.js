@@ -1,5 +1,5 @@
 /** 스크립트 다운로드와 maps.load 콜백까지 모두 제한 시간에 포함한다. */
-export function ensureKakaoLoaded(target = window, timeoutMs = 4000) {
+export function ensureKakaoLoaded(target = window, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let interval;
     let timer;

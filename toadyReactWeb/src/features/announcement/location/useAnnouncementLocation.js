@@ -6,7 +6,8 @@ import { resolveLocation } from './resolveLocation';
 export function useAnnouncementLocation(detail,enabled=true) {
   return useQuery({
     queryKey:['announcementLocation',detail.subscriptSeq,detail.hssplyAdres || detail.supplyLocation],
-    enabled,staleTime:3600000,retry:false,
+    // 카카오 SDK가 늦게 뜨는 경우(모바일 첫 접속 등)만 한 번 더 기다린다. 주소 판정 결과는 다시 묻지 않는다.
+    enabled,staleTime:3600000,retry:(count,error)=>count<1 && /지연|SDK/.test(error?.message || ''),retryDelay:500,
     queryFn:async()=>{const kakao=await ensureKakaoLoaded();return resolveLocation(kakao.maps,detail);}
   });
 }

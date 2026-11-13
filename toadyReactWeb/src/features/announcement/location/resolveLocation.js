@@ -64,5 +64,33 @@ export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
     const candidates=rows.filter(row=>siteCandidate(row,address,house));
     if(candidates.length===1) return {status:'CANDIDATE',label:'단지명 검색 후보 · 위치 확인 전',address:candidates[0].address_name,latitude:Number(candidates[0].y),longitude:Number(candidates[0].x)};
   }
-  return {status:'UNRESOLVED',label:'정확한 위치 확인 중'};
+  // 지번이 없는 지구·블록 주소: 부지는 확정하지 않고, 주소에 적힌 법정동(없으면 시·군·구)의 대략 위치만 따로 준다(핀을 놓지 않는다).
+  const area=areaQuery(address);
+  let approx=null;
+  if(area) {
+    const rows=await request(geocoder,'addressSearch',area.query,ok,timeoutMs).catch(()=>[]);
+    const found=rows.find(row=>coordinates(row) && sameRegion(address,row.address_name) && /^\d{10}$/.test(row.address?.b_code || ''));
+    if(found) approx={level:area.level,name:area.name,latitude:Number(found.y),longitude:Number(found.x),bcode:found.address.b_code,
+      dong:area.level==='dong'?(found.address?.region_3depth_name || ''):'',region:[found.address?.region_1depth_name,found.address?.region_2depth_name].filter(Boolean).join(' ')};
+  }
+  return {status:'UNRESOLVED',label:'지구·블록 주소 · 부지 미확정',area:approx};
+}
+
+const DONG_TOKEN=/^[가-힣0-9]+(동|읍|면|가|리)$/;
+/**
+ * 지구·블록 주소에서 대략 위치를 찾을 검색어: 시·도 + 시·군·구 + (처음 나오는 법정동·읍·면). 동이 없으면 시·군·구만.
+ * 예: '경기도 안산시 단원구 신길동 일원 안산신길2 공공주택지구 내 B-1블록' → '경기도 안산시 단원구 신길동'(level dong),
+ *     '경기도 구리시 구리갈매역세권 B-1블록' → '경기도 구리시'(level district). 시·군·구를 모르면 null.
+ */
+export function areaQuery(address) {
+  const raw=normalize(address).replace(/\([^)]*\)|\[[^\]]*\]/g,' ').replace(/[,·]/g,' ').replace(/\s+/g,' ').trim();
+  const cities=municipality(raw);
+  if(!cities.length) return null;
+  const tokens=raw.split(' ');
+  const after=tokens.slice(tokens.indexOf(cities[cities.length-1])+1);
+  const dongs=after.filter(token=>DONG_TOKEN.test(token) && !/(지구|단지|블록|블럭)$/.test(token));
+  // 여러 동에 걸친 지구(예: 귤현동·동양동·박촌동 일원)는 한 동을 골라 오해를 주지 않도록 시·군·구로 올린다.
+  const dong=new Set(dongs).size===1?dongs[0]:null;
+  const head=[province(raw)?tokens[0]:'',...cities].filter(Boolean);
+  return dong?{query:[...head,dong].join(' '),level:'dong',name:dong}:{query:head.join(' '),level:'district',name:cities[cities.length-1]};
 }

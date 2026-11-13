@@ -143,7 +143,8 @@ public class NeighborhoodResearchService {
     public DistrictTrades districtTrades(String bcode,int months,long deadline) {
         YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(months-1);
         if(!tradesEnabled()) return new DistrictTrades("NOT_CONFIGURED",start.toString(),end.toString(),null,List.of(),0,false);
-        if(bcode==null || !bcode.matches("\\d{10}") || !SIDO_CODES.contains(bcode.substring(0,2))) return new DistrictTrades("UNAVAILABLE",start.toString(),end.toString(),null,List.of(),0,false);
+        // 지원하지 않는 시·도 코드는 일시 오류(UNAVAILABLE)와 구분한다. 화면은 '다시 시도' 대신 '아직 지원하지 않는 지역'으로 안내한다.
+        if(bcode==null || !bcode.matches("\\d{10}") || !SIDO_CODES.contains(bcode.substring(0,2))) return new DistrictTrades("UNSUPPORTED",start.toString(),end.toString(),null,List.of(),0,false);
         try {
             List<Trade> all=new ArrayList<>();List<Instant> updated=new ArrayList<>();YearMonth earliest=end;
             for(int month=0;month<months;month++) {

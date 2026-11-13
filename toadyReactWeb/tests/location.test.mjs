@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parcelCandidates,resolveLocation,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
+import {areaQuery,parcelCandidates,resolveLocation,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
 function maps(addressRows=[],placeRows=[]) {
  const calls=[];
  return {calls,services:{Status:{OK:'OK'},Geocoder:class{addressSearch(q,cb){calls.push(['address',q]);cb(addressRows,'OK');}},Places:class{keywordSearch(q,cb){calls.push(['place',q]);cb(placeRows,'OK');}}}};
@@ -10,7 +10,11 @@ test('block-only addresses never resolve to city, station or model-house markers
  for(const address of ['경기도 구리시 구리갈매역세권 B-1블록','경기도 파주시 파주운정3지구 주상복합 4블록','인천광역시 서구 검단신도시 AA-1BL']) {
   const sdk=maps([row],[{place_name:'견본주택',address_name:address,x:'127',y:'37'}]);
   const result=await resolveLocation(sdk,{hssplyAdres:address,houseNm:'테스트 단지'});
-  assert.equal(result.status,'UNRESOLVED');assert.equal(sdk.calls.filter(x=>x[0]==='address').length,0);
+  assert.equal(result.status,'UNRESOLVED');
+  // 지번 검색은 하지 않고, 대략 지역(시·군·구 또는 법정동)만 한 번 묻는다. 결과는 확정 위치(latitude)가 아니라 area로만 준다.
+  const queries=sdk.calls.filter(x=>x[0]==='address').map(x=>x[1]);
+  assert.ok(queries.length<=1 && queries.every(q=>!/\d/.test(q)),queries.join());
+  assert.equal(result.latitude,undefined);
  }
 });
 test('new-town names are not municipalities, so a bracketed parcel still resolves',()=>{
@@ -40,4 +44,17 @@ test('province aliases match while identically named counties in different provi
  assert.equal(sameRegion('강원특별자치도 고성군 간성읍 100','경남 고성군 고성읍 100'),false);
  assert.equal(sameRegion('부산광역시 중구 중앙대로 100','부산 중구 중앙대로 100'),true);
  assert.equal(sameRegion('세종특별자치시 한누리대로 100','세종특별자치시 한누리대로 100'),true);
+});
+
+test('지구·블록 주소는 법정동(여러 동이면 시·군·구) 일대만 추정으로 준다',async()=>{
+ assert.deepEqual(areaQuery('경기도 안산시 단원구 신길동 일원 안산신길2 공공주택지구 내 B-1블록'),{query:'경기도 안산시 단원구 신길동',level:'dong',name:'신길동'});
+ assert.deepEqual(areaQuery('경기도 구리시 구리갈매역세권 B-1블록'),{query:'경기도 구리시',level:'district',name:'구리시'});
+ assert.deepEqual(areaQuery('인천광역시 계양구 귤현동, 동양동, 박촌동 일원 인천계양 공공주택지구'),{query:'인천광역시 계양구',level:'district',name:'계양구'},'여러 동에 걸치면 한 동을 고르지 않는다');
+ assert.equal(areaQuery('경기'),null);
+ const region={address_type:'REGION',x:'126.8',y:'37.3',address_name:'경기 안산시 단원구 신길동',address:{address_name:'경기 안산시 단원구 신길동',b_code:'4127310500',region_1depth_name:'경기',region_2depth_name:'안산시 단원구',region_3depth_name:'신길동'}};
+ const result=await resolveLocation(maps([region]),{hssplyAdres:'경기도 안산시 단원구 신길동 일원 안산신길2 공공주택지구 내 B-1블록',houseNm:''});
+ assert.equal(result.status,'UNRESOLVED');
+ assert.deepEqual({level:result.area.level,name:result.area.name,bcode:result.area.bcode,dong:result.area.dong},{level:'dong',name:'신길동',bcode:'4127310500',dong:'신길동'});
+ const other={...region,address_name:'경기 시흥시 신길동',address:{...region.address,address_name:'경기 시흥시 신길동'}};
+ assert.equal((await resolveLocation(maps([other]),{hssplyAdres:'경기도 안산시 단원구 신길동 일원 B-1블록',houseNm:''})).area,null,'다른 시·군·구의 같은 동 이름은 쓰지 않는다');
 });

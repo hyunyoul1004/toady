@@ -148,3 +148,9 @@
 .price-map-site-trades{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:10px;padding:8px 10px;border-radius:8px;background:#f5f3ff;font-size:13px}
 .price-map-site-trades>p{flex-basis:100%}
 .price-map-site-trades small{color:#64748b}
+
+/* 위치 탭 맨 위 공급위치 카드의 판정 줄과, 지구·블록 주소의 대략 지역 이름표 */
+.loc-status{margin:6px 0 0!important;font-weight:700}
+.loc-status.is-exact{color:#0f766e}
+.loc-status.is-approx{color:#92400e}
+.pm-approx-tag{padding:4px 10px;border:1px dashed #7c3aed;border-radius:999px;background:rgba(255,255,255,.92);color:#5b21b6;font-size:12px;font-weight:800;white-space:nowrap}
