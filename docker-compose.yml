@@ -31,7 +31,11 @@ services:
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,https://toady.co.kr,https://www.toady.co.kr,http://toady.co.kr,http://www.toady.co.kr
+      # 운영은 https 출처만 허용한다(로컬 개발 출처는 application.yml 기본값에만 둔다).
+      - CORS_ALLOWED_ORIGINS=https://toady.co.kr,https://www.toady.co.kr
+      # 운영에서는 API 명세(Swagger UI·/v3/api-docs)를 공개하지 않는다.
+      - SPRINGDOC_APIDOCS_ENABLED=false
+      - SPRINGDOC_SWAGGERUI_ENABLED=false
     volumes:
       - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
     ports:
@@ -100,7 +104,7 @@ services:
   nginx:
     container_name: nginx
     # 웹 컨테이너(toadyReactWeb/Dockerfile)·CI 문법 검사와 같은 버전. nginx 컨테이너를 다시 만들 때 적용된다.
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     environment:
       - TZ=Asia/Seoul
     ports:

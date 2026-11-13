@@ -29,3 +29,28 @@ class HealthControllerTest {
         assertEquals(java.util.Map.of("status", "DOWN"), response.getBody());
     }
 }
+
+class InternalPathFilterTest {
+    @Test
+    void internalPathsRefuseRequestsThatCameThroughAProxy() throws Exception {
+        var filter = new com.toady.web.core.security.InternalPathFilter();
+        var proxied = new org.springframework.mock.web.MockHttpServletRequest("GET", "/internal/schema");
+        proxied.addHeader("X-Real-IP", "203.0.113.5");
+        var proxiedResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        var chain = new org.springframework.mock.web.MockFilterChain();
+        filter.doFilter(proxied, proxiedResponse, chain);
+        assertEquals(404, proxiedResponse.getStatus());
+        org.junit.jupiter.api.Assertions.assertNull(chain.getRequest(), "앞단을 거친 요청은 컨트롤러까지 가지 않는다");
+
+        var direct = new org.springframework.mock.web.MockHttpServletRequest("GET", "/internal/health");
+        var directChain = new org.springframework.mock.web.MockFilterChain();
+        filter.doFilter(direct, new org.springframework.mock.web.MockHttpServletResponse(), directChain);
+        org.junit.jupiter.api.Assertions.assertNotNull(directChain.getRequest(), "서버 안에서 직접 부르면 통과");
+
+        var api = new org.springframework.mock.web.MockHttpServletRequest("GET", "/api/v1/announcements");
+        api.addHeader("X-Real-IP", "203.0.113.5");
+        var apiChain = new org.springframework.mock.web.MockFilterChain();
+        filter.doFilter(api, new org.springframework.mock.web.MockHttpServletResponse(), apiChain);
+        org.junit.jupiter.api.Assertions.assertNotNull(apiChain.getRequest(), "일반 API는 영향 없음");
+    }
+}

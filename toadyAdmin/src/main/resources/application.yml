@@ -20,6 +20,10 @@ server:
     session:
       timeout: 30m
       cookie:
+        # 관리자 화면이 공개 사이트와 같은 주소(www)에 있어 쿠키를 /admin 아래로만 보내고, 이름도 따로 둔다.
+        # 공개 페이지 경로로 가는 요청에는 관리자 세션이 실리지 않는다.
+        name: TOADY_ADMIN_SESSION
+        path: /admin
         http-only: true
         same-site: strict
         secure: ${ADMIN_SECURE_COOKIE:false}

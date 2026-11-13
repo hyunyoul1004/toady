@@ -27,7 +27,7 @@ RUN npm run build
 # 2단계: 운영 서빙 환경 (Nginx 경량 이미지)
 # ==========================================
 # CI의 nginx -t 검사와 앞단 nginx 컨테이너와 같은 버전으로 고정한다.
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 
 # Nginx 기본 설정 파일 교체 (SPA 라우팅 및 캐싱/gzip 설정 포함)
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -72,6 +72,14 @@ fi
 schema=$(curl --fail --silent --max-time 5 http://127.0.0.1:8080/internal/schema || true)
 missing=$(printf '%s' "$schema" | tr -d '\n' | sed -n 's/.*"missing"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' | tr -d '" ')
 if [ -n "$missing" ]; then
+  # 회원가입·로그인·인증 메일·관심 공고·이야기가 바로 실패하는 핵심 테이블이 없으면 배포를 실패로 보고 되돌린다.
+  for critical in TB_USER TB_CERTIFY TB_MAIL_BUDGET TB_MAIL_ATTEMPT TB_FAVORITE TB_LTTOT_PBLANC_COMMENT; do
+    case ",$missing," in
+      *",$critical,"*)
+        echo "Schema check failed: required table $critical is missing. Apply database.sql before deploying." >&2
+        exit 1 ;;
+    esac
+  done
   echo "WARNING: Database tables missing for the API: $missing. Apply the matching sections of database.sql." >&2
 fi
 # 앞단 nginx(80/443)를 거친 실제 서비스 경로를 확인한다. --resolve로 서버 자신에게 접속하되 인증서 검증은 그대로 둔다.

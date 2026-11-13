@@ -81,6 +81,11 @@ esac
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn('TB_PUSH_SUBSCRIPTION,TB_RATE_POLL', result.stderr)
 
+    def test_fails_when_a_core_table_is_missing(self):
+        result, _ = self.run_check(False, schema='{"missing":["TB_RATE_POLL","TB_MAIL_ATTEMPT"]}')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('TB_MAIL_ATTEMPT', result.stderr)
+
     def test_tolerates_old_api_without_schema_endpoint_and_complete_schema(self):
         for schema in ('', '{"missing":[]}'):
             result, _ = self.run_check(False, schema=schema)
