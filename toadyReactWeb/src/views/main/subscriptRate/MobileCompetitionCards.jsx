@@ -46,13 +46,31 @@ export function RateSummary({summary}) {
   </section>;
 }
 
+/**
+ * 카드 안 당첨가점. PC 표처럼 펼친 상태로 보여 준다(접어 두면 휴대폰에서 가점이 없는 것처럼 보인다).
+ * 공개된 점수가 하나도 없으면 한 줄 안내만 둔다.
+ */
+function MobileScores({scores}) {
+  const published=scores.some(score=>[score.lwetScore,score.topScore,score.avrgScore].some(validScore));
+  return <div className="competition-rank-group competition-scores">
+    <h4>당첨가점</h4>
+    {published?<>
+      <div className="competition-card-columns competition-card-columns--score"><span>지역</span><span>최저</span><span>최고</span><span>평균</span></div>
+      {scores.map((score,i)=><div className="competition-card-row competition-card-row--score" key={i}>
+        <span>{score.resideSenm || score.resideSecd || '지역 미제공'}</span>
+        <span>{scoreText(score.lwetScore)}</span><strong>{scoreText(score.topScore)}</strong><span>{scoreText(score.avrgScore)}</span>
+      </div>)}
+    </>:<p className="competition-scores-empty">당첨가점이 아직 공개되지 않았거나 제공 자료가 없습니다.</p>}
+  </div>;
+}
+
 /** 작은 화면에서는 주택형·순위·지역과 수치를 같은 카드 안에서 읽는다. */
 export function MobileCompetitionCards({groups}) {
   return <div className="competition-mobile-cards" aria-label="주택형별 경쟁률 카드">{groups.map((group,index)=><section className="competition-mobile-card" key={`${group.houseTy}/${index}`}>
     <header><h3>{formatUnit(group.houseTy,group.modelNo)}</h3><span>공급 {formatCount(group.suplyHshldco)}세대</span></header>
     <p className="competition-card-result">{group.resultText==='-'?'공개된 접수 결과를 확인해 주세요.':group.resultText}</p>
     {group.ranks.map(rank=><div className="competition-rank-group" key={rank}><h4>{rank}</h4><div className="competition-card-columns"><span>지역</span><span>접수</span><span>경쟁률</span></div>{group.itemsByRank[rank].map((row,i)=><div className="competition-card-row" key={i}><span>{row.resideSenm || row.resideSecd || '지역 미제공'}</span><span>{formatCount(row.reqCnt)}건</span><span><RateValue value={row.cmpetRate} reqCnt={row.reqCnt} compact/></span></div>)}</div>)}
-    <details className="competition-scores"><summary>당첨가점 확인</summary>{group.scores.length?<dl>{group.scores.map((score,i)=><div key={i}><dt>{score.resideSenm || score.resideSecd || '지역 미제공'}</dt><dd>최저 {scoreText(score.lwetScore)} · 최고 {scoreText(score.topScore)} · 평균 {scoreText(score.avrgScore)}</dd></div>)}</dl>:<p>당첨가점이 아직 공개되지 않았거나 제공 자료가 없습니다.</p>}</details>
+    <MobileScores scores={group.scores}/>
   </section>)}</div>;
 }
 

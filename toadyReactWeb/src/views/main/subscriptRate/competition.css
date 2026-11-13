@@ -11,10 +11,10 @@
 .competition-card-row{padding:10px 8px;border-bottom:1px solid #eef2f7}
 .competition-card-columns>*:nth-child(n+2),.competition-card-row>*:nth-child(n+2){text-align:right}
 .competition-card-row strong{font-size:14px;color:#245e9d;font-variant-numeric:tabular-nums}
-.competition-scores{margin-top:16px;color:#506d8e;font-size:11px}
-.competition-scores summary{cursor:pointer;padding:8px 0;font-weight:650}
-.competition-scores p{line-height:1.8}
-.competition-scores dl{margin:0}.competition-scores dl>div{padding:7px 0}.competition-scores dt{font-weight:700}.competition-scores dd{margin:5px 0 0;line-height:1.8}
+.competition-scores{margin-top:16px}
+.competition-card-columns--score,.competition-card-row--score{grid-template-columns:1.1fr .8fr .8fr .8fr}
+.competition-card-row--score strong{font-size:13px}
+.competition-scores-empty{margin:0;font-size:12px;line-height:1.7;color:#73869d}
 .special-supply-counts{margin:14px 0 0;font-size:12px}
 .special-supply-counts>div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
 .special-supply-counts dt{color:#647a93}.special-supply-counts dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
