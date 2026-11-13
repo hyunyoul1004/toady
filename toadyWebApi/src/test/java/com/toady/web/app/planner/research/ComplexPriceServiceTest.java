@@ -146,4 +146,11 @@ class ComplexPriceServiceTest {
         assertTrue(locator.known(List.of("41480|동패동|1673")).get("41480|동패동|1673").isPresent(), "백그라운드에서 끝나면 다음 조회에 반영된다");
         assertEquals(Map.of(), locator.known(List.of()));
     }
+
+    @Test void sameLegalDongComplexesAreLocatedFirst() {
+        java.util.function.BiFunction<String,String,java.util.Map.Entry<String,java.util.List<NeighborhoodResearchService.Trade>>> entry=(key,dongCode)->
+            java.util.Map.entry(key,java.util.List.of(new NeighborhoodResearchService.Trade(key,"동",dongCode,new java.math.BigDecimal("84"),3,"2020",java.time.LocalDate.of(2026,10,1),50000,"1")));
+        var ordered=ComplexPriceService.nearFirst(java.util.List.of(entry.apply("busy","11000"),entry.apply("near","11700"),entry.apply("other","12000"),entry.apply("near2","11700")),"11700");
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("near","near2","busy","other"),ordered.stream().map(java.util.Map.Entry::getKey).toList());
+    }
 }

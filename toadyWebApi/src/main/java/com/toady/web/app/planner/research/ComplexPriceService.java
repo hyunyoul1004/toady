@@ -37,6 +37,8 @@ public class ComplexPriceService {
 
     static final Set<Integer> PERIODS = Set.of(3, 6, 12);
     static final int MAX_COMPLEXES = 900, RECENT_PER_COMPLEX = 10;
+    /** 첫 응답까지 기다리는 시간(초)과 그중 좌표 확인을 기다리는 시간. 못 끝낸 일은 다음 요청이 이어 간다. */
+    static final int FIRST_RESPONSE_SECONDS = 7, LOCATE_WAIT_SECONDS = 3;
     /** 최근 1년에 거래가 없던 단지도 보이도록 그 이전 2년(13~36개월 전)은 단지·면적별 마지막 거래월 요약만 남긴다. */
     static final int OLDER_FROM = 12, OLDER_TO = 36;
 
@@ -62,7 +64,8 @@ public class ComplexPriceService {
         String cacheKey = bcode.substring(0, 5) + "/" + period + "/" + (region == null ? "" : region);
         Result cached = done.getIfPresent(cacheKey);
         if (cached != null) return withBcode(cached, bcode);
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        // 처음 보는 지역도 몇 초 안에 받은 달까지 먼저 보여 주고(partial), 나머지는 화면이 다시 부를 때 이어 받는다.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(FIRST_RESPONSE_SECONDS);
         NeighborhoodResearchService.DistrictTrades district = research.districtTrades(bcode, period, deadline);
         if (!"READY".equals(district.status()))
             return new Result(district.status(), bcode, district.fromMonth(), district.toMonth(), district.checkedAt(), district.months(), district.partial(), 0, 0, List.of());
@@ -89,7 +92,8 @@ public class ComplexPriceService {
             .sorted(Comparator.comparingInt((Map.Entry<String, List<NeighborhoodResearchService.Trade>> e) -> e.getValue().size()).reversed())
             .limit(MAX_COMPLEXES).toList();
 
-        List<ComplexLocator.Target> targets = busiest.stream().filter(e -> !e.getValue().get(0).jibun().isBlank()).map(e -> {
+        // 좌표 확인은 공고와 같은 법정동 단지부터 맡긴다(화면 첫 확대 범위에 먼저 보이도록).
+        List<ComplexLocator.Target> targets = nearFirst(busiest, bcode.substring(5)).stream().filter(e -> !e.getValue().get(0).jibun().isBlank()).map(e -> {
             NeighborhoodResearchService.Trade any = e.getValue().get(0);
             String query = ((region == null ? "" : region + " ") + any.dong() + " " + any.jibun()).trim();
             return new ComplexLocator.Target(e.getKey(), lawd5, any.dong(), any.jibun(), query);
@@ -98,7 +102,7 @@ public class ComplexPriceService {
         Map<String, Optional<ComplexLocator.Point>> points = locator.known(keys);
         List<ComplexLocator.Target> unknown = targets.stream().filter(t -> !points.containsKey(t.key())).toList();
         if (!unknown.isEmpty()) {
-            locator.locate(unknown, Math.min(deadline, System.nanoTime() + TimeUnit.SECONDS.toNanos(5)));
+            locator.locate(unknown, Math.min(deadline, System.nanoTime() + TimeUnit.SECONDS.toNanos(LOCATE_WAIT_SECONDS)));
             points.putAll(locator.known(unknown.stream().map(ComplexLocator.Target::key).toList()));
         }
         int pending = (int) keys.stream().filter(k -> !points.containsKey(k) && locator.pending(k)).count();
@@ -132,6 +136,14 @@ public class ComplexPriceService {
             }
         }
         return state;
+    }
+
+    /** 같은 법정동(법정동 코드 뒤 5자리) 단지를 앞으로, 나머지는 원래 순서(거래 많은 순)를 유지한다. */
+    static List<Map.Entry<String, List<NeighborhoodResearchService.Trade>>> nearFirst(List<Map.Entry<String, List<NeighborhoodResearchService.Trade>>> entries, String legalDong) {
+        List<Map.Entry<String, List<NeighborhoodResearchService.Trade>>> same = new ArrayList<>(), others = new ArrayList<>();
+        for (var entry : entries) (legalDong.equals(entry.getValue().get(0).dongCode()) ? same : others).add(entry);
+        same.addAll(others);
+        return same;
     }
 
     private static Result withBcode(Result result, String bcode) {

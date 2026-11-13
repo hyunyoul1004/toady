@@ -108,7 +108,7 @@ export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocate
   const summary = mapSummary(rows, outside);
   return <Box className="price-map-status">
     <Typography variant="body2" sx={{ fontWeight: 700 }}>
-      {query.isLoading ? '주변 실거래를 불러오는 중이에요…' : data?.status === 'READY'
+      {query.isLoading ? '① 국토교통부 실거래를 받는 중이에요… (처음 보는 지역은 10초쯤 걸릴 수 있어요)' : data?.status === 'READY'
         ? `조건에 맞는 단지 ${summary.matched.toLocaleString('ko-KR')}곳${summary.outside ? ` · 조건 밖 ${summary.outside.toLocaleString('ko-KR')}곳` : ''}`
         : ''}
       {query.isFetching && !query.isLoading && <Typography component="span" variant="caption" color="text.secondary"> · 갱신 중</Typography>}
@@ -118,8 +118,8 @@ export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocate
     {zoomedOut && <Typography variant="caption" color="text.secondary">지도를 확대하면 옮긴 지역의 가격도 불러와요.</Typography>}
     {summary.unplaced - pending > 0 && <Typography variant="caption" color="text.secondary">조건에 맞는 단지 중 {(summary.unplaced - pending).toLocaleString('ko-KR')}곳은 지번으로 위치를 확정하지 못해 지도에는 없고 아래 목록에만 있어요.</Typography>}
     {summary.outside > 0 && <Typography variant="caption" color="text.secondary">회색 점은 최근 거래는 있지만 고른 조건(면적·연식·가격)에 맞는 거래가 없는 단지예요. 누르면 그 단지의 면적별 거래를 볼 수 있어요.</Typography>}
-    {pending > 0 && <Typography variant="caption" color="text.secondary">단지 {pending}곳의 위치를 확인하고 있어요. 잠시 뒤 지도에 더 표시돼요.</Typography>}
-    {data?.partial && <Typography variant="caption" color="text.secondary">이전 거래(최대 3년)를 이어서 불러오는 중이에요. 지도에 단지가 더 표시될 수 있어요.</Typography>}
+    {pending > 0 && <Typography variant="caption" color="text.secondary">② 단지 {pending}곳의 지도 위치를 확인하고 있어요(공고와 같은 동부터). 잠시 뒤 지도에 더 표시돼요.</Typography>}
+    {data?.partial && <Typography variant="caption" color="text.secondary">받은 기간의 거래부터 먼저 보여 드려요. 나머지 기간(최대 3년)을 이어서 받는 중이에요.</Typography>}
     <Box className="price-map-legend" aria-hidden="true">
       <span><i className="tone-new" />5년 이내</span><span><i className="tone-mid" />10년 이내</span><span><i className="tone-old" />그 이상</span><span><i className="tone-site" />이 공고</span>{sales.some(sale => sale.status !== 'DONE') && <span><i className="tone-sale-open" />접수 중·예정</span>}{sales.some(sale => sale.status === 'DONE') && <span><i className="tone-sale-done" />접수 종료(입주 전)</span>}{summary.outside > 0 && <span><i className="tone-outside" />조건 밖</span>}
     </Box>
