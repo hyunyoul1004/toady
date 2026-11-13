@@ -66,9 +66,12 @@ public class EligibilityFeed {
     @GetMapping("/api/v1/public/eligibility/announcements")
     public ResponseEntity<Map<String, Object>> announcements() {
         LocalDate today = LocalDate.now(clock);
-        Map<String, Object> body = cache.asMap().computeIfAbsent(today.toString(), key -> load(today));
+        Map<String, Object> body = cached(today);
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic()).body(body);
     }
+
+    /** 10분 캐시를 함께 쓰는 목록(지도 분양 말풍선처럼 자주 부르는 곳이 DB를 매번 다시 읽지 않게). */
+    public Map<String, Object> cached(LocalDate today) { return cache.asMap().computeIfAbsent(today.toString(), key -> load(today)); }
 
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { cache.invalidateAll(); }

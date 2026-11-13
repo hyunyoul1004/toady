@@ -21,9 +21,7 @@ import java.util.regex.Pattern;
 @Component
 public class AddressLocator {
     /** lat·lng: 확인한 지번의 좌표(지도 표시용). 좌표가 없으면 NaN. */
-    public record Location(String bcode, String dong, String address, double lat, double lng) {
-        public Location(String bcode, String dong, String address) { this(bcode, dong, address, Double.NaN, Double.NaN); }
-    }
+    public record Location(String bcode, String dong, String address, double lat, double lng) { }
     private final ResearchTransport transport;
     private final String key;
     private final ObjectMapper json = new ObjectMapper();
@@ -53,7 +51,8 @@ public class AddressLocator {
     static String normalize(String value) { return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).replaceAll("\\s+", " ").trim(); }
     private static final String[][] PROVINCES = {{"서울","서울"},{"부산","부산"},{"대구","대구"},{"인천","인천"},{"광주","광주"},{"대전","대전"},{"울산","울산"},{"세종","세종"},{"경기","경기"},{"강원","강원"},
         {"충청북","충북"},{"충북","충북"},{"충청남","충남"},{"충남","충남"},{"전북","전북"},{"전라북","전북"},{"전라남","전남"},{"전남","전남"},{"경상북","경북"},{"경북","경북"},{"경상남","경남"},{"경남","경남"},{"제주","제주"}};
-    static String province(String address) {
+    /** 주소 첫 단어의 시·도를 짧은 이름으로('경기도' → '경기', '전남광주통합특별시' → '전남'). 모르면 null. */
+    public static String province(String address) {
         String first = normalize(address).split(" ")[0];
         for (String[] pair : PROVINCES) if (first.startsWith(pair[0])) return pair[1];
         return null;

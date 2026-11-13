@@ -37,8 +37,10 @@ class SaleMapServiceTest {
         assertEquals(List.of("제주시"), SaleMapService.municipalityNames("제주특별자치도 제주시"));
         assertEquals(List.of("세종"), SaleMapService.municipalityNames("세종특별자치시"));
         assertEquals(List.of(), SaleMapService.municipalityNames(null));
-        assertTrue(SaleMapService.inRegion("경기도 수원시 영통구 이의동 1", List.of("수원시", "영통구")));
-        assertFalse(SaleMapService.inRegion("경기도 수원시 권선구 1", List.of("수원시", "영통구")), "시·군·구 이름이 모두 있어야 한다");
+        assertTrue(SaleMapService.inRegion("경기도 수원시 영통구 이의동 1", List.of("수원시", "영통구"), "경기"));
+        assertFalse(SaleMapService.inRegion("경기도 수원시 권선구 1", List.of("수원시", "영통구"), "경기"), "시·군·구 이름이 모두 있어야 한다");
+        assertFalse(SaleMapService.inRegion("부산광역시 중구 중앙동 1", List.of("중구"), "서울"), "같은 이름의 구라도 시·도가 다르면 다른 지역");
+        assertTrue(SaleMapService.inRegion("서울특별시 중구 중림동 157-2", List.of("중구"), "서울"));
     }
 
     @Test void pastCandidatesKeepFinishedAnnouncementsInTheDistrictOnly() {
@@ -49,7 +51,7 @@ class SaleMapServiceTest {
             // 이름만 '파주'인 다른 지역 공고는 주소가 맞지 않아 뺀다.
             source("2026000800", "파주시티 고양", "경기도 고양시 일산동구 2", "20260301", "20260303"),
             source("2026000900", "접수일 없음", "경기도 파주시 목동동 3", null, null));
-        List<AnnouncementListItem> kept = SaleMapService.pastCandidates(sources, List.of("파주시"), TODAY);
+        List<AnnouncementListItem> kept = SaleMapService.pastCandidates(sources, List.of("파주시"), "경기", TODAY);
         assertEquals(List.of("3단지"), kept.stream().map(AnnouncementListItem::houseNm).toList());
     }
 
@@ -68,7 +70,7 @@ class SaleMapServiceTest {
         when(locator.enabled()).thenReturn(true);
         String open = "경기도 파주시 동패동 10", done = "경기도 파주시 파주운정3지구 3블록(경기도 파주시 동패동 1673번지 일원)",
             block = "경기도 파주시 파주운정3지구 A99블록", moved = "경기도 파주시 목동동 5";
-        when(feed.load(TODAY)).thenReturn(Map.of("items", List.of(item("apt/1/1", "청약 중 단지", open, "OPEN", "2029-01"),
+        when(feed.cached(TODAY)).thenReturn(Map.of("items", List.of(item("apt/1/1", "청약 중 단지", open, "OPEN", "2029-01"),
             item("apt/9/9", "다른 시 단지", "경기도 고양시 덕양구 1", "OPEN", "2029-01"))));
         when(search.searchAll(any(), eq(List.of("apt")))).thenReturn(new PageImpl<>(List.of(
             source("2", "3단지", done, "20261102", "20261104"), source("3", "블록 단지", block, "20260601", "20260603"),

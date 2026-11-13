@@ -53,7 +53,7 @@ public class SaleMapService {
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final ThreadPoolExecutor pool = new ThreadPoolExecutor(3, 3, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(500), task -> {
         Thread thread = new Thread(task, "sale-locate"); thread.setDaemon(true); return thread;
-    }, new ThreadPoolExecutor.DiscardPolicy());
+    }, new ThreadPoolExecutor.AbortPolicy()); // 큐가 차면 예외 → inFlight에서 빼고 다음 요청에서 다시 맡긴다
 
     @org.springframework.beans.factory.annotation.Autowired
     public SaleMapService(EligibilityFeed feed, AnnouncementSearchService search, AddressLocator locator) {
@@ -70,13 +70,15 @@ public class SaleMapService {
         if (!locator.enabled()) return new Result(0, List.of(), List.of());
         String lawd5 = bcode.substring(0, 5);
         List<String> names = municipalityNames(region);
+        // '서울 중구'와 '부산 중구'처럼 같은 이름의 구·군이 섞이지 않도록 시·도도 맞춘다.
+        String province = AddressLocator.province(region == null ? "" : region);
         LocalDate today = LocalDate.now(clock);
         @SuppressWarnings("unchecked")
-        List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.load(today).get("items");
+        List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.cached(today).get("items");
         // 주소에 시·군·구 이름이 들어 있는 공고만 위치를 확인한다(전국 공고를 모두 조회하지 않게).
-        List<EligibilityFeed.Item> nearby = new ArrayList<>(items.stream().filter(item -> inRegion(item.address(), names)).toList());
+        List<EligibilityFeed.Item> nearby = new ArrayList<>(items.stream().filter(item -> inRegion(item.address(), names, province)).toList());
         Set<String> current = nearby.stream().map(EligibilityFeed.Item::id).collect(java.util.stream.Collectors.toSet());
-        if (!names.isEmpty()) nearby.addAll(pastItems(names, today).stream().filter(item -> !current.contains(item.id())).toList());
+        if (!names.isEmpty()) nearby.addAll(pastItems(names, province, today).stream().filter(item -> !current.contains(item.id())).toList());
 
         List<Future<?>> waiting = new ArrayList<>();
         for (EligibilityFeed.Item item : nearby) {
@@ -114,8 +116,8 @@ public class SaleMapService {
     }
 
     /** 최근 3년 안에 접수를 마친 같은 시·군·구의 APT 분양 공고 중 아직 입주 전인 것(상태 DONE). */
-    private List<EligibilityFeed.Item> pastItems(List<String> names, LocalDate today) {
-        String cacheKey = String.join(" ", names) + "/" + today;
+    private List<EligibilityFeed.Item> pastItems(List<String> names, String province, LocalDate today) {
+        String cacheKey = province + " " + String.join(" ", names) + "/" + today;
         List<EligibilityFeed.Item> cached = past.getIfPresent(cacheKey);
         if (cached != null) return cached;
         AnnouncementSearch query = new AnnouncementSearch();
@@ -125,7 +127,7 @@ public class SaleMapService {
         query.setEndDate(today);
         query.setSize(MAX_PAST);
         var page = search.searchAll(query, List.of("apt"));
-        List<AnnouncementListItem> finished = pastCandidates(page.getContent(), names, today);
+        List<AnnouncementListItem> finished = pastCandidates(page.getContent(), names, province, today);
         List<EligibilityFeed.Item> built = feed.items(finished, finished.stream().collect(java.util.stream.Collectors.toMap(
                 source -> source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo(), source -> DONE, (a, b) -> a)))
             .stream().filter(item -> beforeMoveIn(item.moveIn(), YearMonth.from(today))).toList();
@@ -134,10 +136,10 @@ public class SaleMapService {
     }
 
     /** 주소가 시·군·구 이름을 모두 담고, 접수(마지막 날)가 오늘 이전에 끝난 공고. 같은 주택관리번호는 최신 공고 하나만 남긴다. */
-    static List<AnnouncementListItem> pastCandidates(List<AnnouncementListItem> sources, List<String> names, LocalDate today) {
+    static List<AnnouncementListItem> pastCandidates(List<AnnouncementListItem> sources, List<String> names, String province, LocalDate today) {
         Map<String, AnnouncementListItem> latest = new LinkedHashMap<>();
         for (AnnouncementListItem source : sources) {
-            if (!inRegion(source.hssplyAdres(), names)) continue;
+            if (!inRegion(source.hssplyAdres(), names, province)) continue;
             LocalDate start = PlannerSummary.date(source.rceptBgnde() == null ? "" : source.rceptBgnde().trim());
             LocalDate end = PlannerSummary.date(source.rceptEndde() == null ? "" : source.rceptEndde().trim());
             LocalDate last = end == null ? start : end;
@@ -154,8 +156,11 @@ public class SaleMapService {
         return !YearMonth.parse(moveIn).isBefore(now);
     }
 
-    static boolean inRegion(String address, List<String> names) {
-        return address != null && (names.isEmpty() || names.stream().allMatch(address::contains));
+    /** 주소에 시·군·구 이름이 모두 들어 있고, 시·도를 알면 시·도도 같을 때. */
+    static boolean inRegion(String address, List<String> names, String province) {
+        if (address == null || !(names.isEmpty() || names.stream().allMatch(address::contains))) return false;
+        String found = AddressLocator.province(address);
+        return province == null || found == null || province.equals(found);
     }
 
     /** 공고 주소가 정정되면 다시 확인하도록 주소까지 키에 넣는다. */

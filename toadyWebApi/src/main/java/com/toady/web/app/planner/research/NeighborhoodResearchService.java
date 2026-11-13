@@ -120,7 +120,7 @@ public class NeighborhoodResearchService {
                 }
                 all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
             }
-            // 최근 2개월도 받지 못했으면 비교하지 않는다.
+            // 받은 달이 2개월도 안 되면 비교하지 않는다(실패한 달은 건너뛰므로 '최근' 2개월이 아닐 수 있다 — partial로 알린다).
             if(updated.size()<MIN_GAP_MONTHS) return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());
             start=earliest;
             String legalDong=bcode.substring(5);
@@ -190,15 +190,21 @@ public class NeighborhoodResearchService {
         int middle=sorted.size()/2;
         return sorted.size()%2==1?sorted.get(middle):Math.round((sorted.get(middle-1)+sorted.get(middle))/2.0);
     }
-    /** 한 쪽을 받는다. 제공처 일시 오류면 0.4초 뒤 한 번만 다시 시도한다(응답 시간 한도 안에서). */
+    /**
+     * 한 쪽을 받는다. 통신 오류(시간 초과·연결 끊김)만 0.4초 뒤 한 번 다시 시도한다. 제공처가 거절한 응답(키·쿼터 등)은
+     * 다시 불러도 같으므로 바로 실패로 둔다. 다시 시도는 남은 시간이 한 번 더 받을 만큼(약 4초) 있을 때만 한다.
+     */
     private Page fetchPage(URI uri,long deadline) throws Exception {
-        try { return parseTrades(transport.get(uri,Map.of())); }
+        byte[] body;
+        try { body=transport.get(uri,Map.of()); }
         catch(Exception first) {
-            if(System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(400)>deadline) throw first;
+            if(first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
-            return parseTrades(transport.get(uri,Map.of()));
+            body=transport.get(uri,Map.of());
         }
+        return parseTrades(body);
     }
+    static final int RETRY_NEEDS_SECONDS=4;
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
         List<Trade> result=new ArrayList<>();int expected=-1,read=0;
         for(int number=1;number<=5;number++) {
@@ -231,12 +237,15 @@ public class NeighborhoodResearchService {
             Element row=(Element)items.item(i);
             String cancelled=text(row,"cdealType"),cancelDate=text(row,"cdealDay");
             if(cancelled.equalsIgnoreCase("Y") || (!cancelDate.isBlank() && !cancelDate.equals("-"))) continue;
-            String name=text(row,"aptNm"),dong=text(row,"umdNm"),dongCode=text(row,"umdCd");
-            long amount=Long.parseLong(text(row,"dealAmount").replace(",",""));
-            BigDecimal area=new BigDecimal(text(row,"excluUseAr"));
-            if(name.isBlank() || dong.isBlank() || amount<=0 || area.signum()<=0) throw new IllegalStateException("Invalid trade row");
-            LocalDate date=LocalDate.of(Integer.parseInt(text(row,"dealYear")),Integer.parseInt(text(row,"dealMonth")),Integer.parseInt(text(row,"dealDay")));
-            trades.add(new Trade(name,dong,dongCode,area,Integer.parseInt(text(row,"floor")),text(row,"buildYear"),date,amount,text(row,"jibun")));
+            // 값이 비었거나 형식이 틀린 한 줄 때문에 그 달 전체를 버리지 않는다(그 줄만 빼고, 쪽 수 계산은 rawCount로 그대로 맞춘다).
+            try {
+                String name=text(row,"aptNm"),dong=text(row,"umdNm"),dongCode=text(row,"umdCd");
+                long amount=Long.parseLong(text(row,"dealAmount").replace(",",""));
+                BigDecimal area=new BigDecimal(text(row,"excluUseAr"));
+                if(name.isBlank() || dong.isBlank() || amount<=0 || area.signum()<=0) continue;
+                LocalDate date=LocalDate.of(Integer.parseInt(text(row,"dealYear")),Integer.parseInt(text(row,"dealMonth")),Integer.parseInt(text(row,"dealDay")));
+                trades.add(new Trade(name,dong,dongCode,area,Integer.parseInt(text(row,"floor")),text(row,"buildYear"),date,amount,text(row,"jibun")));
+            } catch(NumberFormatException|java.time.DateTimeException invalid) { /* 이 줄만 건너뛴다 */ }
         }
         return new Page(total,items.getLength(),List.copyOf(trades));
     }

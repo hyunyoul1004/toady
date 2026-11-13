@@ -74,9 +74,9 @@ class NeighborhoodResearchServiceTest {
         AtomicInteger calls=new AtomicInteger();
         var service=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();return "<response><resultCode>30</resultCode></response>".getBytes();},"key");
         assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());
-        // 실패는 '거래 없음'으로 바꾸지 않는다. 일시 오류일 수 있어 한 번만 다시 시도하고(2회), 같은 시군구·월은 잠시(30초) 다시 부르지 않아 쿼터를 지킨다.
-        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(2,calls.get());
-        assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(2,calls.get());
+        // 실패는 '거래 없음'으로 바꾸지 않는다. 제공처가 거절한 응답은 다시 불러도 같아 재시도하지 않고, 같은 시군구·월은 잠시(30초) 다시 부르지 않는다.
+        assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(1,calls.get());
+        assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(1,calls.get());
     }
     @Test void incompletePaginationAndWrongMonthsNeverReturnPartialResults() {
         var service=new NeighborhoodResearchService((uri,headers)->{
@@ -114,12 +114,21 @@ class NeighborhoodResearchServiceTest {
         assertEquals(5,district.months(),"계속 실패한 한 달만 빠진다");
         assertTrue(district.partial(),"빠진 달이 있으면 partial이라 화면이 잠시 뒤 다시 부른다");
         assertEquals(2,calls.get(flaky).get(),"일시 오류는 한 번 다시 시도해 받는다");
-        assertEquals(2,calls.get(broken).get());
+        assertEquals(1,calls.get(broken).get(),"제공처가 거절한 응답(코드 22 등)은 다시 시도하지 않는다");
         int brokenCalls=calls.get(broken).get();
         assertEquals("READY",service.districtTrades("4148012800",6,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)).status());
         assertEquals(brokenCalls,calls.get(broken).get(),"실패한 달은 잠깐(30초) 다시 묻지 않는다");
         var gap=service.priceGap("4148012800","동패동",java.util.List.of(new BigDecimal("84")));
         assertEquals("READY",gap.status(),"분양가 비교도 실패한 달만 빼고 계산한다");
         assertTrue(gap.partial());
+    }
+    @Test void oneMalformedRowDoesNotDropTheWholeMonth() throws Exception {
+        String xml="<response><header><resultCode>000</resultCode></header><body><totalCount>2</totalCount><items>"
+            +"<item><aptNm>정상 아파트</aptNm><umdNm>동패동</umdNm><dealAmount>58,900</dealAmount><excluUseAr>84.95</excluUseAr><floor>12</floor><buildYear>2020</buildYear><dealYear>2026</dealYear><dealMonth>10</dealMonth><dealDay>1</dealDay></item>"
+            +"<item><aptNm>층 없음</aptNm><umdNm>동패동</umdNm><dealAmount>40,000</dealAmount><excluUseAr>59.9</excluUseAr><floor></floor><buildYear>2020</buildYear><dealYear>2026</dealYear><dealMonth>10</dealMonth><dealDay>2</dealDay></item>"
+            +"</items></body></response>";
+        var page=NeighborhoodResearchService.parseTrades(xml.getBytes(StandardCharsets.UTF_8));
+        assertEquals(2,page.rawCount(),"쪽 수 계산은 원래 줄 수로");
+        assertEquals(java.util.List.of("정상 아파트"),page.trades().stream().map(NeighborhoodResearchService.Trade::apartment).toList());
     }
 }

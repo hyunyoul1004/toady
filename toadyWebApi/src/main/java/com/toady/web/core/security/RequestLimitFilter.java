@@ -47,8 +47,10 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             // 인증 코드 확인(가입 인증·비밀번호 재설정)은 메일을 보내지 않지만 코드·가입 여부를 반복해 시험할 수 있으므로 따로 제한한다.
             new Rule("certify", Set.of("POST"), List.of(), Set.of("/webApi/certify/certify-check", "/webApi/certify/certify-confrim-and-password-change"), 30, 200),
             new Rule("trade", Set.of("GET"), List.of("/api/v1/research/transactions"), Set.of(), 60, 500),
-            // 지도 단지 시세: 좌표 확인이 끝날 때까지 화면이 몇 번 다시 부르므로 여유를 둔다.
-            new Rule("complex", Set.of("GET"), List.of("/api/v1/research/complexes", "/api/v1/research/sales"), Set.of(), 120, 1200),
+            // 지도 단지 시세·분양 공고: 좌표 확인이 끝날 때까지 화면이 시·군·구(최대 7곳)마다 몇 번 다시 부르므로 따로 두고 여유를 둔다
+            // (7곳 × 13회 = 91회가 한 사람의 정상 사용 상한).
+            new Rule("complex", Set.of("GET"), List.of("/api/v1/research/complexes"), Set.of(), 150, 1500),
+            new Rule("sales", Set.of("GET"), List.of("/api/v1/research/sales"), Set.of(), 150, 1500),
             // 분양가 비교는 요청 한 번이 시·군·구 6개월(외부 호출 6회 이상)을 읽으므로 실거래 목록보다 낮게 둔다.
             new Rule("gap", Set.of("GET"), List.of("/api/v1/research/price-gap"), Set.of(), 20, 150),
             // 가까운 시설: 요청 한 번이 카카오 카테고리 검색 3회. 같은 지점은 서버가 하루 기억한다.

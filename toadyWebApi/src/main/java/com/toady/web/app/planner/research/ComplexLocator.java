@@ -48,7 +48,7 @@ public class ComplexLocator {
     /** 카카오 호출은 동시에 4개까지, 대기열은 2,000개까지(넘치면 다음 요청에서 다시 맡긴다). */
     private final ThreadPoolExecutor pool = new ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(2000), task -> {
         Thread thread = new Thread(task, "complex-geocode"); thread.setDaemon(true); return thread;
-    }, new ThreadPoolExecutor.DiscardPolicy());
+    }, new ThreadPoolExecutor.AbortPolicy()); // 큐가 차면 RejectedExecutionException → inFlight에서 빼고 다음 요청에서 다시 맡긴다(DiscardPolicy는 조용히 버려 '확인 중'이 끝나지 않았다)
     /** 테이블을 쓸 수 없으면 10분 동안 메모리만 쓰고 다시 시도한다(일시적인 DB 오류로 영구히 끄지 않게). */
     private volatile long tableRetryAt = 0;
     private boolean tableReady() { return System.currentTimeMillis() >= tableRetryAt; }
@@ -133,7 +133,16 @@ public class ComplexLocator {
         if (!wanted.matches()) return Optional.empty();
         boolean mountain = wanted.group(1) != null;
         String main = wanted.group(2), sub = wanted.group(3) == null ? "" : wanted.group(3);
-        URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?size=10&query=" + URLEncoder.encode(target.query(), StandardCharsets.UTF_8));
+        // 화면이 보낸 지역 이름(region)이 붙은 질의를 먼저 쓰되, 못 찾으면 '동 + 지번'만으로 한 번 더 찾는다.
+        // 결과는 지역 이름과 무관한 키로 30일 저장되므로, 잘못된 region 하나로 '찾지 못함'이 저장되지 않게 한다(검증은 b_code·지번·동으로).
+        Optional<Point> found = search(target.query(), target, main, sub, mountain);
+        String plain = (target.dong() + " " + target.jibun()).trim();
+        if (found.isEmpty() && !plain.equals(target.query().trim())) found = search(plain, target, main, sub, mountain);
+        return found;
+    }
+
+    private Optional<Point> search(String query, Target target, String main, String sub, boolean mountain) throws Exception {
+        URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?size=10&query=" + URLEncoder.encode(query, StandardCharsets.UTF_8));
         JsonNode body = json.readTree(transport.get(uri, Map.of("Authorization", "KakaoAK " + key)));
         for (JsonNode row : body.path("documents")) {
             JsonNode address = row.path("address");

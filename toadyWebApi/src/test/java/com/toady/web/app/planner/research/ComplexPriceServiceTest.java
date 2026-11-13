@@ -49,7 +49,7 @@ class ComplexPriceServiceTest {
             if (uri.getHost().equals("dapi.kakao.com")) {
                 kakaoCalls.incrementAndGet();
                 String query = java.net.URLDecoder.decode(uri.getRawQuery().split("query=")[1], StandardCharsets.UTF_8);
-                assertTrue(query.startsWith("경기 파주시 동패동 "), "시·군·구 이름을 붙여 묻는다: " + query);
+                assertTrue(query.startsWith("경기 파주시 동패동 ") || query.startsWith("동패동 "), "시·군·구 이름을 붙여 묻고, 못 찾으면 동·지번만으로 한 번 더: " + query);
                 return kakao(query);
             }
             return molit(uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6));
@@ -81,12 +81,12 @@ class ComplexPriceServiceTest {
         assertNull(noJibun.lat(), "지번이 없으면 목록에만");
         assertEquals(0, result.pending());
 
-        // 결과는 테이블에 남아 다시 묻지 않는다(새 인스턴스도).
-        assertEquals(2, kakaoCalls.get());
+        // 결과는 테이블에 남아 다시 묻지 않는다(새 인스턴스도). 찾지 못한 산 지번은 동·지번만으로 한 번 더 물어 3회.
+        assertEquals(3, kakaoCalls.get());
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM TB_APT_COMPLEX_LOCATION", Integer.class));
         var fresh = new ComplexPriceService(new NeighborhoodResearchService(transport, "key"), new ComplexLocator(transport, jdbc, "kakao"));
         assertEquals(37.7203, fresh.complexes("4148012800", "경기 파주시", 3).complexes().get(0).lat(), 1e-6);
-        assertEquals(2, kakaoCalls.get(), "저장된 좌표와 '찾지 못함'은 다시 묻지 않는다");
+        assertEquals(3, kakaoCalls.get(), "저장된 좌표와 '찾지 못함'은 다시 묻지 않는다");
     }
 
     @Test void complexesWithoutTradesInTheLastYearAreAddedFromOlderMonths() {
@@ -152,5 +152,19 @@ class ComplexPriceServiceTest {
             java.util.Map.entry(key,java.util.List.of(new NeighborhoodResearchService.Trade(key,"동",dongCode,new java.math.BigDecimal("84"),3,"2020",java.time.LocalDate.of(2026,10,1),50000,"1")));
         var ordered=ComplexPriceService.nearFirst(java.util.List.of(entry.apply("busy","11000"),entry.apply("near","11700"),entry.apply("other","12000"),entry.apply("near2","11700")),"11700");
         org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("near","near2","busy","other"),ordered.stream().map(java.util.Map.Entry::getKey).toList());
+    }
+
+    @Test void aWrongRegionNameCannotPoisonStoredLocations() {
+        ResearchTransport transport = (uri, headers) -> {
+            if (uri.getHost().equals("dapi.kakao.com")) {
+                String query = java.net.URLDecoder.decode(uri.getRawQuery().split("query=")[1], StandardCharsets.UTF_8);
+                // 엉뚱한 지역 이름이 붙은 질의는 결과가 없고, 동·지번만의 질의는 제 위치를 찾는다고 흉내 낸다.
+                return query.startsWith("서울") ? "{\"documents\":[]}".getBytes(StandardCharsets.UTF_8) : kakao("경기 파주시 " + query);
+            }
+            return molit(uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6));
+        };
+        var service = new ComplexPriceService(new NeighborhoodResearchService(transport, "key"), new ComplexLocator(transport, jdbc, "kakao"));
+        var result = service.complexes("4148012800", "서울 종로구", 3);
+        assertEquals(37.7203, result.complexes().get(0).lat(), 1e-6, "region이 틀려도 동·지번으로 다시 찾아 '찾지 못함'을 저장하지 않는다");
     }
 }

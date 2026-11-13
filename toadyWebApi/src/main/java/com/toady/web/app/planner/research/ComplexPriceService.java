@@ -22,11 +22,7 @@ public class ComplexPriceService {
      * monthAvg: 이 면적의 마지막 거래가 있었던 달(month, YYYY-MM)의 평균 거래가, monthCount: 그 달 거래 건수. 지도·목록은 이 값을 대표로 쓴다.
      */
     public record AreaPrice(int area, int count, long latest, String latestDate, int latestFloor, long median, long min, long max,
-                            String month, long monthAvg, int monthCount) {
-        public AreaPrice(int area, int count, long latest, String latestDate, int latestFloor, long median, long min, long max) {
-            this(area, count, latest, latestDate, latestFloor, median, min, max, latestDate.substring(0, 7), latest, 1);
-        }
-    }
+                            String month, long monthAvg, int monthCount) { }
     public record RecentTrade(String date, BigDecimal area, int floor, long amount) { }
     /** lat·lng가 없으면 지도에는 못 놓고 목록에만 보인다(좌표 확인 중이거나 지번으로 찾지 못함). */
     public record Complex(String key, String name, String dong, String jibun, String buildYear, Double lat, Double lng,
@@ -40,20 +36,24 @@ public class ComplexPriceService {
     /** 첫 응답까지 기다리는 시간(초)과 그중 좌표 확인을 기다리는 시간. 못 끝낸 일은 다음 요청이 이어 간다. */
     static final int FIRST_RESPONSE_SECONDS = 7, LOCATE_WAIT_SECONDS = 3;
     /** 최근 1년에 거래가 없던 단지도 보이도록 그 이전 2년(13~36개월 전)은 단지·면적별 마지막 거래월 요약만 남긴다. */
-    static final int OLDER_FROM = 12, OLDER_TO = 36;
+    static final int OLDER_FROM = 12, OLDER_TO = 36, OLDER_RETRIES = 3;
 
     /** 1년보다 오래된 달에서 모은 단지 요약(원본 거래는 버린다). 최신 달부터 거꾸로 받으므로 처음 본 달이 그 면적의 마지막 거래월이다. */
     static final class Older {
         final Map<String, List<NeighborhoodResearchService.Trade>> lastMonthTrades = new LinkedHashMap<>();
         final Map<String, java.time.YearMonth> lastMonth = new HashMap<>();
         int nextOffset = OLDER_FROM;
+        /** 지금 달(nextOffset)이 제공처 오류로 연속 실패한 횟수. 3번까지는 다음 요청에서 다시 받고, 그 뒤에는 건너뛴다. */
+        int failures = 0;
         boolean done() { return nextOffset >= OLDER_TO; }
     }
     private final Cache<String, Older> older = CacheBuilder.newBuilder().maximumSize(200).expireAfterWrite(6, TimeUnit.HOURS).build();
     private final NeighborhoodResearchService research;
     private final ComplexLocator locator;
     /** 좌표 확인과 기간 수집이 모두 끝난 결과만 잠시 보관한다. */
-    private final Cache<String, Result> done = CacheBuilder.newBuilder().maximumSize(300).expireAfterWrite(30, TimeUnit.MINUTES).build();
+    /** 단지 수 기준으로 메모리 상한을 둔다(시·군·구 하나가 최대 900단지). */
+    private final Cache<String, Result> done = CacheBuilder.newBuilder().maximumWeight(60_000)
+        .weigher((String key, Result value) -> Math.max(1, value.complexes().size())).expireAfterWrite(30, TimeUnit.MINUTES).build();
 
     public ComplexPriceService(NeighborhoodResearchService research, ComplexLocator locator) {
         this.research = research; this.locator = locator;
@@ -61,7 +61,8 @@ public class ComplexPriceService {
 
     public Result complexes(String bcode, String region, int months) {
         int period = PERIODS.contains(months) ? months : 6;
-        String cacheKey = bcode.substring(0, 5) + "/" + period + "/" + (region == null ? "" : region);
+        // region은 좌표 검색어 보조일 뿐 결과를 바꾸지 않으므로 캐시 키에 넣지 않는다(region을 바꿔 가며 캐시를 채우지 못하게).
+        String cacheKey = bcode.substring(0, 5) + "/" + period;
         Result cached = done.getIfPresent(cacheKey);
         if (cached != null) return withBcode(cached, bcode);
         // 처음 보는 지역도 몇 초 안에 받은 달까지 먼저 보여 주고(partial), 나머지는 화면이 다시 부를 때 이어 받는다.
@@ -126,6 +127,8 @@ public class ComplexPriceService {
                 java.time.YearMonth month = end.minusMonths(state.nextOffset);
                 Optional<List<NeighborhoodResearchService.Trade>> trades = research.monthTrades(lawd5, month, deadline);
                 if (trades.isEmpty() && System.nanoTime() >= deadline) break;   // 시간 초과: 다음 요청에서 이 달부터 다시
+                // 제공처 오류로 못 받은 달은 바로 건너뛰지 않는다(그 달에만 거래가 있던 단지가 6시간 빠지지 않게). 연속 3번이면 건너뛴다.
+                if (trades.isEmpty() && ++state.failures < OLDER_RETRIES) break;
                 for (NeighborhoodResearchService.Trade trade : trades.orElse(List.of())) {
                     String key = complexKey(lawd5, trade) + "#" + trade.area().setScale(0, RoundingMode.HALF_UP).intValue();
                     java.time.YearMonth seen = state.lastMonth.get(key);
@@ -133,6 +136,7 @@ public class ComplexPriceService {
                     else if (seen.equals(month)) state.lastMonthTrades.get(key).add(trade);
                 }
                 state.nextOffset++;
+                state.failures = 0;
             }
         }
         return state;
