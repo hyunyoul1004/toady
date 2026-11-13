@@ -1,3 +1,4 @@
+import { detailCloseSteps } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { announcementShareUrl, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
 /**
@@ -301,7 +302,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
   const handleCloseDetail = () => {
     if (onDetailClose) { onDetailClose(); return; }
-    if (location.state?.detailOverlay) navigate(-1);
+    if (location.state?.detailOverlay) navigate(-detailCloseSteps(location.state));
     else navigate('/', { replace: true });
   };
 

@@ -21,3 +21,6 @@ export function useHistoryOverlay(id) {
   };
   return [value, setValue];
 }
+
+
+export { detailCloseSteps } from '@/utils/overlay.util';

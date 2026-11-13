@@ -12,7 +12,8 @@ export default function NoticeDocuments({ id }) {
     enabled: ID_PATTERN.test(id || ''), staleTime: 60 * 60 * 1000, retry: false
   });
   if (!ID_PATTERN.test(id || '')) return null;
-  const documents = data?.status === 'READY' && Array.isArray(data.documents) ? data.documents : [];
+  // 링크는 http·https만 쓴다(오염된 수집 값의 javascript: 등이 버튼 주소가 되지 않게).
+  const documents = data?.status === 'READY' && Array.isArray(data.documents) ? data.documents.filter(document => /^https?:\/\//i.test(document?.url || '')) : [];
   const unavailable = isError || data?.status === 'UNAVAILABLE';
   return <section className="announcement-documents" aria-labelledby="notice-documents-title">
     <div><h3 id="notice-documents-title">모집공고문 PDF</h3><Typography component="p" variant="caption" color="text.secondary">청약 자격·분양가·제출 서류는 원본 공고문에서 확인하세요.</Typography></div>

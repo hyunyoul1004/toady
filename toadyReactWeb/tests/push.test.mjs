@@ -130,3 +130,10 @@ test('push click marks only an opened detail, with the marker of that screen', a
   assert.deepEqual(detailMarker('/my?subscriptSeq=apt%2F1%2F1'), { plannerDetail: true });
   assert.equal(detailMarker('/faq?subscriptSeq=x'), null);
 });
+
+test('closing a detail goes back past the inline layers stacked on it', async () => {
+  const { detailCloseSteps } = await import('../src/utils/overlay.util.js');
+  assert.equal(detailCloseSteps({ detailOverlay: true }), 1);
+  assert.equal(detailCloseSteps({ detailOverlay: true, overlayLayers: [{ id: 'price-map-complex', value: 'apt|1' }] }), 2);
+  assert.equal(detailCloseSteps(null), 1);
+});

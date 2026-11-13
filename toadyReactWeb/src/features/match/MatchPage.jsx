@@ -9,7 +9,7 @@ import BoltRounded from '@mui/icons-material/BoltRounded';
 import IosShareRounded from '@mui/icons-material/IosShareRounded';
 import { Main } from '@/views/main/Main';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
-import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { useHistoryOverlay, detailCloseSteps } from '@/hooks/useHistoryOverlay';
 import { trackAction } from '@/features/analytics/trackAction';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { koreaToday } from '@/features/planner/plannerUtils';
@@ -134,10 +134,10 @@ export default function MatchPage({ tab = 'match' }) {
 
   const openDetail = id => {
     const next = new URLSearchParams(searchParams); next.set('subscriptSeq', id);
-    navigate(`${base}?${next}`, { state: { ...location.state, matchDetail: true } });
+    navigate(`${base}?${next}`, { state: { ...location.state, overlayLayers: [], matchDetail: true } });
   };
   const closeDetail = () => {
-    if (location.state?.matchDetail) { navigate(-1); return; }
+    if (location.state?.matchDetail) { navigate(-detailCloseSteps(location.state)); return; }
     const next = new URLSearchParams(searchParams); next.delete('subscriptSeq'); next.delete('tabType');
     setSearchParams(next, { replace: true });
   };

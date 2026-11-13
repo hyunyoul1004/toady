@@ -17,3 +17,12 @@ export function resolveOverlayUpdate(locationState, id, next) {
     replace: Boolean(layer)
   };
 }
+
+/**
+ * 상세를 '닫기'로 한 번에 닫을 때 돌아갈 히스토리 칸 수. 상세 위에 쌓인 레이어(예: 위치 탭 지도에서 고른 단지)는
+ * 화면을 덮지 않아 닫기 단추가 계속 보이므로, 한 칸만 돌아가면 그 레이어만 닫히고 상세는 남는다.
+ * 상세를 열 때 overlayLayers를 비워 두어야(이전 화면의 레이어를 물려받지 않아야) 칸 수가 맞는다.
+ */
+export function detailCloseSteps(state) {
+  return 1 + (Array.isArray(state?.overlayLayers) ? state.overlayLayers.length : 0);
+}

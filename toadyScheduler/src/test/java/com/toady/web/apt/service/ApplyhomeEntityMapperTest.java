@@ -75,4 +75,16 @@ class ApplyhomeEntityMapperTest {
 		assertThat(entity.getHssplyZip()).isEqualTo("16574");
 	}
 
+
+	@Test
+	void reportsResponseFieldsThatNoEntityPropertyReceives() throws Exception {
+		JsonNode response = objectMapper.readTree("""
+				{"HOUSE_MANAGE_NO":"1","PBLANC_NO":"1","HOUSE_NM":"단지","SOME_NEW_FIELD":"x","NESTED_FIELD":{"a":1}}
+				""");
+		var entity = mapper.toEntity(response, com.toady.web.apt.entity.AptLttotPblancDetail.class);
+		org.assertj.core.api.Assertions.assertThat(entity.getHouseNm()).isEqualTo("단지");
+		org.assertj.core.api.Assertions.assertThat(mapper.unmappedFields())
+				.contains("AptLttotPblancDetail.SOME_NEW_FIELD", "AptLttotPblancDetail.NESTED_FIELD")
+				.noneMatch(field -> field.endsWith("HOUSE_NM"));
+	}
 }

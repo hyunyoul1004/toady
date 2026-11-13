@@ -1,3 +1,4 @@
+import { detailCloseSteps } from '@/hooks/useHistoryOverlay';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, MenuItem, Snackbar, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
@@ -70,10 +71,10 @@ export default function ScoreCalculator() {
   };
   const openDetail = id => {
     const next = new URLSearchParams(searchParams); next.set('subscriptSeq', id); next.set('tabType', 'rate');
-    navigate(`/score?${next}`, { state: { ...location.state, scoreDetail: true } });
+    navigate(`/score?${next}`, { state: { ...location.state, overlayLayers: [], scoreDetail: true } });
   };
   const closeDetail = () => {
-    if (location.state?.scoreDetail) { navigate(-1); return; }
+    if (location.state?.scoreDetail) { navigate(-detailCloseSteps(location.state)); return; }
     const next = new URLSearchParams(searchParams); next.delete('subscriptSeq'); next.delete('tabType');
     setSearchParams(next, { replace: true });
   };

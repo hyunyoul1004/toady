@@ -1,3 +1,4 @@
+import { detailCloseSteps } from '@/hooks/useHistoryOverlay';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 
@@ -13,10 +14,10 @@ export function useInPageDetail(base, marker) {
   const open = (id, tabType) => {
     const next = new URLSearchParams(searchParams); next.set('subscriptSeq', id);
     if (tabType) next.set('tabType', tabType); else next.delete('tabType');
-    navigate(`${base}?${next}`, { state: { ...location.state, [marker]: true } });
+    navigate(`${base}?${next}`, { state: { ...location.state, overlayLayers: [], [marker]: true } });
   };
   const close = () => {
-    if (location.state?.[marker]) { navigate(-1); return; }
+    if (location.state?.[marker]) { navigate(-detailCloseSteps(location.state)); return; }
     const next = new URLSearchParams(searchParams); next.delete('subscriptSeq'); next.delete('tabType');
     setSearchParams(next, { replace: true });
   };

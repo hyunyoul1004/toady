@@ -1,4 +1,4 @@
-import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { useHistoryOverlay, detailCloseSteps } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { trackAction } from '@/features/analytics/trackAction';
 import { useEffect, useState, useRef } from 'react';
@@ -42,7 +42,7 @@ export default function MyPlanner() {
     updatePageSeo({title:'나의 청약 | TOADY',description:'관심 공고의 청약 일정·체크리스트를 한곳에서 챙기고 공고끼리 비교하세요. 접수일 알림과 캘린더 연결도 할 수 있어요.',path:'/my'});
     return ()=>resetDefaultSeo();
   },[detailId]);
-  const closeDetail=()=>{if(location.state?.plannerDetail) navigate(-1);else setSearchParams({}, {replace:true});};
+  const closeDetail=()=>{if(location.state?.plannerDetail) navigate(-detailCloseSteps(location.state));else setSearchParams({}, {replace:true});};
   const [selected,setSelected] = useState([]), [message,setMessage] = useState(null), [busy,setBusy] = useState(false);
   const menuButtonRef=useRef(null);
   const [menuOpen,setMenuOpen] = useHistoryOverlay('planner-settings');

@@ -21,7 +21,9 @@ export default function PushBootstrap() {
   const guestKey = guestIds.join(',');
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !window.isSecureContext) return;
+    if (typeof window === 'undefined') return;
+    // 서비스 워커가 없는 브라우저(일부 인앱 브라우저·사생활 보호 창)도 상태를 확정해야 알림 설정 창이 로딩에 머물지 않고 안내를 보여 준다.
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) { usePushStore.getState().init(); return; }
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => { /* 알림만 제한되고 서비스 이용에는 영향 없음 */ })
       .finally(() => usePushStore.getState().init());
     const onMessage = event => {

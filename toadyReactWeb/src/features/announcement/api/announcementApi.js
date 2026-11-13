@@ -70,7 +70,7 @@ export function parseSubscriptId(idInput) {
     if (idInput.subscriptSeq && (!houseManageNo || !pblancNo)) {
       return parseSubscriptId(idInput.subscriptSeq);
     }
-    return { type, houseManageNo, pblancNo };
+    return safeParts({ type, houseManageNo, pblancNo });
   }
 
   const str = String(idInput);
@@ -105,7 +105,23 @@ export function parseSubscriptId(idInput) {
     pblancNo = str;
   }
 
-  return { type, houseManageNo, pblancNo };
+  return safeParts({ type, houseManageNo, pblancNo });
+}
+
+const TYPE_PART = /^(apt|urban|remaining|public-rental|optional|cancel-resupply)$/;
+const KEY_PART = /^[a-zA-Z0-9_-]{1,40}$/;
+/**
+ * 공유 링크(?subscriptSeq=)로 들어온 값이 API 경로에 그대로 들어가므로 형식을 확인한다. '..'·'?'·'#' 등이 섞이면
+ * 로그인 토큰을 실은 요청이 다른 API 경로로 갈 수 있어, 형식이 틀리면 빈 값으로 돌려 상세를 열지 않는다.
+ */
+/** 공고 API 경로. 형식이 틀린 값은 요청하지 않고 오류로 끝낸다(다른 API 경로로 새지 않게). */
+function announcementPath(type, houseManageNo, pblancNo) {
+  if (!TYPE_PART.test(type || '') || !KEY_PART.test(houseManageNo || '') || !KEY_PART.test(pblancNo || '')) throw new Error('공고 주소가 올바르지 않습니다.');
+  return `/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}`;
+}
+function safeParts(parts) {
+  if (!TYPE_PART.test(parts.type) || !KEY_PART.test(parts.houseManageNo) || !KEY_PART.test(parts.pblancNo)) return { type: 'apt', houseManageNo: '', pblancNo: '' };
+  return parts;
 }
 
 /** 유효한 날짜면 'YYYY-MM-DD', 아니면 null */
@@ -250,7 +266,7 @@ export const announcementApi = {
     if (params.pblancNo) pblancNo = params.pblancNo;
     type = type || 'apt';
 
-    const detailPromise = apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}`);
+    const detailPromise = apiClient.get(`${announcementPath(type, houseManageNo, pblancNo)}`);
     const detailRes = await detailPromise;
     const anno = detailRes.data?.announcement || {};
     const models = detailRes.data?.models || [];
@@ -355,7 +371,7 @@ export const announcementApi = {
     const page = params.page != null ? params.page : 0;
     const size = params.size != null ? params.size : 100;
 
-    const res = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page, size });
+    const res = await apiClient.get(`${announcementPath(type, houseManageNo, pblancNo)}/comments`, { page, size });
     const content = [...(res.data?.content || (Array.isArray(res.data) ? res.data : []))];
     // 번호 커서로 이전 댓글을 조회해 신규 등록·삭제가 페이지 경계를 이동시키지 않게 한다.
     if (params.page == null) {
@@ -367,7 +383,7 @@ export const announcementApi = {
           throw new Error('댓글 페이지 정보를 확인할 수 없습니다. 다시 조회해 주세요.');
         }
         previousCursor = beforeCommentSeq;
-        const next = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, { page: 0, size, beforeCommentSeq });
+        const next = await apiClient.get(`${announcementPath(type, houseManageNo, pblancNo)}/comments`, { page: 0, size, beforeCommentSeq });
         current = next.data;
         content.push(...(current?.content || []));
       }
@@ -411,7 +427,7 @@ export const announcementApi = {
       content: params.content
     };
 
-    const res = await apiClient.post(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments`, payload);
+    const res = await apiClient.post(`${announcementPath(type, houseManageNo, pblancNo)}/comments`, payload);
     return {
       ...res,
       resultCode: res.resultCode || 'SUCCESS',
@@ -432,7 +448,7 @@ export const announcementApi = {
     const commentSeq = params.commentSeq || params.subscriptCommentSeq;
 
     const payload = { content: params.content };
-    const res = await apiClient.patch(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments/${commentSeq}`, payload);
+    const res = await apiClient.patch(`${announcementPath(type, houseManageNo, pblancNo)}/comments/${commentSeq}`, payload);
     return {
       ...res,
       resultCode: res.resultCode || 'SUCCESS',
@@ -452,7 +468,7 @@ export const announcementApi = {
     type = type || 'apt';
     const commentSeq = params.commentSeq || params.subscriptCommentSeq;
 
-    const res = await apiClient.delete(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/comments/${commentSeq}`);
+    const res = await apiClient.delete(`${announcementPath(type, houseManageNo, pblancNo)}/comments/${commentSeq}`);
     return {
       ...res,
       resultCode: res?.resultCode || 'SUCCESS',
@@ -471,7 +487,7 @@ export const announcementApi = {
     if (params.pblancNo) pblancNo = params.pblancNo;
     type = type || 'apt';
 
-    const res = await apiClient.get(`/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}/competition-rates`);
+    const res = await apiClient.get(`${announcementPath(type, houseManageNo, pblancNo)}/competition-rates`);
     const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
     return {
       resultCode: res.data?.resultCode || 'SUCCESS',
