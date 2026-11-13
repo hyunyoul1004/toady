@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS
+, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -215,11 +215,11 @@ test('저장된 옛 전용 평 필터는 같은 숫자의 공급 평형으로 �
   assert.equal(migrateStoredFilters(already), already, '이미 옮긴 값은 다시 옮기지 않는다');
 });
 
-test('분양 말풍선: 청약 중·예정·분양 완료를 구분하고, 위치 미확정 공고는 따로 모은다', () => {
-  assert.equal(saleStatusLabel('OPEN'), '청약 중');
-  assert.equal(saleStatusLabel('UPCOMING'), '청약 예정');
-  assert.equal(saleStatusLabel('DONE'), '분양 완료');
-  assert.equal(saleStatusLabel('X'), '분양');
+test('분양 말풍선: 접수 중·예정·종료를 구분하고, 위치 미확정 공고는 따로 모은다', () => {
+  assert.equal(saleStatusLabel('OPEN'), '접수 중');
+  assert.equal(saleStatusLabel('UPCOMING'), '접수 예정');
+  assert.equal(saleStatusLabel('DONE'), '접수 종료');
+  assert.equal(saleStatusLabel('X'), '분양 공고');
   assert.equal(moveInText('2029-03'), '29.3 입주 예정');
   assert.equal(moveInText(null), '');
   const a = { sales: [{ id: 'apt/1/1', status: 'OPEN' }, { id: 'apt/2/2', status: 'DONE' }, { id: 'apt/cur/cur', status: 'DONE' }], unlocated: [{ id: 'apt/3/3', status: 'DONE' }] };
@@ -268,4 +268,16 @@ test('큰 시·군·구(단지 3,000곳)도 묶음 계산이 가볍다', () => {
   const groups = groupRows(many, 'dong');
   assert.equal(groups.length, 40);
   assert.ok(performance.now() - started < 200, '200ms 안');
+});
+
+test('이 공고도 다른 분양 말풍선과 같은 규칙으로 접수 상태를 정한다', () => {
+  // 시티프라디움 3단지: 2026-11-02~04 접수 → 11-14에는 4단지와 같은 '접수 종료'.
+  assert.equal(saleStatusOf('2026-11-02', '2026-11-04', '2026-11-14'), 'DONE');
+  assert.equal(saleStatusOf('20261102', '20261104', '2026-11-04'), 'OPEN', '마감일 당일까지 접수 중');
+  assert.equal(saleStatusOf('2026-11-02', '2026-11-04', '2026-11-02'), 'OPEN');
+  assert.equal(saleStatusOf('2026-11-20', '2026-11-22', '2026-11-14'), 'UPCOMING');
+  assert.equal(saleStatusOf('2026-11-14', null, '2026-11-14'), 'OPEN', '마감일이 없으면 시작일 하루');
+  assert.equal(saleStatusOf('2026-11-13', '', '2026-11-14'), 'DONE');
+  assert.equal(saleStatusOf(null, null, '2026-11-14'), null, '날짜를 모르면 상태를 붙이지 않는다');
+  assert.equal(saleStatusLabel(saleStatusOf('2026-11-02', '2026-11-04', '2026-11-14')), saleStatusLabel('DONE'));
 });

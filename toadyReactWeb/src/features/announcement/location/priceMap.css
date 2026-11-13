@@ -95,7 +95,7 @@
 .price-map-area-slider .MuiSlider-rail{background:#cbd5e1;opacity:1}
 .price-map-area-slider .MuiSlider-markLabel{font-size:12px;color:#475569}
 .price-map-area-note{display:flex;align-items:center;gap:5px;margin-top:14px!important;font-size:13px!important;color:#64748b}
-/* 다른 청약 중·예정 공고: 흰 바탕 보라 테두리로 이 공고(꽉 찬 보라)와 구분 */
+/* 다른 접수 중·예정 공고: 흰 바탕 보라 테두리로 이 공고(꽉 찬 보라)와 구분 */
 .pm-bubble--sale.is-other{background:#fff;color:#6d28d9;--pm-bg:#7c3aed;border:2px solid #7c3aed;z-index:3}
 .pm-bubble--sale.is-other::after{bottom:-8px}
 .pm-bubble--sale.is-other i{background:#ede9fe;color:#6d28d9}
@@ -118,7 +118,7 @@
 .price-map-legend .tone-outside{background:#94a3b8;border-radius:50%}
 .price-map-area-note.is-hint{display:block;margin-top:6px!important;font-size:12px!important}
 
-/* 분양 완료(접수를 마쳤고 입주 전): 청약 중·예정(보라 테두리)과 구분되는 점선·흐린 보라. */
+/* 접수 종료(입주 전): 접수 중·예정(보라 테두리)과 구분되는 점선·흐린 보라. 이 공고는 상태와 관계없이 꽉 찬 보라. */
 .pm-bubble--sale.is-other.is-done{background:#f5f3ff;color:#5b21b6;border-style:dashed;border-color:#8b5cf6}
 .pm-bubble--sale.is-other.is-done i{background:#ddd6fe;color:#5b21b6}
 .pm-bubble--sale.is-other.is-done.is-selected{background:#7c3aed;color:#fff;border-style:solid}
@@ -138,3 +138,4 @@
 .pm-group.is-district{background:rgba(30,64,175,.92);min-width:76px}
 .pm-group:hover{filter:brightness(1.1)}
 .pm-group:focus-visible{outline:3px solid #fde68a;outline-offset:2px}
+.pm-sale-tag.is-status{background:#ede9fe;color:#5b21b6}

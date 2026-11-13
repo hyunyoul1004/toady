@@ -8,7 +8,7 @@ import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
 import {resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {GROUP_LEVELS,areaText,bubbleText,ageTone,groupRows,groupTier,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {GROUP_LEVELS,areaText,bubbleText,ageTone,groupRows,groupTier,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
@@ -54,7 +54,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       const coords=new kakao.maps.LatLng(result.latitude,result.longitude);
       // 확정 주소는 주변 단지가 함께 보이도록 조금 넓게(레벨 5) 연다.
       map=new kakao.maps.Map(container.current,{center:coords,level:precise?5:6});
-      // 실거래 지도에서는 공고 위치를 '분양' 말풍선으로 표시하므로 기본 핀은 직접 검색한 위치·가격 미제공일 때만 둔다.
+      // 실거래 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시하므로 기본 핀은 직접 검색한 위치·가격 미제공일 때만 둔다.
       if(!showPrices || manualResult)marker=new kakao.maps.Marker({map,position:coords});
       map.addControl(new kakao.maps.ZoomControl(),kakao.maps.ControlPosition.RIGHT);
       const far=()=>container.current?.classList.toggle('is-far',map.getLevel()>=6);
@@ -80,14 +80,16 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       mapRef.current=null;};
   },[visible,result,precise,attempt,showPrices]);
 
-  // 이 공고(분양) 말풍선: 같은 면적 구간의 분양가. 아무 단지도 고르지 않았을 때는 이 공고가 선택된 상태다.
+  // 이 공고 말풍선: 같은 면적 구간의 분양가. 상태는 다른 분양 말풍선과 같은 규칙(접수 중·예정·종료)으로 붙이고, '이 공고'와 꽉 찬 보라로 구분한다.
+  // 아무 단지도 고르지 않았을 때는 이 공고가 선택된 상태다.
   const saleRef=useRef(null);
+  const siteStatus=saleStatusOf(detail.rceptBgnde || detail.subscrptRceptBgnde,detail.rceptEndde || detail.subscrptRceptEndde,today);
   useEffect(()=>{
     const map=mapRef.current,kakao=kakaoRef.current;
     if(!map || !kakao || !showPrices || !announced)return;
     const button=document.createElement('button');
     button.type='button';button.className='pm-bubble pm-bubble--sale';
-    const tag=document.createElement('i');tag.textContent='분양';
+    const tag=document.createElement('i');tag.textContent=siteStatus?`이 공고 · ${saleStatusLabel(siteStatus)}`:'이 공고';
     const strong=document.createElement('b');
     const small=document.createElement('small');
     if(supply){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(supply.pyeong):shortPrice(supply.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):areaText(supply.area,priceMap.filters.unit);}
@@ -98,7 +100,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     saleRef.current=button;
     const overlay=new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(announced.latitude,announced.longitude),content:button,yAnchor:1,clickable:true,zIndex:5});
     return()=>{overlay.setMap(null);saleRef.current=null;};
-  },[mapReady,showPrices,announced,supply?.amount,supply?.area,supply?.pyeong,priceMap.filters.mode,priceMap.filters.unit,detail.houseNm]);
+  },[mapReady,showPrices,announced,supply?.amount,supply?.area,supply?.pyeong,priceMap.filters.mode,priceMap.filters.unit,detail.houseNm,siteStatus]);
 
   // 단지 가격 말풍선. 글자는 textContent로만 넣는다(단지명은 외부 자료). 거리를 재는 중에는 누르면 그 단지를 지점으로 더한다.
   useEffect(()=>{
@@ -163,7 +165,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     return()=>{overlays.forEach(overlay=>overlay.setMap(null));dots.current=new Map();};
   },[mapReady,showPrices,priceMap.outside,priceMap.filters.unit,tier,tier==='single'?view:null]);
 
-  // 다른 청약 중·예정 공고 말풍선(같은 시·군·구). 눌러서 분양가와 주변 거래를 보고, 그 공고로 이동할 수 있다.
+  // 다른 분양 공고 말풍선(같은 시·군·구, 접수 중·예정·종료). 눌러서 분양가와 주변 거래를 보고, 그 공고로 이동할 수 있다.
   useEffect(()=>{
     const map=mapRef.current,kakao=kakaoRef.current,made=new Map();
     if(!map || !kakao || !showPrices)return;
@@ -306,7 +308,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         {priceMap.selectedSale?<SalePanel detail={detail} sale={priceMap.selectedSale} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}
             onClose={()=>priceMap.select(null)} onOpen={sale=>openSale(sale.id)}/>
           :priceMap.selected?<ComplexPanel row={priceMap.selected} supply={supply} unit={priceMap.filters.unit} onClose={()=>priceMap.select(null)}/>
-          :!manualResult && <SalePanel detail={detail} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
+          :!manualResult && <SalePanel detail={detail} siteStatus={siteStatus} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
         <ComplexList rows={priceMap.rows} filters={priceMap.filters} setFilters={priceMap.setFilters} selectedKey={selectedKey} onSelect={chooseFromList}/>
       </>}
       {precise && tradesOff && <PriceMapUnavailable reason="지금은 실거래 정보를 제공하지 않고 있어요."/>}

@@ -57,7 +57,7 @@ export function usePriceMap(location, enabled, currentId = '') {
       }
     }))
   });
-  // 같은 시·군·구의 청약 중·예정 공고(분양 말풍선). 지금 보고 있는 공고는 따로 그리므로 뺀다.
+  // 같은 시·군·구의 분양 공고(접수 중·예정·종료 말풍선). 지금 보고 있는 공고는 따로 그리므로 뺀다.
   const saleQueries = useQueries({
     queries: districts.map(item => ({
       queryKey: ['mapSales', item.bcode.slice(0, 5), item.region || ''],
@@ -68,7 +68,7 @@ export function usePriceMap(location, enabled, currentId = '') {
       refetchInterval: q => (q.state.data?.pending > 0 && q.state.dataUpdateCount < MAX_FOLLOW_UPS ? 4000 : false)
     }))
   });
-  // 청약 중·예정과 분양 완료(입주 전) 공고. 지번으로 위치를 확정하지 못한 공고는 지도에 놓지 않고 unlocatedSales로 따로 둔다.
+  // 접수 중·예정과 접수 종료(입주 전) 공고. 지번으로 위치를 확정하지 못한 공고는 지도에 놓지 않고 unlocatedSales로 따로 둔다.
   const { sales, unlocated: unlocatedSales } = useMemo(() => mergeSales(saleQueries.map(item => item.data), currentId),
     [saleQueries.map(item => item.dataUpdatedAt).join(','), currentId]);
   // 시·군·구 묶음 이름: 시군구코드(5자리) → '파주시'.

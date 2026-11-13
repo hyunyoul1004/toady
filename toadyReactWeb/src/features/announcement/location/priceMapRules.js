@@ -325,9 +325,20 @@ export function nearbyMedian(complexes = [], area, origin, meters = NEARBY_METER
   return { median: values.length % 2 ? values[middle] : Math.round((values[middle - 1] + values[middle]) / 2), complexes: values.length };
 }
 
-/** 지도 분양 말풍선의 상태 이름. OPEN: 청약 중, UPCOMING: 청약 예정, DONE: 접수를 마쳤고 아직 입주 전(실거래 없음). */
-export const SALE_STATUS = { OPEN: '청약 중', UPCOMING: '청약 예정', DONE: '분양 완료' };
-export const saleStatusLabel = status => SALE_STATUS[status] || '분양';
+/**
+ * 지도 분양 말풍선의 상태 이름. 앱의 다른 화면(관심 공고·준비 패널)과 같은 '접수 중·접수 예정·접수 종료'를 쓴다.
+ * DONE은 접수를 마쳤고 아직 입주 전인 공고다('분양 완료'는 '다 팔림'으로 읽힐 수 있어 쓰지 않는다).
+ * 지금 보고 있는 공고도 같은 규칙(saleStatusOf)으로 상태를 붙이고, '이 공고' 표시는 따로 단다.
+ */
+export const SALE_STATUS = { OPEN: '접수 중', UPCOMING: '접수 예정', DONE: '접수 종료' };
+export const saleStatusLabel = status => SALE_STATUS[status] || '분양 공고';
+const isoDay = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : ''; };
+/** 접수 시작·마감일과 오늘('YYYY-MM-DD')로 상태를 정한다(서버 분류와 같은 규칙: 마감일이 없으면 시작일 하루). 날짜를 모르면 null. */
+export function saleStatusOf(start, end, today) {
+  const from = isoDay(start), to = isoDay(end) || from;
+  if (!from || !today) return null;
+  return today < from ? 'UPCOMING' : today <= to ? 'OPEN' : 'DONE';
+}
 /** '2029-03' → '29.3 입주 예정', 없으면 ''. */
 export function moveInText(moveIn) {
   const [y, m] = String(moveIn || '').split('-').map(Number);
