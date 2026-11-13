@@ -6,7 +6,7 @@ import SyncAltRounded from '@mui/icons-material/SyncAltRounded';
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { distanceMeters as distanceMetersSafe } from './priceMapRules';
-import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, NEARBY_METERS, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, nearbyMedian, perPyeong, shortPrice } from './priceMapRules';
+import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, NEARBY_METERS, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, nearbyMedian, perPyeong, shortPrice } from './priceMapRules';
 import './priceMap.css';
 
 const SELECTS = [
@@ -96,7 +96,7 @@ function AreaFilter({ filters, setFilters }) {
 }
 
 /** 지도 아래 상태 줄과 범례. */
-export function PriceMapStatus({ query, rows, outside = [], filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false }) {
+export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false }) {
   const data = query.data;
   const summary = mapSummary(rows, outside);
   return <Box className="price-map-status">
@@ -113,8 +113,14 @@ export function PriceMapStatus({ query, rows, outside = [], filters, pending = 0
     {pending > 0 && <Typography variant="caption" color="text.secondary">단지 {pending}곳의 위치를 확인하고 있어요. 잠시 뒤 지도에 더 표시돼요.</Typography>}
     {data?.partial && <Typography variant="caption" color="text.secondary">이전 거래(최대 3년)를 이어서 불러오는 중이에요. 지도에 단지가 더 표시될 수 있어요.</Typography>}
     <Box className="price-map-legend" aria-hidden="true">
-      <span><i className="tone-new" />5년 이내</span><span><i className="tone-mid" />10년 이내</span><span><i className="tone-old" />그 이상</span><span><i className="tone-site" />이 공고(분양)</span>{summary.outside > 0 && <span><i className="tone-outside" />조건 밖</span>}
+      <span><i className="tone-new" />5년 이내</span><span><i className="tone-mid" />10년 이내</span><span><i className="tone-old" />그 이상</span><span><i className="tone-site" />이 공고(분양)</span>{sales.some(sale => sale.status !== 'DONE') && <span><i className="tone-sale-open" />청약 중·예정</span>}{sales.some(sale => sale.status === 'DONE') && <span><i className="tone-sale-done" />분양 완료(입주 전)</span>}{summary.outside > 0 && <span><i className="tone-outside" />조건 밖</span>}
     </Box>
+    {unlocatedSales.length > 0 && <Box className="price-map-unlocated">
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0 }}>지번이 확인되지 않아 지도에 놓지 않은 분양 공고 {unlocatedSales.length}곳(지구·블록 주소는 실제 부지를 특정하지 못해요):</Typography>
+      <Box component="ul">{unlocatedSales.slice(0, 12).map(item => <li key={item.id}>
+        <button type="button" onClick={() => onOpenSale?.(item.id)}><span className="pm-sale-tag is-small">{saleStatusLabel(item.status)}</span>{item.houseNm}</button>
+      </li>)}</Box>
+    </Box>}
     <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0 }}>
       가격은 단지별 마지막 거래가 있었던 달의 평균 거래가예요(국토교통부 매매 실거래 신고{data?.fromMonth ? `, ${data.fromMonth.replace('-', '.')}~${data.toMonth.replace('-', '.')}` : ''}, 계약일 기준, 해제 거래 제외, 호가 아님). 1년 넘게 거래가 없던 단지는 흐리게 표시하고 그 달을 적어요.
       {filters.mode === 'pyeong' || filters.unit === 'pyeong' ? ` 평형은 전용면적×${SUPPLY_RATIO}로 추정한 공급 평형이에요(실제와 1~2평 다를 수 있어요). 평당 가격은 전용면적 3.3㎡당이에요.` : ''}
@@ -197,10 +203,10 @@ export function SalePanel({ detail, complexes, origin, unit: areaUnit = 'm2', sa
   const source = sale ? sale.units.map(unit => ({ ...unit, area: Number(unit.area), label: `${Number(unit.area).toFixed(2)}㎡` })) : (detail.unitPrices || []);
   const units = source.filter(unit => Number.isFinite(unit.amountManwon) && unit.amountManwon > 0 && unit.area >= 10);
   const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
-  const period = sale && sale.start ? `접수 ${sale.start.replaceAll('-', '.')}${sale.end && sale.end !== sale.start ? ` ~ ${sale.end.slice(5).replaceAll('-', '.')}` : ''}` : '';
+  const period = sale && sale.start ? [`접수 ${sale.start.replaceAll('-', '.')}${sale.end && sale.end !== sale.start ? ` ~ ${sale.end.slice(5).replaceAll('-', '.')}` : ''}`, moveInText(sale.moveIn)].filter(Boolean).join(' · ') : '';
   return <Paper variant="outlined" className={`price-map-panel is-sale${sale ? ' is-other' : ''}`} aria-label={`${name} 분양가`}>
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-      <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}><span className="pm-sale-tag">{sale ? (sale.status === 'OPEN' ? '청약 중' : '청약 예정') : '분양'}</span>{name}</Typography>
+      <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}><span className={`pm-sale-tag${sale?.status === 'DONE' ? ' is-done' : ''}`}>{sale ? saleStatusLabel(sale.status) : '분양'}</span>{name}</Typography>
       {sale && <IconButton size="small" aria-label="청약 단지 정보 닫기" onClick={onClose}><CloseRounded fontSize="small" /></IconButton>}
     </Box>
     <Typography variant="caption" color="text.secondary">{sale ? [period, distanceText(distanceMetersSafe(origin, sale)) && `이 공고 위치에서 ${distanceText(distanceMetersSafe(origin, sale))}`].filter(Boolean).join(' · ') : '지도에서 다른 단지를 누르면 그 단지의 실거래를 보여 드려요.'}</Typography>

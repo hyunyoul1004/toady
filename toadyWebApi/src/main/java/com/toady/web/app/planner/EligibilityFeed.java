@@ -82,28 +82,8 @@ public class EligibilityFeed {
         List<PublicAreaPage.Item> active = new ArrayList<>(groups.open());
         active.addAll(groups.upcoming());
 
-        Map<String, List<PublicAreaPage.Item>> byType = active.stream().collect(Collectors.groupingBy(item -> item.source().type()));
-        Map<String, Map<String, Object>> details = new HashMap<>();
-        Map<String, List<Map<String, Object>>> models = new HashMap<>();
-        byType.forEach((type, items) -> {
-            String detailTable = switch (type) { case "apt" -> "TB_APT_LTTOT_PBLANC_DETAIL"; case "remaining" -> "TB_REMNDR_LTTOT_PBLANC_DETAIL"; default -> "TB_OPT_LTTOT_PBLANC_DETAIL"; };
-            String modelTable = switch (type) { case "apt" -> "TB_APT_LTTOT_PBLANC_MDL"; case "remaining" -> "TB_REMNDR_LTTOT_PBLANC_MDL"; default -> "TB_OPT_LTTOT_PBLANC_MDL"; };
-            List<String> houses = items.stream().map(item -> item.source().houseManageNo()).distinct().toList();
-            for (int from = 0; from < houses.size(); from += 200) {
-                List<String> chunk = houses.subList(from, Math.min(houses.size(), from + 200));
-                String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
-                for (Map<String, Object> row : jdbc.queryForList("SELECT * FROM " + detailTable + " WHERE HOUSE_MANAGE_NO IN (" + marks + ")", chunk.toArray()))
-                    details.put(type + "/" + row.get("HOUSE_MANAGE_NO") + "/" + row.get("PBLANC_NO"), row);
-                for (Map<String, Object> row : jdbc.queryForList("SELECT * FROM " + modelTable + " WHERE HOUSE_MANAGE_NO IN (" + marks + ") ORDER BY MODEL_NO", chunk.toArray()))
-                    models.computeIfAbsent(type + "/" + row.get("HOUSE_MANAGE_NO") + "/" + row.get("PBLANC_NO"), k -> new ArrayList<>()).add(row);
-            }
-        });
-
-        List<Item> built = active.stream().map(entry -> {
-            AnnouncementListItem source = entry.source();
-            String id = source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo();
-            return item(id, source, entry.status().name(), details.getOrDefault(id, Map.of()), models.getOrDefault(id, List.of()));
-        }).toList();
+        List<Item> built = items(active.stream().map(PublicAreaPage.Item::source).toList(),
+            active.stream().collect(Collectors.toMap(PublicAreaPage.Item::id, entry -> entry.status().name(), (a, b) -> a)));
         // 미리 계산한 주변 시세 비교(database.sql 18번)를 붙인다. 없으면 null이고 화면은 뱃지를 숨긴다.
         Map<String, PriceGapStore.Gap> gaps = gapStore.forIds(built.stream().map(Item::id).toList());
         List<Item> items = built.stream().map(item -> {
@@ -115,6 +95,34 @@ public class EligibilityFeed {
         body.put("today", today.toString());
         body.put("items", items);
         return body;
+    }
+
+    /**
+     * 공고 목록에 상세(입주 예정월 등)와 주택형별 공급금액을 붙인다. status: 공고 id → 상태 이름(없으면 CLOSED).
+     * 위치 탭 지도(SaleMapService)가 지난 분양 공고에도 같은 형식을 쓰려고 나눠 둔다.
+     */
+    List<Item> items(List<AnnouncementListItem> sources, Map<String, String> status) {
+        Map<String, List<AnnouncementListItem>> byType = sources.stream().collect(Collectors.groupingBy(AnnouncementListItem::type));
+        Map<String, Map<String, Object>> details = new HashMap<>();
+        Map<String, List<Map<String, Object>>> models = new HashMap<>();
+        byType.forEach((type, items) -> {
+            String detailTable = switch (type) { case "apt" -> "TB_APT_LTTOT_PBLANC_DETAIL"; case "remaining" -> "TB_REMNDR_LTTOT_PBLANC_DETAIL"; case "optional" -> "TB_OPT_LTTOT_PBLANC_DETAIL"; default -> null; };
+            String modelTable = switch (type) { case "apt" -> "TB_APT_LTTOT_PBLANC_MDL"; case "remaining" -> "TB_REMNDR_LTTOT_PBLANC_MDL"; case "optional" -> "TB_OPT_LTTOT_PBLANC_MDL"; default -> null; };
+            if (detailTable == null) return;
+            List<String> houses = items.stream().map(AnnouncementListItem::houseManageNo).distinct().toList();
+            for (int from = 0; from < houses.size(); from += 200) {
+                List<String> chunk = houses.subList(from, Math.min(houses.size(), from + 200));
+                String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
+                for (Map<String, Object> row : jdbc.queryForList("SELECT * FROM " + detailTable + " WHERE HOUSE_MANAGE_NO IN (" + marks + ")", chunk.toArray()))
+                    details.put(type + "/" + row.get("HOUSE_MANAGE_NO") + "/" + row.get("PBLANC_NO"), row);
+                for (Map<String, Object> row : jdbc.queryForList("SELECT * FROM " + modelTable + " WHERE HOUSE_MANAGE_NO IN (" + marks + ") ORDER BY MODEL_NO", chunk.toArray()))
+                    models.computeIfAbsent(type + "/" + row.get("HOUSE_MANAGE_NO") + "/" + row.get("PBLANC_NO"), k -> new ArrayList<>()).add(row);
+            }
+        });
+        return sources.stream().map(source -> {
+            String id = source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo();
+            return item(id, source, status.getOrDefault(id, "CLOSED"), details.getOrDefault(id, Map.of()), models.getOrDefault(id, List.of()));
+        }).toList();
     }
 
     static Item item(String id, AnnouncementListItem source, String status, Map<String, Object> detail, List<Map<String, Object>> modelRows) {

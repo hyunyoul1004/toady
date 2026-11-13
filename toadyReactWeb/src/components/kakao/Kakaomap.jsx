@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useLocation,useNavigate} from 'react-router-dom';
 import {Alert,Box,Button,CircularProgress,IconButton,InputAdornment,Paper,TextField,Typography} from '@mui/material';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
@@ -8,7 +8,7 @@ import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
 import {resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {areaText,bubbleText,ageTone,isAddressLike,isStaleMonth,outsideText,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {areaText,bubbleText,ageTone,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
@@ -28,7 +28,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 실거래 조회 지역과 '이 공고' 표시는 공고의 확정 주소로만 정한다(직접 검색한 주소로 바꾸지 않는다).
   const announced=location.data?.status==='ADDRESS'?location.data:null;
   const priceMap=usePriceMap(announced,Boolean(announced),detail.subscriptSeq || '');
-  const navigate=useNavigate();
+  const navigate=useNavigate(),routeLocation=useLocation();
+  // 다른 분양 공고 열기: 지금 화면 주소에서 상세 값만 바꿔 히스토리 한 단계를 쌓는다(뒤로가기로 이 공고 지도에 돌아온다).
+  // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
+  const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');navigate({pathname:routeLocation.pathname,search:`?${next}`},{state:routeLocation.state});};
   const today=koreaToday();
   const saleBubbles=useRef(new Map());
   const showPrices=priceMap.ready;
@@ -127,8 +130,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       const units=(sale.units || []).map(unit=>({area:Number(unit.area),amountManwon:unit.amountManwon}));
       const price=supplyForBand(units,priceMap.filters);
       const button=document.createElement('button');
-      button.type='button';button.className='pm-bubble pm-bubble--sale is-other';
-      const tag=document.createElement('i');tag.textContent=sale.status==='OPEN'?'청약 중':'청약 예정';
+      button.type='button';button.className=`pm-bubble pm-bubble--sale is-other is-${String(sale.status||'').toLowerCase()}`;
+      const tag=document.createElement('i');tag.textContent=saleStatusLabel(sale.status);
       const strong=document.createElement('b'),small=document.createElement('small');
       if(price){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(price.pyeong):shortPrice(price.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):areaText(price.area,priceMap.filters.unit);}
       else {strong.textContent='분양';small.textContent='가격 미제공';}
@@ -256,11 +259,11 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       <Typography variant="caption" color="text.secondary">표시 지점은 부지 경계·출입구를 뜻하지 않습니다.</Typography>
       {showPrices && <>
         {priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</Alert>
-          :<PriceMapStatus query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut}/>}
+          :<PriceMapStatus query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} sales={priceMap.sales} unlocatedSales={priceMap.unlocatedSales} onOpenSale={openSale} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut}/>}
         {priceMap.query.data?.status==='READY' && !priceMap.rows.length && <Alert severity="info" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>{clearText();priceMap.setFilters({areaMin:0,areaMax:165,priceMin:0,priceMax:400000,age:'all',query:''});}}>조건 풀기</Button>}>{priceMap.outside.length?`조건에 맞는 거래가 없어요. 거래가 있는 단지 ${priceMap.outside.length.toLocaleString('ko-KR')}곳은 지도에 회색 점으로 보여요. 조건을 풀어 보세요.`:'조건에 맞는 거래가 없어요. 조건을 풀어 보세요.'}</Alert>}
         {priceMap.query.data?.status==='EMPTY' && <Alert severity="info" sx={{mt:1}}>이 기간에 신고된 아파트 매매 거래가 없어요. 기간을 늘려 보세요.</Alert>}
         {priceMap.selectedSale?<SalePanel detail={detail} sale={priceMap.selectedSale} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}
-            onClose={()=>priceMap.select(null)} onOpen={sale=>navigate(`/?subscriptSeq=${encodeURIComponent(sale.id)}&tabType=map`)}/>
+            onClose={()=>priceMap.select(null)} onOpen={sale=>openSale(sale.id)}/>
           :priceMap.selected?<ComplexPanel row={priceMap.selected} supply={supply} unit={priceMap.filters.unit} onClose={()=>priceMap.select(null)}/>
           :!manualResult && <SalePanel detail={detail} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}/>}
         <ComplexList rows={priceMap.rows} filters={priceMap.filters} setFilters={priceMap.setFilters} selectedKey={selectedKey} onSelect={chooseFromList}/>

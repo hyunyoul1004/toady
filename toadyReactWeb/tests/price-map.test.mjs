@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG
+, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, moveInText, mergeSales
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -213,4 +213,18 @@ test('저장된 옛 전용 평 필터는 같은 숫자의 공급 평형으로 �
   assert.deepEqual(migrateStoredFilters({ unit: 'm2', areaMin: 106, areaMax: 164 }), { unit: 'm2', areaMin: 106, areaMax: 164 }, '㎡ 단위는 그대로');
   const already = { unit: 'pyeong', areaMin: 80, areaMax: 124, areaBasis: 'supply' };
   assert.equal(migrateStoredFilters(already), already, '이미 옮긴 값은 다시 옮기지 않는다');
+});
+
+test('분양 말풍선: 청약 중·예정·분양 완료를 구분하고, 위치 미확정 공고는 따로 모은다', () => {
+  assert.equal(saleStatusLabel('OPEN'), '청약 중');
+  assert.equal(saleStatusLabel('UPCOMING'), '청약 예정');
+  assert.equal(saleStatusLabel('DONE'), '분양 완료');
+  assert.equal(saleStatusLabel('X'), '분양');
+  assert.equal(moveInText('2029-03'), '29.3 입주 예정');
+  assert.equal(moveInText(null), '');
+  const a = { sales: [{ id: 'apt/1/1', status: 'OPEN' }, { id: 'apt/2/2', status: 'DONE' }, { id: 'apt/cur/cur', status: 'DONE' }], unlocated: [{ id: 'apt/3/3', status: 'DONE' }] };
+  const b = { sales: [{ id: 'apt/2/2', status: 'DONE' }, { id: 'apt/3/3', status: 'DONE' }], unlocated: [{ id: 'apt/4/4', status: 'UPCOMING' }, { id: 'apt/cur/cur' }] };
+  const merged = mergeSales([a, b, undefined], 'apt/cur/cur');
+  assert.deepEqual(merged.sales.map(sale => sale.id), ['apt/1/1', 'apt/2/2', 'apt/3/3'], '지금 공고는 빼고 같은 공고는 한 번만');
+  assert.deepEqual(merged.unlocated.map(item => item.id), ['apt/4/4'], '다른 지역 응답에서 지도에 놓인 공고는 미확정 목록에서 뺀다');
 });

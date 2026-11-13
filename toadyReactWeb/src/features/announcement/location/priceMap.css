@@ -117,3 +117,15 @@
 .pm-dot:focus-visible{outline:3px solid #fde68a;outline-offset:2px}
 .price-map-legend .tone-outside{background:#94a3b8;border-radius:50%}
 .price-map-area-note.is-hint{display:block;margin-top:6px!important;font-size:12px!important}
+
+/* 분양 완료(접수를 마쳤고 입주 전): 청약 중·예정(보라 테두리)과 구분되는 점선·흐린 보라. */
+.pm-bubble--sale.is-other.is-done{background:#f5f3ff;color:#5b21b6;border-style:dashed;border-color:#8b5cf6}
+.pm-bubble--sale.is-other.is-done i{background:#ddd6fe;color:#5b21b6}
+.pm-bubble--sale.is-other.is-done.is-selected{background:#7c3aed;color:#fff;border-style:solid}
+.pm-sale-tag.is-done{background:#8b5cf6}
+.pm-sale-tag.is-small{font-size:10px;padding:0 6px;margin-right:4px}
+.price-map-legend .tone-sale-open{background:#fff!important;border:2px solid #7c3aed;border-radius:50%}
+.price-map-legend .tone-sale-done{background:#f5f3ff!important;border:2px dashed #8b5cf6;border-radius:50%}
+.price-map-unlocated ul{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 0;padding:0;list-style:none}
+.price-map-unlocated button{display:inline-flex;align-items:center;max-width:100%;padding:3px 8px;border:1px solid #ddd6fe;border-radius:999px;background:#fff;color:#334155;font-size:12px;cursor:pointer;overflow-wrap:anywhere;text-align:left}
+.price-map-unlocated button:hover{border-color:#8b5cf6}

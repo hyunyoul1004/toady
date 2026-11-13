@@ -324,3 +324,22 @@ export function nearbyMedian(complexes = [], area, origin, meters = NEARBY_METER
   const middle = Math.floor(values.length / 2);
   return { median: values.length % 2 ? values[middle] : Math.round((values[middle - 1] + values[middle]) / 2), complexes: values.length };
 }
+
+/** 지도 분양 말풍선의 상태 이름. OPEN: 청약 중, UPCOMING: 청약 예정, DONE: 접수를 마쳤고 아직 입주 전(실거래 없음). */
+export const SALE_STATUS = { OPEN: '청약 중', UPCOMING: '청약 예정', DONE: '분양 완료' };
+export const saleStatusLabel = status => SALE_STATUS[status] || '분양';
+/** '2029-03' → '29.3 입주 예정', 없으면 ''. */
+export function moveInText(moveIn) {
+  const [y, m] = String(moveIn || '').split('-').map(Number);
+  return y && m ? `${String(y).slice(2)}.${m} 입주 예정` : '';
+}
+/**
+ * 여러 시·군·구 응답의 분양 공고를 합친다. 지금 보고 있는 공고는 빼고, 같은 공고는 한 번만 둔다.
+ * unlocated(지번으로 위치를 확정하지 못한 공고)도 같은 방식으로 합치되, 지도에 놓인 공고는 뺀다.
+ */
+export function mergeSales(responses = [], currentId = '') {
+  const sales = new Map(), unlocated = new Map();
+  responses.forEach(data => (data?.sales || []).forEach(sale => { if (sale.id !== currentId && !sales.has(sale.id)) sales.set(sale.id, sale); }));
+  responses.forEach(data => (data?.unlocated || []).forEach(item => { if (item.id !== currentId && !sales.has(item.id) && !unlocated.has(item.id)) unlocated.set(item.id, item); }));
+  return { sales: [...sales.values()], unlocated: [...unlocated.values()] };
+}

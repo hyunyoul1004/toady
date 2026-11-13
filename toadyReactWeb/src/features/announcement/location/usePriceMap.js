@@ -3,7 +3,7 @@ import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { DEFAULT_FILTERS, migrateStoredFilters, normalizeFilters, splitComplexes } from './priceMapRules';
+import { DEFAULT_FILTERS, mergeSales, migrateStoredFilters, normalizeFilters, splitComplexes } from './priceMapRules';
 
 const STORAGE_KEY = 'toady.priceMap';
 /** 좌표 확인·기간 수집이 덜 끝났으면 몇 번만 다시 부른다(요청 제한을 아끼려고 횟수를 제한). */
@@ -68,11 +68,9 @@ export function usePriceMap(location, enabled, currentId = '') {
       refetchInterval: q => (q.state.data?.pending > 0 && q.state.dataUpdateCount < MAX_FOLLOW_UPS ? 4000 : false)
     }))
   });
-  const sales = useMemo(() => {
-    const seen = new Map();
-    saleQueries.forEach(item => (item.data?.sales || []).forEach(sale => { if (sale.id !== currentId && !seen.has(sale.id)) seen.set(sale.id, sale); }));
-    return [...seen.values()];
-  }, [saleQueries.map(item => item.dataUpdatedAt).join(','), currentId]);
+  // 청약 중·예정과 분양 완료(입주 전) 공고. 지번으로 위치를 확정하지 못한 공고는 지도에 놓지 않고 unlocatedSales로 따로 둔다.
+  const { sales, unlocated: unlocatedSales } = useMemo(() => mergeSales(saleQueries.map(item => item.data), currentId),
+    [saleQueries.map(item => item.dataUpdatedAt).join(','), currentId]);
   const query = queries[0] || { data: undefined, isLoading: false, isFetching: false, isError: false, refetch: () => {} };
   const others = queries.slice(1);
   const complexes = useMemo(() => {
@@ -92,5 +90,5 @@ export function usePriceMap(location, enabled, currentId = '') {
   const selected = selectedKey && !selectedSale ? complexes.find(item => item.key === selectedKey) || null : null;
   const selectedRow = selected ? rows.find(row => row.key === selected.key) || outside.find(row => row.key === selected.key) || { ...selected, rep: null, distance: Infinity } : null;
   return { capabilities, available: Boolean(bcode), ready, query, filters, setFilters, rows, outside, origin, year, selected: selectedRow, select: setSelectedKey,
-    addDistrict, districtCount: districts.length, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
+    addDistrict, districtCount: districts.length, unlocatedSales, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
 }
