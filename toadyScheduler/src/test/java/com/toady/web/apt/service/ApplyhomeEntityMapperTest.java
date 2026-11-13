@@ -3,6 +3,7 @@ package com.toady.web.apt.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.toady.web.apt.entity.AptLttotPblancDetail;
+import com.toady.web.apt.entity.UrbtyOfctlLttotPblancDetail;
 import com.toady.web.apt.entity.UrbtyOfctlLttotPblancMdl;
 import org.junit.jupiter.api.Test;
 
@@ -53,6 +54,25 @@ class ApplyhomeEntityMapperTest {
 		assertThat(entity.getModelNo()).isNull();
 		assertThat(entity.getTp()).isEqualTo("48A1");
 		assertThat(entity.getSuplyHshldco()).isEqualTo("24");
+	}
+
+	@Test
+	void urbanDetailKeepsSupplyAddressFromHssplyAdres() throws Exception {
+		// 오피스텔·도시형 상세도 공급위치를 HSSPLY_ADRES로 보낸다(2026-11 실제 응답 확인). 컬럼(HSSPLY_HSHLDCO)에 담겨야 위치 탭이 동작한다.
+		JsonNode response = objectMapper.readTree("""
+				{
+				  "HOUSE_MANAGE_NO": "2026950093",
+				  "PBLANC_NO": "2026950093",
+				  "HOUSE_NM": "매교역 팰루시드",
+				  "HSSPLY_ZIP": "16574",
+				  "HSSPLY_ADRES": "경기도 수원시 권선구 세류동 817-72번지 일원 (권선113의6구역 주택재개발정비사업)"
+				}
+				""");
+
+		UrbtyOfctlLttotPblancDetail entity = mapper.toEntity(response, UrbtyOfctlLttotPblancDetail.class);
+
+		assertThat(entity.getHssplyHshldco()).isEqualTo("경기도 수원시 권선구 세류동 817-72번지 일원 (권선113의6구역 주택재개발정비사업)");
+		assertThat(entity.getHssplyZip()).isEqualTo("16574");
 	}
 
 }

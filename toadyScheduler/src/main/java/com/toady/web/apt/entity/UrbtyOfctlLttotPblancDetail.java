@@ -1,6 +1,7 @@
 package com.toady.web.apt.entity;
 
 import com.toady.web.apt.entity.id.HouseManagePblancId;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -58,8 +59,14 @@ public class UrbtyOfctlLttotPblancDetail {
 	@Comment("공급위치 우편번호")
 	@Column(name = "HSSPLY_ZIP", length = 6)
 	private String hssplyZip;
+	/**
+	 * 공급위치. 청약홈 응답 필드는 다른 유형과 같은 HSSPLY_ADRES인데 컬럼 이름이 HSSPLY_HSHLDCO라
+	 * 이름 규칙(SNAKE_CASE)만으로는 값이 들어오지 않았다(오피스텔·도시형 공급위치가 모두 비어 저장됨).
+	 * 기존 컬럼·API 응답 형식을 바꾸지 않도록 응답 필드 이름만 별칭으로 받는다.
+	 */
 	@Comment("공급위치")
 	@Column(name = "HSSPLY_HSHLDCO", length = 256)
+	@JsonAlias({"HSSPLY_ADRES", "hssply_adres"})
 	private String hssplyHshldco;
 	@Comment("공급규모")
 	@Column(name = "TOT_SUPLY_HSHLDCO", length = 10)
