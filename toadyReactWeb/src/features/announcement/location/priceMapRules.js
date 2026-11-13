@@ -442,7 +442,7 @@ export function defaultAreaRange(units = []) {
 }
 
 /** 가까운 시설 종류 이름과 지도 표시 글자. */
-export const NEARBY_KIND = { STATION: { label: '지하철역', short: '역' }, SCHOOL: { label: '초등학교', short: '초' }, MART: { label: '마트', short: '마트' } };
+export const NEARBY_KIND = { STATION: { label: '지하철역', short: '역' }, SCHOOL: { label: '초등학교', short: '초' }, MART: { label: '마트·슈퍼', short: '마트' } };
 /** 가까운 시설 한 줄: 거리는 직선거리임을 밝히고 걷기 시간(분당 67m)을 함께 쓴다. */
 export function nearbyText(place) {
   const kind = NEARBY_KIND[place?.kind];

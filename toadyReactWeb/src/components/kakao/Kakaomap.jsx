@@ -41,6 +41,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');navigate({pathname:routeLocation.pathname,search:`?${next}`},{state:routeLocation.state});};
   const today=koreaToday();
   const saleBubbles=useRef(new Map()),salePanelRef=useRef(null);
+  // 검색 예시는 공고 지역의 동 이름으로(다른 지역 공고에 파주 예시가 보이지 않게).
+  const addressExample=`${(location.data?.dong || location.data?.area?.dong || '○○동').split(' ').pop()} 123-4`;
   const showPrices=priceMap.ready;
   const supply=supplyForBand(detail.unitPrices || [],priceMap.filters);
   // 표시 단계: 축소 레벨 + 화면 밀도(레벨 5에서도 화면 안 단지가 많으면 법정동 묶음).
@@ -298,7 +300,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       const regionPrefix=!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(value) && announced?.region?`${announced.region} `:'';
       const found=await resolveLocation(kakao.maps,{...detail,hssplyAdres:regionPrefix+value,houseNm:''});
       if(request!==generation.current)return;
-      if(found.status!=='ADDRESS')setSearchMessage(showPrices?'일치하는 단지가 없어요. 주소로 찾으려면 동·도로명과 번지까지 입력해 주세요(예: 동패동 400-7).':'지번 또는 도로명과 건물번호까지 입력해 주세요. 지역명만으로는 위치를 확정하지 않습니다.');
+      if(found.status!=='ADDRESS')setSearchMessage(showPrices?`일치하는 단지가 없어요. 주소로 찾으려면 동·도로명과 번지까지 입력해 주세요(예: ${addressExample}).`:'지번 또는 도로명과 건물번호까지 입력해 주세요. 지역명만으로는 위치를 확정하지 않습니다.');
       else {setManualResult(found);setShowCandidate(false);setText('');if(showPrices)priceMap.setFilters({query:''});}
     }catch(e){if(request===generation.current)setSearchMessage(e.message);}
     finally{if(request===generation.current)setSearching(false);}
@@ -314,7 +316,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const priceError=priceMap.query.isError || (priceMap.query.data && !['READY','EMPTY','UNSUPPORTED'].includes(priceMap.query.data.status));
   const searchBar=<Box component="form" onSubmit={search} sx={{display:'flex',gap:1,my:1.5}} role="search">
     <TextField fullWidth size="small" value={text} onChange={event=>changeText(event.target.value)}
-      placeholder={showPrices?'단지명·동 이름 또는 지번·도로명':'지번·도로명으로 위치 찾기 (예: 동패동 400-7)'}
+      placeholder={showPrices?'단지명·동 이름 또는 지번·도로명':`지번·도로명으로 위치 찾기 (예: ${addressExample})`}
       inputProps={{'aria-label':showPrices?'단지명·동 이름 또는 지번·도로명 검색':'지번·도로명으로 위치 찾기',maxLength:60}}
       InputProps={{startAdornment:<InputAdornment position="start"><SearchRounded fontSize="small"/></InputAdornment>,
         endAdornment:text?<InputAdornment position="end"><IconButton size="small" aria-label="검색어 지우기" onClick={clearText}><CloseRounded fontSize="small"/></IconButton></InputAdornment>:null}}/>
@@ -362,7 +364,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       {showPrices && <>
         {unsupported?<Alert severity="info" sx={{mt:1}}>이 지역은 아직 주변 실거래 조회를 지원하지 않아요.</Alert>
           :priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</Alert>
-          :<PriceMapStatus query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} sales={priceMap.sales} unlocatedSales={priceMap.unlocatedSales} onOpenSale={openSale} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut} grouped={tier!=='single'?tier:''}/>}
+          :<PriceMapStatus grouping={tier} approx={Boolean(approx)} nearby={nearby.data?.status==='READY' && nearby.data.places.length>0} query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} sales={priceMap.sales} unlocatedSales={priceMap.unlocatedSales} onOpenSale={openSale} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut} grouped={tier!=='single'?tier:''}/>}
         {priceMap.query.data?.status==='READY' && !priceMap.rows.length && <Alert severity="info" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>{clearText();priceMap.setFilters({areaMin:0,areaMax:165,priceMin:0,priceMax:400000,age:'all',query:''});}}>조건 풀기</Button>}>{priceMap.outside.length?`조건에 맞는 거래가 없어요. 거래가 있는 단지 ${priceMap.outside.length.toLocaleString('ko-KR')}곳은 지도에 회색 점으로 보여요. 조건을 풀어 보세요.`:'조건에 맞는 거래가 없어요. 조건을 풀어 보세요.'}</Alert>}
         {priceMap.query.data?.status==='EMPTY' && <Alert severity="info" sx={{mt:1}}>이 기간에 신고된 아파트 매매 거래가 없어요. 기간을 늘려 보세요.</Alert>}
         {priceMap.selectedSale?<SalePanel detail={detail} sale={priceMap.selectedSale} complexes={priceMap.complexes} origin={priceMap.origin} unit={priceMap.filters.unit}

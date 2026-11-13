@@ -705,7 +705,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             </Alert>
           ) : (
             <>
-              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={setResearchTab} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
+              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={setResearchTab} onShowMap={() => handleTabChange(null, 2)} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
               {detailTabValue === 1 && currentSubscriptDetail && (
                 <SubscriptRate subscriptDetail={currentSubscriptDetail} />
               )}

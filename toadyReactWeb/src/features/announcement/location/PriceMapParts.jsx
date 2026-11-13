@@ -103,7 +103,7 @@ function AreaFilter({ filters, setFilters, areaDefault = null }) {
 }
 
 /** 지도 아래 상태 줄과 범례. */
-export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false, grouped = '' }) {
+export function PriceMapStatus({ grouping = 'single', approx = false, nearby = false, query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false, grouped = '' }) {
   const data = query.data;
   const summary = mapSummary(rows, outside);
   return <Box className="price-map-status">
@@ -121,7 +121,7 @@ export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocate
     {pending > 0 && <Typography variant="caption" color="text.secondary">② 단지 {pending}곳의 지도 위치를 확인하고 있어요(공고와 같은 동부터). 잠시 뒤 지도에 더 표시돼요.</Typography>}
     {data?.partial && <Typography variant="caption" color="text.secondary">받은 기간의 거래부터 먼저 보여 드려요. 나머지 기간(최대 3년)을 이어서 받는 중이에요.</Typography>}
     <Box className="price-map-legend" aria-hidden="true">
-      <span><i className="tone-new" />5년 이내</span><span><i className="tone-mid" />10년 이내</span><span><i className="tone-old" />그 이상</span><span><i className="tone-site" />이 공고</span>{sales.some(sale => sale.status !== 'DONE') && <span><i className="tone-sale-open" />접수 중·예정</span>}{sales.some(sale => sale.status === 'DONE') && <span><i className="tone-sale-done" />접수 종료(입주 전)</span>}{summary.outside > 0 && <span><i className="tone-outside" />조건 밖</span>}
+      <span><i className="tone-new" />준공 5년 이내</span><span><i className="tone-mid" />10년 이내</span><span><i className="tone-old" />그 이상</span><span><i className="tone-site" />이 공고</span>{sales.some(sale => sale.status !== 'DONE') && <span><i className="tone-sale-open" />접수 중·예정</span>}{sales.some(sale => sale.status === 'DONE') && <span><i className="tone-sale-done" />접수 종료(입주 전)</span>}{summary.outside > 0 && grouping === 'single' && <span><i className="tone-outside" />조건 밖</span>}{grouping !== 'single' && <span><i className="tone-group" />{grouping === 'district' ? '시·군·구' : '법정동'} 묶음(단지 수·가격 중간값)</span>}{approx && <span><i className="tone-approx" />주소 일대(추정)</span>}{nearby && <span><i className="tone-place" />가까운 역·초·마트</span>}
     </Box>
     {unlocatedSales.length > 0 && <Box className="price-map-unlocated">
       <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0 }}>지번이 확인되지 않아 지도에 놓지 않은 분양 공고 {unlocatedSales.length}곳(지구·블록 주소는 실제 부지를 특정하지 못해요):</Typography>
@@ -150,7 +150,7 @@ export function ComplexPanel({ row, onClose, supply, unit = 'm2' }) {
       <Box sx={{ minWidth: 0 }}>
         <Typography component="h4" sx={{ m: 0, fontSize: 17, fontWeight: 800, overflowWrap: 'anywhere' }}>{row.name}</Typography>
         <Typography variant="caption" color="text.secondary">
-          {[row.dong + (row.jibun ? ` ${row.jibun}` : ''), row.buildYear ? `${row.buildYear}년 준공` : '', distanceText(row.distance) && `공고 위치에서 ${distanceText(row.distance)}`].filter(Boolean).join(' · ')}
+          {[row.dong + (row.jibun ? ` ${row.jibun}` : ''), row.buildYear ? `${row.buildYear}년 준공` : '', distanceText(row.distance) && `공고 위치에서 직선 ${distanceText(row.distance)}`].filter(Boolean).join(' · ')}
         </Typography>
       </Box>
       <IconButton size="small" aria-label="단지 정보 닫기" onClick={onClose}><CloseRounded fontSize="small" /></IconButton>
@@ -193,7 +193,7 @@ export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect }
       {rows.slice(0, limit).map(row => <li key={row.key}>
         <button type="button" className={row.key === selectedKey ? 'is-selected' : ''} onClick={() => onSelect(row)}>
           <span className="price-map-list-name"><i className={`tone-${ageTone(row.buildYear)}`} />{row.name}</span>
-          <span className="price-map-list-meta">{[row.dong, row.buildYear && `${row.buildYear}년`, distanceText(row.distance), `${row.rep.count}건`].filter(Boolean).join(' · ')}</span>
+          <span className="price-map-list-meta">{[row.dong, row.buildYear && `${row.buildYear}년`, distanceText(row.distance) && `직선 ${distanceText(row.distance)}`, `${row.rep.count}건`].filter(Boolean).join(' · ')}</span>
           <span className="price-map-list-price"><b>{filters.mode === 'pyeong' ? shortPrice(row.rep.pyeong) : shortPrice(row.rep.latest)}</b><small>{filters.mode === 'pyeong' ? perLabel(filters.unit) : `${areaText(row.rep.area, filters.unit)} · ${monthLabel(row.rep.month)} ${row.rep.monthCount}건 평균`}</small></span>
         </button>
       </li>)}

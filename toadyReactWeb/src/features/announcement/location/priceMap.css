@@ -14,7 +14,7 @@
   background:#475569;color:#fff;font:inherit;line-height:1.15;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.28);transform:translateY(-8px);white-space:nowrap}
 .pm-bubble::after{content:'';position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:inherit;border-top-color:var(--pm-bg,#475569)}
 .pm-bubble b{font-size:13px;font-weight:800;letter-spacing:-.2px}
-.pm-bubble small{font-size:10px;opacity:.88}
+.pm-bubble small{font-size:11px;opacity:.92}
 .pm-bubble.tone-new{background:#0f766e;--pm-bg:#0f766e}
 .pm-bubble.tone-mid{background:#2563eb;--pm-bg:#2563eb}
 .pm-bubble.tone-old,.pm-bubble.tone-unknown{background:#64748b;--pm-bg:#64748b}
@@ -77,7 +77,7 @@
 
 /* 이 공고(분양) 말풍선과 정보 칸 */
 .pm-bubble--sale{background:#7c3aed;--pm-bg:#7c3aed;z-index:4;padding-top:3px}
-.pm-bubble--sale i{font-style:normal;font-size:9.5px;font-weight:800;padding:0 5px;margin-bottom:1px;border-radius:999px;background:rgba(255,255,255,.25)}
+.pm-bubble--sale i{font-style:normal;font-size:10.5px;font-weight:800;padding:0 5px;margin-bottom:1px;border-radius:999px;background:rgba(255,255,255,.25)}
 .pm-bubble--sale.is-selected{background:#5b21b6;--pm-bg:#5b21b6;box-shadow:0 0 0 3px rgba(124,58,237,.35),0 4px 10px rgba(15,23,42,.3)}
 .price-map-panel.is-sale{border-color:#c4b5fd!important}
 .pm-sale-tag{display:inline-block;margin-right:6px;padding:1px 7px;border-radius:999px;background:#7c3aed;color:#fff;font-size:11px;font-weight:800;vertical-align:2px}
@@ -107,7 +107,7 @@
 .pm-mode-toggle button{padding:6px 10px;border:0;background:none;font:inherit;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer}
 .pm-mode-toggle button.is-on{background:#111827;color:#fff}
 /* 1년 넘게 거래가 없던 단지: 흐리게 */
-.pm-bubble.is-stale{opacity:.62}
+.pm-bubble.is-stale{opacity:.78}
 .pm-bubble.is-stale.is-selected{opacity:1}
 
 /* 조건 밖 단지: 거래는 있지만 고른 조건에 맞는 거래가 없는 단지(말풍선 대신 작은 점). */
@@ -203,3 +203,11 @@
 .pm-gap-summary{margin:0 0 10px}
 .pm-gap-summary:empty{display:none}
 .pm-gap-summary .match-gap-summary{margin-top:0}
+
+/* 범례: 지역 묶음·추정 지역·가까운 시설 */
+.price-map-legend .tone-group{background:rgba(15,118,110,.92)!important;border-radius:6px}
+.price-map-legend .tone-approx{background:#fff!important;border:2px dashed #7c3aed;border-radius:50%}
+.price-map-legend .tone-place{background:#0369a1!important;border-radius:50%}
+/* 위치 미확정 공고 칩은 누르기 쉬운 높이로 */
+.price-map-unlocated button{min-height:32px}
+@media (max-width:600px){.price-map-unlocated button{min-height:36px}}
