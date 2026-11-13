@@ -45,6 +45,10 @@ public class RequestLimitFilter extends OncePerRequestFilter {
         return List.of(
             new Rule("mail", Set.of("POST"), List.of(), Set.of("/webApi/user/regUser", "/webApi/certify/resend-account-verification", "/webApi/certify/find-password-request-certify"), mailShort, mailDaily),
             // 인증 코드 확인(가입 인증·비밀번호 재설정)은 메일을 보내지 않지만 코드·가입 여부를 반복해 시험할 수 있으므로 따로 제한한다.
+            // 로그인: 계정별 실패 제한(LoginAttemptLimiter)과 별도로 한 IP가 여러 이메일을 번갈아 시도하는 것도 늦춘다.
+            new Rule("login", Set.of("POST"), List.of(), Set.of("/webApi/user/login"), 30, 300),
+            // 공고 원문 링크 조회는 서버가 청약홈을 호출하므로 대량 조회로 청약홈에 차단되지 않게 제한한다.
+            new Rule("notice-doc", Set.of("GET"), List.of("/api/v1/notice-documents/"), Set.of(), 60, 600),
             new Rule("certify", Set.of("POST"), List.of(), Set.of("/webApi/certify/certify-check", "/webApi/certify/certify-confrim-and-password-change"), 30, 200),
             new Rule("trade", Set.of("GET"), List.of("/api/v1/research/transactions"), Set.of(), 60, 500),
             // 지도 단지 시세·분양 공고: 좌표 확인이 끝날 때까지 화면이 시·군·구(최대 7곳)마다 몇 번 다시 부르므로 따로 두고 여유를 둔다

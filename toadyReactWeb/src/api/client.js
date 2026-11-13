@@ -75,8 +75,9 @@ export const apiClient = {
    * GET 요청
    * @param {string} endpoint 엔드포인트 경로 (예: '/api/v1/announcements')
    * @param {Record<string, any>} [params] 쿼리 스트링 객체
+   * @param {{auth?: boolean}} [options] auth:false면 로그인 토큰을 싣지 않는다(익명 식별자를 보내는 요청용).
    */
-  async get(endpoint, params) {
+  async get(endpoint, params, { auth = true } = {}) {
     let url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
@@ -91,7 +92,7 @@ export const apiClient = {
       }
     }
 
-    const headers = getAuthHeaders();
+    const headers = auth ? getAuthHeaders() : { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
     const res = await fetch(url, {
       method: 'GET',
       headers

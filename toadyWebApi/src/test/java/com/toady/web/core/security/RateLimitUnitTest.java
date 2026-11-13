@@ -40,4 +40,25 @@ class RateLimitUnitTest {
         assertFalse(limiter.blocked("203.0.113.20", "victim@example.test"));
         assertTrue(limiter.blocked("203.0.113.99", "victim@example.test"), "처음 보는 네트워크는 여전히 늦춘다");
     }
+
+    @Test void concurrentLoginAttemptsCannotExceedTheLimit() throws Exception {
+        var limiter = new LoginAttemptLimiter(Clock.systemUTC());
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(16);
+        var allowed = new java.util.concurrent.atomic.AtomicInteger();
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var tasks = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+        for (int i = 0; i < 200; i++) tasks.add(pool.submit(() -> {
+            start.await();
+            if (limiter.tryAcquire("198.51.100.8", "target@example.test")) allowed.incrementAndGet();
+            return null;
+        }));
+        start.countDown();
+        for (var task : tasks) task.get();
+        pool.shutdown();
+        org.junit.jupiter.api.Assertions.assertEquals(LoginAttemptLimiter.PER_EMAIL_IP, allowed.get(), "동시에 보내도 같은 IP·이메일은 5회까지만 확인한다");
+        // 비밀번호와 무관한 결과는 되돌려 한도를 쓰지 않는다.
+        var other = new LoginAttemptLimiter(Clock.systemUTC());
+        for (int i = 0; i < 10; i++) { assertTrue(other.tryAcquire("198.51.100.9", "locked@example.test")); other.release("198.51.100.9", "locked@example.test"); }
+        assertFalse(other.blocked("198.51.100.9", "locked@example.test"));
+    }
 }

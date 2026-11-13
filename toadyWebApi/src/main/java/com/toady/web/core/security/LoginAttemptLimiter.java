@@ -42,9 +42,28 @@ public class LoginAttemptLimiter {
             || (count(email(email)) >= PER_EMAIL && !trusted(ip, email));
     }
     public void failed(String ip, String email) { add(ip(ip)); add(pair(ip, email)); add(email(email)); }
-    public void succeeded(String ip, String email) {
+
+    /**
+     * 비밀번호를 확인하기 전에 시도 한 번을 먼저 기록한다. 확인(BCrypt)과 기록 사이에 동시 요청이 끼어
+     * 한도를 넘는 일을 막기 위해 확인과 기록을 한 번에 한다. 막혀 있으면 false.
+     * 비밀번호가 맞으면 succeeded, 비밀번호와 무관한 결과(잠금·탈퇴·서버 오류)면 release를 부른다.
+     */
+    public synchronized boolean tryAcquire(String ip, String email) {
+        if (blocked(ip, email)) return false;
+        failed(ip, email);
+        return true;
+    }
+    /** tryAcquire로 미리 센 시도를 되돌린다(비밀번호 확인과 무관한 결과). */
+    public synchronized void release(String ip, String email) { removeLast(ip(ip)); removeLast(pair(ip, email)); removeLast(email(email)); }
+    public synchronized void succeeded(String ip, String email) {
         failures.invalidate(email(email)); failures.invalidate(pair(ip, email));
+        // 미리 센 IP 시도도 되돌린다. 같은 사무실(NAT)의 정상 로그인이 IP 한도를 채우지 않게 한다.
+        removeLast(ip(ip));
         trustedNetworks.put(pair(ip, email), Boolean.TRUE);
+    }
+    private void removeLast(String key) {
+        Deque<Long> times = failures.getIfPresent(key);
+        if (times != null) synchronized (times) { times.pollLast(); }
     }
     private boolean trusted(String ip, String email) { return trustedNetworks.getIfPresent(pair(ip, email)) != null; }
 

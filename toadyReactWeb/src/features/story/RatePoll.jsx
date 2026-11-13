@@ -8,6 +8,7 @@ import { formatRate, pollView } from './pollRules';
 import { useState } from 'react';
 import './story.css';
 
+// 익명 투표 식별자는 로그인 토큰과 함께 보내지 않는다(회원 정보와 연결하지 않음). 조회·투표 모두 auth:false.
 const visitor = () => { try { return anonymousVisitorId(); } catch { return null; } };
 
 /** 경쟁률 탭의 예상 투표. 접수 마감 전에는 고르고, 경쟁률이 공개되면 실제 구간과 맞힌 비율을 보여준다. */
@@ -17,7 +18,7 @@ export default function RatePoll({ houseManageNo, pblancNo }) {
   const key = ['ratePoll', houseManageNo, pblancNo];
   const client = useQueryClient();
   const path = `/api/v1/polls/rate/apt/${encodeURIComponent(houseManageNo)}/${encodeURIComponent(pblancNo)}`;
-  const query = useQuery({ queryKey: key, queryFn: () => apiClient.get(path, { visitorId }), enabled: Boolean(houseManageNo && pblancNo), staleTime: 60000, retry: false });
+  const query = useQuery({ queryKey: key, queryFn: () => apiClient.get(path, { visitorId }, { auth: false }), enabled: Boolean(houseManageNo && pblancNo), staleTime: 60000, retry: false });
   const vote = useMutation({
     mutationFn: choice => apiClient.post(path, { visitorId, choice }, { auth: false }),
     onSuccess: (data, choice) => { client.setQueryData(key, data); setEditing(false); trackAction('poll_vote', `apt/${houseManageNo}/${pblancNo}`); }

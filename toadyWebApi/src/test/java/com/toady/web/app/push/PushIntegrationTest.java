@@ -132,9 +132,11 @@ class PushIntegrationTest {
 
         // 로그인 상태로 다시 저장하면 회원 관심 공고를 쓰고, 기기 목록은 지운다. 로그아웃 상태로 저장하면 회원 연결을 끊는다.
         String bearer = token("push@example.test");
-        mvc.perform(put("/api/v1/push/subscription").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favoriteIds", List.of("apt/P1/N1"))))
+        mvc.perform(put("/api/v1/push/subscription").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favoriteIds", List.of("apt/P1/N1"), "visitorId", UUID.randomUUID())))
             .andExpect(status().isOk()).andExpect(jsonPath("$.member").value(true));
         assertNull(jdbc.queryForObject("SELECT FAVORITE_IDS FROM TB_PUSH_SUBSCRIPTION", String.class));
+        // 회원 구독에는 익명 방문자 ID를 남기지 않는다(익명 통계를 회원과 연결하지 않음).
+        assertNull(jdbc.queryForObject("SELECT VISITOR_ID FROM TB_PUSH_SUBSCRIPTION", String.class));
         mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favorites", false)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.member").value(false)).andExpect(jsonPath("$.favorites").value(false));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION", Integer.class));

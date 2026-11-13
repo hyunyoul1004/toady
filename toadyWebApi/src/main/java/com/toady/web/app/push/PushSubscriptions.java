@@ -51,7 +51,8 @@ public class PushSubscriptions {
         Timestamp now = Timestamp.valueOf(now(clock));
         String ids = scope.userSeq() == null && !scope.favoriteIds().isEmpty() ? String.join(",", scope.favoriteIds()) : null;
         String areas = String.join(",", scope.areas());
-        String visitor = scope.visitorId() == null ? null : scope.visitorId().toString();
+        // 회원 구독에는 익명 방문자 ID를 저장하지 않는다(익명 통계를 회원과 연결하지 않음). 로그아웃 상태로 다시 저장하면 그때 익명 값으로 바뀐다.
+        String visitor = scope.userSeq() != null || scope.visitorId() == null ? null : scope.visitorId().toString();
         // 같은 브라우저가 로그아웃 상태로 다시 저장하면 회원 연결을 끊어, 공용 기기에서 이전 회원의 관심 공고가 알림으로 오지 않게 한다.
         String update = "UPDATE TB_PUSH_SUBSCRIPTION SET ENDPOINT=?,P256DH=?,AUTH=?,USER_SEQ=?,VISITOR_ID=?,FAVORITES_ENABLED=?,FAVORITE_IDS=?,AREA_SLUGS=?,UPDATED_DT=? WHERE ENDPOINT_HASH=?";
         Object[] values = {endpoint, p256dh, auth, scope.userSeq(), visitor, scope.favorites(), ids, areas, now, hash};

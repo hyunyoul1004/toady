@@ -96,7 +96,9 @@ export const usePushStore = create((set, get) => ({
     const subscription = reg && await reg.pushManager.getSubscription();
     if (!subscription) { set({ subscribed: false, endpoint: null }); return; }
     const next = { favorites: scope.favorites !== false, areas: [...new Set(scope.areas || [])].slice(0, 6) };
-    let visitorId; try { visitorId = anonymousVisitorId(); } catch { visitorId = undefined; }
+    // 익명 방문자 ID는 로그인하지 않은 구독에만 싣는다. 로그인 토큰과 함께 보내면 익명 통계가 회원과 연결될 수 있다.
+    let visitorId;
+    if (!useAuthStore.getState().isAuthenticated) { try { visitorId = anonymousVisitorId(); } catch { visitorId = undefined; } }
     const server = await apiClient.put('/api/v1/push/subscription', { ...keys(subscription), visitorId, ...next, favoriteIds: get().favoriteIds.slice(0, 50) });
     write(SCOPE_KEY, next);
     const auth = useAuthStore.getState();
