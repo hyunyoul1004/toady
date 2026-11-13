@@ -43,7 +43,8 @@ public class NeighborhoodResearchService {
         // 키가 없으면 화면은 미제공 상태로만 보이므로 운영 로그에서 설정 누락을 바로 알 수 있게 남긴다.
         if(!tradesEnabled()) log.warn("Neighborhood trades are disabled: MOLIT_TRADE_SERVICE_KEY is not configured");
     }
-    static final java.util.Set<String> SIDO_CODES=java.util.Set.of("11","26","27","28","29","30","31","36","41","42","43","44","45","46","47","48","50","51","52");
+    /** 법정동 코드 앞 2자리(시·도). 12: 전남광주통합특별시(광주·전남 통합 뒤 새 코드). */
+    static final java.util.Set<String> SIDO_CODES=java.util.Set.of("11","12","26","27","28","29","30","31","36","41","42","43","44","45","46","47","48","50","51","52");
     private final com.google.common.cache.Cache<String,Boolean> failedMonths=com.google.common.cache.CacheBuilder.newBuilder()
         .maximumSize(5000).expireAfterWrite(3,TimeUnit.MINUTES).build();
     public boolean tradesEnabled() {return !molitKey.isBlank();}

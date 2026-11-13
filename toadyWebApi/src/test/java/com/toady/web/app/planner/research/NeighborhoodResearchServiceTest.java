@@ -27,6 +27,17 @@ class NeighborhoodResearchServiceTest {
         assertEquals("EMPTY",service.trades("4148012800","동패동",new BigDecimal("60")).status());
         assertEquals(3,calls.get());assertEquals(result.checkedAt(),service.trades("4148012800","동패동").checkedAt());
     }
+    /** 광주·전남 통합(전남광주통합특별시) 뒤 법정동 코드는 12로 시작한다. 막으면 진도·광주 공고의 주변 시세가 늘 '불러오지 못함'이 된다. */
+    @Test void unifiedGwangjuJeonnamCodeIsQueried() {
+        AtomicInteger calls=new AtomicInteger();
+        var service=new NeighborhoodResearchService((uri,headers)->{
+            calls.incrementAndGet();assertTrue(uri.getQuery().contains("LAWD_CD=12860"));
+            return response(uri.getQuery().split("DEAL_YMD=")[1].substring(0,6),"진도읍 교동리","");
+        },"key");
+        assertEquals("READY",service.trades("1286025024","진도읍 교동리").status());
+        assertTrue(calls.get()>0);
+        assertEquals("UNAVAILABLE",service.trades("9986025024","진도읍 교동리").status(),"없는 시·도 코드는 여전히 외부 호출 없이 거절");
+    }
     @Test void priceGapUsesSixMonthsDongFirstThenDistrictAndReusesCache() {
         AtomicInteger calls=new AtomicInteger();
         var service=new NeighborhoodResearchService((uri,headers)->{
