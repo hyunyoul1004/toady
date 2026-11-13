@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useGuestFavoriteIds } from '@/features/planner/usePlanner';
@@ -11,6 +11,10 @@ import { appPath, detailMarker, isSpaPath, scopeKey } from './pushSupport';
  */
 export default function PushBootstrap() {
   const navigate = useNavigate();
+  // BrowserRouter의 navigate는 경로가 바뀔 때마다 새로 만들어진다. 등록·구독 확인이 화면 이동마다 다시 돌지 않도록
+  // 최신 navigate는 ref로만 참조하고 아래 effect는 처음 한 번만 실행한다.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const userSeq = useAuthStore(s => s.isAuthenticated ? s.user?.userSeq ?? null : null);
   const guestIds = useGuestFavoriteIds();
   const { status, subscribed, endpoint, scope } = usePushStore();
@@ -30,12 +34,12 @@ export default function PushBootstrap() {
       const marker = detailMarker(path);
       // 상세를 다른 화면에서 열면 그 상세의 기준 화면을 한 단계 먼저 쌓는다(탭 다시 누르기·뒤로가기가 그 화면으로 닫히게).
       const base = new URL(path, window.location.origin).pathname;
-      if (marker && window.location.pathname !== base) navigate(base);
-      navigate(path, { state: marker });
+      if (marker && window.location.pathname !== base) navigateRef.current(base);
+      navigateRef.current(path, { state: marker });
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
-  }, [navigate]);
+  }, []);
 
   useEffect(() => { usePushStore.getState().setFavoriteIds(guestKey ? guestKey.split(',') : []); }, [guestKey]);
 

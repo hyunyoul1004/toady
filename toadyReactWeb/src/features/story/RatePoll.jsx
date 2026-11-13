@@ -28,15 +28,17 @@ export default function RatePoll({ houseManageNo, pblancNo }) {
   if (query.isError || !view || !visitorId) return null;
   if (!view.open && view.total === 0) return null;
   const choosing = view.open && (!view.voted || editing);
+  // 결과 공개 여부는 실제 구간으로 판단한다(모든 주택형이 1순위 미달이면 경쟁률 숫자 없이 '미달' 구간만 온다).
+  const revealed = view.actualChoice !== null;
+  const actualText = view.actualRate !== null ? `가장 인기 있는 주택형의 1순위 경쟁률은 ${formatRate(view.actualRate)}였어요.` : '모든 주택형이 1순위에서 미달됐어요.';
   const closes = view.closesOn ? `${Number(view.closesOn.slice(5, 7))}월 ${Number(view.closesOn.slice(8, 10))}일` : '';
 
   return <section className="rate-poll" aria-labelledby="rate-poll-title">
     <div className="rate-poll-head">
       <HowToVoteOutlined />
       <div>
-        <h3 id="rate-poll-title">{view.actualRate !== null ? '경쟁률 예상, 맞히셨나요?' : '경쟁률 맞히기'}</h3>
-        <p>{view.actualRate !== null ? `가장 인기 있는 주택형의 1순위 경쟁률은 ${formatRate(view.actualRate)}였어요.`
-          : '가장 인기 있는 주택형의 1순위 경쟁률, 몇 대 1일까요?'}</p>
+        <h3 id="rate-poll-title">{revealed ? '경쟁률 예상, 맞히셨나요?' : '경쟁률 맞히기'}</h3>
+        <p>{revealed ? actualText : '가장 인기 있는 주택형의 1순위 경쟁률, 몇 대 1일까요?'}</p>
       </div>
       {view.total > 0 && <span className="rate-poll-count">{view.total.toLocaleString('ko-KR')}명 참여</span>}
     </div>
@@ -52,7 +54,7 @@ export default function RatePoll({ houseManageNo, pblancNo }) {
     </ul>}
     {vote.isError && <Alert severity="warning" sx={{ mt: 1 }}>{vote.error.message || '투표를 저장하지 못했어요.'}</Alert>}
     <div className="rate-poll-foot">
-      {view.actualRate !== null ? <span>{view.hitPercent !== null ? `참여자 ${view.hitPercent}%가 맞혔어요.` : ''} 청약홈 공개 경쟁률 기준</span>
+      {revealed ? <span>{view.hitPercent !== null ? `참여자 ${view.hitPercent}%가 맞혔어요.` : ''} 청약홈 공개 경쟁률 기준</span>
         : view.open ? <span>{closes ? `${closes} 접수 마감까지` : '접수 마감까지'} 참여할 수 있어요{view.voted ? ' · 선택을 바꿀 수 있어요' : ''}. 결과가 나오면 여기서 확인하세요.</span>
         : <span>투표가 마감됐어요. 경쟁률이 공개되면 실제 결과를 함께 보여드려요.</span>}
       {view.open && view.voted && !editing && <Button size="small" onClick={() => setEditing(true)}>다시 고르기</Button>}

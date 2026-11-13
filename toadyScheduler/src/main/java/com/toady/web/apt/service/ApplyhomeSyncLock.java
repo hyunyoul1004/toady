@@ -1,5 +1,8 @@
 package com.toady.web.apt.service;
 
+import com.zaxxer.hikari.HikariDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -14,6 +17,7 @@ import java.sql.SQLException;
 @Component
 public class ApplyhomeSyncLock {
 
+	private static final Logger log = LoggerFactory.getLogger(ApplyhomeSyncLock.class);
 	private static final String LOCK_NAME = "toady.applyhome.sync";
 
 	private final DataSource dataSource;
@@ -46,10 +50,20 @@ public class ApplyhomeSyncLock {
 		}
 	}
 
-	private void release(Connection connection) throws SQLException {
+	/**
+	 * 잠금을 푼다. 해제가 실패해도 수집 결과(일부 실패·대기 등)를 덮지 않도록 예외를 던지지 않고,
+	 * 잠금을 쥔 채 풀로 돌아가 이후 수집이 계속 '대기'가 되지 않게 그 연결은 풀에서 폐기한다.
+	 */
+	private void release(Connection connection) {
 		try (PreparedStatement statement = connection.prepareStatement("SELECT RELEASE_LOCK(?)")) {
 			statement.setString(1, LOCK_NAME);
 			statement.executeQuery().close();
+		} catch (SQLException exception) {
+			log.warn("Applyhome sync lock release failed; evicting the connection: {}", exception.getMessage());
+			try {
+				if (dataSource.isWrapperFor(HikariDataSource.class)) dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
+				else connection.abort(Runnable::run);
+			} catch (SQLException ignored) { /* 연결이 이미 끊겼으면 잠금도 함께 풀린다 */ }
 		}
 	}
 }

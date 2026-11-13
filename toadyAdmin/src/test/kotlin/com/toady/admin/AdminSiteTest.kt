@@ -36,7 +36,7 @@ class AdminSiteTest {
 
 	@BeforeEach fun setup() {
 		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_OPT_LTTOT_PBLANC_DETAIL",
-			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR").forEach { jdbc.update("DELETE FROM $it") }
+			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE").forEach { jdbc.update("DELETE FROM $it") }
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
 			today.minusDays(1).toString(), today.plusDays(1).toString())
@@ -95,6 +95,23 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/comments/10/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		mvc.perform(post("/admin/comments/11/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
+	}
+	@Test fun commentsTheAuthorDeletedAreNeverRestoredByTheAdmin() {
+		// 작성자가 직접 지운 댓글(서비스 API가 DELETE_YN='Y'로 바꿈)
+		jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y' WHERE COMMENT_SEQ=10")
+		val html = mvc.perform(get("/admin/comments").param("state", "hidden").with(admin)).andReturn().response.contentAsString
+		assertTrue(html.contains("작성자 삭제") && !html.contains("/admin/comments/10/restore"), "작성자가 지운 댓글에는 되살리기 버튼이 없다")
+		mvc.perform(post("/admin/comments/10/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=10", String::class.java))
+		// 관리자가 숨긴 답글만 기록되고, 이미 지워진 원댓글은 기록되지 않는다.
+		mvc.perform(post("/admin/comments/11/hide").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(listOf(11L), jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_COMMENT_ADMIN_HIDE", Long::class.java))
+	}
+	@Test fun returnAddressesKeepSearchesWithEmailCharacters() {
+		assertEquals("/admin/members?q=a@b.com&page=1", com.toady.admin.web.AdminController.safeNext("/admin/members?q=a@b.com&page=1", "/x"))
+		assertEquals("/x", com.toady.admin.web.AdminController.safeNext("//evil.com/admin/", "/x"))
+		assertEquals("/x", com.toady.admin.web.AdminController.safeNext("/admin/members?q=a//evil", "/x"))
+		assertEquals("/x", com.toady.admin.web.AdminController.safeNext("/admin/members?q=a\\b", "/x"))
 	}
 
 	@Test fun dashboardOperationsAndJobsRenderEvenWhenTheSchedulerIsDown() {

@@ -39,6 +39,16 @@ export const REGION_PROVINCE = [
 
 export const ALL_REGIONS = [REGION_SEOUL, ...REGION_METRO, ...REGION_PROVINCE];
 
+/**
+ * 공고가 선택한 공급지역에 속하는지. 공급지역 코드가 있으면 코드로만 판정한다.
+ * 주소 글자 비교는 '경기도 광주시'를 광주광역시로 오인하므로 코드가 없을 때만, 주소의 첫 낱말(시·도, '서울시' 같은 줄임 포함)로만 비교한다.
+ */
+export function matchesRegions(item, selectedRegions) {
+  const code = item.regionCode ? String(item.regionCode).trim() : '';
+  const sido = String(item.supplyLocation || '').trim().split(/\s+/)[0] || '';
+  return selectedRegions.some((reg) => (code ? code === reg.code : reg.matchNames.some((name) => sido.startsWith(name))));
+}
+
 // Citys.js의 계층형 데이터를 Autocomplete용 플랫(flat) 리스트로 변환 (시/도 + 시/군/구)
 export const FLAT_CITY_OPTIONS = Citys.flatMap((c) => {
   const districtList = c.districts || [];

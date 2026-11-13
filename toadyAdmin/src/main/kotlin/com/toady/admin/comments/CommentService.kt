@@ -2,6 +2,7 @@ package com.toady.admin.comments
 
 import com.toady.admin.Kst
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import com.toady.admin.announcements.AnnouncementService
 import org.springframework.stereotype.Service
@@ -16,7 +17,10 @@ import java.time.LocalDateTime
 @Service
 class CommentService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
 	data class Comment(val seq: Long, val announcementId: String, val parentSeq: Long?, val content: String, val deleted: Boolean,
-	                   val authorSeq: Long, val author: String?, val createdAt: LocalDateTime?, val updatedAt: LocalDateTime?, val houseNm: String? = null) {
+	                   val authorSeq: Long, val author: String?, val createdAt: LocalDateTime?, val updatedAt: LocalDateTime?, val houseNm: String? = null,
+	                   val adminHidden: Boolean = false) {
+		/** 숨김 사유. 작성자가 직접 지운 댓글은 관리자가 되살리지 않는다. */
+		val hiddenLabel get() = if (adminHidden) "관리자 숨김" else "작성자 삭제"
 		/** 앱 공고 상세 주소(새 창). */
 		val appPath get() = "/?subscriptSeq=" + java.net.URLEncoder.encode(announcementId, Charsets.UTF_8)
 		/** 관리자 공고 상세 주소. */
@@ -57,33 +61,57 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		}, *(args + size + safePage * size).toTypedArray())
 		// 공고 ID 대신 단지명을 함께 보여 준다.
 		val names = announcements.names(items.map { it.announcementId }.distinct())
-		return Page(items.map { it.copy(houseNm = names[it.announcementId]) }, total, safePage, size)
+		val hiddenByAdmin = adminHidden(items.filter { it.deleted }.map { it.seq })
+		return Page(items.map { it.copy(houseNm = names[it.announcementId], adminHidden = it.seq in hiddenByAdmin) }, total, safePage, size)
 	}
 
-	/** 숨긴다. 원댓글이면 답글도 함께 숨긴다. 바뀐 댓글 수를 돌려준다. */
+	/** 관리자가 숨긴 댓글 번호. 기록 테이블(database.sql 21번)이 없으면 비어 있다(되살리기도 막힌다). */
+	private fun adminHidden(seqs: List<Long>): Set<Long> {
+		if (seqs.isEmpty()) return emptySet()
+		return try {
+			jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ IN (${seqs.joinToString(",") { "?" }})", Long::class.java, *seqs.toTypedArray()).toSet()
+		} catch (missing: DataAccessException) { emptySet() }
+	}
+
+	/**
+	 * 숨긴다. 원댓글이면 답글도 함께 숨긴다. 바뀐 댓글 수를 돌려준다.
+	 * 관리자가 숨긴 댓글만 기록해 두어, 작성자가 직접 지운 댓글(같은 DELETE_YN='Y')을 되살리지 않게 한다.
+	 */
 	@Transactional
 	fun hide(seq: Long, admin: String): Int {
 		val now = Timestamp.valueOf(Kst.now())
-		val own = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y', UPDATE_DT=? WHERE COMMENT_SEQ=? AND DELETE_YN='N'", now, seq)
-		val replies = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y', UPDATE_DT=? WHERE PARENT_COMMENT_SEQ=? AND DELETE_YN='N'", now, seq)
-		if (own + replies > 0) log.info("관리자 댓글 숨김: commentSeq={}, replies={}, admin={}", seq, replies, admin)
-		return own + replies
+		val targets = jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE (COMMENT_SEQ=? OR PARENT_COMMENT_SEQ=?) AND DELETE_YN='N'", Long::class.java, seq, seq)
+		if (targets.isEmpty()) return 0
+		val changed = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y', UPDATE_DT=? WHERE COMMENT_SEQ IN (${targets.joinToString(",") { "?" }}) AND DELETE_YN='N'",
+			now, *targets.toTypedArray())
+		// 건별로 남긴다(이미 기록이 있으면 그대로 두고 나머지 답글도 계속 기록한다).
+		val unrecorded = targets.count {
+			try {
+				jdbc.update("INSERT INTO TB_COMMENT_ADMIN_HIDE (COMMENT_SEQ, ADMIN_NAME, REG_DT) VALUES (?,?,?)", it, admin.take(100), now); false
+			} catch (duplicate: org.springframework.dao.DuplicateKeyException) { false
+			} catch (failure: DataAccessException) { true }
+		}
+		if (unrecorded > 0) log.warn("관리자 숨김 기록 {}건을 남기지 못했습니다(TB_COMMENT_ADMIN_HIDE, database.sql 21번 적용 여부 확인).", unrecorded)
+		if (changed > 0) log.info("관리자 댓글 숨김: commentSeq={}, total={}, admin={}", seq, changed, admin)
+		return changed
 	}
 
-	/** 숨긴 댓글을 되살린다. 원댓글이 숨겨진 답글은 맥락이 없으므로 원댓글부터 되살리게 한다. */
+	/** 관리자가 숨긴 댓글을 되살린다. 작성자가 지운 댓글과 원댓글이 숨겨진 답글은 되살리지 않는다. */
 	@Transactional
 	fun restore(seq: Long, admin: String): RestoreResult {
-		val parent = jdbc.query("SELECT PARENT_COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=?", { r, _ -> r.getLong(1).takeUnless { r.wasNull() } }, seq)
+		val parent = jdbc.query("SELECT PARENT_COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", { r, _ -> r.getLong(1).takeUnless { r.wasNull() } }, seq)
 		if (parent.isEmpty()) return RestoreResult.NOT_FOUND
+		if (seq !in adminHidden(listOf(seq))) return RestoreResult.NOT_ADMIN_HIDDEN
 		parent.first()?.let { parentSeq ->
 			val parentHidden = jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", Long::class.java, parentSeq) ?: 0
 			if (parentHidden > 0) return RestoreResult.PARENT_HIDDEN
 		}
 		val changed = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", Timestamp.valueOf(Kst.now()), seq)
+		jdbc.update("DELETE FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ=?", seq)
 		if (changed == 1) log.info("관리자 댓글 복구: commentSeq={}, admin={}", seq, admin)
 		return if (changed == 1) RestoreResult.RESTORED else RestoreResult.NOT_FOUND
 	}
-	enum class RestoreResult { RESTORED, PARENT_HIDDEN, NOT_FOUND }
+	enum class RestoreResult { RESTORED, PARENT_HIDDEN, NOT_ADMIN_HIDDEN, NOT_FOUND }
 
 	companion object {
 		const val PAGE_SIZE = 30

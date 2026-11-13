@@ -11,10 +11,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.LocalDateTime;
 
 /** 공고 댓글과 답글, 작성·수정·삭제 상태를 저장합니다. */
+// 바뀐 컬럼만 UPDATE한다. 관리자 사이트가 같은 행의 다른 컬럼(숨김·잠금)을 따로 바꾸므로, 읽어 둔 값으로 전체를 덮어쓰지 않게 한다.
+@DynamicUpdate
 @Entity
 @Table(name = "TB_LTTOT_PBLANC_COMMENT")
 @Getter

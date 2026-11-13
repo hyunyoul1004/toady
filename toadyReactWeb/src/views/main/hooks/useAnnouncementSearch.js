@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { matchesArea } from '@/features/planner/plannerUtils';
 import announcementApi from '@/features/announcement/api/announcementApi';
-import { ALL_REGIONS, FLAT_CITY_OPTIONS } from '../announcementFilters';
+import { ALL_REGIONS, FLAT_CITY_OPTIONS, matchesRegions } from '../announcementFilters';
 import { matchesRegionTarget } from '@/features/explore/regionRules';
 
 export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions) {
@@ -99,19 +99,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
 
     // 1. 공급지역 체크박스 필터링 (전체 선택이 아닌 일부 선택일 때만 필터 적용)
     if (selectedRegions.length > 0 && selectedRegions.length < ALL_REGIONS.length) {
-      list = list.filter((item) => {
-        const itemRegionCode = item.regionCode ? String(item.regionCode).trim() : '';
-        const itemLocation = item.supplyLocation || '';
-
-        return selectedRegions.some((reg) => {
-          // 1. API 응답의 regionCode 코드값 일치 확인 (예: '100', '410' 등)
-          if (itemRegionCode && itemRegionCode === reg.code) {
-            return true;
-          }
-          // 2. 지역명 텍스트 일치 확인 (백업 비교)
-          return reg.matchNames.some((m) => itemLocation.includes(m));
-        });
-      });
+      list = list.filter((item) => matchesRegions(item, selectedRegions));
     } else if (selectedRegions.length === 0) {
       // 아무것도 선택 안 된 경우 목록 비움
       list = [];

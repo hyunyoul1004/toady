@@ -75,6 +75,17 @@ export function useCommentsQuery(subscriptId, enabled = true) {
   });
 }
 
+/** 댓글이 이미 지워졌거나 관리자가 숨겼으면(404) 화면의 목록이 낡은 것이므로 다시 불러온다. */
+function refreshOnMissing(queryClient) {
+  return (error, variables) => {
+    if (error?.status !== 404) return;
+    const { type, houseManageNo, pblancNo } = parseSubscriptId(variables);
+    const idKey = `${type}/${houseManageNo}/${pblancNo}`;
+    queryClient.invalidateQueries({ queryKey: announcementKeys.comments(idKey) });
+    queryClient.invalidateQueries({ queryKey: announcementKeys.detail(idKey) });
+  };
+}
+
 /**
  * 댓글 등록 Mutation 훅
  */
@@ -83,6 +94,7 @@ export function useAddCommentMutation() {
 
   return useMutation({
     mutationFn: (params) => announcementApi.addComment(params),
+    onError: refreshOnMissing(queryClient),
     onSuccess: (_, variables) => {
       const { type, houseManageNo, pblancNo } = parseSubscriptId(variables);
       const idKey = `${type}/${houseManageNo}/${pblancNo}`;
@@ -104,6 +116,7 @@ export function useUpdateCommentMutation() {
 
   return useMutation({
     mutationFn: (params) => announcementApi.updateComment(params),
+    onError: refreshOnMissing(queryClient),
     onSuccess: (_, variables) => {
       const { type, houseManageNo, pblancNo } = parseSubscriptId(variables);
       const idKey = `${type}/${houseManageNo}/${pblancNo}`;
@@ -120,6 +133,7 @@ export function useDeleteCommentMutation() {
 
   return useMutation({
     mutationFn: (params) => announcementApi.deleteComment(params),
+    onError: refreshOnMissing(queryClient),
     onSuccess: (_, variables) => {
       const { type, houseManageNo, pblancNo } = parseSubscriptId(variables);
       const idKey = `${type}/${houseManageNo}/${pblancNo}`;

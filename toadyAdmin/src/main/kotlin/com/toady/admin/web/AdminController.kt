@@ -135,6 +135,7 @@ class AdminController(
 			CommentService.RestoreResult.RESTORED -> redirect.addFlashAttribute("notice", "댓글을 되살렸습니다.")
 			CommentService.RestoreResult.PARENT_HIDDEN -> redirect.addFlashAttribute("error", "원댓글이 숨겨져 있어 답글만 되살릴 수 없습니다. 원댓글부터 되살리세요.")
 			CommentService.RestoreResult.NOT_FOUND -> redirect.addFlashAttribute("error", "되살릴 댓글이 없습니다.")
+			CommentService.RestoreResult.NOT_ADMIN_HIDDEN -> redirect.addFlashAttribute("error", "작성자가 직접 지운 댓글이거나 숨김 기록이 없어 되살릴 수 없습니다(database.sql 21번 적용 전 숨긴 댓글 포함).")
 		}
 		return "redirect:" + safeNext(next, "/admin/comments")
 	}
@@ -195,7 +196,8 @@ class AdminController(
 
 	companion object {
 		/** 조치 후 돌아갈 관리자 내부 경로. 외부 주소(//evil 등)로는 보내지 않는다. */
-		private val NEXT = Regex("/admin/[A-Za-z0-9/_\\-]*(\\?[A-Za-z0-9%=&_.+\\-]*)?")
+		// 쿼리에는 Thymeleaf가 인코딩하지 않는 문자(@ : / ? ! * ' ( ) ~ ,)도 올 수 있다(예: 이메일 검색). 역슬래시·공백·줄바꿈은 받지 않는다.
+		private val NEXT = Regex("/admin/[A-Za-z0-9/_\\-]*(\\?[A-Za-z0-9%=&_.+\\-@:/?!*'()~,$;]*)?")
 		fun safeNext(next: String, fallback: String) = if (next.length <= 300 && NEXT.matches(next) && !next.contains("//")) next else fallback
 	}
 }

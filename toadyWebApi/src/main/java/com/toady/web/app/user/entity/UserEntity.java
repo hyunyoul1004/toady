@@ -4,6 +4,7 @@ import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Comment;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -19,6 +20,8 @@ import java.time.LocalDateTime;
  * -----------------------------------------------------------
  * 2022/06/06        youn       최초 생성
  */
+// 바뀐 컬럼만 UPDATE한다. 관리자 사이트가 같은 행의 다른 컬럼(숨김·잠금)을 따로 바꾸므로, 읽어 둔 값으로 전체를 덮어쓰지 않게 한다.
+@DynamicUpdate
 @Entity
 @Builder
 @AllArgsConstructor

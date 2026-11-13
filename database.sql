@@ -482,6 +482,7 @@ CREATE TABLE IF NOT EXISTS TB_PRICE_GAP (
 -- GRANT SELECT ON toady.TB_OPT_LTTOT_PBLANC_MDL TO 'toady_admin'@'%';
 -- GRANT SELECT (ANNOUNCEMENT_ID, CHOICE) ON toady.TB_RATE_POLL TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, DELETE ON toady.TB_ANALYTICS_EXCLUDED_VISITOR TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, DELETE ON toady.TB_COMMENT_ADMIN_HIDE TO 'toady_admin'@'%';
 -- 권한 확인: SHOW GRANTS FOR 'toady_admin'@'%';
 
 -- 20. 지표에서 뺄 운영자 브라우저 (관리자 사이트 배포 전 실행 권장, 미적용이어도 지표는 모든 방문을 센다)
@@ -491,3 +492,14 @@ CREATE TABLE IF NOT EXISTS TB_ANALYTICS_EXCLUDED_VISITOR (
     LABEL VARCHAR(50) NOT NULL COMMENT '구분용 이름(예: 맥북 크롬)',
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 등록 시각'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='지표에서 제외할 운영자 브라우저';
+
+-- ============================================================================
+-- 21. 관리자가 숨긴 댓글 기록 (관리자 사이트 배포 전 실행 권장)
+-- ============================================================================
+-- 작성자가 지운 댓글과 관리자가 숨긴 댓글은 모두 DELETE_YN='Y'라 구분되지 않는다. 관리자가 숨긴 댓글만 여기에 남겨,
+-- 관리자 화면의 '되살리기'가 작성자가 직접 지운 글을 다시 공개하지 않게 한다. 미적용이면 숨김은 되지만 되살리기는 막힌다.
+CREATE TABLE IF NOT EXISTS TB_COMMENT_ADMIN_HIDE (
+    COMMENT_SEQ BIGINT NOT NULL PRIMARY KEY,
+    ADMIN_NAME VARCHAR(100) NOT NULL COMMENT '숨긴 관리자',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 숨긴 시각'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='관리자가 숨긴 댓글';

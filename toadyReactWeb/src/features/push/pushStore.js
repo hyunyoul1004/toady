@@ -119,8 +119,8 @@ export const usePushStore = create((set, get) => ({
     if (!endpoint) throw Error('먼저 알림을 켜 주세요.');
     try { await apiClient.post('/api/v1/push/test', { endpoint, ...(announcementId ? { announcementId } : {}) }); }
     catch (error) {
-      // 만료된 구독이면 서버가 지웠으므로 화면도 꺼진 상태로 맞추고, 브라우저의 죽은 구독도 지워 다음 '알림 켜기'가 새로 만들게 한다.
-      if (/만료/.test(error.message)) {
+      // 서버에 구독이 없거나(404) 만료됐으면(410) 화면도 꺼진 상태로 맞추고, 브라우저의 죽은 구독도 지워 다음 '알림 켜기'가 새로 만들게 한다.
+      if (error.status === 404 || error.status === 410) {
         set({ subscribed: false, endpoint: null });
         const reg = await navigator.serviceWorker.getRegistration('/').catch(() => null);
         const subscription = reg && await reg.pushManager.getSubscription().catch(() => null);
