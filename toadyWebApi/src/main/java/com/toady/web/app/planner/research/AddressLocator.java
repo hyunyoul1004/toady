@@ -20,7 +20,10 @@ import java.util.regex.Pattern;
  */
 @Component
 public class AddressLocator {
-    public record Location(String bcode, String dong, String address) { }
+    /** lat·lng: 확인한 지번의 좌표(지도 표시용). 좌표가 없으면 NaN. */
+    public record Location(String bcode, String dong, String address, double lat, double lng) {
+        public Location(String bcode, String dong, String address) { this(bcode, dong, address, Double.NaN, Double.NaN); }
+    }
     private final ResearchTransport transport;
     private final String key;
     private final ObjectMapper json = new ObjectMapper();
@@ -40,7 +43,8 @@ public class AddressLocator {
             for (JsonNode row : body.path("documents")) {
                 if (!precise(row, address, candidate)) continue;
                 String bcode = row.path("address").path("b_code").asText(""), dong = row.path("address").path("region_3depth_name").asText("");
-                if (bcode.matches("\\d{10}") && !dong.isBlank()) return Optional.of(new Location(bcode, dong, row.path("address").path("address_name").asText(candidate)));
+                if (bcode.matches("\\d{10}") && !dong.isBlank()) return Optional.of(new Location(bcode, dong, row.path("address").path("address_name").asText(candidate),
+                    row.path("y").asDouble(Double.NaN), row.path("x").asDouble(Double.NaN)));
             }
         }
         return Optional.empty();

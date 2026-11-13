@@ -54,7 +54,9 @@ export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
     const rows=await request(geocoder,'addressSearch',candidate,ok,timeoutMs);
     const found=rows.find(row=>precise(row,address,candidate));
     if(found) return {status:'ADDRESS',label:'공급 주소 기준 위치',latitude:Number(found.y),longitude:Number(found.x),address:found.address?.address_name || found.address_name,
-      bcode:found.address?.b_code || '',dong:found.address?.region_3depth_name || '',sourceUrl:''};
+      bcode:found.address?.b_code || '',dong:found.address?.region_3depth_name || '',
+      // 시·도 + 시·군·구(예: '경기 파주시'). 주변 실거래 단지의 위치 확인 정확도를 높이는 데 쓴다.
+      region:[found.address?.region_1depth_name,found.address?.region_2depth_name].filter(Boolean).join(' '),sourceUrl:''};
   }
   if(house) {
     const places=new maps.services.Places();

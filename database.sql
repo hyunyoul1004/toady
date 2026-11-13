@@ -503,3 +503,17 @@ CREATE TABLE IF NOT EXISTS TB_COMMENT_ADMIN_HIDE (
     ADMIN_NAME VARCHAR(100) NOT NULL COMMENT '숨긴 관리자',
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 숨긴 시각'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='관리자가 숨긴 댓글';
+
+-- ============================================================================
+-- 22. 실거래 단지 좌표 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 국토부 실거래 자료에는 좌표가 없어 위치 탭 지도에 단지별 가격을 놓으려면 카카오 주소 검색으로 지번을 좌표로 바꿔야 한다.
+-- 한 번 확인한 결과를 남겨 카카오 호출을 줄인다. 찾지 못한 지번(NOT_FOUND)은 30일 뒤에 다시 확인한다.
+-- 미적용이면 API가 메모리에만 보관하므로 재시작할 때마다 다시 확인한다.
+CREATE TABLE IF NOT EXISTS TB_APT_COMPLEX_LOCATION (
+    COMPLEX_KEY VARCHAR(120) NOT NULL PRIMARY KEY COMMENT '시군구코드|법정동|지번',
+    LATITUDE DECIMAL(10,7) NULL,
+    LONGITUDE DECIMAL(10,7) NULL,
+    STATUS VARCHAR(12) NOT NULL COMMENT 'FOUND 또는 NOT_FOUND',
+    CHECKED_DT DATETIME(6) NOT NULL COMMENT '한국시간 확인 시각'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 단지 좌표(카카오 주소 검색 결과)';

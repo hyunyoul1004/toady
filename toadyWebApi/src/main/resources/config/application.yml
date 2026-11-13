@@ -48,6 +48,11 @@ decorator:
 
 server:
   port: ${SERVER_PORT:8080}
+  # 지도용 단지 시세처럼 큰 JSON 응답을 압축한다(앞단 프록시 설정과 무관하게 전송량을 줄인다).
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 2048
 
 toady:
   research:

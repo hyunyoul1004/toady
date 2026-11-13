@@ -21,13 +21,18 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Service
 public class NeighborhoodResearchService {
-    public record Trade(String apartment,String dong,String dongCode,BigDecimal area,int floor,String buildYear,LocalDate date,long amountManwon) { }
+    /** jibun: 단지 지번(지도 표시용 위치 확인에 쓴다). 제공처가 비워 두면 빈 문자열. */
+    public record Trade(String apartment,String dong,String dongCode,BigDecimal area,int floor,String buildYear,LocalDate date,long amountManwon,String jibun) {
+        public Trade(String apartment,String dong,String dongCode,BigDecimal area,int floor,String buildYear,LocalDate date,long amountManwon) {
+            this(apartment,dong,dongCode,area,floor,buildYear,date,amountManwon,"");
+        }
+    }
     public record TradeResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,int total,List<Trade> items) { }
     record TradeMonth(List<Trade> trades,Instant fetchedAt) { }
     record Page(int total,int rawCount,List<Trade> trades) { }
     private final ResearchTransport transport;
     private final String molitKey;
-    private final Cache<String,TradeMonth> tradeCache=CacheBuilder.newBuilder().maximumWeight(50000)
+    private final Cache<String,TradeMonth> tradeCache=CacheBuilder.newBuilder().maximumWeight(150000)
         .weigher((String key,TradeMonth value)->Math.max(1,value.trades().size())).expireAfterWrite(6,TimeUnit.HOURS).build();
     public NeighborhoodResearchService(ResearchTransport transport,
             @Value("${toady.research.molit-service-key:}") String molitKey) {
@@ -132,6 +137,43 @@ public class NeighborhoodResearchService {
             return new GapResult(any?"READY":"EMPTY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),stats,updated.size(),updated.size()<GAP_MONTHS);
         } catch(Exception failure) {return new GapResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,List.of());}
     }
+    /** 시·군·구 전체의 최근 거래. months: 받은 개월 수, partial: 응답 시간 한도로 일부 달만 받음(받은 달은 캐시되어 다음 요청이 이어 받는다). */
+    public record DistrictTrades(String status,String fromMonth,String toMonth,Instant checkedAt,List<Trade> trades,int months,boolean partial) { }
+    public DistrictTrades districtTrades(String bcode,int months,long deadline) {
+        YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(months-1);
+        if(!tradesEnabled()) return new DistrictTrades("NOT_CONFIGURED",start.toString(),end.toString(),null,List.of(),0,false);
+        if(bcode==null || !bcode.matches("\\d{10}") || !SIDO_CODES.contains(bcode.substring(0,2))) return new DistrictTrades("UNAVAILABLE",start.toString(),end.toString(),null,List.of(),0,false);
+        try {
+            List<Trade> all=new ArrayList<>();List<Instant> updated=new ArrayList<>();YearMonth earliest=end;
+            for(int month=0;month<months;month++) {
+                String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
+                String key=bcode.substring(0,5)+"/"+ymd;
+                if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
+                TradeMonth data=tradeCache.getIfPresent(key);
+                if(data==null) {
+                    if(System.nanoTime()>deadline) break;
+                    try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                    catch(Exception failure) { if(deadlineExceeded(failure)) break; failedMonths.put(key,Boolean.TRUE); throw failure; }
+                }
+                all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
+            }
+            if(updated.isEmpty()) return new DistrictTrades("UNAVAILABLE",start.toString(),end.toString(),null,List.of(),0,true);
+            return new DistrictTrades(all.isEmpty()?"EMPTY":"READY",earliest.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),all,updated.size(),updated.size()<months);
+        } catch(Exception failure) {return new DistrictTrades("UNAVAILABLE",start.toString(),end.toString(),null,List.of(),0,false);}
+    }
+    /**
+     * 시·군·구의 한 달 거래를 캐시에 넣지 않고 받는다(1년보다 오래된 달은 단지별 요약만 남기려고). 실패하면 빈 Optional.
+     * 최근 실패한 달은 잠시 다시 부르지 않는다.
+     */
+    public Optional<List<Trade>> monthTrades(String lawd5,YearMonth month,long deadline) {
+        if(!tradesEnabled() || lawd5==null || !lawd5.matches("\\d{5}") || !SIDO_CODES.contains(lawd5.substring(0,2))) return Optional.empty();
+        String ymd=month.format(DateTimeFormatter.ofPattern("yyyyMM")),key=lawd5+"/"+ymd;
+        TradeMonth cached=tradeCache.getIfPresent(key);
+        if(cached!=null) return Optional.of(cached.trades());
+        if(failedMonths.getIfPresent(key)!=null) return Optional.empty();
+        try { return Optional.of(loadMonth(lawd5,ymd,deadline).trades()); }
+        catch(Exception failure) { if(!deadlineExceeded(failure)) failedMonths.put(key,Boolean.TRUE); return Optional.empty(); }
+    }
     /** 정렬된 값의 p 분위(선형 보간, 만원 반올림). */
     static long quantile(List<Long> sorted,double p) {
         if(sorted.size()==1) return sorted.get(0);
@@ -179,7 +221,7 @@ public class NeighborhoodResearchService {
             BigDecimal area=new BigDecimal(text(row,"excluUseAr"));
             if(name.isBlank() || dong.isBlank() || amount<=0 || area.signum()<=0) throw new IllegalStateException("Invalid trade row");
             LocalDate date=LocalDate.of(Integer.parseInt(text(row,"dealYear")),Integer.parseInt(text(row,"dealMonth")),Integer.parseInt(text(row,"dealDay")));
-            trades.add(new Trade(name,dong,dongCode,area,Integer.parseInt(text(row,"floor")),text(row,"buildYear"),date,amount));
+            trades.add(new Trade(name,dong,dongCode,area,Integer.parseInt(text(row,"floor")),text(row,"buildYear"),date,amount,text(row,"jibun")));
         }
         return new Page(total,items.getLength(),List.copyOf(trades));
     }
