@@ -417,3 +417,26 @@ export function sameParcel(complex, location) {
   const dong = words.pop();
   return /^(산)?\d+(-\d+)?$/.test(parcelOf(jibun)) && parcelOf(jibun) === parcelOf(complex.jibun) && lastWord(dong) === lastWord(complex.dong);
 }
+
+/** 단지별 단계에서 화면에 이만큼 넘게 보이면 법정동으로 묶는다(밀집 도시). 레벨 4 이하로 확대하면 늘 단지별. */
+export const DENSE_IN_VIEW = 45;
+/**
+ * 실제로 쓸 표시 단계: 레벨 규칙(groupTier)에 화면 밀도를 더한다. 레벨 5에서 화면 안 단지가 많으면 법정동 묶음.
+ * rows·view는 지도에 놓인 단지와 지금 화면 범위.
+ */
+export function displayTier(level, rows = [], view = null) {
+  const tier = groupTier(level);
+  if (tier !== 'single' || level <= GROUP_LEVELS.dong - 2 || !view) return tier;
+  const visible = rows.reduce((count, row) => count + (inView(row, view, 0) ? 1 : 0), 0);
+  return visible > DENSE_IN_VIEW ? 'dong' : 'single';
+}
+/**
+ * 이 공고 주택형에 맞춘 면적 기본 범위(전용 ㎡): 가장 작은 주택형 −5㎡ ~ 가장 큰 주택형 +5㎡.
+ * 주택형 정보가 없으면 전체. 공고마다 따로 쓰고, 사용자가 고른 값은 그 공고에서만 기억한다.
+ */
+export function defaultAreaRange(units = []) {
+  const areas = (units || []).map(unit => Number(unit.area)).filter(area => Number.isFinite(area) && area >= 10);
+  if (!areas.length) return { areaMin: AREA_RANGE.min, areaMax: AREA_RANGE.max };
+  const low = Math.max(AREA_RANGE.min, Math.floor(Math.min(...areas)) - 5), high = Math.min(AREA_RANGE.max, Math.ceil(Math.max(...areas)) + 5);
+  return { areaMin: low <= AREA_RANGE.min + 5 ? AREA_RANGE.min : low, areaMax: high >= AREA_RANGE.max - 5 ? AREA_RANGE.max : high };
+}

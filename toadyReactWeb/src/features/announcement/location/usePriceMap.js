@@ -3,9 +3,11 @@ import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { DEFAULT_FILTERS, mergeSales, migrateStoredFilters, normalizeFilters, sameParcel, splitComplexes } from './priceMapRules';
+import { DEFAULT_FILTERS, defaultAreaRange, mergeSales, migrateStoredFilters, normalizeFilters, sameParcel, splitComplexes } from './priceMapRules';
 
 const STORAGE_KEY = 'toady.priceMap';
+/** 면적 범위는 공고마다 따로 기억한다(공고 id → { areaMin, areaMax }, 최근 40개). */
+const AREA_KEY = 'toady.priceMap.area', MAX_AREA_MEMORY = 40;
 /** 좌표 확인·기간 수집이 덜 끝났으면 몇 번만 다시 부른다(요청 제한을 아끼려고 횟수를 제한). */
 const MAX_FOLLOW_UPS = 12;
 /** 지도를 옮겨 더 불러온 시·군·구는 최근 6곳까지만 유지한다(오래된 지역부터 뺀다). */
@@ -17,6 +19,18 @@ function readFilters() {
   try { return normalizeFilters({ ...DEFAULT_FILTERS, ...migrateStoredFilters(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')), query: '' }); }
   catch { return { ...DEFAULT_FILTERS }; }
 }
+function readArea(id) {
+  try { const saved = JSON.parse(localStorage.getItem(AREA_KEY) || '{}')[id]; return saved && Number.isFinite(saved.areaMin) && Number.isFinite(saved.areaMax) ? saved : null; }
+  catch { return null; }
+}
+function saveArea(id, area) {
+  try {
+    const all = JSON.parse(localStorage.getItem(AREA_KEY) || '{}');
+    delete all[id];
+    const next = Object.fromEntries([...Object.entries(all), [id, area]].slice(-MAX_AREA_MEMORY));
+    localStorage.setItem(AREA_KEY, JSON.stringify(next));
+  } catch { /* 기억하지 못해도 지도는 쓸 수 있다 */ }
+}
 const district = ({ bcode, region }) => ({ bcode, region: REGION.test(region || '') ? region : undefined });
 
 /**
@@ -24,13 +38,33 @@ const district = ({ bcode, region }) => ({ bcode, region: REGION.test(region || 
  * 기본은 공고와 같은 시·군·구이고, 지도를 다른 지역으로 옮기면 addDistrict로 그 시·군·구도 함께 불러온다.
  * 정확한 공급 주소(법정동 코드)가 확인된 공고에서만 동작한다.
  */
-export function usePriceMap(location, enabled, currentId = '') {
+export function usePriceMap(location, enabled, currentId = '', units = []) {
   const capabilities = useQuery({ queryKey: ['researchCapabilities'], queryFn: () => apiClient.get('/api/v1/research/capabilities'), staleTime: 300000, retry: 1, enabled });
   // ADDRESS: 지번이 확정된 공고. AREA: 지구·블록 주소라 법정동(또는 시·군·구) 일대만 아는 공고(거리·같은 필지 계산은 하지 않는다).
   const bcode = ['ADDRESS', 'AREA'].includes(location?.status) && /^\d{10}$/.test(location?.bcode || '') ? location.bcode : '';
-  const [filters, setFiltersState] = useState(readFilters);
-  const setFilters = useCallback(patch => setFiltersState(current => normalizeFilters({ ...current, ...patch })), []);
-  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...filters, query: '', areaBasis: 'supply' })); } catch { /* 기억하지 못해도 지도는 쓸 수 있다 */ } }, [filters]);
+  // 가격·연식·표시 방식은 이 기기에 하나로 기억하고, 면적 범위는 공고마다 따로 둔다.
+  // 처음 여는 공고는 그 공고 주택형 범위(areaDefault)로 시작한다(다른 공고에서 고른 면적이 따라오지 않게).
+  const [base, setBase] = useState(readFilters);
+  const areaDefault = useMemo(() => defaultAreaRange(units), [(units || []).map(unit => unit.area).join(',')]);
+  const [userArea, setUserArea] = useState(() => readArea(currentId));
+  useEffect(() => { setUserArea(readArea(currentId)); }, [currentId]);
+  const filters = useMemo(() => normalizeFilters({ ...base, ...(userArea || areaDefault) }), [base, userArea, areaDefault]);
+  const setFilters = useCallback(patch => {
+    if ('areaMin' in patch || 'areaMax' in patch) {
+      setUserArea(current => {
+        const next = normalizeFilters({ ...(current || areaDefault), ...patch });
+        const area = { areaMin: next.areaMin, areaMax: next.areaMax };
+        if (currentId) saveArea(currentId, area);
+        return area;
+      });
+    }
+    setBase(current => normalizeFilters({ ...current, ...patch }));
+  }, [currentId, areaDefault]);
+  useEffect(() => {
+    // 면적은 공고별 저장소에 두므로 공통 저장값에는 넣지 않는다.
+    const { areaMin, areaMax, ...rest } = base;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, query: '', areaBasis: 'supply' })); } catch { /* 기억하지 못해도 지도는 쓸 수 있다 */ }
+  }, [base]);
 
   const [extra, setExtra] = useState([]);
   useEffect(() => { setExtra([]); }, [bcode]);
@@ -95,5 +129,5 @@ export function usePriceMap(location, enabled, currentId = '') {
   const selected = selectedKey && !selectedSale ? complexes.find(item => item.key === selectedKey) || null : null;
   const selectedRow = selected ? rows.find(row => row.key === selected.key) || outside.find(row => row.key === selected.key) || { ...selected, rep: null, distance: Infinity } : null;
   return { capabilities, available: Boolean(bcode), ready, query, filters, setFilters, rows, outside, origin, year, selected: selectedRow, select: setSelectedKey,
-    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, siteComplex, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
+    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, siteComplex, areaDefault, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
 }

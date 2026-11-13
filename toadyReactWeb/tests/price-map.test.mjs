@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand
+, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -290,4 +290,22 @@ test('같은 필지 판정은 법정동과 지번이 모두 같을 때만', () =
   assert.equal(sameParcel({ dong: '조리읍 봉일천리', jibun: '산 12' }, { address: '경기 파주시 조리읍 봉일천리 산 12', dong: '조리읍' }), true, '읍·면 아래 리와 산 지번');
   assert.equal(sameParcel({ dong: '동패동', jibun: '' }, location), false);
   assert.equal(sameParcel({ dong: '동패동', jibun: '2295' }, { address: '경기 파주시 동패동' }), false, '지번 없는 주소는 같다고 보지 않는다');
+});
+
+test('밀집 지역은 레벨 5에서도 법정동으로 묶고, 레벨 4 이하는 늘 단지별', () => {
+  const view = { swLat: 37.0, swLng: 127.0, neLat: 37.1, neLng: 127.1 };
+  const many = Array.from({ length: DENSE_IN_VIEW + 1 }, (_, i) => ({ lat: 37.01 + i / 1000, lng: 127.05 }));
+  assert.equal(displayTier(5, many, view), 'dong');
+  assert.equal(displayTier(5, many.slice(0, DENSE_IN_VIEW), view), 'single');
+  assert.equal(displayTier(4, many, view), 'single', '묶음을 눌러 들어온 레벨 4는 다시 묶지 않는다');
+  assert.equal(displayTier(5, many.map(p => ({ ...p, lat: p.lat + 1 })), view), 'single', '화면 밖 단지는 세지 않는다');
+  assert.equal(displayTier(7, [], view), 'dong');
+  assert.equal(displayTier(5, many, null), 'single');
+});
+
+test('면적 기본값은 이 공고 주택형 범위', () => {
+  assert.deepEqual(defaultAreaRange([{ area: 60.9995 }, { area: 84.96 }, { area: 115.2 }]), { areaMin: 55, areaMax: 121 });
+  assert.deepEqual(defaultAreaRange([{ area: 39.3 }]), { areaMin: 34, areaMax: 45 });
+  assert.deepEqual(defaultAreaRange([]), { areaMin: 0, areaMax: 165 }, '주택형 정보가 없으면 전체');
+  assert.deepEqual(defaultAreaRange([{ area: 12 }, { area: 163 }]), { areaMin: 7, areaMax: 165 }, '최대 쪽 끝 근처는 제한 없음으로');
 });

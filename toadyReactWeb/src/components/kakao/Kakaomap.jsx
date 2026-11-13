@@ -8,7 +8,7 @@ import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
 import {resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {GROUP_LEVELS,areaText,saleAreaText,bubbleText,ageTone,groupRows,groupTier,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {GROUP_LEVELS,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
@@ -21,7 +21,7 @@ import './kakao.css';
 export default function Kakaomap({subscriptDetail:detail={}}) {
   const container=useRef(null),generation=useRef(0),mapRef=useRef(null),kakaoRef=useRef(null),bubbles=useRef(new Map()),dots=useRef(new Map());
   const location=useAnnouncementLocation(detail);
-  const [text,setText]=useState(''),[manualResult,setManualResult]=useState(null),[searchMessage,setSearchMessage]=useState(''),[searching,setSearching]=useState(false),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState(''),[attempt,setAttempt]=useState(0),[mapReady,setMapReady]=useState(0),[zoomedOut,setZoomedOut]=useState(false),[tier,setTier]=useState('single'),[view,setView]=useState(null);
+  const [text,setText]=useState(''),[manualResult,setManualResult]=useState(null),[searchMessage,setSearchMessage]=useState(''),[searching,setSearching]=useState(false),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState(''),[attempt,setAttempt]=useState(0),[mapReady,setMapReady]=useState(0),[zoomedOut,setZoomedOut]=useState(false),[mapLevel,setMapLevel]=useState(5),[view,setView]=useState(null);
   const result=manualResult || location.data;
   const precise=result?.status==='ADDRESS';
   // 지구·블록 주소: 부지는 확정하지 않고 주소의 법정동(또는 시·군·구) 일대만 '추정'으로 보여 준다(핀 없음).
@@ -31,7 +31,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const announced=location.data?.status==='ADDRESS'?location.data:null;
   const approxArea=location.data?.status==='UNRESOLVED' && location.data.area ? location.data.area : null;
   const priceLocation=announced || (approxArea && {status:'AREA',bcode:approxArea.bcode,region:approxArea.region,dong:approxArea.dong});
-  const priceMap=usePriceMap(priceLocation,Boolean(priceLocation),detail.subscriptSeq || '');
+  const priceMap=usePriceMap(priceLocation,Boolean(priceLocation),detail.subscriptSeq || '',detail.unitPrices);
   const navigate=useNavigate(),routeLocation=useLocation();
   // 다른 분양 공고 열기: 지금 화면 주소에서 상세 값만 바꿔 히스토리 한 단계를 쌓는다(뒤로가기로 이 공고 지도에 돌아온다).
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
@@ -40,6 +40,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const saleBubbles=useRef(new Map());
   const showPrices=priceMap.ready;
   const supply=supplyForBand(detail.unitPrices || [],priceMap.filters);
+  // 표시 단계: 축소 레벨 + 화면 밀도(레벨 5에서도 화면 안 단지가 많으면 법정동 묶음).
+  const tier=displayTier(mapLevel,priceMap.rows,view);
   // 거리 재기·반경의 기준: 지금 지도 가운데 있는 확정 위치(공고 위치 또는 직접 검색한 주소). 검색 후보 위치는 기준으로 쓰지 않는다.
   const origin=precise?{lat:result.latitude,lng:result.longitude}:null;
   const tools=useMapTools({mapRef,kakaoRef,mapReady,origin});
@@ -72,7 +74,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       // 멈출 때마다 축소 단계(단지별·법정동·시군구 묶음)와 화면 범위를 기억한다. 단지별 말풍선은 화면 근처만 만든다(큰 시·군·구에서도 가볍게).
       const remember=()=>{
         const bounds=map.getBounds(),sw=bounds.getSouthWest(),ne=bounds.getNorthEast(),round=value=>Math.round(value*1000)/1000;
-        setTier(groupTier(map.getLevel()));
+        setMapLevel(map.getLevel());
         setView(current=>{const next={swLat:round(sw.getLat()),swLng:round(sw.getLng()),neLat:round(ne.getLat()),neLng:round(ne.getLng())};
           return current && ['swLat','swLng','neLat','neLng'].every(key=>current[key]===next[key])?current:next;});
       };
@@ -132,7 +134,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
           const {swLat,swLng,neLat,neLng}=group.bounds;
           map.setBounds(new kakao.maps.LatLngBounds(new kakao.maps.LatLng(swLat,swLng),new kakao.maps.LatLng(neLat,neLng)),60,60,60,60);
           // 범위가 넓어 여전히 묶음 단계면 한 단계 아래(법정동 묶음 또는 단지별)까지 들어간다.
-          const limit=tier==='district'?GROUP_LEVELS.district-1:GROUP_LEVELS.dong-1;
+          // 묶음을 누르면 한 단계 아래로: 시·군·구 → 법정동 묶음, 법정동 → 단지별(밀집 판정이 다시 묶지 않는 레벨 4).
+          const limit=tier==='district'?GROUP_LEVELS.district-1:GROUP_LEVELS.dong-2;
           if(map.getLevel()>limit)map.setLevel(limit,{anchor:new kakao.maps.LatLng(group.lat,group.lng)});
         });
         return new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(group.lat,group.lng),content:button,yAnchor:.5,clickable:true,zIndex:3});
@@ -309,7 +312,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       {(manualResult || result?.status==='CANDIDATE') && <Alert severity="warning" sx={{mb:1}} action={manualResult?<Button color="inherit" size="small" onClick={backToAnnouncement}>공고 위치로</Button>:null}>
         {manualResult?'직접 검색한 위치 · 공고의 확정 위치가 아닙니다':result.label} · {result.address}
       </Alert>}
-      {showPrices && <PriceMapFilters filters={priceMap.filters} setFilters={priceMap.setFilters}/>}
+      {showPrices && <PriceMapFilters filters={priceMap.filters} setFilters={priceMap.setFilters} areaDefault={priceMap.areaDefault}/>}
       {/* 일시적인 네트워크 오류 뒤에도 탭을 나갔다 오지 않고 다시 불러올 수 있게 한다. */}
       {mapError?<Alert severity="error" action={<Button color="inherit" size="small" onClick={()=>{setMapError('');setAttempt(value=>value+1);}}>다시 시도</Button>}>{mapError}</Alert>
         :<Box className="price-map-wrap">

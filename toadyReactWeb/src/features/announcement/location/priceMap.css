@@ -154,3 +154,13 @@
 .loc-status.is-exact{color:#0f766e}
 .loc-status.is-approx{color:#92400e}
 .pm-approx-tag{padding:4px 10px;border:1px dashed #7c3aed;border-radius:999px;background:rgba(255,255,255,.92);color:#5b21b6;font-size:12px;font-weight:800;white-space:nowrap}
+
+/* 모바일: 지도 도구를 지도 위(바깥) 한 줄 가로 스크롤로 옮겨 말풍선을 가리지 않게 하고, 누르기 쉬운 높이(36px)로 */
+@media (max-width:600px){
+  .price-map-wrap{display:flex;flex-direction:column}
+  .price-map-wrap>.pm-toolbar{order:-1;position:static;max-width:none;margin-bottom:8px}
+  .pm-toolbar-buttons{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .pm-toolbar-buttons::-webkit-scrollbar{display:none}
+  .pm-toolbar-buttons>button,.pm-mode-toggle button{min-height:36px;flex-shrink:0;white-space:nowrap}
+  .pm-mode-toggle{flex-shrink:0}
+}

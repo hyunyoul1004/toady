@@ -20,18 +20,21 @@ const perLabel = unit => (unit === 'pyeong' ? '평당' : '3.3㎡당');
 const areaHead = unit => (unit === 'pyeong' ? '평형(추정)' : '전용');
 
 /** 지도 위 필터 줄: 기간(서버에서 다시 받음)·면적·가격대·연식·가격 표시. 휴대폰에서는 가로로 밀어 본다. 검색은 MapSearch 하나로 한다. */
-export function PriceMapFilters({ filters, setFilters }) {
-  const changed = SELECTS.some(({ key }) => filters[key] !== DEFAULT_FILTERS[key]) || isAreaFiltered(filters) || isPriceFiltered(filters);
+export function PriceMapFilters({ filters, setFilters, areaDefault = null }) {
+  // 면적의 기준값은 이 공고 주택형 범위(areaDefault)다. 그 범위면 '바뀐 조건'으로 보지 않는다.
+  const area = areaDefault || { areaMin: AREA_RANGE.min, areaMax: AREA_RANGE.max };
+  const areaChanged = filters.areaMin !== area.areaMin || filters.areaMax !== area.areaMax;
+  const changed = SELECTS.some(({ key }) => filters[key] !== DEFAULT_FILTERS[key]) || areaChanged || isPriceFiltered(filters);
   return <Box className="price-map-filters">
     <Box className="price-map-filter-row" role="group" aria-label="주변 실거래가 필터">
       <PriceFilter filters={filters} setFilters={setFilters} />
-      <AreaFilter filters={filters} setFilters={setFilters} />
+      <AreaFilter filters={filters} setFilters={setFilters} areaDefault={areaDefault} />
       {SELECTS.map(({ key, label, options }) => <TextField key={key} select size="small" label={label} value={filters[key]}
         onChange={event => setFilters({ [key]: event.target.value })} className={filters[key] !== DEFAULT_FILTERS[key] ? 'is-active' : ''}
         SelectProps={{ MenuProps: { disableScrollLock: true } }}>
         {options.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
       </TextField>)}
-      {changed && <Button size="small" onClick={() => setFilters({ ...DEFAULT_FILTERS, unit: filters.unit, mode: filters.mode, query: filters.query })} sx={{ flexShrink: 0 }}>초기화</Button>}
+      {changed && <Button size="small" onClick={() => setFilters({ ...DEFAULT_FILTERS, ...area, unit: filters.unit, mode: filters.mode, query: filters.query })} sx={{ flexShrink: 0 }}>초기화</Button>}
     </Box>
   </Box>;
 }
@@ -80,7 +83,8 @@ function PriceFilter({ filters, setFilters }) {
 }
 
 /** 면적 범위: ㎡/평 전환을 함께 둔다. 값은 전용 ㎡로 저장하고, 평 단위는 추정 공급 평형으로 보여 준다. */
-function AreaFilter({ filters, setFilters }) {
+function AreaFilter({ filters, setFilters, areaDefault = null }) {
+  const isDefault = areaDefault && isAreaFiltered(areaDefault) && filters.areaMin === areaDefault.areaMin && filters.areaMax === areaDefault.areaMax;
   const unit = filters.unit;
   const active = isAreaFiltered(filters);
   const markLabel = value => (value <= AREA_RANGE.min ? '최소' : value >= AREA_RANGE.max ? '최대' : areaText(value, unit));
@@ -94,6 +98,7 @@ function AreaFilter({ filters, setFilters }) {
     note={<>
       <Typography className="price-map-area-note"><CheckCircleOutlineRounded fontSize="inherit" />{unit === 'pyeong' ? '공급 평형(추정) 기준으로 찾기' : '전용면적 기준으로 찾기'}</Typography>
       {unit === 'pyeong' && <Typography className="price-map-area-note is-hint">{PYEONG_HINT}</Typography>}
+      {isDefault && <Typography className="price-map-area-note is-hint">이 공고 주택형에 맞춘 범위예요. 바꾸면 이 공고에서만 기억해요.</Typography>}
     </>} />;
 }
 
