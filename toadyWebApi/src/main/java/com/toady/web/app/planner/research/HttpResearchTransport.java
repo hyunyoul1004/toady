@@ -28,7 +28,7 @@ public class HttpResearchTransport implements ResearchTransport {
         });
         var pending=arrived.thenApplyAsync(response -> {
             try(var body=response.body()) {
-                if(response.statusCode()!=200) throw new java.io.UncheckedIOException(new IOException("Provider unavailable"));
+                if(response.statusCode()!=200) throw new java.io.UncheckedIOException(new ResearchTransport.ProviderStatus(response.statusCode()));
                 byte[] bytes=body.readNBytes(2_000_001);
                 if(bytes.length>2_000_000) throw new java.io.UncheckedIOException(new IOException("Provider response too large"));
                 return bytes;

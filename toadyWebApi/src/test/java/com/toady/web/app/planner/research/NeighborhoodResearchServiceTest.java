@@ -131,4 +131,12 @@ class NeighborhoodResearchServiceTest {
         assertEquals(2,page.rawCount(),"쪽 수 계산은 원래 줄 수로");
         assertEquals(java.util.List.of("정상 아파트"),page.trades().stream().map(NeighborhoodResearchService.Trade::apartment).toList());
     }
+    @Test void tooManyRequestsIsNotRetried() {
+        AtomicInteger calls=new AtomicInteger();
+        var service=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();throw new ResearchTransport.ProviderStatus(429);},"key");
+        var district=service.districtTrades("4148012800",3,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
+        assertEquals("UNAVAILABLE",district.status());
+        assertEquals(3,calls.get(),"429는 달마다 한 번만 부르고 다시 시도하지 않는다");
+        assertTrue(new ResearchTransport.ProviderStatus(503).retryable());
+    }
 }

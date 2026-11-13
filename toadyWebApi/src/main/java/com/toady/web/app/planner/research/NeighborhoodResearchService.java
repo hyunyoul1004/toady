@@ -198,7 +198,9 @@ public class NeighborhoodResearchService {
         byte[] body;
         try { body=transport.get(uri,Map.of()); }
         catch(Exception first) {
-            if(first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
+            // 429(요청 과다)·4xx는 다시 불러도 같고 한도를 더 쓰므로 재시도하지 않는다.
+            boolean refused=first instanceof ResearchTransport.ProviderStatus status && !status.retryable();
+            if(refused || first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
             body=transport.get(uri,Map.of());
         }
