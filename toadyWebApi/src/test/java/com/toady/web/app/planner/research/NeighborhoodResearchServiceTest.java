@@ -78,6 +78,22 @@ class NeighborhoodResearchServiceTest {
         assertEquals("UNAVAILABLE",service.trades("4148012800","동패동").status());assertEquals(1,calls.get());
         assertEquals("UNAVAILABLE",service.trades("9948012800","동패동").status(),"없는 시·도 코드는 외부 호출 없이 거절한다");assertEquals(1,calls.get());
     }
+    @Test void quotaOrRateLimitRejectionPausesAllRegionsAndMonths() {
+        AtomicInteger calls=new AtomicInteger();
+        var quota=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();return "<response><header><resultCode>22</resultCode></header></response>".getBytes();},"key");
+        assertEquals("UNAVAILABLE",quota.trades("4148012800","동패동").status());
+        int afterFirst=calls.get();
+        // 일일 한도 초과 뒤에는 다른 시·군·구·다른 달도 외부 호출 없이 바로 실패한다(차단기).
+        assertEquals("UNAVAILABLE",quota.trades("1168010100","역삼동").status());
+        quota.districtTrades("2611010100",12,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5));
+        assertEquals(afterFirst,calls.get());
+        assertTrue(quota.molitPaused());
+
+        AtomicInteger limited=new AtomicInteger();
+        var tooMany=new NeighborhoodResearchService((uri,headers)->{limited.incrementAndGet();throw new ResearchTransport.ProviderStatus(429);},"key");
+        tooMany.districtTrades("4148012800",12,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5));
+        assertEquals(1,limited.get(),"429 한 번 뒤 남은 달은 부르지 않는다");
+    }
     @Test void incompletePaginationAndWrongMonthsNeverReturnPartialResults() {
         var service=new NeighborhoodResearchService((uri,headers)->{
             String month=uri.getQuery().split("DEAL_YMD=")[1].substring(0,6);
@@ -105,7 +121,8 @@ class NeighborhoodResearchServiceTest {
             String month=uri.getQuery().split("DEAL_YMD=")[1].substring(0,6);
             int n=calls.computeIfAbsent(month,k->new AtomicInteger()).incrementAndGet();
             if(month.equals(flaky) && n==1) throw new java.io.IOException("throttled");
-            if(month.equals(broken)) return "<response><header><resultCode>22</resultCode></header></response>".getBytes(StandardCharsets.UTF_8);
+            // 한도·인증 오류가 아닌 제공처 오류(예: 99)는 그 달만 빠지고 다른 달은 계속 부른다.
+            if(month.equals(broken)) return "<response><header><resultCode>99</resultCode></header></response>".getBytes(StandardCharsets.UTF_8);
             return response(month,"동패동","");
         },"key");
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
@@ -136,7 +153,7 @@ class NeighborhoodResearchServiceTest {
         var service=new NeighborhoodResearchService((uri,headers)->{calls.incrementAndGet();throw new ResearchTransport.ProviderStatus(429);},"key");
         var district=service.districtTrades("4148012800",3,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
         assertEquals("UNAVAILABLE",district.status());
-        assertEquals(3,calls.get(),"429는 달마다 한 번만 부르고 다시 시도하지 않는다");
+        assertEquals(1,calls.get(),"429는 다시 시도하지 않고, 차단기가 열려 남은 달도 부르지 않는다");
         assertTrue(new ResearchTransport.ProviderStatus(503).retryable());
     }
 }

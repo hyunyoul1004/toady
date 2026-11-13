@@ -195,16 +195,47 @@ public class NeighborhoodResearchService {
      * 다시 불러도 같으므로 바로 실패로 둔다. 다시 시도는 남은 시간이 한 번 더 받을 만큼(약 4초) 있을 때만 한다.
      */
     private Page fetchPage(URI uri,long deadline) throws Exception {
+        long pausedUntil=molitPausedUntil;
+        if(System.currentTimeMillis()<pausedUntil) throw new ProviderPaused();
         byte[] body;
         try { body=transport.get(uri,Map.of()); }
         catch(Exception first) {
             // 429(요청 과다)·4xx는 다시 불러도 같고 한도를 더 쓰므로 재시도하지 않는다.
             boolean refused=first instanceof ResearchTransport.ProviderStatus status && !status.retryable();
+            if(first instanceof ResearchTransport.ProviderStatus status && Set.of(401,403,429).contains(status.status()))
+                pauseMolit(status.status()==429?Duration.ofMinutes(10):Duration.ofHours(1),"HTTP "+status.status());
             if(refused || first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
             body=transport.get(uri,Map.of());
         }
-        return parseTrades(body);
+        try { return parseTrades(body); }
+        catch(ProviderRejected rejected) {
+            // 일일 한도 초과(22)는 자정(한국시간)에 풀리고, 접근 거부·키 오류(20·30·31·32)는 운영자가 고칠 때까지 1시간씩 쉰다.
+            // 그 밖의 코드는 그 달만 실패로 둔다.
+            if("22".equals(rejected.code)) pauseMolit(Duration.between(java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")),
+                java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul"))),"resultCode 22");
+            else if(Set.of("20","30","31","32").contains(rejected.code)) pauseMolit(Duration.ofHours(1),"resultCode "+rejected.code);
+            throw rejected;
+        }
+    }
+    /**
+     * 국토부가 한도 초과·인증 오류로 거절하면 모든 지역·달의 호출을 잠시 멈춘다(차단기). 지역·달마다 따로 실패를
+     * 기억하면 화면 재조회와 미리 계산 작업이 시·군·구 수 × 12개월만큼 계속 호출해 한도를 더 소모한다.
+     */
+    private volatile long molitPausedUntil;
+    private void pauseMolit(Duration duration,String reason) {
+        long until=System.currentTimeMillis()+Math.max(60_000,duration.toMillis());
+        if(until>molitPausedUntil) {
+            molitPausedUntil=until;
+            org.slf4j.LoggerFactory.getLogger(NeighborhoodResearchService.class).warn("국토부 실거래 호출을 {}분 멈춤: {}",Math.max(1,duration.toMinutes()),reason);
+        }
+    }
+    /** 차단기가 열려 있는지(화면 안내·테스트용). */
+    public boolean molitPaused() { return System.currentTimeMillis()<molitPausedUntil; }
+    static final class ProviderPaused extends IllegalStateException { ProviderPaused() { super("Provider paused after rejection"); } }
+    static final class ProviderRejected extends IllegalStateException {
+        final String code;
+        ProviderRejected(String code) { super("Provider rejected request: "+code); this.code=code; }
     }
     static final int RETRY_NEEDS_SECONDS=4;
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
@@ -232,7 +263,7 @@ public class NeighborhoodResearchService {
         factory.setXIncludeAware(false);factory.setExpandEntityReferences(false);
         Document doc=factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
         String code=text(doc.getDocumentElement(),"resultCode");
-        if(!Set.of("00","000").contains(code)) throw new IllegalStateException("Provider rejected request");
+        if(!Set.of("00","000").contains(code)) throw new ProviderRejected(code);
         int total=Integer.parseInt(text(doc.getDocumentElement(),"totalCount"));
         NodeList items=doc.getElementsByTagName("item");List<Trade> trades=new ArrayList<>();
         for(int i=0;i<items.getLength();i++) {

@@ -20,4 +20,7 @@ public interface EmailUtilService {
 
     void sendEmail(String toAddress, String subject, String body) throws MessagingException;
 
+    /** 회원가입 인증 메일. 하루 상한을 따로 두어 대량 가입 시도가 비밀번호 찾기 메일까지 막지 않게 한다. */
+    default void sendSignupEmail(String toAddress, String subject, String body) throws MessagingException { sendEmail(toAddress, subject, body); }
+
 }

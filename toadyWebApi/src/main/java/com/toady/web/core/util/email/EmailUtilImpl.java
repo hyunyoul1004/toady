@@ -29,13 +29,16 @@ public class EmailUtilImpl implements EmailUtilService {
     private com.toady.web.app.planner.MailBudget budget;
 
     @Override
-    public void sendEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, false); }
+    public void sendEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.AUTH); }
 
     @Override
-    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, true); }
+    public void sendSignupEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.SIGNUP); }
 
-    private void send(String toAddress, String subject, String body, boolean reminder) {
-        if (!budget.reserve(reminder)) throw new com.toady.web.app.planner.MailQuotaException();
+    @Override
+    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.REMINDER); }
+
+    private void send(String toAddress, String subject, String body, com.toady.web.app.planner.MailBudget.Kind kind) {
+        if (!budget.reserve(kind)) throw new com.toady.web.app.planner.MailQuotaException();
 
         MimeMessage message = sender.createMimeMessage();
         //MimeMessageHelper helper = new MimeMessageHelper(message);

@@ -46,9 +46,11 @@ class ApplicationFlowRegressionTest {
     String body(Object value) throws Exception { return json.writeValueAsString(value); }
     /** 코드는 DB에 해시로만 남으므로 실제로 보낸 메일 본문에서 꺼낸다(마지막 발송 기준). */
     String mailedCode() throws Exception {
-        var captor = org.mockito.ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(email, org.mockito.Mockito.atLeastOnce()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), captor.capture());
-        String body = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        // 가입 인증(sendSignupEmail)과 비밀번호 찾기(sendEmail) 중 마지막으로 보낸 메일 본문.
+        var sent = org.mockito.Mockito.mockingDetails(email).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("sendEmail") || call.getMethod().getName().equals("sendSignupEmail")).toList();
+        assertFalse(sent.isEmpty(), "메일을 보내지 않았다");
+        String body = (String) sent.get(sent.size() - 1).getArgument(2);
         var link = java.util.regex.Pattern.compile("certifyCode=([A-Z0-9-]{20,30})").matcher(body);
         if (link.find()) return link.group(1);
         var plain = java.util.regex.Pattern.compile("(?<![A-Z0-9])([A-HJ-NP-Z2-9]{24})(?![A-Z0-9])").matcher(body);

@@ -45,9 +45,11 @@ class CertifyTransactionTest {
     }
     /** 코드는 DB에 해시로만 남으므로 실제로 보낸 메일 본문에서 꺼낸다(마지막 발송 기준). */
     String mailedCode() throws Exception {
-        var captor = org.mockito.ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(email, org.mockito.Mockito.atLeastOnce()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), captor.capture());
-        String body = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        // 가입 인증(sendSignupEmail)과 비밀번호 찾기(sendEmail) 중 마지막으로 보낸 메일 본문.
+        var sent = org.mockito.Mockito.mockingDetails(email).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("sendEmail") || call.getMethod().getName().equals("sendSignupEmail")).toList();
+        assertFalse(sent.isEmpty(), "메일을 보내지 않았다");
+        String body = (String) sent.get(sent.size() - 1).getArgument(2);
         var link = java.util.regex.Pattern.compile("certifyCode=([A-Z0-9-]{20,30})").matcher(body);
         if (link.find()) return link.group(1);
         var plain = java.util.regex.Pattern.compile("(?<![A-Z0-9])([A-HJ-NP-Z2-9]{24})(?![A-Z0-9])").matcher(body);
@@ -153,7 +155,7 @@ class CertifyTransactionTest {
     @Test void failedSignupResendPreservesOldLinkAndAllowsImmediateRetry() throws Exception {
         code("ACCOUNT", LocalDateTime.now().minusMinutes(5));
         org.mockito.Mockito.doThrow(new IllegalStateException("SMTP unavailable")).doNothing().when(email)
-                .sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+                .sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
         var request = new CertifyDTO.UserInfo("verify@example.test");
         assertThrows(com.toady.web.core.util.email.EmailDeliveryException.class, () -> service.resendAccountVerification(request));
         assertEquals("N", flag());
@@ -194,7 +196,7 @@ class CertifyTransactionTest {
             var results = List.of(tasks.get(0).get(10, java.util.concurrent.TimeUnit.SECONDS), tasks.get(1).get(10, java.util.concurrent.TimeUnit.SECONDS));
             assertEquals(2, results.stream().filter("SUCCESS"::equals).count(), "응답은 같고 메일은 한 번만 보낸다");
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_CERTIFY WHERE CERTIFY_YN='N'", Integer.class));
-            org.mockito.Mockito.verify(email).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+            org.mockito.Mockito.verify(email).sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
         }
     }
 }

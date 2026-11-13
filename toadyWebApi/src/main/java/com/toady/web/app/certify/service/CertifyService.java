@@ -121,7 +121,7 @@ public class CertifyService {
             certifyRepository.save(certifyParam);
 
             try {
-                emailUtilService.sendEmail(
+                emailUtilService.sendSignupEmail(
                         param.getUserEmail(),
                         "[Toady] 두껍아 회원가입 인증 요청",
                         sendMessage

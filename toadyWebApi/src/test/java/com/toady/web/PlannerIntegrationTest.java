@@ -374,6 +374,12 @@ class PlannerIntegrationTest {
             assertTrue(budget.reserve(false));
         } finally {pool.shutdownNow();}
     }
+    @Test void signupMailHasItsOwnCapSoPasswordResetStillWorks() {
+        // mail-limit=4 → 가입 메일 상한은 절반인 2통. 무작위 가입을 반복해도 비밀번호 찾기(AUTH) 몫이 남는다.
+        assertTrue(budget.reserve(MailBudget.Kind.SIGNUP));assertTrue(budget.reserve(MailBudget.Kind.SIGNUP));
+        assertFalse(budget.reserve(MailBudget.Kind.SIGNUP));
+        assertTrue(budget.reserve(MailBudget.Kind.AUTH));
+    }
     @Test void missingAnnouncementCannotBeSaved() throws Exception {
         var account=user("missing@example.test");
         assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false,null));

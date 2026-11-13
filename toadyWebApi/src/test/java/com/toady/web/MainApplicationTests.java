@@ -92,7 +92,7 @@ class MainApplicationTests {
         int certifyCountBefore = jdbcTemplate.queryForObject("select count(*) from TB_CERTIFY", Integer.class);
         doThrow(new MailAuthenticationException("SMTP authentication failed"))
                 .when(emailUtilService)
-                .sendEmail(
+                .sendSignupEmail(
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyString()
