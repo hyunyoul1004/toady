@@ -10,7 +10,7 @@ import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
 import {municipality,resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {GROUP_LEVELS,northOf,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {GROUP_LEVELS,northOf,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,NearbySummary,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import {PriceGapSummary} from '@/features/match/PriceGapCard';
@@ -38,7 +38,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const navigate=useNavigate(),routeLocation=useLocation();
   // 다른 분양 공고 열기: 지금 화면 주소에서 상세 값만 바꿔 히스토리 한 단계를 쌓는다(뒤로가기로 이 공고 지도에 돌아온다).
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
-  const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');navigate({pathname:routeLocation.pathname,search:`?${next}`},{state:routeLocation.state});};
+  // 지도에서 고른 단지·공고(price-map-complex 레이어)는 새 공고로 따라가지 않게 빼고 넘긴다(남기면 새 공고에서 '닫기'가 이전 공고로 뒤로가기 됐다).
+  const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');
+    const state=routeLocation.state?{...routeLocation.state,overlayLayers:(routeLocation.state.overlayLayers || []).filter(layer=>layer.id!=='price-map-complex')}:routeLocation.state;
+    navigate({pathname:routeLocation.pathname,search:`?${next}`},{state});};
   const today=koreaToday();
   const saleBubbles=useRef(new Map()),salePanelRef=useRef(null);
   // 검색 예시는 공고 지역의 동 이름으로(다른 지역 공고에 파주 예시가 보이지 않게).
@@ -48,7 +51,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 표시 단계: 축소 레벨 + 화면 밀도(레벨 5에서도 화면 안 단지가 많으면 법정동 묶음).
   const tier=displayTier(mapLevel,priceMap.rows,view);
   // 가까운 역·초등학교·대형마트: 확정 지번 좌표가 있을 때만(서버가 카카오 키로 조회, 직선거리).
-  const nearby=useQuery({queryKey:['nearbyPlaces',announced?.latitude?.toFixed(4),announced?.longitude?.toFixed(4)],enabled:Boolean(announced),staleTime:86400000,retry:false,
+  const nearby=useQuery({queryKey:['nearbyPlaces',announced?.latitude?.toFixed(5),announced?.longitude?.toFixed(5)],enabled:Boolean(announced),staleTime:86400000,retry:false,
     queryFn:()=>apiClient.get('/api/v1/research/nearby',{lat:Number(announced.latitude.toFixed(5)),lng:Number(announced.longitude.toFixed(5))})});
   // 거리 재기·반경의 기준: 지금 지도 가운데 있는 확정 위치(공고 위치 또는 직접 검색한 주소). 검색 후보 위치는 기준으로 쓰지 않는다.
   const origin=precise?{lat:result.latitude,lng:result.longitude}:null;
@@ -59,7 +62,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
 
   useEffect(()=>{setManualResult(null);setShowCandidate(false);setSearchMessage('');setText('');generation.current++;},[detail.subscriptSeq]);
   useEffect(()=>{
-    let active=true,marker,map,observer,kakaoApi;const listeners=[],areaShapes=[];
+    let active=true,map,observer,kakaoApi;const listeners=[],areaShapes=[];
     setMapError('');
     if(visible && container.current) ensureKakaoLoaded().then(kakao=>{
       if(!active || !container.current)return;
@@ -77,7 +80,6 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         const top=approx.level==='dong'?northOf({lat:approx.latitude,lng:approx.longitude},700):{lat:approx.latitude,lng:approx.longitude};
         areaShapes.push(new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(top.lat,top.lng),content:tag,yAnchor:.5,zIndex:6}));}
       // 실거래 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시하므로 기본 핀은 직접 검색한 위치·가격 미제공일 때만 둔다.
-      if((!showPrices || manualResult) && !approx)marker=new kakao.maps.Marker({map,position:coords});
       map.addControl(new kakao.maps.ZoomControl(),kakao.maps.ControlPosition.RIGHT);
       const far=()=>container.current?.classList.toggle('is-far',map.getLevel()>=6);
       listen('zoom_changed',far);far();
@@ -96,11 +98,20 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     }).catch(()=>{if(active)setMapError('지도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');});
     // 다시 만들 때(가격 표시 여부·위치가 바뀔 때) 이전 지도의 이벤트와 화면을 지운다. 남겨 두면 같은 칸에 지도가 겹치고
     // 이전 지도의 확대·축소 단추가 지금 지도와 다른 축소 단계를 기록한다.
-    return()=>{active=false;observer?.disconnect();marker?.setMap(null);areaShapes.forEach(shape=>shape.setMap(null));
+    return()=>{active=false;observer?.disconnect();areaShapes.forEach(shape=>shape.setMap(null));
       if(map && kakaoApi)listeners.forEach(([type,handler])=>kakaoApi.maps.event.removeListener(map,type,handler));
       if(container.current)container.current.replaceChildren();
       mapRef.current=null;};
-  },[visible,result,precise,approx,attempt,showPrices]);
+  },[visible,result,precise,approx,attempt]);
+
+  // 기본 핀: 직접 검색한 위치나 가격 지도를 쓸 수 없을 때만(가격 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시).
+  // 지도 생성과 나눠, 가격 표시 가능 여부가 늦게 정해져도 지도를 다시 만들지 않는다(옮긴 위치·확대 수준 유지).
+  useEffect(()=>{
+    const map=mapRef.current,kakao=kakaoRef.current;
+    if(!map || !kakao || approx || !result || !Number.isFinite(result.latitude) || (showPrices && !manualResult))return;
+    const marker=new kakao.maps.Marker({map,position:new kakao.maps.LatLng(result.latitude,result.longitude)});
+    return()=>marker.setMap(null);
+  },[mapReady,showPrices,manualResult,approx,result]);
 
   // 이 공고 말풍선: 같은 면적 구간의 분양가. 상태는 다른 분양 말풍선과 같은 규칙(접수 중·예정·종료)으로 붙이고, '이 공고'와 꽉 찬 보라로 구분한다.
   // 아무 단지도 고르지 않았을 때는 이 공고가 선택된 상태다.
@@ -164,11 +175,13 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         button.addEventListener('click',event=>{
           event.stopPropagation();
           const {swLat,swLng,neLat,neLng}=group.bounds;
-          map.setBounds(new kakao.maps.LatLngBounds(new kakao.maps.LatLng(swLat,swLng),new kakao.maps.LatLng(neLat,neLng)),60,60,60,60);
-          // 범위가 넓어 여전히 묶음 단계면 한 단계 아래(법정동 묶음 또는 단지별)까지 들어간다.
           // 묶음을 누르면 한 단계 아래로: 시·군·구 → 법정동 묶음, 법정동 → 단지별(밀집 판정이 다시 묶지 않는 레벨 4).
           const limit=tier==='district'?GROUP_LEVELS.district-1:GROUP_LEVELS.dong-2;
-          if(map.getLevel()>limit)map.setLevel(limit,{anchor:new kakao.maps.LatLng(group.lat,group.lng)});
+          const center=new kakao.maps.LatLng(group.lat,group.lng);
+          // 단지가 한 곳뿐이면 범위가 점이라 setBounds가 최대로 확대되므로, 그 단계 레벨로 옮기기만 한다.
+          if(group.count===1){map.setLevel(limit,{anchor:center});map.panTo(center);return;}
+          map.setBounds(new kakao.maps.LatLngBounds(new kakao.maps.LatLng(swLat,swLng),new kakao.maps.LatLng(neLat,neLng)),60,60,60,60);
+          if(map.getLevel()>limit)map.setLevel(limit,{anchor:center});
         });
         return new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(group.lat,group.lng),content:button,yAnchor:.5,clickable:true,zIndex:3});
       });
@@ -216,13 +229,14 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     if(!map || !kakao || !showPrices)return;
     const overlays=priceMap.sales.map(sale=>{
       const units=(sale.units || []).map(unit=>({area:Number(unit.area),amountManwon:unit.amountManwon,supplyArea:unit.supplyArea==null?null:Number(unit.supplyArea),type:unit.type}));
-      const price=supplyForBand(units,priceMap.filters);
+      // 고른 면적 범위에 그 공고 주택형이 없으면 전체에서 대표 주택형을 쓴다('가격 미제공'으로 잘못 보이지 않게).
+      const price=supplyForBand(units,priceMap.filters) || supplyForBand(units,'all');
       const button=document.createElement('button');
       button.type='button';button.className=`pm-bubble pm-bubble--sale is-other is-${String(sale.status||'').toLowerCase()}`;
       const tag=document.createElement('i');tag.textContent=saleStatusLabel(sale.status);
       const strong=document.createElement('b'),small=document.createElement('small');
       if(price){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(price.pyeong):shortPrice(price.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):saleAreaText(price,priceMap.filters.unit);}
-      else {strong.textContent='분양';small.textContent='가격 미제공';}
+      else {strong.textContent='분양';small.textContent='분양가 자료 없음';}
       button.append(tag,strong,small);
       button.setAttribute('aria-label',`${sale.houseNm} ${tag.textContent} ${strong.textContent} ${small.textContent}`);button.title=sale.houseNm;
       button.addEventListener('click',event=>{event.stopPropagation();if(tools.measuringRef.current)addPointRef.current(sale);else selectRef.current(`sale:${sale.id}`);});
@@ -297,7 +311,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     try {
       const kakao=await ensureKakaoLoaded();
       // '동패동 400-7'처럼 시·도를 빼고 쓰면 공고의 시·군·구를 앞에 붙여 찾는다(주소 확인 규칙은 그대로).
-      const regionPrefix=!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(value) && announced?.region?`${announced.region} `:'';
+      const regionPrefix=!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(value) && (announced || approxArea)?.region?`${(announced || approxArea).region} `:'';
       const found=await resolveLocation(kakao.maps,{...detail,hssplyAdres:regionPrefix+value,houseNm:''});
       if(request!==generation.current)return;
       if(found.status!=='ADDRESS')setSearchMessage(showPrices?`일치하는 단지가 없어요. 주소로 찾으려면 동·도로명과 번지까지 입력해 주세요(예: ${addressExample}).`:'지번 또는 도로명과 건물번호까지 입력해 주세요. 지역명만으로는 위치를 확정하지 않습니다.');
@@ -354,7 +368,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       {/* 일시적인 네트워크 오류 뒤에도 탭을 나갔다 오지 않고 다시 불러올 수 있게 한다. */}
       {mapError?<Alert severity="error" action={<Button color="inherit" size="small" onClick={()=>{setMapError('');setAttempt(value=>value+1);}}>다시 시도</Button>}>{mapError}</Alert>
         :<Box className="price-map-wrap">
-          <div ref={container} className="price-map-canvas" aria-label={precise?'공급 주소 기준 지도':approx?'주소의 법정동 일대 지도(추정, 부지 미확정)':'미확인 위치 검색 후보 지도'}/>
+          <div ref={container} className="price-map-canvas" role="region" aria-label={precise?'공급 주소 기준 지도':approx?'주소의 법정동 일대 지도(추정, 부지 미확정)':'미확인 위치 검색 후보 지도'}/>
           {mapReady>0 && <MapToolbar tools={tools} originLabel={manualResult?'검색한 위치':'공고 위치'}>{showPrices && <PriceModeToggle filters={priceMap.filters} setFilters={priceMap.setFilters}/>}</MapToolbar>}
         </Box>}
       <Typography variant="caption" color="text.secondary">{approx?'점선 원은 주소의 법정동 일대를 대략 보여 줄 뿐 부지 위치가 아니에요.':'표시 지점은 부지 경계·출입구를 뜻하지 않습니다.'}</Typography>

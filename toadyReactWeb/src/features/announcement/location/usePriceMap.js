@@ -46,16 +46,19 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
   // 처음 여는 공고는 그 공고 주택형 범위(areaDefault)로 시작한다(다른 공고에서 고른 면적이 따라오지 않게).
   const [base, setBase] = useState(readFilters);
   const areaDefault = useMemo(() => defaultAreaRange(units), [(units || []).map(unit => unit.area).join(',')]);
-  const [userArea, setUserArea] = useState(() => readArea(currentId));
-  useEffect(() => { setUserArea(readArea(currentId)); }, [currentId]);
+  // 공고 id와 함께 둬, 다른 공고로 바뀐 첫 렌더에서 이전 공고의 면적이 잠깐 쓰이지 않게 한다.
+  const [areaState, setAreaState] = useState(() => ({ id: currentId, area: readArea(currentId) }));
+  const userArea = areaState.id === currentId ? areaState.area : readArea(currentId);
+  useEffect(() => { setAreaState(current => (current.id === currentId ? current : { id: currentId, area: readArea(currentId) })); }, [currentId]);
   const filters = useMemo(() => normalizeFilters({ ...base, ...(userArea || areaDefault) }), [base, userArea, areaDefault]);
   const setFilters = useCallback(patch => {
     if ('areaMin' in patch || 'areaMax' in patch) {
-      setUserArea(current => {
-        const next = normalizeFilters({ ...(current || areaDefault), ...patch });
+      setAreaState(current => {
+        const before = current.id === currentId ? current.area : readArea(currentId);
+        const next = normalizeFilters({ ...(before || areaDefault), ...patch });
         const area = { areaMin: next.areaMin, areaMax: next.areaMax };
         if (currentId) saveArea(currentId, area);
-        return area;
+        return { id: currentId, area };
       });
     }
     setBase(current => normalizeFilters({ ...current, ...patch }));

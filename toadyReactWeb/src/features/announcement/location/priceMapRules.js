@@ -2,7 +2,7 @@
  * 위치 탭 '주변 실거래가' 지도의 필터·표시 규칙(화면 없이 테스트한다). 금액 단위는 만원.
  * 서버(ComplexPriceService)가 단지별로 묶어 준 최근 신고 거래 안에서만 고르고 계산한다. 호가·시세 추정은 하지 않는다.
  */
-export const PYEONG = 3.305785;
+const PYEONG = 3.305785;
 /**
  * 공급면적 ÷ 전용면적 추정 비율. 실거래 자료에는 전용면적만 있어 분양 광고의 '평형'(공급면적 기준)을 이 비율로 추정한다.
  * 전용 59㎡ ≈ 24평형, 84㎡ ≈ 34평형, 114㎡ ≈ 46평형. 단지마다 실제 공급면적과 1~2평 다를 수 있다.
@@ -13,20 +13,12 @@ export const supplyPyeong = area => Math.round(Number(area) * SUPPLY_RATIO / PYE
 /** 추정 공급 평형 → 전용면적(㎡, 정수). 저장된 옛 '전용 평' 필터를 옮길 때 쓴다. */
 export const areaForSupplyPyeong = pyeong => Math.round(Number(pyeong) * PYEONG / SUPPLY_RATIO);
 
-export const PERIODS = [{ value: 3, label: '최근 3개월' }, { value: 6, label: '최근 6개월' }, { value: 12, label: '최근 1년' }];
 /** 전용면적 구간(㎡, 반올림 값 기준). */
 export const AREA_BANDS = [
   { value: 'all', label: '전체 면적', test: () => true },
   { value: 'small', label: '60㎡ 이하', test: area => area <= 60 },
   { value: 'mid', label: '60~85㎡', test: area => area > 60 && area <= 85 },
   { value: 'large', label: '85㎡ 초과', test: area => area > 85 }
-];
-export const PRICE_BANDS = [
-  { value: 'all', label: '전체 가격', test: () => true },
-  { value: 'u5', label: '5억 이하', test: price => price <= 50000 },
-  { value: '5-10', label: '5~10억', test: price => price > 50000 && price <= 100000 },
-  { value: '10-15', label: '10~15억', test: price => price > 100000 && price <= 150000 },
-  { value: 'o15', label: '15억 초과', test: price => price > 150000 }
 ];
 export const AGE_BANDS = [
   { value: 'all', label: '전체', years: null },
@@ -36,7 +28,7 @@ export const AGE_BANDS = [
 ];
 export const PRICE_MODES = [{ value: 'latest', label: '거래가' }, { value: 'pyeong', label: '평당가' }];
 /** 면적 표시 단위. 평은 전용면적에서 추정한 공급 평형(분양 광고의 '34평형'과 같은 기준)이다. 필터 값 자체는 항상 전용 ㎡로 저장한다. */
-export const AREA_UNITS = [{ value: 'm2', label: '전용 ㎡' }, { value: 'pyeong', label: '평형(공급 추정)' }];
+const AREA_UNITS = [{ value: 'm2', label: '전용 ㎡' }, { value: 'pyeong', label: '평형(공급 추정)' }];
 export const SORTS = [
   { value: 'distance', label: '가까운 순' }, { value: 'price', label: '높은 가격 순' },
   { value: 'recent', label: '최근 거래 순' }, { value: 'count', label: '거래 많은 순' }
@@ -320,7 +312,7 @@ export function isAddressLike(text) {
  * DONE은 접수를 마쳤고 아직 입주 전인 공고다('분양 완료'는 '다 팔림'으로 읽힐 수 있어 쓰지 않는다).
  * 지금 보고 있는 공고도 같은 규칙(saleStatusOf)으로 상태를 붙이고, '이 공고' 표시는 따로 단다.
  */
-export const SALE_STATUS = { OPEN: '접수 중', UPCOMING: '접수 예정', DONE: '접수 종료' };
+const SALE_STATUS = { OPEN: '접수 중', UPCOMING: '접수 예정', DONE: '접수 종료' };
 export const saleStatusLabel = status => SALE_STATUS[status] || '분양 공고';
 const isoDay = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : ''; };
 /** 접수 시작·마감일과 오늘('YYYY-MM-DD')로 상태를 정한다(서버 분류와 같은 규칙: 마감일이 없으면 시작일 하루). 날짜를 모르면 null. */

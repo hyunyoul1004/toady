@@ -107,7 +107,7 @@
 .pm-mode-toggle button{padding:6px 10px;border:0;background:none;font:inherit;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer}
 .pm-mode-toggle button.is-on{background:#111827;color:#fff}
 /* 1년 넘게 거래가 없던 단지: 흐리게 */
-.pm-bubble.is-stale{opacity:.78}
+.pm-bubble.is-stale{opacity:1;filter:saturate(.35)}
 .pm-bubble.is-stale.is-selected{opacity:1}
 
 /* 조건 밖 단지: 거래는 있지만 고른 조건에 맞는 거래가 없는 단지(말풍선 대신 작은 점). */
@@ -211,3 +211,7 @@
 /* 위치 미확정 공고 칩은 누르기 쉬운 높이로 */
 .price-map-unlocated button{min-height:32px}
 @media (max-width:600px){.price-map-unlocated button{min-height:36px}}
+
+/* 조건 밖 점: 보이는 크기는 12px로 두고 누르는 영역만 28px로 넓힌다 */
+.pm-dot{position:relative}
+.pm-dot::before{content:'';position:absolute;inset:-8px;border-radius:50%}

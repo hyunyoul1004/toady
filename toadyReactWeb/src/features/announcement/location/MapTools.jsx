@@ -65,7 +65,8 @@ export function useMapTools({ mapRef, kakaoRef, mapReady, origin }) {
       label(kakao, map, northOf(origin, meters), measureText(meters), 'pm-radius-label')
     ]);
     // 반경이 다 보이도록 1km 원에 맞춰 넓힌다(이미 더 넓게 보고 있으면 그대로).
-    if (map.getLevel() < 6) map.setLevel(6, { anchor: center });
+    // 반경 원이 보이도록 넓히되 단지별 가격이 법정동 묶음으로 바뀌지 않는 레벨 5까지만.
+    if (map.getLevel() < 5) map.setLevel(5, { anchor: center });
     return () => drawn.forEach(item => item.setMap(null));
   }, [radius, originKey, mapReady]);
 

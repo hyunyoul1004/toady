@@ -6,7 +6,7 @@ import SyncAltRounded from '@mui/icons-material/SyncAltRounded';
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { distanceMeters as distanceMetersSafe } from './priceMapRules';
-import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND, groupSaleUnits, saleGroupText } from './priceMapRules';
+import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND, groupSaleUnits, saleGroupText } from './priceMapRules';
 import { usePriceGapFor } from '@/features/match/usePriceGap';
 import { LAND_LEASE_TEXT, gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
 import './priceMap.css';
@@ -90,7 +90,8 @@ function AreaFilter({ filters, setFilters, areaDefault = null }) {
   const markLabel = value => (value <= AREA_RANGE.min ? '최소' : value >= AREA_RANGE.max ? '최대' : areaText(value, unit));
   return <RangeFilter title="면적" buttonText={active ? areaRangeText(filters, unit) : '면적'} active={active} range={unit === 'pyeong' ? { ...AREA_RANGE, marks: AREA_MARKS_PYEONG } : AREA_RANGE}
     value={[filters.areaMin, filters.areaMax]} onCommit={([areaMin, areaMax]) => setFilters({ areaMin, areaMax })}
-    onReset={() => setFilters({ areaMin: AREA_RANGE.min, areaMax: AREA_RANGE.max })}
+    // 필터 줄의 '초기화'와 같게 이 공고 주택형 범위로 돌린다(공고 정보가 없으면 전체).
+    onReset={() => setFilters(areaDefault ? { areaMin: areaDefault.areaMin, areaMax: areaDefault.areaMax } : { areaMin: AREA_RANGE.min, areaMax: AREA_RANGE.max })}
     valueText={([areaMin, areaMax]) => { const text = areaRangeText({ areaMin, areaMax }, unit); return text === '전체' ? '전체 면적' : text; }} markLabel={markLabel}
     extra={<button type="button" className="price-map-unit-toggle" onClick={() => setFilters({ unit: unit === 'pyeong' ? 'm2' : 'pyeong' })} aria-label={unit === 'pyeong' ? '전용 ㎡로 보기' : '공급 평형으로 보기'}>
       <SyncAltRounded fontSize="inherit" />{unit === 'pyeong' ? '㎡' : '평형'}
@@ -130,7 +131,7 @@ export function PriceMapStatus({ grouping = 'single', approx = false, nearby = f
       </li>)}</Box>
     </Box>}
     <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0 }}>
-      가격은 단지별 마지막 거래가 있었던 달의 평균 거래가예요(국토교통부 매매 실거래 신고{data?.fromMonth ? `, ${data.fromMonth.replace('-', '.')}~${data.toMonth.replace('-', '.')}` : ''}, 계약일 기준, 해제 거래 제외, 호가 아님). 1년 넘게 거래가 없던 단지는 흐리게 표시하고 그 달을 적어요.
+      가격은 단지별 마지막 거래가 있었던 달의 평균 거래가예요(국토교통부 매매 실거래 신고{data?.fromMonth ? `, ${data.fromMonth.replace('-', '.')}~${data.toMonth.replace('-', '.')}` : ''}, 계약일 기준, 해제 거래 제외, 호가 아님). 1년 넘게 거래가 없던 단지는 색을 빼서 표시하고 그 달을 적어요.
       {filters.mode === 'pyeong' || filters.unit === 'pyeong' ? ` 평형은 전용면적×${SUPPLY_RATIO}로 추정한 공급 평형이에요(실제와 1~2평 다를 수 있어요). 평당 가격은 전용면적 3.3㎡당이에요.` : ''}
     </Typography>
   </Box>;
@@ -278,8 +279,8 @@ export function NearbySummary({ query, onFocus }) {
     const place = data.places.find(item => item.kind === kind);
     return { kind, place, text: place ? nearbyText(place) : null };
   });
-  return <Box className="pm-nearby" role="list" aria-label="가까운 시설">
-    {found.map(({ kind, place, text }) => <button key={kind} type="button" role="listitem" disabled={!place} onClick={() => place && onFocus(place)}>
+  return <Box className="pm-nearby" role="group" aria-label="가까운 시설">
+    {found.map(({ kind, place, text }) => <button key={kind} type="button" disabled={!place} onClick={() => place && onFocus(place)}>
       <i className={`pm-nearby-icon is-${kind.toLowerCase()}`} aria-hidden="true">{NEARBY_KIND[kind].short}</i>
       <span><small>가까운 {NEARBY_KIND[kind].label}</small><b>{text ? text.name : `반경 ${measureText(data.radius)} 안에 없어요`}</b>{text && <small>{text.distance}</small>}</span>
     </button>)}
