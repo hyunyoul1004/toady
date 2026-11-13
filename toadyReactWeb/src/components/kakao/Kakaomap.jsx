@@ -8,9 +8,9 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import {ensureKakaoLoaded} from '@/config/ensureKakaoLoaded';
 import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
-import {resolveLocation} from '@/features/announcement/location/resolveLocation';
+import {municipality,resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
-import {GROUP_LEVELS,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
+import {GROUP_LEVELS,northOf,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
 import {ComplexList,ComplexPanel,NearbySummary,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
@@ -70,7 +70,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         areaShapes.push(new kakao.maps.Circle({map,center:coords,radius:700,strokeWeight:2,strokeColor:'#7c3aed',strokeOpacity:.8,strokeStyle:'dash',fillColor:'#7c3aed',fillOpacity:.05}));
       }
       if(approx){const tag=document.createElement('div');tag.className='pm-approx-tag';tag.textContent=`${approx.name} 일대(추정) · 부지 미확정`;
-        areaShapes.push(new kakao.maps.CustomOverlay({map,position:coords,content:tag,yAnchor:.5,zIndex:2}));}
+        // 이름표는 원의 위쪽 가장자리에 둔다(가운데 생기는 법정동 묶음 말풍선과 겹치지 않게).
+        const top=approx.level==='dong'?northOf({lat:approx.latitude,lng:approx.longitude},700):{lat:approx.latitude,lng:approx.longitude};
+        areaShapes.push(new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(top.lat,top.lng),content:tag,yAnchor:.5,zIndex:6}));}
       // 실거래 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시하므로 기본 핀은 직접 검색한 위치·가격 미제공일 때만 둔다.
       if((!showPrices || manualResult) && !approx)marker=new kakao.maps.Marker({map,position:coords});
       map.addControl(new kakao.maps.ZoomControl(),kakao.maps.ControlPosition.RIGHT);
@@ -302,7 +304,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   }
   function backToAnnouncement() {generation.current++;setManualResult(null);setSearchMessage('');setSearching(false);setText('');if(showPrices)priceMap.setFilters({query:''});}
 
-  const original=detail.hssplyAdres || detail.supplyLocation || '공급위치 미제공';
+  // 시·군·구가 없는 값(예: 공급지역명 '경기')은 주소가 아니다. 오피스텔·도시형 일부는 청약홈 자료에 주소가 없어 이렇게 온다.
+  const rawAddress=detail.hssplyAdres || detail.supplyLocation || '';
+  const hasAddress=municipality(rawAddress).length>0;
+  const original=hasAddress?rawAddress:(rawAddress && rawAddress!=='-'?`${rawAddress} (상세 주소 미제공)`:'공급위치 미제공');
   const tradesOff=priceMap.capabilities.data && priceMap.capabilities.data.tradesEnabled!==true;
   const unsupported=priceMap.query.data?.status==='UNSUPPORTED';
   const priceError=priceMap.query.isError || (priceMap.query.data && !['READY','EMPTY','UNSUPPORTED'].includes(priceMap.query.data.status));
@@ -325,14 +330,14 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       <Typography sx={{fontSize:14,fontWeight:700,mt:.25,overflowWrap:'anywhere'}}>{original}</Typography>
       {location.data?.status==='ADDRESS' && <Typography className="loc-status is-exact" variant="caption" component="p">지번 확인 · {location.data.address}</Typography>}
       {location.data?.status==='UNRESOLVED' && <Typography className="loc-status is-approx" variant="caption" component="p">
-        {detail.hssplyAdres || detail.supplyLocation?'지구·블록 단위 주소라 정확한 부지는 확인되지 않았어요.':'청약홈에 공급 위치가 제공되지 않은 공고예요.'}
+        {hasAddress?'지구·블록 단위 주소라 정확한 부지는 확인되지 않았어요.':'청약홈 자료에 공급 위치(주소)가 없어 지도에 표시할 수 없어요. 모집공고 원문에서 확인해 주세요.'}
         {location.data.area?` 지도는 ${location.data.area.name} 일대를 추정으로 보여 주고, 공고 위치 핀은 놓지 않아요.`:''}</Typography>}
     </Paper>
     {announced && !manualResult && <NearbySummary query={nearby} onFocus={focusPlace}/>}
     {(location.isLoading || location.isFetching) && <Box sx={{p:3,display:'flex',gap:1}}><CircularProgress size={20}/>공급위치를 확인하고 있어요.</Box>}
     {location.error && <Alert severity="warning" action={<Button onClick={()=>location.refetch()}>다시 확인</Button>}>위치 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</Alert>}
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:1}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}
-    {location.data && location.data.status!=='ADDRESS' && !approxArea && <PriceMapUnavailable reason="주변 실거래가는 공급 주소(지번)가 확인된 공고에서만 보여 드려요. 확인되지 않은 위치 주변의 가격은 표시하지 않습니다."/>}
+    {location.data && location.data.status!=='ADDRESS' && !approxArea && hasAddress && <PriceMapUnavailable reason="주변 실거래가는 공급 주소(지번)가 확인된 공고에서만 보여 드려요. 확인되지 않은 위치 주변의 가격은 표시하지 않습니다."/>}
     {showPrices && <Typography component="h3" sx={{m:0,mt:2,fontSize:16,fontWeight:800}}>주변 아파트 실거래가</Typography>}
     {!visible && <>{(location.data || manualResult) && searchBar}{searchHint && <Typography variant="caption" color="text.secondary" component="p" sx={{mt:-1,mb:1}}>{searchHint}</Typography>}{searchMessage && <Alert severity="warning" sx={{mb:1}}>{searchMessage}</Alert>}</>}
     {visible && <>

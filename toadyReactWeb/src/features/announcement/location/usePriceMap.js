@@ -3,7 +3,7 @@ import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { DEFAULT_FILTERS, defaultAreaRange, mergeSales, migrateStoredFilters, normalizeFilters, sameParcel, splitComplexes } from './priceMapRules';
+import { DEFAULT_FILTERS, defaultAreaRange, isSameComplex, mergeSales, migrateStoredFilters, normalizeFilters, splitComplexes } from './priceMapRules';
 
 const STORAGE_KEY = 'toady.priceMap';
 /** 면적 범위는 공고마다 따로 기억한다(공고 id → { areaMin, areaMax }, 최근 40개). */
@@ -116,7 +116,8 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
     return [...seen.values()];
   }, [queries.map(item => item.dataUpdatedAt).join(','), districts.length]);
   // 이 공고와 같은 필지의 실거래 단지(무순위·잔여세대 등 이미 지어진 단지). 지도에서는 이 공고 말풍선 하나로 합친다.
-  const siteComplex = useMemo(() => complexes.find(complex => sameParcel(complex, location)) || null, [complexes, location?.address, location?.dong]);
+  const siteType = String(currentId).split('/')[0], siteYear = Number(koreaToday().slice(0, 4));
+  const siteComplex = useMemo(() => complexes.find(complex => isSameComplex(complex, location, { type: siteType, year: siteYear })) || null, [complexes, location?.address, location?.dong, siteType, siteYear]);
   const loadingOthers = others.some(item => item.isFetching);
   const pending = queries.reduce((sum, item) => sum + (item.data?.pending || 0), 0);
 

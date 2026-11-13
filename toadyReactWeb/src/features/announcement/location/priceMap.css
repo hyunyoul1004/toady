@@ -176,3 +176,16 @@
 .pm-nearby-icon.is-station{background:#0369a1}.pm-nearby-icon.is-school{background:#15803d}.pm-nearby-icon.is-mart{background:#c2410c}
 .pm-place{display:inline-flex;align-items:center;gap:4px;padding:2px 7px 2px 3px;border-radius:999px;background:#fff;border:1px solid #cbd5e1;font-size:11px;font-weight:700;color:#0f172a;box-shadow:0 1px 3px rgba(15,23,42,.2);white-space:nowrap}
 .pm-place .pm-nearby-icon{min-width:18px;height:18px;border-radius:999px;font-size:9.5px}
+/* 모바일: 가까운 시설은 가로 한 줄(밀어서 보기)로 줄여 지도가 첫 화면에 더 보이게 한다. 칩 안에 '직선'이 이미 적혀 있어 긴 안내문은 숨긴다. */
+@media (max-width:600px){
+  .pm-nearby{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-bottom:6px}
+  .pm-nearby::-webkit-scrollbar{display:none}
+  .pm-nearby>button{flex:0 0 auto;max-width:210px}
+  .pm-nearby>p{display:none}
+  .loc-summary{padding:10px 12px!important}
+}
+@media (max-width:600px){
+  .loc-summary>p:first-of-type{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .pm-nearby>button span>small:first-child{display:none}
+  .pm-nearby>button{min-height:44px;padding:4px 10px}
+}

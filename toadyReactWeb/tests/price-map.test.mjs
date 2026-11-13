@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW, nearbyText
+, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW, nearbyText, isSameComplex
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -314,4 +314,13 @@ test('가까운 시설은 직선거리와 걷기 시간을 함께 밝힌다', ()
   assert.deepEqual(nearbyText({ kind: 'STATION', name: '운정중앙역 경의중앙선', distance: 420 }), { label: '지하철역', short: '역', name: '운정중앙역 경의중앙선', distance: '직선 420m · 걸어서 약 6분' });
   assert.equal(nearbyText({ kind: 'SCHOOL', name: '물향기초등학교', distance: 1350 }).distance, '직선 1.4km · 걸어서 약 20분');
   assert.equal(nearbyText({ kind: 'PARK', name: 'x', distance: 1 }), null);
+});
+
+test('같은 지번이라도 재건축 전 옛 아파트는 이 단지로 보지 않는다', () => {
+  const location = { address: '경북 구미시 형곡동 141-11' };
+  const old = { dong: '형곡동', jibun: '141-11', buildYear: '1986' }, built = { dong: '형곡동', jibun: '141-11', buildYear: '2025' };
+  assert.equal(isSameComplex(old, location, { type: 'apt', year: 2026 }), false, '신축 분양 + 옛 준공 단지');
+  assert.equal(isSameComplex(built, location, { type: 'apt', year: 2026 }), true, '최근 준공 단지');
+  assert.equal(isSameComplex(old, location, { type: 'remaining', year: 2026 }), true, '무순위는 이미 지어진 단지의 공고');
+  assert.equal(isSameComplex({ ...built, jibun: '141-12' }, location, { type: 'remaining', year: 2026 }), false);
 });

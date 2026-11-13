@@ -241,7 +241,7 @@ export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale 
             <span role="cell"><b>{shortPrice(unit.amountManwon)}</b><small>{perLabel(areaUnit)} {shortPrice(perPyeong(unit.amountManwon, unit.area))}</small></span>
             <span role="cell">{gap.loading ? <small>불러오는 중…</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
               <small>{row.basis === 'new' ? '신축' : '전체 연식'} {row.basisCount}건 · {row.scope === 'DONG' ? (gap.precise?.dong || '같은 동') : '같은 시·군·구'}</small>
-              <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>{gap.enabled ? '비교할 거래 부족' : '비교 불가'}</small>}</span>
+              <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>{gap.enabled ? '비교할 거래 부족' : sale || precise ? '비교 불가' : '부지 미확정이라 비교하지 않아요'}</small>}</span>
           </div>;
         })}
       </Box>

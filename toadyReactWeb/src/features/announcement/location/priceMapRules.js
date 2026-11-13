@@ -442,10 +442,20 @@ export function defaultAreaRange(units = []) {
 }
 
 /** 가까운 시설 종류 이름과 지도 표시 글자. */
-export const NEARBY_KIND = { STATION: { label: '지하철역', short: '역' }, SCHOOL: { label: '초등학교', short: '초' }, MART: { label: '대형마트', short: '마트' } };
+export const NEARBY_KIND = { STATION: { label: '지하철역', short: '역' }, SCHOOL: { label: '초등학교', short: '초' }, MART: { label: '마트', short: '마트' } };
 /** 가까운 시설 한 줄: 거리는 직선거리임을 밝히고 걷기 시간(분당 67m)을 함께 쓴다. */
 export function nearbyText(place) {
   const kind = NEARBY_KIND[place?.kind];
   if (!kind || !Number.isFinite(place?.distance)) return null;
   return { label: kind.label, short: kind.short, name: place.name, distance: `직선 ${measureText(place.distance)} · 걸어서 약 ${travelMinutes(place.distance).walk}분` };
+}
+
+/**
+ * 공고와 '같은 단지'로 볼 실거래 단지: 같은 필지이면서, 무순위·잔여세대·임의공급(이미 지어진 단지의 공고)이거나
+ * 그 단지 준공이 최근 3년 안일 때. 재건축 신축 분양처럼 같은 지번의 옛 아파트(철거 전 거래)는 같은 단지로 보지 않는다.
+ */
+export function isSameComplex(complex, location, { type = '', year = new Date().getFullYear() } = {}) {
+  if (!sameParcel(complex, location)) return false;
+  if (['remaining', 'optional'].includes(type)) return true;
+  return /^\d{4}$/.test(complex?.buildYear || '') && year - Number(complex.buildYear) <= 3;
 }
