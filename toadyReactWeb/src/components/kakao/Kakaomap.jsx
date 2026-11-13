@@ -1,5 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
+import {useQuery} from '@tanstack/react-query';
+import apiClient from '@/api/client';
 import {Alert,Box,Button,CircularProgress,IconButton,InputAdornment,Paper,TextField,Typography} from '@mui/material';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
@@ -9,7 +11,7 @@ import {useAnnouncementLocation} from '@/features/announcement/location/useAnnou
 import {resolveLocation} from '@/features/announcement/location/resolveLocation';
 import {usePriceMap} from '@/features/announcement/location/usePriceMap';
 import {GROUP_LEVELS,areaText,saleAreaText,bubbleText,ageTone,displayTier,groupRows,inView,isAddressLike,isStaleMonth,outsideText,saleStatusLabel,saleStatusOf,shortPrice,supplyForBand} from '@/features/announcement/location/priceMapRules';
-import {ComplexList,ComplexPanel,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
+import {ComplexList,ComplexPanel,NearbySummary,PriceModeToggle,PriceMapFilters,PriceMapStatus,PriceMapUnavailable,SalePanel} from '@/features/announcement/location/PriceMapParts';
 import {MapToolbar,useMapTools} from '@/features/announcement/location/MapTools';
 import './kakao.css';
 
@@ -42,6 +44,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const supply=supplyForBand(detail.unitPrices || [],priceMap.filters);
   // 표시 단계: 축소 레벨 + 화면 밀도(레벨 5에서도 화면 안 단지가 많으면 법정동 묶음).
   const tier=displayTier(mapLevel,priceMap.rows,view);
+  // 가까운 역·초등학교·대형마트: 확정 지번 좌표가 있을 때만(서버가 카카오 키로 조회, 직선거리).
+  const nearby=useQuery({queryKey:['nearbyPlaces',announced?.latitude?.toFixed(4),announced?.longitude?.toFixed(4)],enabled:Boolean(announced),staleTime:86400000,retry:false,
+    queryFn:()=>apiClient.get('/api/v1/research/nearby',{lat:Number(announced.latitude.toFixed(5)),lng:Number(announced.longitude.toFixed(5))})});
   // 거리 재기·반경의 기준: 지금 지도 가운데 있는 확정 위치(공고 위치 또는 직접 검색한 주소). 검색 후보 위치는 기준으로 쓰지 않는다.
   const origin=precise?{lat:result.latitude,lng:result.longitude}:null;
   const tools=useMapTools({mapRef,kakaoRef,mapReady,origin});
@@ -113,6 +118,28 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     const overlay=new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(announced.latitude,announced.longitude),content:button,yAnchor:1,clickable:true,zIndex:5});
     return()=>{overlay.setMap(null);saleRef.current=null;};
   },[mapReady,showPrices,announced,supply?.amount,supply?.area,supply?.pyeong,priceMap.filters.mode,priceMap.filters.unit,detail.houseNm,siteStatus]);
+
+  // 가까운 시설 표시(역·초·마트). 이름은 textContent로만 넣는다.
+  useEffect(()=>{
+    const map=mapRef.current,kakao=kakaoRef.current;
+    const places=nearby.data?.status==='READY'?nearby.data.places:[];
+    if(!map || !kakao || !places.length || manualResult)return;
+    const overlays=places.map(place=>{
+      const tag=document.createElement('div');tag.className='pm-place';
+      const icon=document.createElement('i');icon.className=`pm-nearby-icon is-${place.kind.toLowerCase()}`;icon.textContent=({STATION:'역',SCHOOL:'초',MART:'마트'})[place.kind] || '';
+      const name=document.createElement('span');name.textContent=place.name;
+      tag.append(icon,name);
+      return new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(place.lat,place.lng),content:tag,yAnchor:.5,zIndex:1});
+    });
+    return()=>overlays.forEach(overlay=>overlay.setMap(null));
+  },[mapReady,nearby.data,manualResult]);
+  function focusPlace(place) {
+    const map=mapRef.current,kakao=kakaoRef.current;
+    if(!map || !kakao)return;
+    if(map.getLevel()>5)map.setLevel(5);
+    map.panTo(new kakao.maps.LatLng(place.lat,place.lng));
+    container.current?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
 
   // 단지 가격 말풍선. 글자는 textContent로만 넣는다(단지명은 외부 자료). 거리를 재는 중에는 누르면 그 단지를 지점으로 더한다.
   useEffect(()=>{
@@ -301,6 +328,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         {detail.hssplyAdres || detail.supplyLocation?'지구·블록 단위 주소라 정확한 부지는 확인되지 않았어요.':'청약홈에 공급 위치가 제공되지 않은 공고예요.'}
         {location.data.area?` 지도는 ${location.data.area.name} 일대를 추정으로 보여 주고, 공고 위치 핀은 놓지 않아요.`:''}</Typography>}
     </Paper>
+    {announced && !manualResult && <NearbySummary query={nearby} onFocus={focusPlace}/>}
     {(location.isLoading || location.isFetching) && <Box sx={{p:3,display:'flex',gap:1}}><CircularProgress size={20}/>공급위치를 확인하고 있어요.</Box>}
     {location.error && <Alert severity="warning" action={<Button onClick={()=>location.refetch()}>다시 확인</Button>}>위치 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</Alert>}
     {result?.status==='CANDIDATE' && <Alert severity="warning" sx={{mb:1}} action={<Button onClick={()=>setShowCandidate(x=>!x)}>{showCandidate?'후보 숨기기':'검색 후보 보기'}</Button>}>단지명과 일치하는 검색 후보가 있으나 실제 부지는 확인되지 않았습니다. 견본주택·사업지 여부를 확인해 주세요.</Alert>}

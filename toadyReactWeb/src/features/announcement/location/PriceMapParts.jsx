@@ -6,7 +6,7 @@ import SyncAltRounded from '@mui/icons-material/SyncAltRounded';
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import { distanceMeters as distanceMetersSafe } from './priceMapRules';
-import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice } from './priceMapRules';
+import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PERIODS, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND } from './priceMapRules';
 import { usePriceGapFor } from '@/features/match/usePriceGap';
 import { gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
 import './priceMap.css';
@@ -257,5 +257,26 @@ export function PriceModeToggle({ filters, setFilters }) {
   return <Box className="pm-mode-toggle" role="radiogroup" aria-label="지도에 표시할 가격">
     {PRICE_MODES.map(option => <button key={option.value} type="button" role="radio" aria-checked={filters.mode === option.value}
       className={filters.mode === option.value ? 'is-on' : ''} onClick={() => setFilters({ mode: option.value })}>{option.label}</button>)}
+  </Box>;
+}
+
+/**
+ * 공고 위치에서 가장 가까운 지하철역·초등학교·대형마트(반경 3km, 직선거리). 누르면 지도를 그곳으로 옮긴다.
+ * 학군 배정·실제 걷는 길은 반영하지 않는다는 점을 함께 적는다.
+ */
+export function NearbySummary({ query, onFocus }) {
+  if (query.isLoading) return <Box className="pm-nearby" aria-busy="true"><Typography variant="caption" color="text.secondary">가까운 역·학교·마트를 찾는 중이에요…</Typography></Box>;
+  const data = query.data;
+  if (!data || data.status !== 'READY') return null;
+  const found = Object.keys(NEARBY_KIND).map(kind => {
+    const place = data.places.find(item => item.kind === kind);
+    return { kind, place, text: place ? nearbyText(place) : null };
+  });
+  return <Box className="pm-nearby" role="list" aria-label="가까운 시설">
+    {found.map(({ kind, place, text }) => <button key={kind} type="button" role="listitem" disabled={!place} onClick={() => place && onFocus(place)}>
+      <i className={`pm-nearby-icon is-${kind.toLowerCase()}`} aria-hidden="true">{NEARBY_KIND[kind].short}</i>
+      <span><small>가까운 {NEARBY_KIND[kind].label}</small><b>{text ? text.name : `반경 ${measureText(data.radius)} 안에 없어요`}</b>{text && <small>{text.distance}</small>}</span>
+    </button>)}
+    <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0, flexBasis: '100%' }}>카카오 지도 기준 직선거리예요. 실제 걷는 길·학교 배정(학군)은 다를 수 있어요.</Typography>
   </Box>;
 }

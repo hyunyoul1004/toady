@@ -51,6 +51,8 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("complex", Set.of("GET"), List.of("/api/v1/research/complexes", "/api/v1/research/sales"), Set.of(), 120, 1200),
             // 분양가 비교는 요청 한 번이 시·군·구 6개월(외부 호출 6회 이상)을 읽으므로 실거래 목록보다 낮게 둔다.
             new Rule("gap", Set.of("GET"), List.of("/api/v1/research/price-gap"), Set.of(), 20, 150),
+            // 가까운 시설: 요청 한 번이 카카오 카테고리 검색 3회. 같은 지점은 서버가 하루 기억한다.
+            new Rule("nearby", Set.of("GET"), List.of("/api/v1/research/nearby"), Set.of(), 30, 300),
             new Rule("summary", Set.of("POST"), List.of(), Set.of("/api/v1/planner/summaries", "/api/v1/planner/results"), 60, 1000),
             new Rule("analytics", Set.of("POST"), List.of("/api/v1/analytics/"), Set.of(), 300, 3000),
             // 댓글 작성·수정: 도배와 저장소 증가를 막는다(회원만 쓸 수 있어 넉넉하지 않게).

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW
+, travelMinutes, measureText, northOf, isAddressLike, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, saleStatusOf, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS, unitAreaLabel, sameParcel, saleAreaText, supplyForBand as supplyBand, displayTier, defaultAreaRange, DENSE_IN_VIEW, nearbyText
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -308,4 +308,10 @@ test('면적 기본값은 이 공고 주택형 범위', () => {
   assert.deepEqual(defaultAreaRange([{ area: 39.3 }]), { areaMin: 34, areaMax: 45 });
   assert.deepEqual(defaultAreaRange([]), { areaMin: 0, areaMax: 165 }, '주택형 정보가 없으면 전체');
   assert.deepEqual(defaultAreaRange([{ area: 12 }, { area: 163 }]), { areaMin: 7, areaMax: 165 }, '최대 쪽 끝 근처는 제한 없음으로');
+});
+
+test('가까운 시설은 직선거리와 걷기 시간을 함께 밝힌다', () => {
+  assert.deepEqual(nearbyText({ kind: 'STATION', name: '운정중앙역 경의중앙선', distance: 420 }), { label: '지하철역', short: '역', name: '운정중앙역 경의중앙선', distance: '직선 420m · 걸어서 약 6분' });
+  assert.equal(nearbyText({ kind: 'SCHOOL', name: '물향기초등학교', distance: 1350 }).distance, '직선 1.4km · 걸어서 약 20분');
+  assert.equal(nearbyText({ kind: 'PARK', name: 'x', distance: 1 }), null);
 });

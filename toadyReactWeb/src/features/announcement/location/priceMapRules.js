@@ -440,3 +440,12 @@ export function defaultAreaRange(units = []) {
   const low = Math.max(AREA_RANGE.min, Math.floor(Math.min(...areas)) - 5), high = Math.min(AREA_RANGE.max, Math.ceil(Math.max(...areas)) + 5);
   return { areaMin: low <= AREA_RANGE.min + 5 ? AREA_RANGE.min : low, areaMax: high >= AREA_RANGE.max - 5 ? AREA_RANGE.max : high };
 }
+
+/** 가까운 시설 종류 이름과 지도 표시 글자. */
+export const NEARBY_KIND = { STATION: { label: '지하철역', short: '역' }, SCHOOL: { label: '초등학교', short: '초' }, MART: { label: '대형마트', short: '마트' } };
+/** 가까운 시설 한 줄: 거리는 직선거리임을 밝히고 걷기 시간(분당 67m)을 함께 쓴다. */
+export function nearbyText(place) {
+  const kind = NEARBY_KIND[place?.kind];
+  if (!kind || !Number.isFinite(place?.distance)) return null;
+  return { label: kind.label, short: kind.short, name: place.name, distance: `직선 ${measureText(place.distance)} · 걸어서 약 ${travelMinutes(place.distance).walk}분` };
+}
