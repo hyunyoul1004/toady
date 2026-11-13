@@ -71,6 +71,8 @@ export function usePriceMap(location, enabled, currentId = '') {
   // 청약 중·예정과 분양 완료(입주 전) 공고. 지번으로 위치를 확정하지 못한 공고는 지도에 놓지 않고 unlocatedSales로 따로 둔다.
   const { sales, unlocated: unlocatedSales } = useMemo(() => mergeSales(saleQueries.map(item => item.data), currentId),
     [saleQueries.map(item => item.dataUpdatedAt).join(','), currentId]);
+  // 시·군·구 묶음 이름: 시군구코드(5자리) → '파주시'.
+  const districtNames = useMemo(() => Object.fromEntries(districts.map(item => [item.bcode.slice(0, 5), String(item.region || '').split(' ').pop()])), [districts]);
   const query = queries[0] || { data: undefined, isLoading: false, isFetching: false, isError: false, refetch: () => {} };
   const others = queries.slice(1);
   const complexes = useMemo(() => {
@@ -90,5 +92,5 @@ export function usePriceMap(location, enabled, currentId = '') {
   const selected = selectedKey && !selectedSale ? complexes.find(item => item.key === selectedKey) || null : null;
   const selectedRow = selected ? rows.find(row => row.key === selected.key) || outside.find(row => row.key === selected.key) || { ...selected, rep: null, distance: Infinity } : null;
   return { capabilities, available: Boolean(bcode), ready, query, filters, setFilters, rows, outside, origin, year, selected: selectedRow, select: setSelectedKey,
-    addDistrict, districtCount: districts.length, unlocatedSales, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
+    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
 }

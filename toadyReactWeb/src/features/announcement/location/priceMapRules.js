@@ -343,3 +343,46 @@ export function mergeSales(responses = [], currentId = '') {
   responses.forEach(data => (data?.unlocated || []).forEach(item => { if (item.id !== currentId && !sales.has(item.id) && !unlocated.has(item.id)) unlocated.set(item.id, item); }));
   return { sales: [...sales.values()], unlocated: [...unlocated.values()] };
 }
+
+/**
+ * 지도 축소 단계별 표시 방식. 카카오 레벨이 클수록 넓게 본다.
+ * single: 단지별 말풍선(레벨 5 이하) · dong: 법정동 묶음(6~8) · district: 시·군·구 묶음(9 이상).
+ */
+export const GROUP_LEVELS = { dong: 6, district: 9 };
+export function groupTier(level) {
+  return level >= GROUP_LEVELS.district ? 'district' : level >= GROUP_LEVELS.dong ? 'dong' : 'single';
+}
+/** 화면 범위(view: {swLat, swLng, neLat, neLng}) 안에 있는지. pad: 범위 바깥으로 더 볼 비율(옮길 때 빈 곳이 안 보이게). */
+export function inView(point, view, pad = 0.3) {
+  if (!view || !Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) return Boolean(!view && Number.isFinite(point?.lat));
+  const dLat = (view.neLat - view.swLat) * pad, dLng = (view.neLng - view.swLng) * pad;
+  return point.lat >= view.swLat - dLat && point.lat <= view.neLat + dLat && point.lng >= view.swLng - dLng && point.lng <= view.neLng + dLng;
+}
+const median = values => {
+  const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+};
+/**
+ * 지도에 놓인 단지(rows)를 법정동 또는 시·군·구로 묶는다. 단지 key의 앞부분(시군구코드|법정동)을 쓴다.
+ * price: 묶음 안 단지 대표 가격(거래가 또는 평당가)의 중간값. lat·lng: 단지 좌표 평균. bounds: 누르면 이 범위로 확대한다.
+ * names: 시군구코드(5자리) → 시·군·구 이름('파주시').
+ */
+export function groupRows(rows = [], tier = 'dong', { mode = 'latest', names = {} } = {}) {
+  const groups = new Map();
+  rows.filter(row => row.rep && Number.isFinite(row.lat) && Number.isFinite(row.lng)).forEach(row => {
+    const [lawd5 = '', dong = ''] = String(row.key || '').split('|');
+    const key = tier === 'district' ? lawd5 : `${lawd5}|${dong || row.dong}`;
+    const label = tier === 'district' ? (names[lawd5] || '시·군·구') : String(dong || row.dong || '').split(' ').pop();
+    if (!groups.has(key)) groups.set(key, { key, label, members: [] });
+    groups.get(key).members.push(row);
+  });
+  return [...groups.values()].map(({ key, label, members }) => {
+    const lats = members.map(row => row.lat), lngs = members.map(row => row.lng);
+    return {
+      key, label, count: members.length,
+      price: median(members.map(row => (mode === 'pyeong' ? row.rep.pyeong : row.rep.latest))),
+      lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+      bounds: { swLat: Math.min(...lats), swLng: Math.min(...lngs), neLat: Math.max(...lats), neLng: Math.max(...lngs) }
+    };
+  }).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}

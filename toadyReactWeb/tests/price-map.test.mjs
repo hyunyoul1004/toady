@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shortPrice, fullPrice, perPyeong, representative, filterComplexes, normalizeFilters, bubbleText, ageTone, supplyForBand, distanceMeters, distanceText
-, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, moveInText, mergeSales
+, travelMinutes, measureText, northOf, isAddressLike, nearbyMedian, areaText, areaBandLabel, AREA_BANDS, areaRangeText, isAreaFiltered, priceRangeText, isPriceFiltered, rangePrice, isStaleMonth, monthPrice, monthLabel, splitComplexes, outsideText, mapSummary, PYEONG_HINT, supplyPyeong, areaForSupplyPyeong, migrateStoredFilters, AREA_MARKS_PYEONG, saleStatusLabel, moveInText, mergeSales, groupTier, groupRows, inView, GROUP_LEVELS
 } from '../src/features/announcement/location/priceMapRules.js';
 
 const complex = (name, buildYear, areas, lat = 37.72, lng = 126.75, dong = '동패동') => ({ key: name, name, dong, jibun: '1', buildYear, lat, lng, count: areas.reduce((s, a) => s + a.count, 0), areas });
@@ -227,4 +227,45 @@ test('분양 말풍선: 청약 중·예정·분양 완료를 구분하고, 위�
   const merged = mergeSales([a, b, undefined], 'apt/cur/cur');
   assert.deepEqual(merged.sales.map(sale => sale.id), ['apt/1/1', 'apt/2/2', 'apt/3/3'], '지금 공고는 빼고 같은 공고는 한 번만');
   assert.deepEqual(merged.unlocated.map(item => item.id), ['apt/4/4'], '다른 지역 응답에서 지도에 놓인 공고는 미확정 목록에서 뺀다');
+});
+
+test('넓게 보면 법정동·시군구로 묶고, 묶음 가격은 대표 가격의 중간값', () => {
+  assert.equal(groupTier(5), 'single');
+  assert.equal(groupTier(GROUP_LEVELS.dong), 'dong');
+  assert.equal(groupTier(8), 'dong');
+  assert.equal(groupTier(GROUP_LEVELS.district), 'district');
+  const row = (key, dong, latest, pyeong, lat, lng) => ({ key, dong, rep: { latest, pyeong }, lat, lng });
+  const rows = [
+    row('41480|동패동|1', '동패동', 60000, 2500, 37.71, 126.72),
+    row('41480|동패동|2', '동패동', 80000, 3000, 37.72, 126.73),
+    row('41480|동패동|3', '동패동', 70000, 2800, 37.73, 126.74),
+    row('41480|조리읍 봉일천리|5', '조리읍 봉일천리', 30000, 1500, 37.74, 126.80),
+    row('41285|식사동|9', '식사동', 90000, 3500, 37.68, 126.81),
+    { key: '41480|동패동|7', dong: '동패동', rep: { latest: 1, pyeong: 1 }, lat: null, lng: null },
+    { key: '41480|동패동|8', dong: '동패동', rep: null, lat: 37.7, lng: 126.7 }
+  ];
+  const dong = groupRows(rows, 'dong', { names: { 41480: '파주시', 41285: '일산동구' } });
+  assert.deepEqual(dong.map(g => [g.label, g.count, g.price]), [['동패동', 3, 70000], ['봉일천리', 1, 30000], ['식사동', 1, 90000]], '위치 없는 단지·대표 거래 없는 단지는 빼고 중간값');
+  assert.deepEqual(dong[0].bounds, { swLat: 37.71, swLng: 126.72, neLat: 37.73, neLng: 126.74 });
+  assert.ok(Math.abs(dong[0].lat - 37.72) < 1e-9);
+  const district = groupRows(rows, 'district', { mode: 'pyeong', names: { 41480: '파주시', 41285: '일산동구' } });
+  assert.deepEqual(district.map(g => [g.label, g.count, g.price]), [['파주시', 4, 2650], ['일산동구', 1, 3500]], '평당가 모드면 평당가 중간값');
+  assert.equal(groupRows(rows, 'district')[1].label, '시·군·구', '이름을 모르면 일반 이름');
+});
+
+test('단지별 말풍선은 화면 근처만 만든다', () => {
+  const view = { swLat: 37.70, swLng: 126.70, neLat: 37.72, neLng: 126.74 };
+  assert.equal(inView({ lat: 37.71, lng: 126.72 }, view), true);
+  assert.equal(inView({ lat: 37.725, lng: 126.72 }, view), true, '가장자리 바깥 30%까지는 미리 만든다');
+  assert.equal(inView({ lat: 37.80, lng: 126.72 }, view), false);
+  assert.equal(inView({ lat: 37.80, lng: 126.72 }, null), true, '범위를 아직 모르면 모두');
+  assert.equal(inView({ lat: null, lng: null }, view), false);
+});
+
+test('큰 시·군·구(단지 3,000곳)도 묶음 계산이 가볍다', () => {
+  const many = Array.from({ length: 3000 }, (_, i) => ({ key: `41110|동${i % 40}|${i}`, dong: `동${i % 40}`, rep: { latest: 50000 + i, pyeong: 2000 }, lat: 37 + (i % 100) / 1000, lng: 127 + (i % 77) / 1000 }));
+  const started = performance.now();
+  const groups = groupRows(many, 'dong');
+  assert.equal(groups.length, 40);
+  assert.ok(performance.now() - started < 200, '200ms 안');
 });

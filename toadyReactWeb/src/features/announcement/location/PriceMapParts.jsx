@@ -96,7 +96,7 @@ function AreaFilter({ filters, setFilters }) {
 }
 
 /** 지도 아래 상태 줄과 범례. */
-export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false }) {
+export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false, grouped = '' }) {
   const data = query.data;
   const summary = mapSummary(rows, outside);
   return <Box className="price-map-status">
@@ -107,6 +107,7 @@ export function PriceMapStatus({ query, rows, outside = [], sales = [], unlocate
       {query.isFetching && !query.isLoading && <Typography component="span" variant="caption" color="text.secondary"> · 갱신 중</Typography>}
     </Typography>
     {districtCount > 1 && <Typography variant="caption" color="text.secondary">지도에 보이는 시·군·구 {districtCount}곳의 거래를 함께 보여 줘요.{loadingOthers ? ' 옮긴 지역을 불러오는 중…' : ''}</Typography>}
+    {grouped && <Typography variant="caption" color="text.secondary">지도를 넓게 봐서 {grouped === 'district' ? '시·군·구' : '법정동'}별로 묶어 보여 줘요(가격은 묶음 안 단지 대표 가격의 중간값). 묶음을 누르면 확대돼요. 분양 공고는 따로 표시해요.</Typography>}
     {zoomedOut && <Typography variant="caption" color="text.secondary">지도를 확대하면 옮긴 지역의 가격도 불러와요.</Typography>}
     {summary.unplaced - pending > 0 && <Typography variant="caption" color="text.secondary">조건에 맞는 단지 중 {(summary.unplaced - pending).toLocaleString('ko-KR')}곳은 지번으로 위치를 확정하지 못해 지도에는 없고 아래 목록에만 있어요.</Typography>}
     {summary.outside > 0 && <Typography variant="caption" color="text.secondary">회색 점은 최근 거래는 있지만 고른 조건(면적·연식·가격)에 맞는 거래가 없는 단지예요. 누르면 그 단지의 면적별 거래를 볼 수 있어요.</Typography>}
