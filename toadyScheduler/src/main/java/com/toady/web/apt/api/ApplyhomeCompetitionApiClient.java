@@ -2,18 +2,11 @@ package com.toady.web.apt.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.util.UriComponentsBuilder;
-import org.springframework.web.util.UriUtils;
 
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,15 +26,7 @@ public class ApplyhomeCompetitionApiClient {
 		this.baseUrl = baseUrl;
 		this.serviceKey = serviceKey;
 		this.perPage = perPage;
-
-		HttpClient httpClient = HttpClient.newBuilder()
-				.connectTimeout(Duration.ofSeconds(10))
-				.build();
-		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-		requestFactory.setReadTimeout(Duration.ofSeconds(60));
-		this.restClient = RestClient.builder()
-				.requestFactory(requestFactory)
-				.build();
+		this.restClient = ApplyhomeApiClient.createRestClient();
 	}
 
 	/** 재시도 간격(테스트에서 줄인다). 통신 오류·5xx만 다시 시도한다. */
@@ -76,18 +61,6 @@ public class ApplyhomeCompetitionApiClient {
 
 	static URI buildUri(String baseUrl, String endpoint, String serviceKey, int perPage, int page,
 			Map<String, String> filters) {
-		Map<String, String> variables = new LinkedHashMap<>();
-		variables.put("serviceKey", UriUtils.decode(serviceKey, StandardCharsets.UTF_8));
-		UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl)
-				.pathSegment(endpoint)
-				.queryParam("page", page)
-				.queryParam("perPage", perPage)
-				.queryParam("serviceKey", "{serviceKey}");
-		filters.forEach((name, value) -> {
-			String variable = "filter" + variables.size();
-			builder.queryParam(name, "{" + variable + "}");
-			variables.put(variable, value);
-		});
-		return builder.encode().buildAndExpand(variables).toUri();
+		return ApplyhomeApiClient.buildUri(baseUrl, endpoint, serviceKey, perPage, page, filters);
 	}
 }

@@ -137,7 +137,7 @@ public class ApplyhomeSyncService {
 				// 다른 공고의 주택형이 섞여 오면 제공처 전체 이상으로 보고 아무것도 바꾸지 않고 멈춘다(개별 오류만 건너뛴다).
 				if (failure instanceof ResponseMismatchException || Thread.currentThread().isInterrupted()) throw failure;
 				// 인증키 오류·일일 한도 초과는 남은 공고도 모두 실패하므로 바로 멈추고 원인을 남긴다.
-				if (failure instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException) throw failure;
+				if (failure instanceof ApplyhomeApiClient.ProviderRejectedException) throw failure;
 				failures.add(modelEndpoint.replace("get", "").replace("LttotPblancMdl", "") + ":" + key.houseManageNo() + "/" + key.pblancNo());
 				log.warn("Applyhome model sync failed for one announcement endpoint={} key={}/{} error={}",
 						modelEndpoint, key.houseManageNo(), key.pblancNo(), failure.getMessage());

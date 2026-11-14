@@ -9,7 +9,6 @@ public record AdminJob(String id, JobKind kind, String source, LocalDate startDa
         String status, int totalChunks, int completedChunks, boolean cancelRequested, String requestedBy,
         String message, LocalDateTime createdAt, LocalDateTime startedAt, LocalDateTime finishedAt) {
     public boolean isActive() { return Set.of("QUEUED", "RUNNING", "WAITING").contains(status); }
-    public int getProgress() { return totalChunks == 0 ? 0 : completedChunks * 100 / totalChunks; }
     public String getStatusLabel() {
         return switch (status) {
             case "QUEUED" -> "실행 대기";

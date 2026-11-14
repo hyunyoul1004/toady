@@ -1,16 +1,19 @@
 package com.toady.web.apt.scheduler;
 
 import com.toady.web.apt.service.ApplyhomeCompetitionSyncService;
+import com.toady.web.apt.service.ApplyhomeSyncBusyException;
 import com.toady.web.apt.service.ApplyhomeSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -27,8 +30,8 @@ public class ApplyhomeSyncScheduler {
     private final int lookbackDays;
     private final Clock clock;
     /** 관리자 기능을 끈 정적 모드에서 잠금에 걸린 경쟁률 수집을 한 번 더 돌리는 데 쓴다(없으면 재시도하지 않는다). */
-    @Autowired(required = false) private org.springframework.scheduling.TaskScheduler retryScheduler;
-    static final java.time.Duration BUSY_RETRY = java.time.Duration.ofMinutes(10);
+    @Autowired(required = false) private TaskScheduler retryScheduler;
+    static final Duration BUSY_RETRY = Duration.ofMinutes(10);
 
     @Autowired
     public ApplyhomeSyncScheduler(ApplyhomeSyncService syncService,
@@ -62,7 +65,7 @@ public class ApplyhomeSyncScheduler {
         log.info("Starting competition sync from {} through {} at {}", today.minusDays(lookbackDays), today, Instant.now(clock));
         try {
             competitionSyncService.synchronize(today.minusDays(lookbackDays), today);
-        } catch (com.toady.web.apt.service.ApplyhomeSyncBusyException busy) {
+        } catch (ApplyhomeSyncBusyException busy) {
             // 공고 수집이 길어져 잠금이 남아 있으면 이번 회차를 버리지 않고 한 번만 뒤에 다시 시도한다.
             if (retryWhenBusy && retryScheduler != null) {
                 log.warn("Competition sync is busy; retrying once in {} minutes", BUSY_RETRY.toMinutes());

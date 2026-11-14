@@ -1,6 +1,8 @@
 package com.toady.web.apt.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +17,7 @@ import java.util.stream.Collectors;
 public class ApplyhomeCompetitionPersistenceService {
 
 	private static final int BATCH_SIZE = 500;
-	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ApplyhomeCompetitionPersistenceService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(ApplyhomeCompetitionPersistenceService.class);
 
 	private final JdbcTemplate jdbcTemplate;
 

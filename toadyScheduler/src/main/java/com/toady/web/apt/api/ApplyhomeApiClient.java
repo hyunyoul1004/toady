@@ -35,13 +35,17 @@ public class ApplyhomeApiClient {
 		this.baseUrl = baseUrl;
 		this.serviceKey = serviceKey;
 		this.perPage = perPage;
+		this.restClient = createRestClient();
+	}
 
+	/** 공고 API와 경쟁률 API가 같은 연결(10초)·응답(60초) 제한 시간을 쓴다. */
+	static RestClient createRestClient() {
 		HttpClient httpClient = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(10))
 				.build();
 		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
 		requestFactory.setReadTimeout(Duration.ofSeconds(60));
-		this.restClient = RestClient.builder()
+		return RestClient.builder()
 				.requestFactory(requestFactory)
 				.build();
 	}
@@ -125,7 +129,7 @@ public class ApplyhomeApiClient {
 		throw last;
 	}
 
-	/** 이미 인코딩된 서비스 키를 처리한 뒤 요청 파라미터를 한 번만 인코딩한다. */
+	/** 이미 인코딩된 서비스 키를 처리한 뒤 요청 파라미터를 한 번만 인코딩한다. 경쟁률 API도 같은 방식으로 만든다. */
 	static URI buildUri(String baseUrl, String endpoint, String serviceKey, int perPage, int page,
 			Map<String, String> filters) {
 		Map<String, String> uriVariables = new LinkedHashMap<>();

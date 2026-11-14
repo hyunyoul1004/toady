@@ -5,8 +5,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.event.EventListener;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -27,7 +28,7 @@ import java.util.concurrent.ScheduledFuture;
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "true")
 public class AdminScheduleManager {
     private static final Logger log = LoggerFactory.getLogger(AdminScheduleManager.class);
-    private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+    private static final ZoneId ZONE = AdminJobService.ZONE;
     private final JdbcTemplate jdbc;
     private final AdminJobService jobs;
     private final ThreadPoolTaskScheduler timer = new ThreadPoolTaskScheduler();
@@ -87,7 +88,7 @@ public class AdminScheduleManager {
                     (SELECT 1 FROM TB_SCHEDULER_ADMIN_SCHEDULE WHERE JOB_KIND = ?)
                     """, kind.name(), enabled && !cron.equals("-"), cron.equals("-") ? "0 15 3 * * *" : cron,
                     defaultLookback, AdminJobService.now(), kind.name());
-        } catch (org.springframework.dao.DuplicateKeyException ignored) { /* 다른 인스턴스가 같은 종류를 먼저 등록했다면 기존 값을 사용한다. */ }
+        } catch (DuplicateKeyException ignored) { /* 다른 인스턴스가 같은 종류를 먼저 등록했다면 기존 값을 사용한다. */ }
     }
     /** 다음 실행 시각은 저장하지 않고 현재 한국시간과 cron으로 계산한다. 비활성 스케줄은 null이다. */
     public List<AdminSchedule> list() {

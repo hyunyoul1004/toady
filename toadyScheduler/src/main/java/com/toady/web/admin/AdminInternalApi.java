@@ -53,11 +53,7 @@ public class AdminInternalApi {
     @PostMapping("/jobs")
     public ResponseEntity<?> start(@RequestBody JobRequest body, HttpServletRequest request) {
         if (!authorized(request)) return denied();
-        try {
-            return ResponseEntity.ok(Map.of("id", jobs.submit(body.kind(), body.startDate(), body.endDate(), requester(body.requestedBy()), "MANUAL")));
-        } catch (IllegalArgumentException | IllegalStateException failure) {
-            return ResponseEntity.badRequest().body(Map.of("message", failure.getMessage()));
-        }
+        return submit(body.kind(), body.startDate(), body.endDate(), body.requestedBy());
     }
 
     @PostMapping("/jobs/{id}/cancel")
@@ -74,11 +70,7 @@ public class AdminInternalApi {
         var job = repository.find(id).orElse(null);
         if (job == null) return ResponseEntity.badRequest().body(Map.of("message", "작업을 찾을 수 없습니다."));
         if (job.isActive()) return ResponseEntity.badRequest().body(Map.of("message", "진행 중인 작업은 다시 실행할 수 없습니다."));
-        try {
-            return ResponseEntity.ok(Map.of("id", jobs.submit(job.kind(), job.startDate(), job.endDate(), requester(body == null ? null : body.requestedBy()), "MANUAL")));
-        } catch (IllegalArgumentException | IllegalStateException failure) {
-            return ResponseEntity.badRequest().body(Map.of("message", failure.getMessage()));
-        }
+        return submit(job.kind(), job.startDate(), job.endDate(), body == null ? null : body.requestedBy());
     }
 
     @PostMapping("/schedules/{kind}")
@@ -92,6 +84,14 @@ public class AdminInternalApi {
         }
     }
 
+    /** 수동 작업을 접수하고 작업 ID를 돌려준다. 기간 오류·진행 중 작업은 사유와 함께 400으로 알린다. */
+    private ResponseEntity<?> submit(JobKind kind, LocalDate start, LocalDate end, String requestedBy) {
+        try {
+            return ResponseEntity.ok(Map.of("id", jobs.submit(kind, start, end, requester(requestedBy), "MANUAL")));
+        } catch (IllegalArgumentException | IllegalStateException failure) {
+            return ResponseEntity.badRequest().body(Map.of("message", failure.getMessage()));
+        }
+    }
     private static String requester(String value) {
         String name = value == null ? "" : value.trim();
         return name.isEmpty() ? "toadyAdmin" : name.length() > 100 ? name.substring(0, 100) : name;

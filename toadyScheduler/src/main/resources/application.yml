@@ -21,16 +21,6 @@ logging:
 
 server:
   port: ${SERVER_PORT:8082}
-  # 앞단 nginx(HTTPS) 뒤에서 Tomcat이 Location을 http://내부주소 로 바꾸지 않게 상대 경로 그대로 보낸다.
-  tomcat:
-    use-relative-redirects: true
-  servlet:
-    session:
-      timeout: 30m
-      cookie:
-        http-only: true
-        same-site: strict
-        secure: ${SCHEDULER_ADMIN_SECURE_COOKIE:false}
 
 data:
   retention:
@@ -39,10 +29,9 @@ data:
 
 applyhome:
   admin:
-    # 테이블·관리자 계정을 준비하기 전에는 기존 정적 스케줄만 실행하도록 기본 비활성화한다.
+    # 관리 테이블(database.sql)을 준비하기 전에는 기존 정적 스케줄만 실행하도록 기본 비활성화한다.
+    # 켜면 DB 기반 실행 이력·자동 일정과 관리자 사이트(toadyAdmin)용 내부 API(/internal/admin)를 사용한다.
     enabled: ${SCHEDULER_ADMIN_ENABLED:false}
-    username: ${SCHEDULER_ADMIN_USERNAME:admin}
-    password: ${SCHEDULER_ADMIN_PASSWORD:}
     # 관리자 사이트(toadyAdmin)가 수집 실행·일정 변경을 요청할 때 쓰는 공유 토큰(32자 이상). 비우면 내부 API를 쓰지 않는다.
     internal-token: ${SCHEDULER_INTERNAL_TOKEN:}
   api:

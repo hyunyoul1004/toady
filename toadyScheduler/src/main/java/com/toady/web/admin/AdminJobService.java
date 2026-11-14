@@ -1,5 +1,6 @@
 package com.toady.web.admin;
 
+import com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException;
 import com.toady.web.apt.service.ApplyhomeCompetitionSyncService;
 import com.toady.web.apt.service.ApplyhomeSyncBusyException;
 import com.toady.web.apt.service.ApplyhomePartialFailureException;
@@ -13,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.*;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -66,8 +68,9 @@ public class AdminJobService {
     // 관리자에서 허용하는 조회 하한이며, 이 날짜 이후의 모든 원본 데이터 제공을 보장하는 값은 아니다.
     static LocalDate earliestDate() { return LocalDate.of(2017, 1, 1); }
     // 서버 OS의 시간대와 무관하게 화면·이력·자동 스케줄의 날짜 기준을 한국시간으로 맞춘다.
-    static LocalDate today() { return LocalDate.now(ZoneId.of("Asia/Seoul")); }
-    static LocalDateTime now() { return LocalDateTime.now(ZoneId.of("Asia/Seoul")); }
+    static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+    static LocalDate today() { return LocalDate.now(ZONE); }
+    static LocalDateTime now() { return LocalDateTime.now(ZONE); }
 
     /**
      * 실행 이력을 먼저 저장한 뒤 작업 ID를 반환한다. 반환 성공은 수집 완료가 아니라 접수 완료를 뜻한다.
@@ -80,7 +83,7 @@ public class AdminJobService {
             throw new IllegalArgumentException("2017년 1월 1일부터 오늘까지의 올바른 모집공고일 범위를 선택하세요.");
         }
         // 수동 실행은 공고마다 외부 API를 여러 번 부른다. 너무 긴 기간은 공공데이터 일일 한도를 다 써 정규 수집까지 막으므로 나눠 실행하게 한다.
-        if ("MANUAL".equals(source) && java.time.temporal.ChronoUnit.DAYS.between(start, end) >= MANUAL_MAX_DAYS) {
+        if ("MANUAL".equals(source) && ChronoUnit.DAYS.between(start, end) >= MANUAL_MAX_DAYS) {
             throw new IllegalArgumentException("한 번에 " + MANUAL_MAX_DAYS + "일(약 1년)까지만 수집할 수 있어요. 기간을 나눠 실행해 주세요.");
         }
         String id = UUID.randomUUID().toString();
@@ -196,8 +199,8 @@ public class AdminJobService {
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
             log.error("Manual scheduler job failed: id={}", id, exception);
             Throwable cause = exception;
-            while (cause != null && !(cause instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException)) cause = cause.getCause();
-            if (cause instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException rejected) {
+            while (cause != null && !(cause instanceof ProviderRejectedException)) cause = cause.getCause();
+            if (cause instanceof ProviderRejectedException rejected) {
                 // 인증키 오류·일일 한도 초과는 원인을 그대로 알려 운영자가 다시 실행할 시점을 판단하게 한다.
                 repository.finish(id, "FAILED", "청약홈 API가 요청을 거절해 중단했습니다(HTTP " + rejected.status()
                         + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", now());

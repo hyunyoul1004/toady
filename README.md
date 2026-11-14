@@ -45,7 +45,7 @@ flowchart LR
 | --- | --- |
 | Frontend | React 18, Vite 5, TanStack Query v5, Zustand, MUI, FullCalendar |
 | Backend | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT |
-| 수집 관리자 | Thymeleaf, 세션 인증, 기간별 백필, DB 기반 자동 스케줄·실행 이력 |
+| 관리자 사이트 | Kotlin, Thymeleaf, 세션 인증, 기간별 백필, DB 기반 자동 스케줄·실행 이력(스케줄러 내부 API) |
 | Data | MariaDB, 청약홈 Open API, Spring `@Scheduled` |
 | Validation | JUnit 5, Spring Boot Test, Mockito, H2 |
 | Delivery | Docker, Docker Compose, Nginx, Certbot, GitHub Actions |
@@ -94,13 +94,11 @@ APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 
 
 Kotlin·Spring Boot·Thymeleaf로 만든 별도 관리자 앱입니다. 서비스 지표(주간 방문·재방문·활성 탐색자·유입 경로), 회원 조회·잠금, 공고 댓글 숨김·복구, 공고 수집·주변 시세 비교·웹 푸시 상태, 수집 실행·자동 일정을 한곳에서 관리합니다. 수집 실행기는 스케줄러 프로세스에 있으므로 실행·중지·일정 변경은 토큰으로 보호한 스케줄러 내부 API(`/internal/admin`)로 요청합니다. 설정·배포 순서는 [관리자 사이트 안내](toadyAdmin/README.md)를 참고하세요.
 
-### 이전 수집 관리자 (전환 기간)
+### 수집 관리
 
-`toadyScheduler`에 Thymeleaf 관리자 화면을 제공합니다. 공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 관리자 화면에서 모집공고일을 지정해 복원할 수 있습니다.
+공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리자 사이트의 `/admin/jobs`에서 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 모집공고일을 지정해 복원할 수 있습니다. 스케줄러 자체에는 로그인·화면이 없으며 `/internal/health`와 토큰으로 보호한 `/internal/admin`만 엽니다.
 
-`/admin/metrics`에서는 최근 8주 방문자·세션·재방문 비율·활성 탐색자(한 주에 공고 2개 이상 열람 또는 관심 저장)·관심 저장·공유와 최근 28일 유입 경로를 확인합니다. API가 쌓는 `TB_PAGE_VIEW`·`TB_USAGE_EVENT`를 읽으므로 스케줄러 DB 계정에 두 테이블의 SELECT 권한이 필요합니다.
-
-기본값은 비활성화이며 관리자 테이블 두 개와 계정을 준비한 뒤 활성화합니다. [테이블 생성 SQL](database.sql)과 [관리자 활성화·접속 안내](toadyScheduler/README.md#thymeleaf-수집-관리자)를 참고하세요. 현재 실행 상태는 5초마다 갱신되며 중지 요청·같은 기간 재실행도 지원합니다.
+스케줄러의 관리 기능은 기본 비활성화이며 관리 테이블 두 개와 공유 토큰을 준비한 뒤 활성화합니다. [테이블 생성 SQL](database.sql)과 [수집 관리 활성화 안내](toadyScheduler/README.md#수집-관리실행-이력자동-일정)를 참고하세요.
 
 ## 검증과 배포
 

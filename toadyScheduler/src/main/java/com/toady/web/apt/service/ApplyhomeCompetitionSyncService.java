@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** 공고별 경쟁률, 당첨가점, 특별공급 신청현황을 수집한다. */
 @Service
@@ -107,7 +108,7 @@ public class ApplyhomeCompetitionSyncService {
 		if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
 			throw new IllegalArgumentException("A valid start and end date range is required");
 		}
-		var count = new java.util.concurrent.atomic.AtomicLong();
+		var count = new AtomicLong();
 		List<String> failures = new ArrayList<>();
 		syncLock.execute(() -> count.set(syncForAnnouncements(APT_SCORE,
 				discover("getAPTLttotPblancDetail", startDate, endDate, false), failures)));
@@ -186,7 +187,7 @@ public class ApplyhomeCompetitionSyncService {
 				// 중단 요청(배포·관리자 중지)은 그대로 멈춘다.
 				if (Thread.currentThread().isInterrupted()) throw failure;
 				// 인증키 오류·일일 한도 초과는 남은 공고도 모두 실패하므로 바로 멈추고 원인을 남긴다.
-				if (failure instanceof com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException) throw failure;
+				if (failure instanceof ApplyhomeApiClient.ProviderRejectedException) throw failure;
 				failures.add(table.table() + ":" + key.houseManageNo() + "/" + key.pblancNo());
 				log.warn("Applyhome competition sync failed for one announcement table={} key={}/{} error={}",
 						table.table(), key.houseManageNo(), key.pblancNo(), failure.getMessage());
@@ -210,9 +211,6 @@ public class ApplyhomeCompetitionSyncService {
 	private JsonNode field(JsonNode row, String name) {
 		JsonNode value = row.get(name);
 		return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
-	}
-
-	private record AnnouncementKey(String houseManageNo, String pblancNo) {
 	}
 
 	private record TableSpec(String endpoint, String table, List<String> columns, List<String> keys) {

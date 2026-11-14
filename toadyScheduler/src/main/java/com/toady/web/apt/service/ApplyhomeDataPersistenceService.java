@@ -1,8 +1,15 @@
 package com.toady.web.apt.service;
 
+import com.toady.web.apt.entity.AptLttotPblancMdl;
+import com.toady.web.apt.entity.OptLttotPblancMdl;
+import com.toady.web.apt.entity.PblPvtRentLttotPblancMdl;
+import com.toady.web.apt.entity.RemndrLttotPblancMdl;
+import com.toady.web.apt.entity.UrbtyOfctlLttotPblancMdl;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import com.toady.web.apt.entity.UrbtyOfctlLttotPblancMdl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +26,11 @@ import java.util.Map;
 @Service
 public class ApplyhomeDataPersistenceService {
 
+	private static final Logger LOG = LoggerFactory.getLogger(ApplyhomeDataPersistenceService.class);
 	private static final int FLUSH_BATCH_SIZE = 500;
+	/** 공고별 교체(replaceModels)를 허용하는 일반 주택형 엔티티. 도시형은 upsertUrbanModels가 따로 처리한다. */
+	private static final Set<Class<?>> REPLACEABLE_MODELS = Set.of(AptLttotPblancMdl.class,
+			RemndrLttotPblancMdl.class, PblPvtRentLttotPblancMdl.class, OptLttotPblancMdl.class);
 
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -59,8 +70,7 @@ public class ApplyhomeDataPersistenceService {
 			AnnouncementKey key = entry.getKey();
 			if (entry.getValue().isEmpty()) {
 				// 응답에 주택형이 하나도 없으면 일시적인 빈 응답일 수 있어 기존 주택형을 지우지 않는다(일반 주택형과 같은 규칙).
-				org.slf4j.LoggerFactory.getLogger(ApplyhomeDataPersistenceService.class)
-						.warn("주택형 응답이 비어 기존 주택형을 유지: type=UrbtyOfctlLttotPblancMdl, house={}, notice={}", key.houseManageNo(), key.pblancNo());
+				LOG.warn("주택형 응답이 비어 기존 주택형을 유지: type=UrbtyOfctlLttotPblancMdl, house={}, notice={}", key.houseManageNo(), key.pblancNo());
 				continue;
 			}
 			List<UrbtyOfctlLttotPblancMdl> existing = entityManager.createQuery("""
@@ -101,29 +111,22 @@ public class ApplyhomeDataPersistenceService {
      */
     @Transactional
     public <T> void replaceModels(Class<T> type, List<AnnouncementKey> announcements, List<T> models) {
-        Set<Class<?>> allowed = Set.of(com.toady.web.apt.entity.AptLttotPblancMdl.class,
-                com.toady.web.apt.entity.RemndrLttotPblancMdl.class,
-                com.toady.web.apt.entity.PblPvtRentLttotPblancMdl.class,
-                com.toady.web.apt.entity.OptLttotPblancMdl.class);
-        if (!allowed.contains(type)) throw new IllegalArgumentException("Unsupported model entity");
+        if (!REPLACEABLE_MODELS.contains(type)) throw new IllegalArgumentException("Unsupported model entity");
         Set<AnnouncementKey> scopes = Set.copyOf(announcements);
+        // 삭제 전에 모든 행의 키를 검증하고, 응답에 주택형이 있는 공고를 함께 모은다.
+        Set<AnnouncementKey> present = new HashSet<>();
         for (T model : models) {
-            var bean = new org.springframework.beans.BeanWrapperImpl(model);
+            var bean = new BeanWrapperImpl(model);
             var key = new AnnouncementKey((String) bean.getPropertyValue("houseManageNo"),
                     (String) bean.getPropertyValue("pblancNo"));
             if (!scopes.contains(key) || bean.getPropertyValue("modelNo") == null) {
                 throw new IllegalArgumentException("Model is missing keys or belongs to another announcement");
             }
-        }
-        Set<AnnouncementKey> present = new java.util.HashSet<>();
-        for (T model : models) {
-            var bean = new org.springframework.beans.BeanWrapperImpl(model);
-            present.add(new AnnouncementKey((String) bean.getPropertyValue("houseManageNo"), (String) bean.getPropertyValue("pblancNo")));
+            present.add(key);
         }
         for (AnnouncementKey key : scopes) {
             if (!present.contains(key)) {
-                org.slf4j.LoggerFactory.getLogger(ApplyhomeDataPersistenceService.class)
-                        .warn("주택형 응답이 비어 기존 주택형을 유지: type={}, house={}, notice={}", type.getSimpleName(), key.houseManageNo(), key.pblancNo());
+                LOG.warn("주택형 응답이 비어 기존 주택형을 유지: type={}, house={}, notice={}", type.getSimpleName(), key.houseManageNo(), key.pblancNo());
                 continue;
             }
             entityManager.createQuery("delete from " + type.getSimpleName()

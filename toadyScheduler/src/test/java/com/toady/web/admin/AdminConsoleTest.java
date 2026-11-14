@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,17 +21,13 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** 관리자 DDL을 H2에서 적용하고 인증·화면·실행 이력을 검증한다. 실제 수집 서비스와 외부 API는 호출하지 않는다. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "applyhome.admin.enabled=true", "applyhome.admin.username=operator",
-        "applyhome.admin.password=local-test-password",
-        "applyhome.admin.internal-token=test-internal-token-0123456789abcdef",
+/** 관리자 DDL을 H2에서 적용하고 내부 API·접근 제어·실행 이력을 검증한다. 실제 수집 서비스와 외부 API는 호출하지 않는다. */
+@SpringBootTest(properties = {
+        "applyhome.admin.enabled=true",
+        "applyhome.admin.internal-token=" + AdminConsoleTest.TOKEN,
         "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-",
         "applyhome.admin.busy-retry-seconds=1", "applyhome.admin.busy-wait-seconds=1", "data.retention.cron=-",
         "spring.datasource.url=jdbc:h2:mem:admin;MODE=MariaDB;DB_CLOSE_DELAY=-1",
@@ -44,13 +39,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 class AdminConsoleTest {
+    static final String TOKEN = "test-internal-token-0123456789abcdef";
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired AdminJobRepository repository;
     @Autowired AdminJobService jobs;
     @Autowired AdminScheduleManager schedules;
-    @Autowired AdminMetrics metrics;
-    @org.springframework.boot.test.web.server.LocalServerPort int port;
     @MockitoBean ApplyhomeSyncService announcements;
     @MockitoBean ApplyhomeCompetitionSyncService competition;
 
@@ -59,34 +53,11 @@ class AdminConsoleTest {
         jdbc.update("DELETE FROM TB_SCHEDULER_ADMIN_JOB");
     }
 
-    @Test void requiresAuthenticationAndAcceptsConfiguredCredentials() throws Exception {
-        mvc.perform(get("/admin")).andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/admin/login"));
-        mvc.perform(get("/admin/login")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("수집 관리에 로그인")));
-        mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
-                .andExpect(authenticated().withUsername("operator"));
-    }
-
-    @Test @WithMockUser(roles = "ADMIN")
-    void rendersAllJobTypesAndProtectsMutationsAgainstCsrf() throws Exception {
-        mvc.perform(get("/admin")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("공고 · 주택형")))
-                .andExpect(content().string(containsString("APT 당첨 가점")))
-                .andExpect(content().string(containsString("자동 스케줄")))
-                .andExpect(content().string(containsString("_csrf")));
-        mvc.perform(post("/admin/jobs").param("kind", "SCORES")
-                        .param("startDate", "2020-01-01").param("endDate", "2020-02-01"))
-                .andExpect(status().isForbidden());
-        verifyNoInteractions(competition);
-    }
-
-    @Test @WithMockUser(roles = "ADMIN")
-    void runsPastScoreBackfillByMonthAndRendersCompletedHistory() throws Exception {
+    @Test void runsPastScoreBackfillByMonthThroughTheInternalApi() throws Exception {
         when(competition.synchronizeScores(any(), any())).thenReturn(3L);
-        mvc.perform(post("/admin/jobs").with(csrf()).param("kind", "SCORES")
-                        .param("startDate", "2020-01-30").param("endDate", "2020-02-02"))
-                .andExpect(redirectedUrl("/admin/"));
+        mvc.perform(post("/internal/admin/jobs").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"kind\":\"SCORES\",\"startDate\":\"2020-01-30\",\"endDate\":\"2020-02-02\",\"requestedBy\":\"operator\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").exists());
         await().atMost(Duration.ofSeconds(5)).until(() -> repository.recent().size() == 1
                 && !repository.recent().getFirst().isActive());
         AdminJob job = repository.recent().getFirst();
@@ -96,7 +67,9 @@ class AdminConsoleTest {
         verify(competition).synchronizeScores(LocalDate.of(2020,1,30), LocalDate.of(2020,1,31));
         verify(competition).synchronizeScores(LocalDate.of(2020,2,1), LocalDate.of(2020,2,2));
         verifyNoInteractions(announcements);
-        mvc.perform(get("/admin")).andExpect(status().isOk())
+        // 관리자 사이트가 읽는 상태 응답에 완료 이력이 담긴다.
+        mvc.perform(get("/internal/admin/state").header(AdminInternalApi.HEADER, TOKEN)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs[0].status").value("SUCCEEDED"))
                 .andExpect(content().string(containsString("6건")));
     }
 
@@ -146,18 +119,17 @@ class AdminConsoleTest {
         verify(competition, times(1)).synchronizeScores(any(), any());
     }
 
-    @Test @WithMockUser(roles = "ADMIN")
-    void persistsScheduleSettingsAndRejectsExcessivelyFrequentCron() throws Exception {
-        mvc.perform(post("/admin/schedules/SCORES").with(csrf())
-                        .param("cron", "0 30 6 * * *").param("lookbackDays", "365"))
-                .andExpect(redirectedUrl("/admin/"));
+    @Test void persistsScheduleSettingsAndRejectsExcessivelyFrequentCron() throws Exception {
+        mvc.perform(post("/internal/admin/schedules/SCORES").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"enabled\":false,\"cron\":\"0 30 6 * * *\",\"lookbackDays\":365}"))
+                .andExpect(status().isOk());
         var score = schedules.list().stream().filter(s -> s.kind() == JobKind.SCORES).findFirst().orElseThrow();
         assertFalse(score.enabled());
         assertEquals("0 30 6 * * *", score.cronExpression());
         assertEquals(365, score.lookbackDays());
-        mvc.perform(post("/admin/schedules/SCORES").with(csrf()).param("enabled", "true")
-                        .param("cron", "* * * * * *").param("lookbackDays", "365"))
-                .andExpect(flash().attributeExists("error"));
+        mvc.perform(post("/internal/admin/schedules/SCORES").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"enabled\":true,\"cron\":\"* * * * * *\",\"lookbackDays\":365}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").exists());
         assertFalse(schedules.list().stream().filter(s -> s.kind() == JobKind.SCORES).findFirst().orElseThrow().enabled());
     }
 
@@ -170,30 +142,6 @@ class AdminConsoleTest {
         assertThrows(org.springframework.dao.DuplicateKeyException.class, () -> repository.insert("repeat",
                 JobKind.SCORES, "SCHEDULE", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto", old));
     }
-    @Test void locksLoginPerClientIpAfterRepeatedFailures() throws Exception {
-        org.springframework.test.web.servlet.request.RequestPostProcessor attacker = request -> {
-            request.setRemoteAddr("203.0.113.7"); return request;
-        };
-        for (int i = 1; i <= AdminLoginThrottle.MAX_FAILURES; i++) {
-            mvc.perform(post("/admin/login").with(csrf()).with(attacker)
-                            .param("username", "operator").param("password", "wrong-password-" + i))
-                    .andExpect(redirectedUrl(i < AdminLoginThrottle.MAX_FAILURES ? "/admin/login?error" : "/admin/login?locked"));
-        }
-        // 잠긴 동안에는 올바른 비밀번호도 확인하지 않고 돌려보낸다.
-        mvc.perform(post("/admin/login").with(csrf()).with(attacker)
-                        .param("username", "operator").param("password", "local-test-password"))
-                .andExpect(redirectedUrl("/admin/login?locked"))
-                .andExpect(org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated());
-        // 글자를 인코딩한 로그인 경로로도 잠금을 피할 수 없다.
-        mvc.perform(post(java.net.URI.create("/admin/%6Cogin")).with(csrf()).with(attacker)
-                        .param("username", "operator").param("password", "local-test-password"))
-                .andExpect(org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated());
-        mvc.perform(get("/admin/login").param("locked", "")).andExpect(content().string(containsString("15분")));
-        // 다른 IP의 정상 로그인은 영향을 받지 않는다.
-        mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
-                .andExpect(authenticated().withUsername("operator"));
-    }
-
     @Test void marksLeftoverActiveJobsFromAPreviousProcessAsInterruptedOnStartup() {
         // 생존 신호가 방금 갱신된 작업은 아직 살아 있는 다른 프로세스의 것일 수 있으므로 건드리지 않는다.
         repository.insert("alive", JobKind.ANNOUNCEMENTS, "MANUAL", LocalDate.of(2020,1,1), LocalDate.of(2020,1,2), 1, "auto",
@@ -252,7 +200,7 @@ class AdminConsoleTest {
     }
 
     @Test void internalApiRequiresTheSharedTokenAndControlsJobs() throws Exception {
-        String token = "test-internal-token-0123456789abcdef";
+        String token = TOKEN;
         // 토큰이 없거나 틀리면 거절한다(세션 로그인과 무관, CSRF 대상 아님).
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/internal/admin/state"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
@@ -277,30 +225,6 @@ class AdminConsoleTest {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/internal/admin/schedules/SCORES").header("X-Admin-Token", token)
                         .contentType("application/json").content("{\"enabled\":false,\"cron\":\"0 15 3 * * *\",\"lookbackDays\":3000}"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
-    }
-
-    @Test void redirectsStayRelativeBehindTheHttpsProxy() throws Exception {
-        var cookies = new java.net.CookieManager();
-        var client = java.net.http.HttpClient.newBuilder().cookieHandler(cookies)
-                .followRedirects(java.net.http.HttpClient.Redirect.NEVER).build();
-        String base = "http://127.0.0.1:" + port;
-        var entry = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/")).build(),
-                java.net.http.HttpResponse.BodyHandlers.discarding());
-        assertEquals(302, entry.statusCode());
-        assertEquals("/admin/login", entry.headers().firstValue("Location").orElseThrow());
-        String page = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/login")).build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString()).body();
-        var token = java.util.regex.Pattern.compile("name=\"_csrf\"[^>]*value=\"([^\"]+)\"").matcher(page);
-        assertTrue(token.find(), "로그인 폼에 CSRF 토큰이 있어야 한다");
-        String form = "username=operator&password=local-test-password&_csrf="
-                + java.net.URLEncoder.encode(token.group(1), java.nio.charset.StandardCharsets.UTF_8);
-        var login = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/admin/login"))
-                        .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(form)).build(),
-                java.net.http.HttpResponse.BodyHandlers.discarding());
-        assertEquals(302, login.statusCode());
-        // 절대 주소(http://…)면 HTTPS 프록시 뒤에서 브라우저가 http로 이동한다.
-        assertEquals("/admin/", login.headers().firstValue("Location").orElseThrow());
     }
 
     @Test void retriesABusyScheduledRunOnce() throws Exception {
@@ -359,19 +283,21 @@ class AdminConsoleTest {
         mvc.perform(get("/internal/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
     }
 
-    @Test void loginRedirectAndBothDashboardPathsWorkWithTheSameSession() throws Exception {
-        mvc.perform(get("/admin/")).andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/admin/login"));
-        var login = mvc.perform(formLogin("/admin/login").user("operator").password("local-test-password"))
-                .andExpect(authenticated().withUsername("operator"))
-                .andExpect(redirectedUrl("/admin/"))
-                .andReturn();
-        var session = (org.springframework.mock.web.MockHttpSession) login.getRequest().getSession(false);
-        for (String path : java.util.List.of("/admin", "/admin/")) {
-            mvc.perform(get(path).session(session)).andExpect(status().isOk())
-                    .andExpect(view().name("admin/index"))
-                    .andExpect(content().string(containsString("href=\"/admin/\"")));
+    @Test void oldAdminScreensAreGoneAndOtherPathsAreDenied() throws Exception {
+        // 화면은 관리자 사이트(toadyAdmin)로 옮겼다. 스케줄러는 로그인·화면 없이 내부 API만 연다.
+        for (String path : java.util.List.of("/", "/admin", "/admin/", "/admin/login", "/admin/metrics", "/admin/style.css")) {
+            mvc.perform(get(path)).andExpect(status().isForbidden());
         }
+        mvc.perform(post("/admin/login").param("username", "operator").param("password", "local-test-password"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/admin/jobs").param("kind", "SCORES").param("startDate", "2020-01-01").param("endDate", "2020-01-02"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(competition);
+        // 토큰을 맞게 보내도 내부 API 밖의 경로는 열리지 않으며, 내부 API는 세션 쿠키를 만들지 않는다.
+        mvc.perform(get("/admin").header(AdminInternalApi.HEADER, TOKEN)).andExpect(status().isForbidden());
+        var state = mvc.perform(get("/internal/admin/state").header(AdminInternalApi.HEADER, TOKEN))
+                .andExpect(status().isOk()).andExpect(header().doesNotExist("Set-Cookie")).andReturn();
+        assertNull(state.getRequest().getSession(false));
     }
 
     private void pageView(int event, int visitor, int session, LocalDate date, String referrer) {
@@ -381,35 +307,5 @@ class AdminConsoleTest {
     private void action(int event, int visitor, String action, String subject, LocalDate date) {
         jdbc.update("INSERT INTO TB_USAGE_EVENT (EVENT_ID,VISITOR_ID,ACTION_NAME,SUBJECT_ID,VISIT_DATE,REG_DT) VALUES (?,?,?,?,?,?)",
                 "%036d".formatted(500 + event), "%036d".formatted(1000 + visitor), action, subject, date, date.atStartOfDay());
-    }
-
-    @Test @WithMockUser(roles = "ADMIN")
-    void metricsPageSummarizesReturningVisitorsExplorersAndSources() throws Exception {
-        jdbc.update("DELETE FROM TB_PAGE_VIEW"); jdbc.update("DELETE FROM TB_USAGE_EVENT");
-        LocalDate monday = AdminJobService.today().with(java.time.DayOfWeek.MONDAY);
-        // 방문자 1: 지난주 구글로 처음 방문 후 이번 주 재방문. 방문자 2: 이번 주 첫 방문에서 공고 2개를 본 활성 탐색자.
-        pageView(1, 1, 1, monday.minusDays(7), "www.google.com");
-        pageView(2, 1, 2, monday, null);
-        pageView(3, 2, 3, monday, "m.search.naver.com");
-        action(1, 2, "detail_view", "apt/A/1", monday);
-        action(2, 2, "detail_view", "apt/B/1", monday);
-        action(3, 1, "detail_view", "apt/A/1", monday);
-        action(4, 1, "share", "apt/A/1", monday);
-        AdminMetrics.Report report = metrics.report(AdminJobService.today());
-        AdminMetrics.Week week = report.getCurrent();
-        assertEquals(2, week.visitors());
-        assertEquals(1, week.returning());
-        assertEquals(50, week.getReturningRate());
-        assertEquals(1, week.activeExplorers(), "공고를 하나만 본 방문자는 활성 탐색자가 아니다");
-        assertEquals(1, week.shares());
-        assertEquals(3, report.sourceSessions());
-        assertEquals(66, report.getSearchPercent());
-        mvc.perform(get("/admin/metrics")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("주간 추이")))
-                .andExpect(content().string(containsString("검색 · 구글")))
-                .andExpect(content().string(containsString("검색 · 네이버")))
-                .andExpect(content().string(containsString("직접 방문·알 수 없음")))
-                .andExpect(content().string(containsString("50%")));
-        mvc.perform(get("/admin")).andExpect(status().isOk()).andExpect(content().string(containsString("/admin/metrics")));
     }
 }
