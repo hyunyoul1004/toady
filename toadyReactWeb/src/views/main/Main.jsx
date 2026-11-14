@@ -1,4 +1,4 @@
-import { detailCloseSteps } from '@/hooks/useHistoryOverlay';
+import { detailCloseSteps, useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
 import { announcementShareUrl, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
 /**
@@ -202,6 +202,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   // 상세 본문을 내리면 제목·탭만 남기고 상단(유형·주소·저장 버튼)을 접어 본문을 넓게 보여 준다.
   const [headerCompact,setHeaderCompact]=useState(false);
   const [detailTabValue, setDetailTabValue] = useState(0);
+  const [mapFullscreenLayer] = useHistoryOverlay('map-fullscreen');
+  const mapFullscreen = Boolean(mapFullscreenLayer);
   const [selectedSubscriptSeq, setSelectedSubscriptSeq] = useState(null);
   useEffect(()=>{if(detailScrollRef.current) detailScrollRef.current.scrollTop=0; setHeaderCompact(false);},[researchTab,detailTabValue,selectedSubscriptSeq]);
   const headerChipsRef=useRef(null), headerAddressRef=useRef(null), headerActionsRef=useRef(null);
@@ -428,6 +430,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         anchor="right"
         open={modalOpen}
         onClose={handleCloseDetail}
+        // 위치 탭 지도가 전체 화면이면 그 화면이 Esc·포커스를 맡는다(상세가 함께 닫히거나 검색창 입력을 막지 않게).
+        disableEscapeKeyDown={mapFullscreen}
+        disableEnforceFocus={mapFullscreen}
         PaperProps={{
           // 화면 읽기 프로그램이 상세 패널을 단지명으로 부르도록 대화상자 이름을 연결한다.
           role: 'dialog',

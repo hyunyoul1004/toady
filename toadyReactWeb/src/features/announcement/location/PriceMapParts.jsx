@@ -179,12 +179,13 @@ export function ComplexPanel({ row, onClose, supply, unit = 'm2' }) {
 }
 
 /** 지도 아래 단지 목록(필터·정렬 적용). 누르면 지도에서 그 단지를 고른다. */
-export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect }) {
+/** compact: 전체 화면 패널처럼 위에 제목이 이미 있는 곳에서는 제목을 빼고 여백을 줄인다. */
+export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect, compact = false }) {
   const [limit, setLimit] = useState(20);
-  if (!rows.length) return null;
-  return <Box sx={{ mt: 2 }}>
-    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-      <Typography component="h4" sx={{ m: 0, fontSize: 15, fontWeight: 800 }}>단지 목록</Typography>
+  if (!rows.length) return compact ? <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>조건에 맞는 단지가 없어요. 필터를 넓히거나 지도를 옮겨 보세요.</Typography> : null;
+  return <Box sx={{ mt: compact ? 0 : 2 }}>
+    <Stack direction="row" justifyContent={compact ? 'flex-end' : 'space-between'} alignItems="center" sx={{ mb: 1 }}>
+      {!compact && <Typography component="h4" sx={{ m: 0, fontSize: 15, fontWeight: 800 }}>단지 목록</Typography>}
       <TextField select size="small" value={filters.sort} onChange={event => setFilters({ sort: event.target.value })} inputProps={{ 'aria-label': '단지 목록 정렬' }}
         SelectProps={{ MenuProps: { disableScrollLock: true } }} sx={{ minWidth: 132 }}>
         {SORTS.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}

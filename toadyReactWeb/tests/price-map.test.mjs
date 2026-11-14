@@ -336,3 +336,23 @@ test('같은 전용면적 주택형은 한 줄로 묶고, 3.3㎡당은 공급면
   assert.equal(saleGroupText(groups[1], 'm2').main, '전용 59.98㎡', '한 타입이면 그대로');
   assert.match(saleGroupText(groupSaleUnits([{ area: 84.9, amountManwon: 60000 }])[0]).per, /^전용 3.3㎡당/, '공급면적이 없으면 전용 기준이라고 밝힌다');
 });
+
+test('map search suggestions rank dongs, sales and complexes and skip unlocated ones', async () => {
+  const { suggestPlaces } = await import('../src/features/announcement/location/priceMapRules.js');
+  const complexes = [
+    { key: 'a', name: '작전현대1차', dong: '작전동', lat: 37.53, lng: 126.73, buildYear: '1990' },
+    { key: 'b', name: '현대작전타운', dong: '작전동', lat: 37.54, lng: 126.74 },
+    { key: 'c', name: '작전위치없음', dong: '작전동', lat: null, lng: null },
+    { key: 'd', name: '부평자이', dong: '부평동', lat: 37.5, lng: 126.7 }
+  ];
+  const sales = [{ id: 'apt/1', houseNm: '작전역 새단지', status: 'OPEN', lat: 37.535, lng: 126.735 }];
+  const items = suggestPlaces(complexes, sales, '작전', { statusLabel: () => '접수 중' });
+  assert.deepEqual(items.map(item => item.kind + ':' + item.label), ['dong:작전동', 'sale:작전역 새단지', 'complex:작전현대1차', 'complex:현대작전타운']);
+  // 법정동은 그 동 단지들의 가운데(위치를 아는 단지만)로 옮긴다.
+  assert.equal(items[0].lat, (37.53 + 37.54) / 2);
+  assert.equal(items[0].detail, '실거래 단지 2곳');
+  assert.equal(items[1].detail, '분양 · 접수 중');
+  assert.equal(items[1].key, 'sale:apt/1');
+  assert.deepEqual(suggestPlaces(complexes, sales, '  '), []);
+  assert.equal(suggestPlaces(complexes, sales, '작전', { limit: 2 }).length, 2);
+});

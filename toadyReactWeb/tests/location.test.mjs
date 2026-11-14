@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaQuery,parcelCandidates,resolveLocation,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
+import {areaQuery,parcelCandidates,resolveLocation,searchArea,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
 function maps(addressRows=[],placeRows=[]) {
  const calls=[];
  return {calls,services:{Status:{OK:'OK'},Geocoder:class{addressSearch(q,cb){calls.push(['address',q]);cb(addressRows,'OK');}},Places:class{keywordSearch(q,cb){calls.push(['place',q]);cb(placeRows,'OK');}}}};
@@ -57,4 +57,31 @@ test('지구·블록 주소는 법정동(여러 동이면 시·군·구) 일대�
  assert.deepEqual({level:result.area.level,name:result.area.name,bcode:result.area.bcode,dong:result.area.dong},{level:'dong',name:'신길동',bcode:'4127310500',dong:'신길동'});
  const other={...region,address_name:'경기 시흥시 신길동',address:{...region.address,address_name:'경기 시흥시 신길동'}};
  assert.equal((await resolveLocation(maps([other]),{hssplyAdres:'경기도 안산시 단원구 신길동 일원 B-1블록',houseNm:''})).area,null,'다른 시·군·구의 같은 동 이름은 쓰지 않는다');
+});
+test('map search moves to a dong, road or place without confirming a location',async()=>{
+ const dong={address_type:'REGION',x:'126.75',y:'37.71',address_name:'경기 파주시 운정1동',address:{region_1depth_name:'경기',region_2depth_name:'파주시',region_3depth_name:'운정1동'}};
+ const sdk=maps([dong]);
+ const found=await searchArea(sdk,'운정동','인천 계양구');
+ assert.deepEqual(found,{name:'경기 파주시 운정1동',latitude:37.71,longitude:126.75,level:5});
+ // 공고 지역을 붙인 검색어를 먼저 묻는다(같은 이름의 동이 여러 지역에 있을 때 공고 지역이 앞서게).
+ assert.equal(sdk.calls[0][1],'인천 계양구 운정동');
+ const district={...dong,address_name:'인천 부평구',address:{region_1depth_name:'인천',region_2depth_name:'부평구',region_3depth_name:''}};
+ assert.equal((await searchArea(maps([district]),'부평구')).level,6);
+ const road={address_type:'ROAD',x:'127.05',y:'37.29',address_name:'경기 수원시 영통구 광교중앙로'};
+ assert.equal((await searchArea(maps([road]),'광교중앙로')).level,4);
+ // 주소로 못 찾으면 장소 이름으로, 그것도 없으면 null(지도를 옮기지 않는다).
+ const place=await searchArea(maps([],[{place_name:'운정역 경의중앙선',address_name:'경기 파주시 와동동',x:'126.74',y:'37.72'}]),'운정역');
+ assert.equal(place.name,'운정역 경의중앙선');
+ assert.equal(await searchArea(maps([],[]),'없는곳'),null);
+ assert.equal(await searchArea(maps([],[]),'  '),null);
+});
+test('address suggestions mark exact addresses and drop duplicate place names',async()=>{
+ const {suggestAddresses}=await import('../src/features/announcement/location/resolveLocation.js');
+ const exact={address_type:'ROAD_ADDR',x:'127.03',y:'37.5',address_name:'서울 강남구 테헤란로 152',address:{address_name:'서울 강남구 역삼동 737'}};
+ const area={address_type:'REGION',x:'126.65',y:'37.38',address_name:'인천 연수구 송도동'};
+ const places=[{id:'1',place_name:'인천 연수구 송도동',address_name:'x',x:'126.6',y:'37.3'},{id:'2',place_name:'송도한옥마을',road_address_name:'인천 연수구 테크노파크로 180',x:'126.64',y:'37.39'}];
+ const items=await suggestAddresses(maps([exact,area],places),'송도');
+ assert.deepEqual(items.map(item=>[item.kind,item.label,item.exact]),[['address','서울 강남구 테헤란로 152',true],['address','인천 연수구 송도동',false],['place','송도한옥마을',false]]);
+ assert.equal(items[0].detail,'서울 강남구 역삼동 737');
+ assert.deepEqual(await suggestAddresses(maps([exact]),'송'),[],'한 글자는 묻지 않는다');
 });

@@ -94,3 +94,59 @@ export function areaQuery(address) {
   const head=[province(raw)?tokens[0]:'',...cities].filter(Boolean);
   return dong?{query:[...head,dong].join(' '),level:'dong',name:dong}:{query:head.join(' '),level:'district',name:cities[cities.length-1]};
 }
+
+/**
+ * 지도 검색창의 '지도만 옮기기': 정확한 주소가 아니어도(동·도로명·지역·장소 이름) 그 일대로 지도를 옮길 위치를 찾는다.
+ * 위치를 확정하지 않으므로 핀·거리 기준으로 쓰지 않는다. 공고 지역을 붙인 주소 → 입력 그대로의 주소 → 장소 이름 순으로 찾는다.
+ * 돌려주는 level은 결과 범위에 맞춘 카카오 지도 축소 단계(동 5, 시·군·구 6, 시·도 8, 장소 4).
+ */
+export async function searchArea(maps,text,regionPrefix='',{timeoutMs=2500}={}) {
+  const value=normalize(text);
+  if(!value) return null;
+  const geocoder=new maps.services.Geocoder(),ok=maps.services.Status.OK;
+  const queries=[...new Set([regionPrefix?`${regionPrefix.trim()} ${value}`:'',value].filter(Boolean))];
+  for(const query of queries) {
+    const rows=await request(geocoder,'addressSearch',query,ok,timeoutMs).catch(()=>[]);
+    const row=rows.find(coordinates);
+    if(!row) continue;
+    const region=row.address || row.road_address || {};
+    const level=row.address_type==='REGION'
+      ? (region.region_3depth_name ? 5 : region.region_2depth_name ? 6 : 8)
+      : 4;
+    return {name:row.address_name,latitude:Number(row.y),longitude:Number(row.x),level};
+  }
+  const places=new maps.services.Places();
+  const rows=await request(places,'keywordSearch',queries[0],ok,timeoutMs).catch(()=>[]);
+  const place=rows.find(coordinates) || (queries.length>1?(await request(places,'keywordSearch',value,ok,timeoutMs).catch(()=>[])).find(coordinates):null);
+  return place?{name:place.place_name || place.address_name,latitude:Number(place.y),longitude:Number(place.x),level:4}:null;
+}
+
+/**
+ * 지도 검색창 자동완성의 주소·장소 후보(카카오 주소 검색과 장소 검색). center가 있으면 가까운 장소가 먼저 오도록 한다.
+ * 돌려주는 항목: { kind: 'address'|'place', key, label, detail, lat, lng, exact } — exact는 번지·건물번호까지 있는 주소.
+ */
+export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=2500}={}) {
+  const value=normalize(text);
+  if(value.length<2) return [];
+  const geocoder=new maps.services.Geocoder(),places=new maps.services.Places(),ok=maps.services.Status.OK;
+  const ask=(service,method,options)=>new Promise(resolve=>{
+    const timer=setTimeout(()=>resolve([]),timeoutMs);
+    service[method](value,(rows,status)=>{clearTimeout(timer);resolve(status===ok?rows:[]);},options);
+  });
+  const placeOptions=center?{location:center,size:limit}:{size:limit};
+  const [addressRows,placeRows]=await Promise.all([ask(geocoder,'addressSearch',{size:3}),ask(places,'keywordSearch',placeOptions)]);
+  const seen=new Set(),items=[];
+  addressRows.filter(coordinates).forEach(row=>{
+    const label=row.address_name;
+    if(seen.has(label)) return;seen.add(label);
+    const road=row.road_address?.address_name,parcel=row.address?.address_name;
+    items.push({kind:'address',key:`address:${label}`,label,detail:road && road!==label?road:parcel && parcel!==label?parcel:'주소',
+      lat:Number(row.y),lng:Number(row.x),exact:row.address_type==='REGION_ADDR' || row.address_type==='ROAD_ADDR'});
+  });
+  placeRows.filter(coordinates).forEach(row=>{
+    const label=row.place_name;
+    if(!label || seen.has(label)) return;seen.add(label);
+    items.push({kind:'place',key:`place:${row.id || label}`,label,detail:row.road_address_name || row.address_name || '',lat:Number(row.y),lng:Number(row.x),exact:false});
+  });
+  return items.slice(0,limit);
+}

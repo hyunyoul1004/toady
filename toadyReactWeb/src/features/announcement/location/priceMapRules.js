@@ -486,3 +486,38 @@ export function saleGroupText(group, areaUnit = 'm2') {
     ? { main: pyeong, sub: `전용 ${group.area}㎡ · ${types}`, price: range(group.minAmount, group.maxAmount), per }
     : { main: `전용 ${group.area}㎡`, sub: `${pyeong} · ${types}`, price: range(group.minAmount, group.maxAmount), per };
 }
+
+/**
+ * 지도 검색창 자동완성의 TOADY 후보: 불러온 실거래 단지·분양 공고 이름과 법정동.
+ * 이름이 검색어로 시작하면 앞에, 포함하면 그 뒤에 둔다. 지도에 놓을 수 없는(위치 미확인) 항목은 넣지 않는다.
+ * 돌려주는 항목: { kind: 'complex'|'sale'|'dong', key, label, detail, lat?, lng?, id? }
+ */
+export function suggestPlaces(complexes = [], sales = [], text = '', { limit = 6, statusLabel = () => '' } = {}) {
+  const query = compact(text);
+  if (query.length < 1) return [];
+  const located = item => Number.isFinite(item?.lat) && Number.isFinite(item?.lng);
+  const score = name => { const value = compact(name); return value.startsWith(query) ? 0 : value.includes(query) ? 1 : -1; };
+  const found = [];
+  sales.filter(located).forEach(sale => {
+    const rank = score(sale.houseNm);
+    if (rank >= 0) found.push({ kind: 'sale', key: `sale:${sale.id}`, id: sale.id, label: sale.houseNm, detail: ['분양', statusLabel(sale.status)].filter(Boolean).join(' · '), lat: sale.lat, lng: sale.lng, rank });
+  });
+  complexes.filter(located).forEach(complex => {
+    const rank = score(complex.name);
+    if (rank >= 0) found.push({ kind: 'complex', key: complex.key, label: complex.name, detail: [complex.dong, complex.buildYear ? `${complex.buildYear}년` : ''].filter(Boolean).join(' · '), lat: complex.lat, lng: complex.lng, rank });
+  });
+  // 법정동: 그 동 단지들의 가운데로 옮긴다.
+  const dongs = new Map();
+  complexes.filter(located).forEach(complex => {
+    if (!complex.dong || score(complex.dong) < 0) return;
+    const entry = dongs.get(complex.dong) || { lat: 0, lng: 0, count: 0 };
+    entry.lat += complex.lat; entry.lng += complex.lng; entry.count += 1;
+    dongs.set(complex.dong, entry);
+  });
+  const dongItems = [...dongs].map(([dong, entry]) => ({ kind: 'dong', key: `dong:${dong}`, label: dong, detail: `실거래 단지 ${entry.count}곳`, lat: entry.lat / entry.count, lng: entry.lng / entry.count, rank: score(dong) }));
+  const order = { dong: 0, sale: 1, complex: 2 };
+  return [...dongItems, ...found]
+    .sort((a, b) => a.rank - b.rank || order[a.kind] - order[b.kind] || a.label.length - b.label.length || a.label.localeCompare(b.label, 'ko'))
+    .slice(0, limit)
+    .map(({ rank, ...item }) => item);
+}
