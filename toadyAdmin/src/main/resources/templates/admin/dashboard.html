@@ -3,7 +3,7 @@
 <head th:replace="~{admin/fragments :: head('대시보드')}"></head>
 <body><div class="layout">
 <aside th:replace="~{admin/fragments :: sidebar}"></aside>
-<main class="content">
+<main class="content" id="main">
     <section class="page-heading"><div><p class="eyebrow">DASHBOARD</p><h1>오늘의 TOADY</h1><p class="muted">사람 방문만 셉니다(검색 로봇 제외, 아래 ‘내 방문 제외’에 등록한 브라우저 제외). 방문자는 브라우저 기준이며 IP는 저장하지 않습니다.</p></div><span class="timezone">● Asia/Seoul · 한국시간</span></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <section class="kpis" th:with="t=${today}, now=${report.current}, before=${report.previous}">
@@ -13,7 +13,7 @@
         <div class="kpi"><span>알림 구독</span><strong th:text="${t.pushSubscriptions != null ? #numbers.formatInteger(t.pushSubscriptions,1,'COMMA') : '—'}">0</strong><small th:text="${'오늘 댓글 ' + (t.comments != null ? t.comments : '—') + '개'}"></small></div>
     </section>
 
-    <section class="panel"><div class="panel-head"><h2>최근 14일 방문자</h2><span class="muted" style="font-size:11px">막대 = 방문자 · 숫자 아래 = 페이지뷰</span></div>
+    <section class="panel"><div class="panel-head"><h2>최근 14일 방문자</h2><span class="panel-note">막대 = 방문자 · 숫자 아래 = 페이지뷰</span></div>
         <div class="empty" th:if="${#lists.isEmpty(daily)}"><h3>방문 기록을 읽지 못했습니다</h3></div>
         <div class="daily" th:unless="${#lists.isEmpty(daily)}"><div th:each="d, s : ${daily}" th:classappend="${(s.last ? 'today ' : '') + (d.weekend ? 'weekend' : '')}" th:title="${d.label + ' 방문자 ' + d.visitors + ' · 페이지뷰 ' + d.pageViews}">
             <b th:text="${d.visitors}">0</b><i th:style="${'height:' + (d.percent < 2 ? 2 : d.percent) + '%'}"></i><small th:text="${d.label}"></small></div></div>
@@ -44,7 +44,7 @@
 
     <div class="alert error spaced" th:if="${report.error}" th:text="${report.error}"></div>
     <th:block th:if="${report.error == null}">
-    <section class="panel spaced"><div class="panel-head"><h2>주간 추이 · 최근 8주</h2><span class="muted" style="font-size:11px">최신 주가 위 · 이번 주는 오늘까지</span></div>
+    <section class="panel spaced"><div class="panel-head"><h2>주간 추이 · 최근 8주</h2><span class="panel-note">최신 주가 위 · 이번 주는 오늘까지</span></div>
         <div class="table-wrap"><table class="metrics"><thead><tr><th>주</th><th>방문자</th><th>세션</th><th>페이지뷰</th><th>재방문</th><th>활성 탐색자</th><th>상세 열람</th><th>관심 저장</th><th>공유</th></tr></thead><tbody>
             <tr th:each="week, stat : ${report.weeks}" th:classappend="${stat.first} ? 'current'"><td><strong th:text="${week.label}"></strong><small th:if="${stat.first}">이번 주</small></td>
                 <td th:text="${#numbers.formatInteger(week.visitors,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.sessions,1,'COMMA')}"></td><td th:text="${#numbers.formatInteger(week.pageViews,1,'COMMA')}"></td>
@@ -53,7 +53,7 @@
         </tbody></table></div>
         <p class="hint">활성 탐색자: 한 주에 서로 다른 공고 상세를 2개 이상 보거나 관심 공고를 저장한 방문자. 재방문: 그 주 마지막 방문 이전(그 주 시작 전 4주 안)에 다른 날에도 방문한 방문자.</p>
     </section>
-    <section class="panel spaced"><div class="panel-head"><h2>유입 경로 · 최근 28일</h2><span class="muted" style="font-size:11px" th:text="${'세션 ' + report.sourceSessions + '개 · 검색 ' + report.searchPercent + '%'}"></span></div>
+    <section class="panel spaced"><div class="panel-head"><h2>유입 경로 · 최근 28일</h2><span class="panel-note" th:text="${'세션 ' + report.sourceSessions + '개 · 검색 ' + report.searchPercent + '%'}"></span></div>
         <div class="alert notice" th:if="${report.sourceNotice}" th:text="${report.sourceNotice}"></div>
         <ul class="sources" th:if="${report.sourceNotice == null and report.sourceSessions > 0}">
             <li th:each="source : ${report.sources}"><div><strong th:text="${source.label}"></strong><small th:if="${source.host != '' and source.host != source.label}" th:text="${source.host}"></small></div><span class="bar"><i th:style="${'width:' + source.percent + '%'}"></i></span><em th:text="${source.sessions + ' · ' + source.percent + '%'}"></em></li>
@@ -62,19 +62,19 @@
     </section>
     </th:block>
 
-    <section class="panel spaced" id="exclusions"><div class="panel-head"><h2>내 방문 제외</h2><span class="muted" style="font-size:11px">운영자 브라우저를 지표에서 뺍니다(과거 기록 포함)</span></div>
+    <section class="panel spaced" id="exclusions"><div class="panel-head"><h2>내 방문 제외</h2><span class="panel-note">운영자 브라우저를 지표에서 뺍니다(과거 기록 포함)</span></div>
         <div class="alert notice" th:unless="${exclusionReady}">제외 목록 테이블이 없습니다. database.sql 20번과 관리자 DB 권한(19번)을 적용하면 사용할 수 있습니다.</div>
-        <p class="hint" style="margin-top:0">방문자는 브라우저마다 따로 셉니다. 내가 쓰는 기기·브라우저(PC 크롬, 휴대폰 사파리 등)에서 각각 관리자 화면을 열고 한 번씩 등록하세요.</p>
+        <p class="hint lead">방문자는 브라우저마다 따로 셉니다. 내가 쓰는 기기·브라우저(PC 크롬, 휴대폰 사파리 등)에서 각각 관리자 화면을 열고 한 번씩 등록하세요.</p>
         <form class="exclude-box" th:action="@{/admin/exclusions}" method="post" th:if="${exclusionReady}">
             <input type="hidden" name="visitorId" id="this-visitor" value="">
             <label>이 브라우저 이름<input name="label" maxlength="50" placeholder="예: 맥북 크롬"></label>
             <button class="primary" type="submit" id="exclude-button">이 브라우저를 내 방문으로 등록</button>
         </form>
         <p class="hint" id="this-visitor-state"></p>
-        <div class="table-wrap" th:unless="${#lists.isEmpty(exclusions)}"><table><thead><tr><th>이름</th><th>방문자 ID</th><th>등록</th><th></th></tr></thead><tbody>
-            <tr th:each="e : ${exclusions}" th:attr="data-visitor=${e.visitorId}"><td><strong th:text="${e.label}"></strong></td><td class="mono" th:text="${#strings.substring(e.visitorId,0,8) + '…'}"></td>
-                <td th:text="${e.registeredAt != null ? #temporals.format(e.registeredAt, 'yyyy.MM.dd') : ''}"></td>
-                <td><form th:action="@{/admin/exclusions/remove}" method="post"><input type="hidden" name="visitorId" th:value="${e.visitorId}"><button class="secondary" type="submit">제외 풀기</button></form></td></tr>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(exclusions)}"><table><thead><tr><th>이름</th><th>방문자 ID</th><th>등록</th><th></th></tr></thead><tbody>
+            <tr th:each="e : ${exclusions}" th:attr="data-visitor=${e.visitorId}"><td class="cell-title"><strong th:text="${e.label}"></strong></td><td class="mono" data-label="방문자 ID" th:text="${#strings.substring(e.visitorId,0,8) + '…'}"></td>
+                <td data-label="등록" th:text="${e.registeredAt != null ? #temporals.format(e.registeredAt, 'yyyy.MM.dd') : ''}"></td>
+                <td class="cell-actions"><form th:action="@{/admin/exclusions/remove}" method="post"><input type="hidden" name="visitorId" th:value="${e.visitorId}"><button class="secondary" type="submit">제외 풀기</button></form></td></tr>
         </tbody></table></div>
     </section>
     <footer>TOADY · 관리자 <span>회원 정보·검색어·전체 URL은 지표로 수집하지 않습니다.</span></footer>

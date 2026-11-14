@@ -2,22 +2,30 @@
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head th:fragment="head(title)"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title th:text="${title} + ' · TOADY 관리자'">TOADY 관리자</title><link rel="stylesheet" th:href="@{/admin/style.css}"></head>
 <body>
-<!-- 모든 관리자 화면의 왼쪽 메뉴. 지금 화면(menu)을 표시하고, 로그아웃은 CSRF 토큰이 담긴 POST로 보낸다. 좁은 화면에서는 위쪽 가로 메뉴가 된다. -->
+<!-- 모든 관리자 화면의 메뉴. 넓은 화면에서는 왼쪽 고정 메뉴, 920px 이하에서는 위쪽 막대의 '메뉴' 단추로 펼친다.
+     지금 화면(menu)을 표시하고, 로그아웃은 CSRF 토큰이 담긴 POST로 보낸다. -->
 <aside class="side" th:fragment="sidebar">
-    <a class="brand" th:href="@{/admin/}"><span class="brand-mark">T</span> TOADY <span class="muted">관리자</span></a>
-    <nav class="side-nav" aria-label="관리자 메뉴">
-        <p class="side-group">현황</p>
-        <a th:classappend="${menu == 'dashboard'} ? 'active'" th:href="@{/admin/}"><span aria-hidden="true">▦</span>대시보드</a>
-        <p class="side-group">서비스</p>
-        <a th:classappend="${menu == 'announcements'} ? 'active'" th:href="@{/admin/announcements}"><span aria-hidden="true">▤</span>공고</a>
-        <a th:classappend="${menu == 'members'} ? 'active'" th:href="@{/admin/members}"><span aria-hidden="true">◉</span>회원</a>
-        <a th:classappend="${menu == 'comments'} ? 'active'" th:href="@{/admin/comments}"><span aria-hidden="true">✎</span>댓글</a>
-        <p class="side-group">운영</p>
-        <a th:classappend="${menu == 'operations'} ? 'active'" th:href="@{/admin/operations}"><span aria-hidden="true">◎</span>데이터·알림 상태</a>
-        <a th:classappend="${menu == 'jobs'} ? 'active'" th:href="@{/admin/jobs}"><span aria-hidden="true">↻</span>수집 작업</a>
-    </nav>
-    <div class="side-foot"><span th:text="${username}">admin</span><a href="/" target="_blank" rel="noopener">사이트 열기 ↗</a>
-        <form th:action="@{/admin/logout}" method="post"><button class="quiet" type="submit">로그아웃</button></form></div>
+    <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+    <div class="side-top">
+        <a class="brand" th:href="@{/admin/}"><span class="brand-mark">T</span> TOADY <span class="muted">관리자</span></a>
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="admin-menu"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="menu-label">메뉴</span></button>
+    </div>
+    <div class="side-panel" id="admin-menu">
+        <nav class="side-nav" aria-label="관리자 메뉴">
+            <p class="side-group">현황</p>
+            <a th:classappend="${menu == 'dashboard'} ? 'active'" th:attr="aria-current=${menu == 'dashboard'} ? 'page' : null" th:href="@{/admin/}"><span aria-hidden="true">▦</span>대시보드</a>
+            <p class="side-group">서비스</p>
+            <a th:classappend="${menu == 'announcements'} ? 'active'" th:attr="aria-current=${menu == 'announcements'} ? 'page' : null" th:href="@{/admin/announcements}"><span aria-hidden="true">▤</span>공고</a>
+            <a th:classappend="${menu == 'members'} ? 'active'" th:attr="aria-current=${menu == 'members'} ? 'page' : null" th:href="@{/admin/members}"><span aria-hidden="true">◉</span>회원</a>
+            <a th:classappend="${menu == 'comments'} ? 'active'" th:attr="aria-current=${menu == 'comments'} ? 'page' : null" th:href="@{/admin/comments}"><span aria-hidden="true">✎</span>댓글</a>
+            <p class="side-group">운영</p>
+            <a th:classappend="${menu == 'operations'} ? 'active'" th:attr="aria-current=${menu == 'operations'} ? 'page' : null" th:href="@{/admin/operations}"><span aria-hidden="true">◎</span>데이터·알림 상태</a>
+            <a th:classappend="${menu == 'jobs'} ? 'active'" th:attr="aria-current=${menu == 'jobs'} ? 'page' : null" th:href="@{/admin/jobs}"><span aria-hidden="true">↻</span>수집 작업</a>
+        </nav>
+        <div class="side-foot"><span class="who" th:text="${username}">admin</span><a href="/" target="_blank" rel="noopener">사이트 열기 ↗</a>
+            <form th:action="@{/admin/logout}" method="post"><button class="quiet" type="submit">로그아웃</button></form></div>
+    </div>
+    <div class="side-backdrop" aria-hidden="true"></div>
 </aside>
 <div th:fragment="flash"><div class="alert notice" th:if="${notice}" th:text="${notice}"></div><div class="alert error" th:if="${error}" th:text="${error}"></div></div>
 <!-- 목록 아래 페이지 이동. 검색 조건(base)을 유지한다. -->

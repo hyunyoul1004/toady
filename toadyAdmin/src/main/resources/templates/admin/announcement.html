@@ -3,11 +3,11 @@
 <head th:replace="~{admin/fragments :: head(${detail.row.houseNm})}"></head>
 <body><div class="layout">
 <aside th:replace="~{admin/fragments :: sidebar}"></aside>
-<main class="content" th:with="d=${detail}, a=${detail.row}, here=${'/admin/announcements/' + detail.row.id}">
+<main class="content" id="main" th:with="d=${detail}, a=${detail.row}, here=${'/admin/announcements/' + detail.row.id}">
     <p class="crumbs"><a th:href="@{/admin/announcements}">공고</a> › <span th:text="${a.typeLabel}"></span></p>
     <section class="page-heading"><div><h1 th:text="${a.houseNm}"></h1><p class="muted" th:text="${a.address}"></p>
-        <div class="chips" style="margin-top:10px"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
-        <div class="chips"><a class="secondary" th:href="${d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
+        <div class="chips spaced-top"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
+        <div class="heading-actions"><a class="secondary" th:href="${d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <section class="kpis">
         <div class="kpi primary"><span>상세 열람 · 30일</span><strong th:text="${d.viewers30 != null ? d.viewers30 + '명' : '—'}">0</strong><small th:text="${d.views30 != null ? d.views30 + '회 열람' : ''}"></small></div>
@@ -38,18 +38,18 @@
                 <div><dt>시세 범위(1~3사분위)</dt><dd th:text="${g.q1 != null ? #numbers.formatInteger(g.q1,1,'COMMA') + ' ~ ' + #numbers.formatInteger(g.q3,1,'COMMA') + '만원' : '—'}"></dd></div>
                 <div><dt>기준 · 신뢰도</dt><dd th:text="${(g.basis == 'new' ? '신축' : (g.basis != null ? '전체 연식' : '—')) + (g.confidence != null ? ' · ' + g.confidence : '')}"></dd></div>
             </dl>
-            <div th:if="${d.polls != null and d.pollTotal > 0}" style="margin-top:18px"><p class="side-group" style="margin-left:0">경쟁률 예상 투표</p>
+            <div th:if="${d.polls != null and d.pollTotal > 0}"><p class="rank-title">경쟁률 예상 투표</p>
                 <ul class="rank"><li th:each="c, s : ${d.polls}"><span class="name" th:text="${{'미달','1~5 : 1','5~10 : 1','10~30 : 1','30~100 : 1','100 : 1 이상'}[s.index]}"></span><span class="bar"><i th:style="${'width:' + (c * 100 / d.pollTotal) + '%'}"></i></span><em th:text="${c + '표'}"></em></li></ul></div>
         </section>
     </div>
-    <section class="panel spaced"><div class="panel-head"><h2>주택형 · 분양가</h2><span class="muted" style="font-size:11px">청약홈 공개 값(만원)</span></div>
+    <section class="panel spaced"><div class="panel-head"><h2>주택형 · 분양가</h2><span class="panel-note">청약홈 공개 값(만원)</span></div>
         <p class="muted" th:if="${#lists.isEmpty(d.units)}">주택형 자료가 없습니다.</p>
         <div class="table-wrap" th:unless="${#lists.isEmpty(d.units)}"><table><thead><tr><th>주택형</th><th th:if="${d.hasUnitArea}">전용면적</th><th>공급 세대</th><th>최고 공급금액</th></tr></thead><tbody>
-            <tr th:each="u : ${d.units}"><td><strong th:text="${u.label}"></strong></td><td th:if="${d.hasUnitArea}" th:text="${u.area != null ? u.area + '㎡' : '—'}"></td><td th:text="${u.households != null ? u.households + '세대' : '—'}"></td><td th:text="${u.amountLabel}"></td></tr>
+            <tr th:each="u : ${d.units}"><td class="cell-title"><strong th:text="${u.label}"></strong></td><td data-label="전용면적" th:if="${d.hasUnitArea}" th:text="${u.area != null ? u.area + '㎡' : '—'}"></td><td data-label="공급 세대" th:text="${u.households != null ? u.households + '세대' : '—'}"></td><td data-label="최고 공급금액" th:text="${u.amountLabel}"></td></tr>
         </tbody></table></div>
     </section>
     <section class="panel spaced"><div class="panel-head"><h2 th:text="${'댓글 ' + comments.total + '개'}">댓글</h2>
-            <div class="tabs" style="margin:0"><a th:href="@{${here}(state='all')}" th:classappend="${state == 'all'} ? 'active'">전체</a><a th:href="@{${here}(state='visible')}" th:classappend="${state == 'visible'} ? 'active'">보이는 것</a><a th:href="@{${here}(state='hidden')}" th:classappend="${state == 'hidden'} ? 'active'">숨긴 것</a></div></div>
+            <div class="tabs"><a th:href="@{${here}(state='all')}" th:classappend="${state == 'all'} ? 'active'">전체</a><a th:href="@{${here}(state='visible')}" th:classappend="${state == 'visible'} ? 'active'">보이는 것</a><a th:href="@{${here}(state='hidden')}" th:classappend="${state == 'hidden'} ? 'active'">숨긴 것</a></div></div>
         <p class="muted" th:if="${#lists.isEmpty(comments.items)}">댓글이 없습니다.</p>
         <ul class="comment-list" th:unless="${#lists.isEmpty(comments.items)}">
             <li th:each="c : ${comments.items}" th:classappend="${c.deleted} ? 'is-hidden'">

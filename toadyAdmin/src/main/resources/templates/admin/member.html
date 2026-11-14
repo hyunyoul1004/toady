@@ -3,10 +3,10 @@
 <head th:replace="~{admin/fragments :: head(${detail.member.nickname})}"></head>
 <body><div class="layout">
 <aside th:replace="~{admin/fragments :: sidebar}"></aside>
-<main class="content" th:with="d=${detail}, m=${detail.member}, here=${'/admin/members/' + detail.member.seq}">
+<main class="content" id="main" th:with="d=${detail}, m=${detail.member}, here=${'/admin/members/' + detail.member.seq}">
     <p class="crumbs"><a th:href="@{/admin/members}">회원</a> › <span th:text="${'#' + m.seq}"></span></p>
     <section class="page-heading"><div><h1 th:text="${m.nickname}"></h1><p class="muted" th:text="${m.email}"></p>
-        <div class="chips" style="margin-top:10px"><span class="chip" th:classappend="${m.locked or m.withdrawn} ? 'off' : (${m.certified} ? 'on' : 'warn')" th:text="${m.status}"></span>
+        <div class="chips spaced-top"><span class="chip" th:classappend="${m.locked or m.withdrawn} ? 'off' : (${m.certified} ? 'on' : 'warn')" th:text="${m.status}"></span>
             <span class="chip" th:text="${'가입 ' + (m.createdAt != null ? #temporals.format(m.createdAt, 'yyyy.MM.dd') : '—')}"></span>
             <span class="chip" th:if="${m.lockedAt != null}" th:text="${'잠금 ' + #temporals.format(m.lockedAt, 'yyyy.MM.dd HH:mm')}"></span></div></div>
         <form th:unless="${m.withdrawn}" th:action="@{/admin/members/{seq}/lock(seq=${m.seq})}" method="post" class="confirm" th:attr="data-confirm=${m.locked ? m.nickname + ' 회원의 잠금을 풀까요?' : m.nickname + ' 회원을 잠글까요? 다음 로그인부터 막힙니다.'}">
@@ -17,10 +17,10 @@
         <div class="kpi"><span>관심 공고</span><strong th:text="${d.favorites != null ? #lists.size(d.favorites) : '—'}">0</strong><small>최대 50개</small></div>
         <div class="kpi"><span>댓글</span><strong th:text="${comments.total}">0</strong><small>숨긴 댓글 포함</small></div>
         <div class="kpi"><span>알림 구독(회원 연결)</span><strong th:text="${d.pushSubscriptions != null ? d.pushSubscriptions : '—'}">0</strong><small>브라우저 수</small></div>
-        <div class="kpi"><span>마지막 변경</span><strong style="font-size:18px" th:text="${d.updatedAt != null ? #temporals.format(d.updatedAt, 'MM.dd HH:mm') : '—'}">—</strong><small>정보·잠금 변경 시각</small></div>
+        <div class="kpi"><span>마지막 변경</span><strong class="kpi-text" th:text="${d.updatedAt != null ? #temporals.format(d.updatedAt, 'MM.dd HH:mm') : '—'}">—</strong><small>정보·잠금 변경 시각</small></div>
     </section>
     <div class="grid-2">
-        <section class="panel"><div class="panel-head"><h2>관심 공고</h2><span class="muted" style="font-size:11px">비공개 메모는 보여 주지 않습니다</span></div>
+        <section class="panel"><div class="panel-head"><h2>관심 공고</h2><span class="panel-note">비공개 메모는 보여 주지 않습니다</span></div>
             <p class="muted" th:if="${d.favorites == null or #lists.isEmpty(d.favorites)}">저장한 공고가 없습니다.</p>
             <ul class="mini" th:unless="${d.favorites == null or #lists.isEmpty(d.favorites)}"><li th:each="f : ${d.favorites}"><a th:href="@{${f.adminPath}}" th:text="${f.houseNm != null ? f.houseNm : f.id}"></a>
                 <small th:text="${f.stageLabel + (f.savedAt != null ? ' · ' + #temporals.format(f.savedAt, 'MM.dd') : '')}"></small></li></ul>

@@ -50,3 +50,30 @@ if (document.getElementById('history')) {
     state.textContent = `이 브라우저 방문자 ID: ${id.slice(0, 8)}… (아직 집계에 포함됨)`;
   }
 })();
+
+// 좁은 화면(920px 이하)의 메뉴: '메뉴' 단추로 펼치고, 바깥·Esc·메뉴 선택·넓은 화면 전환 시 닫는다.
+(() => {
+  const toggle = document.querySelector('.menu-toggle');
+  if (!toggle) return;
+  const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+  const backdrop = document.querySelector('.side-backdrop');
+  const label = toggle.querySelector('.menu-label');
+  const set = open => {
+    document.body.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    if (label) label.textContent = open ? '닫기' : '메뉴';
+  };
+  toggle.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    set(open);
+    if (open) panel?.querySelector('a[aria-current="page"], a')?.focus();
+  });
+  backdrop?.addEventListener('click', () => set(false));
+  panel?.addEventListener('click', event => { if (event.target.closest('a')) set(false); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.body.classList.contains('nav-open')) { set(false); toggle.focus(); }
+  });
+  window.matchMedia('(min-width: 921px)').addEventListener('change', event => { if (event.matches) set(false); });
+  // 뒤로가기로 돌아온 화면(bfcache)에 펼친 메뉴가 남지 않게 한다.
+  window.addEventListener('pageshow', () => set(false));
+})();
