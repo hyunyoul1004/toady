@@ -1,293 +1,236 @@
-# TOADY · 청약 일정 캘린더 및 분양 정보 플랫폼
+# TOADY · 청약 정보를 한 화면에서
 
-**유형별로 나뉜 청약홈 공공데이터를 모아, 청약 일정부터 경쟁률·당첨 가점까지 한 화면에서 확인하는 웹 서비스입니다.**
+**청약홈 공고 찾기 → 생활권 검색 → 상세·주소 → 지도 → 동네 분위기 → 주변 시세로 흩어져 있던 청약 준비 동선을 한 화면에 모은 서비스입니다.**
 
-월별 일정 조회, 생활권·지역 검색, 관심 공고와 나의 청약 일정, 준비 체크리스트·메모·비교, 지도·동네 실거래 조회 동선을 제공합니다. 프론트엔드·API·데이터 수집기를 별도 애플리케이션으로 구성하고 Docker Compose로 배포합니다.
+[서비스 바로가기 (www.toady.co.kr)](https://www.toady.co.kr)
 
-[서비스 바로가기](https://www.toady.co.kr) · [API 문서](https://www.toady.co.kr/swagger-ui/index.html)
+청약을 준비하는 사람은 청약홈에서 공고를 찾고, 주소를 지도에 따로 검색하고, 카페에서 분위기를 묻고, 실거래가 사이트에서 주변 시세를 비교합니다. TOADY는 공공데이터(청약홈·국토교통부 실거래)를 직접 수집·가공해 이 과정을 공고 하나의 상세 화면 안에서 끝낼 수 있게 합니다. 기획·설계·개발·배포·운영을 혼자 맡아 실제 도메인으로 운영하고 있습니다.
 
-## 프로젝트에서 해결한 문제
+| 구성 | 역할 | 문서 |
+| --- | --- | --- |
+| [`toadyReactWeb`](toadyReactWeb) | 사용자 화면 (React 18 · MUI · Vite) | [README](toadyReactWeb/README.md) |
+| [`toadyWebApi`](toadyWebApi) | 공고·실거래·회원·커뮤니티 REST API (Spring Boot 3.5 · Java 21) | [README](toadyWebApi/README.md) |
+| [`toadyScheduler`](toadyScheduler) | 청약홈 데이터 수집기 · 수집 내부 API (Spring Boot 3.5 · Java 21) | [README](toadyScheduler/README.md) |
+| [`toadyAdmin`](toadyAdmin) | 운영 관리자 사이트 (Kotlin · Spring Boot · Thymeleaf) | [README](toadyAdmin/README.md) |
 
-청약 정보는 주택 유형별로 API와 데이터 형식이 나뉘어 있습니다. 같은 접수 일정도 필드명과 날짜 형식이 달라, 그대로는 하나의 캘린더와 검색 결과로 표현하기 어렵습니다. 또 사용자 요청마다 외부 API를 호출하면 외부 서비스의 응답 지연에 영향을 받습니다.
+---
 
-TOADY는 **데이터 수집을 사용자 요청 처리와 분리**하고, 저장된 공고를 **공통 목록 계약으로 변환**해 캘린더와 검색 화면에 제공합니다.
+## 주요 기능
 
-| 구현 범위 | 내용 |
-| --- | --- |
-| 사용자 화면 | 데스크톱·모바일 캘린더, 지역·공급유형 필터, 전체 기간 자동완성, 상세 패널 |
-| API | 5개 공고 유형 통합 조회, 상세·경쟁률·가점, JWT 인증, 이메일 인증, 댓글 |
-| 수집 | 공고·주택형·경쟁률 수집, 페이지 순회, 중복 실행 방지, 기존 데이터 갱신 |
-| 운영 구성 | Docker Compose, Nginx·TLS 연동, GitHub Actions 검증·이미지 배포 |
+**공고 탐색**
+- 월별 청약 캘린더(데스크톱·모바일 별도 화면)와 지역·공급유형 필터, 전체 기간 자동완성 검색
+- 생활권 검색(운정·동탄·검단 등), 이번 주 청약·지역별 청약·무순위(줍줍) 모음
+- 5개 공고 유형(APT·도시형/오피스텔·잔여세대·공공지원민간임대·임의공급)을 하나의 목록으로 통합
 
-## 주요 사용자 흐름
+**공고 상세**
+- 공급유형별 일정, 주택형별 분양가, 모집공고문 PDF, 경쟁률·당첨가점·특별공급 현황
+- **분양가 vs 주변 시세**: 국토교통부 실거래로 같은 면적(±5㎡)·최근 6개월 거래 범위와 비교, 신축 기준 선택
+- **위치 탭 실거래 지도**: 주변 단지별 가격 말풍선, 면적·가격·연식 필터, 넓게 보면 법정동·시군구 묶음, 전체 화면, 거리 재기·드래그 반경 그리기(반경 안 시세 요약), 주소·동·장소 검색과 자동완성
+- 단지별 '이야기'(댓글·답글) 커뮤니티, 경쟁률 예상 투표, 이미지로 저장·공유
 
-1. 캘린더에서 월별 청약 일정을 확인하고 지역·공급유형을 선택합니다.
-2. 지역이나 단지명으로 검색합니다. 전체 기간 검색 결과를 선택하면 해당 접수 월로 이동합니다.
-3. 공고를 선택해 상세, 경쟁률·가점, 위치, 댓글을 확인합니다.
-4. 내게 맞는 청약에서 조건을 한 번 고르면 넣을 수 있는 공고와 가능한 특별공급, 분양가 대비 주변 실거래, 입주까지 필요한 자금을 함께 봅니다.
-5. 로그인한 사용자는 공고에 댓글과 답글을 작성하고 본인 글을 수정·삭제합니다.
+**개인화와 재방문**
+- 가점 계산기(가점이 오르는 날 캘린더 저장), 조건으로 넣을 수 있는 공고를 찾는 맞춤 청약
+- 나의 청약: 관심 공고 저장(비회원은 브라우저), 진행 단계(신청 예정 → 당첨 → 계약 완료 → 입주까지 남은 기간), 메모·비교
+- 알림: 웹 푸시(관심 공고 일정·생활권 새 공고·주간 브리핑), 이메일 일정 알림, 개인 캘린더 구독(ICS)
+- 내 정보: 닉네임·비밀번호 변경, 프로필 캐릭터, 내가 쓴 이야기와 받은 답글 알림, 탈퇴
+
+**운영**
+- 관리자 사이트: 방문·재방문·유입 경로·방문 → 알림 흐름 지표, 회원 잠금, 댓글 숨김·복구, 수집 실행·자동 일정
+- 검색 노출용 서버 HTML(공고·생활권·주간·무순위·FAQ)과 사이트맵, 공유 미리보기 이미지
 
 ## 시스템 구성
 
 ```mermaid
 flowchart LR
-    Browser[웹 브라우저] --> Nginx[Nginx · TLS / 도메인 라우팅]
-    Nginx --> Web[React · Vite]
-    Nginx --> API[Spring Boot API]
+    User[브라우저] --> Nginx[Nginx · TLS]
+    Nginx --> Web[toadyReactWeb<br/>정적 React 앱]
+    Nginx --> API[toadyWebApi]
+    Nginx -->|/admin| Admin[toadyAdmin]
     API --> DB[(MariaDB)]
-    Scheduler[Spring Boot 수집기] -->|주기적 조회| Applyhome[청약홈 Open API]
-    Scheduler -->|공고 · 주택형 · 경쟁률 저장| DB
+    Admin --> DB
+    Admin -->|내부 토큰| Scheduler
+    Scheduler[toadyScheduler] --> DB
+    Scheduler -->|공고·주택형·경쟁률| Applyhome[청약홈 Open API]
+    API -->|실거래| Molit[국토교통부 실거래 API]
+    API -->|주소·좌표| Kakao[카카오 로컬 API]
+    API -->|인증·알림 메일| Mail[SMTP]
+    API -->|알림| Push[Web Push]
 ```
 
-세 앱은 하나의 저장소에서 관리하며 별도 애플리케이션·컨테이너로 실행합니다. 수집기와 API는 서로 다른 JVM을 사용하고 MariaDB를 공유합니다. 현재 배포 구성은 AWS EC2의 Docker Compose를 기준으로 합니다. 기본 자동 수집은 한국시간 공고·주택형 매일 03:15, 경쟁률·가점·특별공급 현황 매일 04:15와 20:15에 실행하며 90일 전부터 오늘까지의 공고를 재조회합니다. 시각은 일 단위 갱신 문서를 바탕으로 정한 운영 정책입니다.
+- 네 앱은 한 저장소에서 관리하고 각각 별도 컨테이너로 실행합니다. AWS EC2의 Docker Compose로 운영합니다.
+- 수집기와 API는 서로 다른 JVM이며 MariaDB를 공유합니다. 외부 API 대기·대량 적재가 사용자 요청의 스레드·메모리를 쓰지 않게 하려는 분리입니다(호스트·DB 장애까지 격리하지는 않습니다).
+- 자동 수집: 공고·주택형 매일 03:15, 경쟁률·가점·특별공급 매일 04:15·20:15(한국시간), 90일 전부터 오늘까지 재조회.
 
-| 영역 | 사용 기술 |
+| 영역 | 기술 |
 | --- | --- |
-| Frontend | React 18, Vite 5, TanStack Query v5, Zustand, MUI, FullCalendar |
-| Backend | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT |
-| 관리자 사이트 | Kotlin, Thymeleaf, 세션 인증, 기간별 백필, DB 기반 자동 스케줄·실행 이력(스케줄러 내부 API) |
-| Data | MariaDB, 청약홈 Open API, Spring `@Scheduled` |
-| Validation | JUnit 5, Spring Boot Test, Mockito, H2 |
+| Frontend | React 18, Vite 5, MUI 5, TanStack Query v5, Zustand, React Router 6, FullCalendar, Kakao Maps SDK |
+| Backend | Java 21, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT, JdbcTemplate |
+| Admin | Kotlin, Spring Boot 3.5, Thymeleaf, 세션 인증·CSRF |
+| Data | MariaDB 11.4, 청약홈 Open API, 국토교통부 실거래 API, 카카오 로컬 API |
+| Test | JUnit 5, Spring Boot Test, Mockito, H2(MariaDB 모드), Node test runner, JSDOM |
 | Delivery | Docker, Docker Compose, Nginx, Certbot, GitHub Actions |
-| DB 설정 | 직접 실행하는 단일 `database.sql` |
 
-## 설계 판단과 구현 근거
+---
 
-### 1. 수집기와 사용자 API의 실행 경계 분리
+## 기술적으로 고민한 점
 
-외부 API 대기와 데이터 적재가 사용자 요청과 같은 JVM의 스레드·메모리를 직접 사용하지 않도록 수집기를 분리했습니다. 수집기는 조회·변환·저장을 담당하고, API는 DB의 데이터를 조회해 응답합니다.
+### 1. 형식이 다른 5개 공고 유형을 하나의 캘린더로
+청약홈은 유형마다 API·필드명·날짜 형식(`yyyy-MM-dd`, `yyyyMMdd`)이 다릅니다. 저장은 유형별 테이블 구조를 유지하고, 조회 시 유형별 Repository에 같은 검색 조건을 적용한 뒤 공통 `AnnouncementListItem`으로 바꿔 접수 시작일 기준으로 병합·정렬합니다. 목록의 댓글 수는 반환할 페이지의 공고 키를 한 번에 집계해 N+1 조회를 피합니다.
+→ [AnnouncementSearchService](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementSearchService.java) · [AnnouncementListMapper](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementListMapper.java)
 
-대신 호스트와 DB는 공유하므로 DB 부하나 호스트 장애까지 격리되지는 않습니다. 현재 규모에서 운영 복잡도를 제한하면서 필요한 실행 경계를 확보한 구성입니다.
+### 2. 수집 데이터가 비거나 어긋나도 기존 데이터를 지키는 수집기
+- 응답의 `matchCount`에 닿을 때까지 페이지를 돌고, 중간에 건수가 바뀌거나 모자라면 저장하지 않고 실패로 둡니다.
+- 제공처가 빈 응답을 주면 기존 주택형·경쟁률을 지우지 않습니다. 변경된 행만 트랜잭션 안에서 교체합니다.
+- MariaDB advisory lock으로 여러 인스턴스의 동시 수집을 막고, 401·403·429는 즉시 멈춰 일일 한도를 더 쓰지 않습니다.
+→ [ApplyhomeSyncService](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [ApplyhomeSyncLock](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncLock.java)
 
-구현: [수집 동기화 서비스](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [스케줄 실행](toadyScheduler/src/main/java/com/toady/web/apt/scheduler/ApplyhomeSyncScheduler.java)
+### 3. 위치를 '확정 / 후보 / 미확인'으로 구분하는 공통 판정
+분양 공고 주소는 지번이 아닌 '○○지구 3블록'인 경우가 많습니다. 정확한 지번·도로명이고 시군구가 일치할 때만 핀을 놓고, 단지명 검색 결과는 '후보'로만 보여 주며, 지구·블록 주소는 법정동 일대를 점선 원으로 표시합니다. 특정 단지를 위한 예외 파싱은 두지 않고 모든 공고에 같은 규칙을 씁니다.
+→ [resolveLocation.js](toadyReactWeb/src/features/announcement/location/resolveLocation.js)
 
-### 2. 서로 다른 5개 공고 유형을 공통 목록으로 통합
+### 4. 외부 API 호출 한도 안에서 실거래 지도를 빠르게
+지도를 옮기면 화면에 걸친 시·군·구마다 12개월치 거래를 불러야 합니다.
+- 달·시군구 단위로 캐시하고, 응답 시간 안에 못 받은 달은 '일부 응답(partial)'으로 먼저 보낸 뒤 화면이 이어서 받습니다.
+- 국토부 호출은 동시 3개·간격 0.12초로 조절하고, 429·한도 초과·키 오류를 받으면 전체 호출을 잠시 멈추는 차단기를 둡니다(초당 한도 1분, 일일 한도 자정까지).
+- 실거래 자료에는 좌표가 없어 지번을 카카오로 좌표 변환해 DB에 남기고, 찾지 못한 지번은 30일 뒤 다시 확인합니다.
+→ [NeighborhoodResearchService](toadyWebApi/src/main/java/com/toady/web/app/planner/research/NeighborhoodResearchService.java) · [ComplexPriceService](toadyWebApi/src/main/java/com/toady/web/app/planner/research/ComplexPriceService.java)
 
-APT·URBAN·REMAINING·PUBLIC_RENTAL·OPTIONAL은 저장 테이블과 접수일 필드가 다릅니다. 유형별 Repository에 검색 조건을 적용하고, 공통 `AnnouncementListItem`으로 변환한 뒤 접수 시작일 기준으로 병합·정렬합니다. 날짜 비교에서는 `yyyy-MM-dd`와 `yyyyMMdd`의 차이를 정규화합니다.
+### 5. 팝업·상세·전체 화면 지도를 브라우저 히스토리와 일치시키기
+모바일에서 뒤로가기를 눌렀을 때 화면이 통째로 닫히거나, 닫은 팝업이 다시 열리는 문제를 줄이기 위해 팝업을 히스토리 state의 레이어로 다룹니다. 맨 위 레이어만 뒤로가기로 닫고, 아래 레이어를 닫을 때는 위 레이어까지 함께 걷어 내며, 고른 단지가 있는 채로 전체 화면을 열면 레이어 순서를 바꿔 쌓습니다. 새로고침해도 같은 화면이 복원됩니다.
+→ [useHistoryOverlay](toadyReactWeb/src/hooks/useHistoryOverlay.js) · [overlay.util.js](toadyReactWeb/src/utils/overlay.util.js)
 
-유형별 저장 구조를 유지하면서 클라이언트에 일관된 목록을 제공합니다. 다만 깊은 페이지일수록 가져오는 후보가 늘어납니다. 실제 데이터량과 응답 시간을 측정한 뒤 DB 통합 조회나 공통 조회 테이블을 검토할 지점입니다.
+### 6. 인증과 남용 방지
+- JWT에 비밀번호 기반 확인값(credentialVersion)을 넣어 비밀번호 변경·잠금·탈퇴 시 다른 기기의 토큰을 즉시 무효화합니다. 토큰을 갱신해도 최초 로그인 시각(`tca`)을 이어받아 최대 14일이 지나면 다시 로그인하게 합니다.
+- 로그인·현재 비밀번호 확인은 IP와 계정 기준으로 함께 제한하고, 계정 변경은 행 잠금으로 직렬화한 뒤 잠금 안에서 다시 검사합니다.
+- 관리자 사이트는 CSRF·세션 쿠키(`Path=/admin`, `SameSite=Strict`)를 쓰고, 수집 실행은 32자 이상 공유 토큰의 내부 API로만 요청합니다.
+→ [JwtProviderImpl](toadyWebApi/src/main/java/com/toady/web/core/security/jwt/impl/JwtProviderImpl.java) · [AccountService](toadyWebApi/src/main/java/com/toady/web/app/user/service/AccountService.java) · [RequestLimitFilter](toadyWebApi/src/main/java/com/toady/web/core/security/RequestLimitFilter.java)
 
-구현: [검색 서비스](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementSearchService.java) · [유형별 DTO 변환](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementListMapper.java)
+### 7. 무료 메일 한도 안에서 인증 메일 지키기
+Gmail 한 계정(하루 약 500통)으로 가입 인증·비밀번호 찾기·일정 알림을 모두 보냅니다. 최근 24시간 발송 시도를 DB에서 세고, 알림이 한도를 다 쓰지 못하도록 인증용 여유분을 따로 남기며, 결과가 불확실한 발송은 자동 재발송하지 않습니다. 발신 주소는 설정값이라 메일 서비스를 옮길 때 코드 변경이 없습니다.
+→ [MailBudget](toadyWebApi/src/main/java/com/toady/web/app/planner/MailBudget.java)
 
-### 3. 현재 월을 넘어서는 검색과 캘린더 이동
+### 8. 개인정보 없이 유입·재방문 측정
+회원 ID·검색어·URL 전체를 보내지 않고 브라우저 무작위 ID로 페이지 조회와 행동(상세 열람·관심 저장·알림 켬·지도 기능 사용)을 기록합니다. 관리자 사이트는 주간 방문·재방문, 유입 도메인, 방문 → 상세 → 저장 → 알림 흐름과 신규 방문자의 재방문율(알림 켠 사람과 아닌 사람 비교)을 보여 줍니다. 운영자 브라우저는 집계에서 뺄 수 있습니다.
+→ [MetricsService](toadyAdmin/src/main/kotlin/com/toady/admin/metrics/MetricsService.kt) · [UsageEventController](toadyWebApi/src/main/java/com/toady/web/app/analytics/UsageEventController.java)
 
-현재 월 데이터만 검색하면 과거 공고를 찾을 수 없습니다. 별도 자동완성 API가 전체 기간의 주택명·주소를 검색하고, 화면에서는 2자 이상 입력 시 300ms 디바운스를 적용합니다. 결과를 선택하면 접수 월로 이동하고 상세 패널을 엽니다. 입력이 바뀐 뒤 도착한 이전 요청의 응답은 무시합니다.
+---
 
-구현: [검색·필터 훅](toadyReactWeb/src/views/main/hooks/useAnnouncementSearch.js) · [필터 UI](toadyReactWeb/src/views/main/components/AnnouncementFilters.jsx)
+## 테스트와 배포
 
-### 4. 수집 데이터의 누락·중복과 동시 실행 대응
-
-- 응답의 `matchCount`에 도달할 때까지 페이지를 조회하고, 예상 건수에 못 미친 상태에서 빈 페이지가 오면 실패 처리합니다.
-- 공고 복합키로 연결된 주택형을 조회합니다. 일반 데이터는 JPA `merge`, 경쟁률은 `ON DUPLICATE KEY UPDATE`로 갱신합니다.
-- 도시형 주택형은 실제 `ID`를 식별자로 조회하며, 공고별 최신 응답과 DB를 비교해 변경 없는 행은 유지하고 사라지거나 변경된 행은 트랜잭션 안에서 교체합니다. 응답 내 동일 행은 중복 저장하지 않습니다.
-- MariaDB advisory lock을 획득한 실행만 동기화를 진행합니다.
-
-구현: [동기화](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncService.java) · [DB 잠금](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeSyncLock.java) · [경쟁률 저장](toadyScheduler/src/main/java/com/toady/web/apt/service/ApplyhomeCompetitionPersistenceService.java)
-
-### 5. 기능 변경의 영향을 줄이는 책임 분리
-
-메인 화면의 검색·필터, 필터 UI, 공고 원문 표시를 훅과 컴포넌트로 분리했습니다. 서버 상태는 TanStack Query로 관리하며 댓글 변경 후 관련 쿼리를 무효화합니다. API의 공고 조회 진입점은 유지하고 검색·상세·경쟁률 서비스를 나눴습니다.
-
-구현: [메인 화면](toadyReactWeb/src/views/main/Main.jsx) · [공고 Query 훅](toadyReactWeb/src/features/announcement/hooks/useAnnouncements.js) · [조회 진입점](toadyWebApi/src/main/java/com/toady/web/app/announcement/service/AnnouncementService.java)
-
-## 관리자 사이트 (`toadyAdmin`)
-
-Kotlin·Spring Boot·Thymeleaf로 만든 별도 관리자 앱입니다. 서비스 지표(주간 방문·재방문·활성 탐색자·유입 경로), 회원 조회·잠금, 공고 댓글 숨김·복구, 공고 수집·주변 시세 비교·웹 푸시 상태, 수집 실행·자동 일정을 한곳에서 관리합니다. 수집 실행기는 스케줄러 프로세스에 있으므로 실행·중지·일정 변경은 토큰으로 보호한 스케줄러 내부 API(`/internal/admin`)로 요청합니다. 설정·배포 순서는 [관리자 사이트 안내](toadyAdmin/README.md)를 참고하세요.
-
-### 수집 관리
-
-공고·주택형, 전체 경쟁률·가점·특별공급, APT 가점 단독 및 전체 수집을 기간별로 실행하고 자동 스케줄 사용 여부·cron·재조회 일수를 관리자 사이트의 `/admin/jobs`에서 관리합니다. 과거 가점이 자동 재조회 범위 밖이면 모집공고일을 지정해 복원할 수 있습니다. 스케줄러 자체에는 로그인·화면이 없으며 `/internal/health`와 토큰으로 보호한 `/internal/admin`만 엽니다.
-
-스케줄러의 관리 기능은 기본 비활성화이며 관리 테이블 두 개와 공유 토큰을 준비한 뒤 활성화합니다. [테이블 생성 SQL](database.sql)과 [수집 관리 활성화 안내](toadyScheduler/README.md#수집-관리실행-이력자동-일정)를 참고하세요.
-
-## 검증과 배포
-
-PR과 `master` push에서 API·수집기의 단위 및 H2 회귀 테스트, 프론트 회귀 테스트·빌드와 격리된 MariaDB 검증을 수행합니다. `master` 배포는 검증 성공 후 진행하며 세 이미지를 동일한 커밋 SHA로 태깅합니다. 배포 후에는 API·스케줄러의 준비 상태와 DB 연결, 웹 응답, 앱 컨테이너 실행 상태를 확인합니다.
+| 대상 | 테스트 | 내용 |
+| --- | --- | --- |
+| toadyWebApi | 168개 | 통합 공고 조회, 가입 → 메일 인증 → 로그인 → 댓글 → 비밀번호 변경 흐름, 토큰 무효화, 계정 변경·대입 제한, 실거래 호출 속도 조절·차단기, 공개 페이지 |
+| toadyScheduler | 62개 | 청약홈 응답 매핑, 페이지 순회·건수 검증, 빈 응답 보호, 수집 작업·자동 일정, 보관 기간 정리, `database.sql` 전체 실행(H2 MariaDB 모드) |
+| toadyAdmin | 15개 | 로그인 제한·CSRF, 회원 잠금, 댓글 숨김·복구, 지표 집계(재방문·흐름), 스케줄러 장애 시 화면 |
+| toadyReactWeb | 146개 | JSDOM에 실제 App·라우터를 띄운 화면 흐름, 히스토리 레이어, 인증 토큰 경합, 지도 규칙(위치 판정·반경 요약·자동완성) |
 
 ```mermaid
 flowchart LR
-    Change[PR / master push] --> Verify[API 테스트 · 수집기 테스트 · 웹 빌드]
-    Verify -->|master push만| Images[커밋 SHA 이미지 빌드 · Push]
-    Images --> Deploy[EC2 Compose 갱신]
-    Deploy --> Check[API · DB 연결 · 웹 응답 · 컨테이너 상태 확인]
+    Push[master push / PR] --> Check[저장소 정책 검사 · nginx 문법]
+    Check --> Test[API · 수집기 · 관리자 테스트 · 웹 테스트·빌드]
+    Test --> Maria[임시 MariaDB에서 SQL·트랜잭션 검증]
+    Maria -->|master만| Image[커밋 SHA 태그 이미지 4개 빌드·푸시]
+    Image --> Deploy[EC2 Compose 갱신]
+    Deploy --> Verify[헬스체크 · DB 연결 · 웹 응답 확인]
+    Verify -->|실패| Rollback[마지막 성공 태그로 자동 롤백]
 ```
 
-| 검증 범위 | 근거 |
-| --- | --- |
-| 통합 공고 조회·날짜 필터·자동완성·인증 등 | [API 통합 테스트](toadyWebApi/src/test/java/com/toady/web/MainApplicationTests.java) |
-| 가입 → 이메일 인증 → 로그인 → 댓글 CRUD·소유권 → 비밀번호 변경·기존 JWT 거부 | [사용 흐름 통합 테스트](toadyWebApi/src/test/java/com/toady/web/ApplicationFlowRegressionTest.java) |
-| 가입 실패 롤백·인증 코드 동시 사용·재발송 | [인증 트랜잭션 테스트](toadyWebApi/src/test/java/com/toady/web/CertifyTransactionTest.java) |
-| 댓글 커서·신규 등록/삭제·동일 시각 정렬·게시글 공개 기간·잘못된 입력 | [사용 흐름 회귀 테스트](toadyWebApi/src/test/java/com/toady/web/ApplicationFlowRegressionTest.java) |
-| 탭 간 계정 변경·이전 응답 차단·캐시 취소·지도 SDK 타임아웃 | [프론트 회귀 테스트](toadyReactWeb/tests/announcement-auth.test.mjs) |
-| DB 연결 성공·실패 시 준비 상태 응답 | [준비 상태 테스트](toadyWebApi/src/test/java/com/toady/web/core/health/HealthControllerTest.java) |
-| 외부 API 요청 구성·매핑·수집 흐름 | [수집기 테스트](toadyScheduler/src/test/java/com/toady/web/apt) |
-| 배포 전 검증·커밋별 이미지 배포 | [GitHub Actions](.github/workflows/deploy.yml) |
-| 배포 후 준비 상태 대기·실패 처리 | [확인 스크립트](scripts/check-deployment.sh), [격리된 배포 검증 테스트](scripts/tests/test_deployment.py) |
+배포 확인에 실패하면 앱 컨테이너를 마지막 성공 태그로 되돌립니다(DB 변경은 되돌리지 않습니다). → [deploy.yml](.github/workflows/deploy.yml) · [check-deployment.sh](scripts/check-deployment.sh)
 
-H2 회귀 테스트는 PK 매핑·날짜 정렬·스냅샷 갱신을, 프론트 테스트는 전체 페이지 조회·토큰 갱신·늦은 인증 응답 처리를 검증합니다. 별도 `mariadbTest`로 개발 DB의 실제 PK·SQL·DML도 확인할 수 있습니다. 테스트 결과는 운영 부하나 가용성을 측정한 수치가 아니며, 프론트 빌드에는 번들 크기 경고가 남아 있습니다.
-
-전체 흐름 점검은 개별 기능 테스트와 함께 위 통합 시나리오를 실행합니다. 공유 공고·주택형 10개 테이블의 API/수집기 매핑과 경쟁률 관련 8개 테이블의 SQL/수집 복합키도 대조했습니다. 실제 운영 DB의 스키마, 외부 API의 최신 응답, 운영 Nginx·DNS·TLS와 실제 기기/메일 클라이언트의 동작은 이 로컬 검증과 별도로 확인해야 합니다. 로컬 점검 중 실제 메일을 발송하거나 운영 DB 데이터를 변경하지 않습니다.
-
-추가한 배포 구성은 로컬 Docker 및 운영 환경에서 실행 검증하지 않았습니다. 배포 후 확인은 외부 DNS·수집 완료를 보장하지 않으며, 무중단 배포는 구현하지 않았습니다. 배포 확인에 실패하면 앱 컨테이너만 마지막 성공 태그로 자동으로 되돌립니다(DB 변경은 되돌리지 않음).
-
-## 저장소 안내
+## 저장소 구조
 
 ```text
 .
-├── toadyReactWeb/           # React 화면 · API 클라이언트 · 서버 상태 관리
-├── toadyWebApi/             # 공고 조회 · 인증 · 댓글 REST API
-├── toadyScheduler/          # 청약홈 데이터 수집 · 저장
-├── toadyAdmin/              # 관리자 사이트(Kotlin) · 지표 · 회원 · 댓글 · 수집 제어
-├── scripts/                # 배포 후 상태 확인
-├── .github/workflows/      # 검증 및 배포 파이프라인
-├── docker-compose.yml      # 운영 앱 · DB · Nginx · Certbot 구성
-└── database.sql            # 공유 DB 테이블 생성·수동 변경 참고 SQL
+├── toadyReactWeb/        # 사용자 화면
+├── toadyWebApi/          # REST API · 공개 HTML · 사이트맵
+├── toadyScheduler/       # 청약홈 수집기 · 수집 내부 API
+├── toadyAdmin/           # 관리자 사이트
+├── scripts/              # 저장소 정책 검사 · 배포 확인
+├── .github/workflows/    # 검증·배포 파이프라인
+├── docker-compose.yml    # 운영 구성(앱 4개 · MariaDB · Nginx · Certbot)
+└── database.sql          # 공유 DB 변경 SQL(구역 번호로 관리)
 ```
 
-[프론트엔드 실행 안내](toadyReactWeb/README.md) · [API 실행·명세](toadyWebApi/README.md) · [수집기 실행·설정](toadyScheduler/README.md) · [관리자 사이트](toadyAdmin/README.md)
+## 로컬에서 실행하기
 
-## 로컬에서 확인하기
-
-필요 환경은 Java 21, Node.js 22, npm입니다. 기본 테스트에는 실제 DB와 청약홈 API 키가 필요하지 않습니다. 개발 DB 검증은 API 폴더에서 `bash ./gradlew mariadbTest`로 별도 실행하며, 고유한 테스트 행의 변경은 롤백합니다. 상세 설정은 API README를 참고하세요.
+필요 환경: Java 21, Node.js 22, npm. 테스트는 실제 DB·외부 API 키 없이 실행됩니다.
 
 ```bash
-# 저장소 루트에서 실행
-(cd toadyWebApi && bash ./gradlew test)
-(cd toadyScheduler && bash ./gradlew test)
-(cd toadyAdmin && bash ./gradlew test)
+(cd toadyWebApi && ./gradlew test)
+(cd toadyScheduler && ./gradlew test)
+(cd toadyAdmin && ./gradlew test)
 (cd toadyReactWeb && npm ci && npm test && npm run build)
-```
-
-화면 개발 서버는 다음과 같이 실행합니다.
-
-```bash
-cd toadyReactWeb
-cp .env.example .env.local
-npm ci
-npm run dev
-```
-
-`http://localhost:3000`에서 열리며, 데이터 조회·인증에는 `localhost:8081`의 API가 필요합니다. 지도는 본인의 Kakao JavaScript 키를 설정한 경우 사용할 수 있습니다.
-
-**전체 서비스 실행에는 별도로 준비된 MariaDB 스키마가 필요합니다.** 현재 저장소는 전체 초기 스키마를 제공하지 않으며 `ddl-auto=none`입니다. `database.sql`은 댓글·경쟁률·관리자 테이블의 추가 설정이며, 공고 상세·주택형·회원 등을 포함한 전체 DB 초기화 파일은 아닙니다. API·수집기 실행 전 각 README와 [공유 DB 변경 관리](#공유-db-변경-관리)를 확인하세요.
-
-## 저장소 관리
-
-- 소스·테스트·문서·SQL·Gradle Wrapper·`package-lock.json`은 추적합니다.
-- 실제 환경 설정, 인증서·개인키, IDE 설정, 의존성, 빌드 산출물, 로그·DB 백업은 제외합니다.
-- 환경 설정은 `.env.example` 등 값이 비어 있거나 예시인 파일만 공개합니다.
-- 프론트엔드는 npm으로 통일하고, 사용하지 않는 기존 폰트와 Yarn 잠금 파일은 추적에서 제외합니다.
-- `VITE_*` 값은 브라우저 번들에 포함됩니다. DB 비밀번호·JWT 비밀키·서버용 API 키를 넣지 않습니다.
-
-README는 루트와 세 애플리케이션의 최상위 폴더에 하나씩만 유지합니다. 다른 경로의 README와 이 문서에 통합된 개발 메모는 Git 추적에서 제외합니다. 이미 추적된 금지 파일도 `scripts/check-repository.py`로 검사하며 PR·master CI에 동일하게 적용합니다.
-
-```bash
 python3 scripts/check-repository.py
-git diff --check
-git status --short
-git diff --cached --stat
 ```
 
-검사는 파일 정책과 일부 식별 가능한 키 형식을 확인하며 모든 비밀값 탐지를 보장하지는 않습니다. 스테이징된 diff도 직접 확인합니다. 이미 적용된 Git 이력을 삭제하는 작업은 수행하지 않습니다.
+화면 개발 서버는 `toadyReactWeb`에서 `npm run dev`로 띄우며 `http://localhost:3000`에서 열리고 `/api`는 `localhost:8081`의 API로 프록시합니다. API·수집기를 띄우려면 MariaDB 스키마와 각 앱의 `.env`가 필요합니다(각 README 참고). 저장소는 전체 초기 스키마를 제공하지 않고, `database.sql`은 운영 DB에 적용해 온 변경 SQL을 구역 번호로 모은 파일입니다.
 
+## 저장소 관리 원칙
 
-## 수동 배포와 상태 확인
+- 실제 환경 설정(`.env*`), 인증서·키, 빌드 산출물, 로그는 추적하지 않습니다. 환경 설정은 값이 빈 `.env.example`만 공개합니다.
+- `VITE_*` 값은 브라우저 번들에 포함되므로 서버 비밀값을 넣지 않습니다.
+- `scripts/check-repository.py`가 파일 정책과 식별 가능한 키 형식을 검사하며 CI에서도 같은 검사를 실행합니다.
 
-서버에는 Docker Compose, `bash`, `curl`이 필요합니다. 배포 전에 GitHub Actions Secret `VITE_KAKAO_MAP_KEY`와 기존 EC2·Docker Hub Secrets를 설정합니다. 지도 키는 이미지 빌드 시 전달되며, 런타임 환경변수 변경만으로 정적 앱에 반영되지 않습니다.
+---
 
-세 앱의 `DOCKER_USERNAME`, `IMAGE_TAG`를 동일하게 지정해 배포합니다. 새 CI는 커밋 SHA 태그를 사용하고 `latest`를 갱신하지 않습니다. CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `~/toady/.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 컨테이너를 건드리지 않고 이전 파일로 되돌리며, 배포 확인에 실패해 이전 태그로 롤백할 때도 compose 파일을 함께 되돌립니다. 서버 SSH 키를 받는 배포 Action은 커밋 SHA로, certbot 이미지는 버전 태그로 고정합니다.
+<details>
+<summary><b>운영 메모 — 배포·롤백·인증서·DB 변경</b></summary>
 
+### 배포와 롤백
+- GitHub Actions가 `master` 푸시마다 검증 후 네 이미지를 같은 커밋 SHA로 태깅해 Docker Hub에 올리고, EC2의 `~/toady`에서 Compose로 갱신합니다. 관리자 사이트는 서버에 `toadyAdmin/.env.prod`가 채워져 있을 때만 함께 배포합니다.
+- CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 이전 파일로 되돌립니다.
+- 마지막 성공 태그는 `~/toady/.deployed-image-tag`와 `~/toady/.env`의 `IMAGE_TAG=`에 기록합니다. 이미지 pull·`up`·배포 확인 중 하나라도 실패하면 앱 컨테이너를 이전 태그로 다시 올립니다.
+- Compose는 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그 없이 `latest`로 넘어가지 않습니다.
+
+수동 배포:
 ```bash
 cd ~/toady
-export DOCKER_USERNAME=dukkeoba
-export IMAGE_TAG=배포할_커밋_SHA
-docker-compose -p toady pull toadyWebApi toadyScheduler toadyReactWeb
-docker-compose -p toady up -d --no-deps toadyWebApi toadyScheduler toadyReactWeb
-docker exec nginx nginx -s reload
+export DOCKER_USERNAME=dukkeoba IMAGE_TAG=배포할_커밋_SHA
+docker-compose -p toady pull toadyWebApi toadyScheduler toadyAdmin toadyReactWeb
+docker-compose -p toady up -d --no-deps toadyWebApi toadyScheduler toadyAdmin toadyReactWeb
+docker exec nginx nginx -s reload      # 앞단 nginx가 새 컨테이너 IP를 다시 읽게 한다(502 방지)
 bash scripts/check-deployment.sh
 ```
 
-`docker-compose.yml`은 세 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그가 없으면 `latest`로 넘어가지 않고 바로 실패합니다. compose는 파일 전체를 해석하므로 `mariadb`·`nginx`·`certbot`만 다루는 명령에도 `IMAGE_TAG`가 필요합니다. CI가 첫 배포에 성공하면 `~/toady/.env`에 `IMAGE_TAG=`를 기록하므로 그 뒤로는 별도 지정 없이 실행됩니다. 이 변경 전에 배포된 서버처럼 `.env`에 값이 없으면 한 번만 다음으로 만듭니다.
+`check-deployment.sh`는 API·스케줄러 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다.
+
+### Nginx와 인증서
+- 웹 컨테이너·CI 문법 검사·앞단 nginx는 같은 `nginx:1.30-alpine`을 씁니다. 앞단 nginx 버전 변경은 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d --no-deps nginx`로 적용합니다.
+- 인증서는 certbot `--keep-until-expiring`으로 만료가 가까울 때만 다시 발급합니다. 서버 cron 예시:
+  ```cron
+  0 4 * * 1 cd /home/ec2-user/toady && docker-compose -p toady run --rm --no-deps certbot renew && docker exec nginx nginx -s reload
+  ```
+- 관리자 위치(`/admin`)는 `proxy_set_header X-Real-IP $remote_addr;`를 꼭 둡니다(관리자 로그인 실패 제한이 이 값을 씁니다).
+
+### DB 변경 (`database.sql`)
+두 앱 모두 `ddl-auto=none`이며 SQL은 배포 전에 관리 계정으로 직접 실행합니다. `CREATE ... IF NOT EXISTS` 형태라 이미 적용한 구역을 다시 실행해도 됩니다. 단, 주석으로만 둔 구역(4·5·6, 14·19의 권한 문)은 실제 구조를 확인한 뒤 따로 적용합니다.
 
 ```bash
-cd ~/toady
-umask 077; touch .env
-grep -q '^IMAGE_TAG=' .env || printf 'IMAGE_TAG=%s\n' "$(tr -d '[:space:]' < .deployed-image-tag)" >> .env
-```
-
-앱 컨테이너를 다시 만들 때는 `--no-deps`를 붙여 compose 설정 변경으로 `mariadb`·`nginx`까지 다시 만들어지지 않게 합니다.
-
-상태 검사는 API `/internal/health`와 DB 연결, 웹 컨테이너의 정적 페이지 응답, 세 앱 컨테이너의 실행·재시작 상태(실패 시 서비스 이름 출력)를 확인합니다. API `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다(`/internal/schema`가 없는 이전 API 이미지는 건너뜀). 이어서 서버 자신에게 `--resolve`로 접속해 앞단 nginx를 거친 `https://www.toady.co.kr/`와 `https://www.toady.co.kr/api/v1/planner/settings`의 HTTP 상태를 확인합니다. 연결 거부·시간 초과·502/503/504는 배포 실패로 보고 롤백하며, DNS·TLS·인증서 오류(curl 종료 코드 6, 35, 51, 60 등)나 예상과 다른 그 밖의 상태는 서버마다 인증서·도메인 구성이 다를 수 있어 경고만 남깁니다(`PUBLIC_HOST`로 도메인 변경 가능). 수집 작업의 완료나 외부 DNS는 검증하지 않습니다.
-
-앞단 nginx는 업스트림 컨테이너 IP를 기억하므로, CI는 앱 컨테이너를 다시 만든 뒤 `docker exec nginx nginx -s reload`를 실행합니다. 수동 배포 후 502가 나면 같은 명령을 실행합니다.
-
-배포 검증은 API와 스케줄러의 `/internal/health` 응답을 기다립니다. 스케줄러는 Spring 초기화·자동 스케줄 등록과 DB 연결이 완료되어야 준비 완료를 반환합니다.
-
-CI는 마지막 검증 성공 태그를 서버 `~/toady/.deployed-image-tag`에 기록하고, 같은 값을 `~/toady/.env`의 `IMAGE_TAG=` 줄에 저장합니다(다른 줄은 유지). 그래서 서버에서 `IMAGE_TAG`를 지정하지 않고 실행하는 `docker-compose` 명령(재시작, certbot 갱신 등)도 `latest`가 아닌 배포된 태그를 씁니다. 이미지 pull, `docker-compose up`, 배포 확인(`check-deployment.sh`) 중 어느 단계가 실패해도 CI는 실패 단계를 출력하고 세 앱 컨테이너를 기록된 이전 태그로 다시 올린 뒤 확인을 한 번 더 실행하고 실패로 끝납니다(롤백 `up` 자체가 실패하면 `ROLLBACK FAILED`를 출력). 성공 기록은 같은 폴더의 임시 파일에 쓴 뒤 `mv`로 교체하며 기존 `.env` 권한을 유지합니다(새로 만들면 600). 이전 기록이 없으면 되돌리지 않고 실패만 알립니다. 이전 커밋 태그를 지정해 수동으로 롤백할 수도 있습니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
-
-### Nginx 버전과 인증서 갱신
-
-웹 컨테이너(`toadyReactWeb/Dockerfile`), CI의 `nginx -t` 검사, 앞단 `nginx` 서비스는 모두 `nginx:1.27-alpine`을 씁니다. 앞단 nginx의 버전 변경은 CI 배포(앱 3개만 재생성)로는 적용되지 않고, 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d --no-deps nginx`로 nginx 컨테이너를 다시 만들 때 적용됩니다. 서버의 기존 설정에 있는 `listen 443 ssl http2;`는 1.25 이후 사용 중단 경고가 출력되지만 그대로 동작합니다(나중에 `listen 443 ssl;` + `http2 on;`으로 바꿀 수 있음). 재생성 전에 `docker run --rm -v /usr/local/dockerVolumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro -v /usr/local/dockerVolumes/nginx/conf.d:/etc/nginx/conf.d:ro -v /usr/local/dockerVolumes/certbot/conf:/etc/nginx/ssl:ro nginx:1.27-alpine nginx -t`로 문법을 확인합니다(업스트림 이름을 시작 시 해석하는 설정이면 compose 네트워크 밖에서 실패할 수 있으니, 그 경우 오류 내용만 확인).
-
-compose의 certbot은 `--keep-until-expiring`으로 만료가 가까울 때만 다시 발급합니다(이전 `--force-renewal`은 실행할 때마다 재발급해 발급 한도를 소모). 갱신은 서버 cron으로 주 1회 실행합니다.
-
-```cron
-# crontab -e (예: 매주 월요일 04:00). cron 환경에는 PATH가 짧으므로 docker-compose 경로를 확인해 넣습니다.
-0 4 * * 1 cd /home/ec2-user/toady && docker-compose -p toady run --rm --no-deps certbot renew && docker exec nginx nginx -s reload
-```
-
-`--no-deps`는 certbot의 `depends_on`(nginx → 앱)을 다시 띄우지 않게 합니다. 갱신은 최초 발급 때 저장된 webroot 설정을 그대로 씁니다.
-
-
-## 공유 DB 변경 관리
-
-DB 설정은 루트 [database.sql](database.sql) 한 파일로 관리합니다. 앱과 일반 배포에서 자동 실행하지 않으며, 두 애플리케이션의 `ddl-auto=none` 설정을 유지합니다.
-
-```bash
-# 저장소 루트에서 필요한 DB를 선택해 직접 실행
 mariadb -h DB호스트 -u 관리계정 -p DB이름 < database.sql
 ```
 
-| 구역 | 내용 | 실행 방식 |
-| --- | --- | --- |
-| 1 | 수집 관리자 실행 이력·자동 스케줄 테이블 | 없는 테이블만 생성 |
-| 2 | 공고 댓글 테이블 | 없는 테이블만 생성 |
-| 3 | 경쟁률·당첨 가점·특별공급 현황 테이블 | 없는 테이블만 생성 |
-| 4 | 기존 도시형 주택형의 ID PK 변경 | 참고용 주석, 구조 확인 후 별도 적용 |
-| 5 | 기존 권한 부여 명령 | 참고용 주석, 대상 범위·구문 검토 후 별도 적용 |
-| 6 | 인증 이메일 본문 컬럼의 TEXT 확장 | 참고용 주석, 미적용 DB에만 별도 적용 |
-| 7~9 | 방문 로그, 관심 공고·메일 발송량·알림 이력, 익명 행동 집계 | 없는 테이블만 생성 |
-| 10 | 방문 로그의 유입 도메인 컬럼(`REFERRER_HOST`) | 없는 컬럼만 추가, 미적용이어도 API는 유입 없이 저장 |
-| 11 | 회원 캘린더 구독 주소(`TB_CALENDAR_FEED`) | 없는 테이블만 생성, 캘린더 연결 배포 전 필수 |
-| 12 | 경쟁률 예상 투표(`TB_RATE_POLL`) | 없는 테이블만 생성, 미적용 시 투표 카드만 숨김 |
-| 13 | 웹 푸시 구독·생활권 새 공고 판정(`TB_PUSH_SUBSCRIPTION`, `TB_PUSH_AREA_SEEN`) | 없는 테이블만 생성, 미적용 시 알림 켜기 화면만 숨김 |
-| 14 | 유입 경로·푸시 발송 조회 인덱스, 스케줄러 계정의 보관 기간 정리 권한 | 없는 인덱스만 생성(`CREATE INDEX IF NOT EXISTS`, 10번 컬럼 필요), 권한은 참고용 주석이라 관리 계정으로 별도 적용 |
-| 15 | 생활권 새 공고 판정의 마지막 확인 시각(`TB_PUSH_AREA_SEEN.LAST_SEEN_DT`) | 없는 컬럼·인덱스만 추가, 미적용이면 API는 기록을 건너뛰고 스케줄러는 해당 정리를 건너뜀 |
+| 구역 | 내용 |
+| --- | --- |
+| 1 | 수집 실행 이력·자동 일정 |
+| 2 | 공고 댓글 |
+| 3 | 경쟁률·당첨가점·특별공급 현황 |
+| 4~6 | 도시형 주택형 PK 변경·권한·인증 메일 본문 확장(참고용 주석) |
+| 7~9 | 방문 로그, 관심 공고·메일 발송량·알림 이력, 익명 행동 집계 |
+| 10 | 방문 로그의 유입 도메인 |
+| 11 | 회원 캘린더 구독 주소 |
+| 12 | 경쟁률 예상 투표 |
+| 13 | 웹 푸시 구독·생활권 새 공고 판정 |
+| 14·15 | 유입·푸시 조회 인덱스, 보관 기간 정리 권한, 새 공고 판정 시각 |
+| 16 | 나의 청약 진행 단계 |
+| 17 | 오피스텔·공공지원민간임대 경쟁률 모델번호 길이 |
+| 18 | 공고별 주변 시세 비교 요약 |
+| 19 | 관리자 사이트 전용 DB 계정 |
+| 20 | 지표에서 뺄 운영자 브라우저 |
+| 21 | 관리자가 숨긴 댓글 기록 |
+| 22 | 실거래 단지 좌표 |
+| 23 | 회원 프로필 캐릭터 |
+| 24 | 회원별 이야기 조회 인덱스 |
 
-`CREATE TABLE IF NOT EXISTS`는 기존 테이블의 열·인덱스 차이를 보정하지 않습니다. 기존 도시형 PK 변경은 이미 반영한 DB에서 재실행하면 안 되므로 자동 실행문에 포함하지 않습니다. 권한 변경 역시 DB 관리 계정에서 확인 후 적용합니다.
+전체 초기 스키마는 제공하지 않으므로 새 DB에는 공고·주택형·회원 테이블을 따로 준비해야 합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
 
-전체 초기 스키마는 제공하지 않으므로 새 DB에는 공고·주택형·회원 등의 스키마를 별도로 준비해야 합니다. 기존 테이블을 변경할 때는 실제 구조와 백업을 확인하고 두 앱의 호환성을 검증한 뒤 필요한 구역을 적용합니다. 앱 이미지 롤백은 DB 변경을 되돌리지 않습니다.
-
-## 청약 조사와 나의 일정
-
-- 생활권 검색: 운정·동탄·다산·검단·위례·광교와 일부 역/신도시 별칭을 단지명·주소 검색으로 연결합니다. 행정 경계의 정확한 공간 검색은 아니며, 지역별 보조 키워드는 API `LivingAreas`에서 관리합니다.
-- 공고 조사: 기존 지도·경쟁률·가점에 접수/발표 요약, APT 주택형별 최고 공급금액, 주변 법정동의 국토교통부 실거래 조회와 지도·실거래가 원문 링크를 연결합니다. 네이버 검색 API는 사용하지 않으며 신고 거래를 현재 시세로 계산하지 않습니다.
-- 재방문: 관심 공고 최대 50개, 준비 체크리스트 5개, 비공개 메모, 최대 3개 공고 비교, 최근 본 공고 8개, 광역지역/검색 조건/보기 방식 기억, 전체/개별 ICS 캘린더 내려받기를 제공합니다.
-- 비회원 관심 공고는 기기에 저장하며 최신 공고 요약을 재조회합니다. 로그인 회원은 DB에 저장합니다. 기기 공고 가져오기는 사용자가 직접 선택할 때만 실행하고 계정의 기존 메모를 덮어쓰지 않습니다.
-- `/my`에서 나의 일정과 이메일 알림 설정/전체 해제를 관리합니다. Gmail 하나로 오늘·내일 일정을 일별 한 통에 묶고 최근 24시간 공통 발송량을 제한합니다. 서버가 전송 결과를 확신할 수 없는 경우 자동 재발송하지 않습니다.
-- 생활권 공개 페이지 `/areas`, `/areas/{slug}`(예: `/areas/unjeong`)는 같은 생활권 기준으로 접수 중·예정·최근 마감 공고를 서버 HTML로 제공합니다. ‘캘린더 열기’는 `/?area={slug}&month=YYYY-MM`으로 앱을 열어 생활권 검색과 첫 접수월을 한 번만 적용한 뒤 주소에서 지웁니다. 생활권 사이트맵은 `/sitemaps/areas.xml`입니다.
-- 회원은 `/my`의 ‘캘린더 연결’에서 개인 구독 주소(`/calendar/{token}.ics`)를 만들어 구글·아이폰 캘린더에 연결합니다. 저장한 공고 일정이 자동 반영되고 전날 오전 9시 알림이 붙어 메일 발송량을 쓰지 않습니다. 주소를 다시 만들거나 해지하면 이전 주소는 즉시 끊깁니다. 비회원은 로그인 안내와 일회성 일정 파일을 제공합니다.
-- 공개 모음 페이지 `/zupzup`(APT 무순위·잔여세대·임의공급)과 `/weekly`(이번 주 접수·APT 당첨자 발표·다음 주 접수 시작)는 공고 데이터로 매번 자동 생성합니다. 자주 묻는 질문은 앱 화면 `/faq`(사이드바 유지, `/api/v1/public/faq-items`)와 검색용 서버 HTML `/help/faq`(FAQPage 구조화 데이터, 대표 주소·사이트맵 등록)로 같은 문장을 제공하며, 문장은 `PublicFaqPage`에서 관리합니다. 생활권 페이지에는 로그인 없는 공개 캘린더 구독 `/calendar/areas/{slug}.ics`(알림 없음)를 둡니다.
-- `/score` 청약 가점 계산기는 무주택 기간·부양가족·통장 가입기간으로 84점 만점 가점을 계산해 브라우저에만 저장하고, `/api/v1/public/score-benchmarks`의 생활권별 최근 3년 공개 당첨가점(공고별 최저·최고)과 비교합니다. 공고 경쟁률 탭에서도 같은 값으로 내 가점을 비교하고, 접수 마감 전까지 경쟁률 예상 투표를 받습니다.
-- `/match` 내게 맞는 청약: 사는 곳·무주택·세대주·통장 기간·혼인·자녀 등 조건을 한 번 고르면(브라우저에만 저장, 서버 전송 없음) `/api/v1/public/eligibility/announcements`의 전국 접수 중·예정 APT 공고를 일반공급 순위와 가능한 특별공급(신혼·생애최초·다자녀·신생아·노부모·청년)으로 1차 판정해 가능성 높은 순으로 보여줍니다. 판정은 공통 요건을 단순화한 것이며 소득·자산·예치금·거주기간은 '확인할 것'으로 안내합니다. 공고 상세에도 같은 판정과 이유를 보여줍니다.
-- `/match/zupzup` 무순위·줍줍: 무순위·잔여세대·임의공급 공고를 접수 상태순으로 모으고, 웹 푸시 알림 주제 `zupzup-capital`(수도권)·`zupzup-all`(전국)로 새 공고를 생활권 알림과 같은 묶음에 넣습니다(구독 범위 6개에 함께 포함, DB 변경 없음).
-- 공고 상세 '청약 정보' 맨 위에 '주변 (신축) 시세 대비 약 ○억 낮아요/높아요' 요약을, 아래에 주택형별 비교를 보여줍니다. 비교는 `/api/v1/research/price-gap`(최근 최대 6개월·전용 ±5㎡, 같은 법정동 거래가 3건 미만이면 같은 시·군·구)의 1~3사분위 범위를 쓰고, 준공 10년 이내 거래가 3건 이상이면 신축 기준을 기본으로 합니다. 신뢰도(높음·보통·참고)를 함께 표시하고 '참고'만 있으면 요약하지 않으며, 계약금·중도금·잔금과 입주 때 필요한 내 돈을 계산하는 자금 계획을 둡니다. 정확한 주소로 확인된 공고만 실거래와 비교합니다.
-- 나의 청약 진행 단계: 관심 공고마다 신청 예정 → 신청 완료 → 당첨/미당첨 → 계약 완료를 기록하고, 단계와 일정에 맞는 다음 할 일(접수 D-day, 청약홈 신청, 발표 확인, 계약 준비)을 보여줍니다. APT 공고는 `/api/v1/planner/results`로 1순위 최고 경쟁률과 공개 당첨가점을 함께 보여주고 내 가점과 비교합니다. 회원 단계 저장에는 `database.sql` 16번(`TB_FAVORITE.STAGE`)이 필요하며, 미적용이면 단계만 저장하지 않습니다.
-- 가점 계산기에서 날짜로 기간을 고르면 다음에 가점이 오르는 날(무주택 +2점, 통장 +1점)을 알려 주고, 그날 오전 9시 알림이 붙은 캘린더 파일을 받을 수 있습니다(날짜는 서버에 저장하지 않음).
-- 공고 공개 페이지는 APT 공고의 청약 결과(1순위 최고 경쟁률·공개 당첨가점)와 자격 진단 연결을, 생활권 공개 페이지는 그 생활권의 최근 공개 당첨가점 5건과 가점 계산기·자격 진단 연결을 보여줍니다.
-- 주변 시세 비교 미리 계산(2단계): API가 매일 17:20(한국시간, `PRICE_GAP_CRON`) 접수 중·예정 공고의 공급 주소를 카카오 로컬 REST API(`KAKAO_REST_API_KEY`, 서버 전용)로 확인하고(정확한 지번만, 화면과 같은 규칙), 국토교통부 실거래로 대표 주택형의 '주변 (신축) 시세 대비' 범위를 계산해 `TB_PRICE_GAP`(`database.sql` 18번)에 둡니다. 한 번에 최대 60건, 요약은 3일·위치 미확인은 7일마다 다시 계산합니다. 이 값으로 맞춤 청약·줍줍 목록 뱃지와 '시세 대비 낮은 순' 정렬, 나의 청약 카드·비교표, 공고 공개 페이지, 줍줍 새 공고 알림 문구를 보여줍니다. 키나 테이블이 없으면 계산·표시만 생략합니다.
-- 웹 푸시 알림: 관심 공고 저장 직후와 나의 청약에서 '알림 켜기'를 누를 때만 권한을 요청하고, 관심 공고의 내일 일정, 관심 공고의 경쟁률 발표·당첨가점 공개(접수 마감 30일 이내 공고), 고른 생활권·줍줍의 새 공고, 일요일 주간 브리핑(`weekly-brief`, 다음 주 접수 시작 건수)을 하루 한 번(18시 무렵) 묶어 보냅니다. 아이폰은 iOS 16.4 이상에서 홈 화면에 추가한 앱으로 열어야 받을 수 있어 그 방법을 안내합니다. 운영 활성화에는 `database.sql` 13번과 API 환경변수 `WEB_PUSH_VAPID_PUBLIC_KEY`·`WEB_PUSH_VAPID_PRIVATE_KEY`·`WEB_PUSH_SUBJECT`·`PUSH_DIGEST_ENABLED=true`가 필요합니다(API README 참고).
-- 방문 로그는 세션 첫 조회의 외부 유입 도메인만 저장합니다. 공고·생활권 공개 페이지를 거쳐 앱으로 들어오면 원래 검색·메신저 도메인을 이어받고, 전체 URL·검색어는 저장하지 않습니다.
-- `/announcements/{type}/{house}/{notice}`는 운영 프론트 Nginx에서 API의 HTML 요약으로 연결합니다. 검색·공유용 메타와 본문을 서버에서 제공하며, 전체 기능 버튼은 기존 React 상세로 연결합니다. React 내부에서도 같은 경로로 상세를 열 수 있습니다. 동적 공고 사이트맵은 `/announcement-sitemap.xml`입니다.
-
-**배포 전 필수:** `database.sql` 8번(관심 공고·메일 발송량·알림 이력)과 9번(행동 집계)을 먼저 생성합니다. 기존 7번 방문 로그가 없으면 함께 생성합니다. Gmail 한도 관리가 기존 인증 메일에도 적용되므로 8번 생성은 이메일 알림 활성화 여부와 관계없이 필요합니다. `TB_MAIL_BUDGET` 초기 행 INSERT도 실행해야 합니다. 새 테이블에 API 계정의 SELECT/INSERT/UPDATE/DELETE 권한을 확인합니다. 기존 Gmail SMTP 설정을 유지하고, 준비 후 API 환경변수 `PLANNER_REMINDERS_ENABLED=true`로 일정 알림을 활성화합니다. 자세한 동작과 검증 범위는 API/웹 README에 있습니다.
+</details>

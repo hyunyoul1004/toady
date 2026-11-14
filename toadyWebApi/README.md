@@ -1,254 +1,115 @@
-# TOADY Web API
+# TOADY API (`toadyWebApi`)
 
-Spring Boot 기반의 분양 공고 통합 조회 및 커뮤니티 백엔드입니다. 아파트·도시형·잔여세대 등 서로 다른 공고 유형을 공통 API로 검색하고, 공고 상세 정보와 댓글 기능을 제공합니다.
+공고 조회·실거래 분석·회원·커뮤니티·알림을 담당하는 Spring Boot API입니다. 수집기가 DB에 쌓은 청약홈 데이터를 화면에 맞게 가공하고, 국토교통부 실거래와 카카오 주소 검색을 붙여 '분양가 vs 주변 시세'와 실거래 지도를 제공합니다. 검색 노출용 서버 HTML과 사이트맵, 공유 미리보기 이미지도 여기서 만듭니다.
 
 ## 주요 기능
 
-- 5개 공고 유형(APT, URBAN, REMAINING, PUBLIC_RENTAL, OPTIONAL)의 통합 검색 및 페이지 조회
-- 공고 유형별 상세 정보, 경쟁률, APT 당첨 가점 및 특별공급 현황 조회
-- 전체 기간 공고 자동완성 검색: 주택명 또는 주소 키워드로 검색하고 접수 시작일 최신순으로 제한된 결과 반환
-- JWT 로그인 및 회원가입·이메일 인증·비밀번호 재설정
-- 공고 댓글 목록 조회, 작성, 수정, 삭제
-- Swagger UI를 통한 API 명세 확인
+| 영역 | 내용 |
+| --- | --- |
+| 공고 | 5개 유형 통합 검색·페이지 조회, 전체 기간 자동완성, 상세·주택형, 경쟁률·당첨가점·특별공급, 모집공고문 PDF 링크 |
+| 실거래·위치 | 단지별 실거래 지도 데이터, 분양가 vs 주변 시세(신축 기준), 동네 실거래, 가까운 역·학교·마트(직선거리) |
+| 개인화 | 관심 공고·진행 단계·메모, 맞춤 청약 판정, 가점 비교, 개인 캘린더 구독(ICS), 이메일 일정 알림, 웹 푸시 |
+| 회원 | 가입·메일 인증·로그인(JWT)·비밀번호 찾기, 내 정보(닉네임·비밀번호·프로필 캐릭터·탈퇴), 받은 답글 |
+| 커뮤니티 | 공고별 이야기(댓글·답글, 커서 페이지), 경쟁률 예상 투표 |
+| 공개 페이지 | 공고·생활권·이번 주·무순위·FAQ 서버 HTML, 사이트맵, 공유용 OG 이미지(PNG) |
+| 측정 | 익명 페이지 조회·행동 기록 |
 
 ## 기술 스택
 
-| 구분 | 기술 |
-| --- | --- |
-| 언어 및 프레임워크 | Java 21, Spring Boot 3.5 |
-| 데이터 접근 | Spring Data JPA, Hibernate |
-| 데이터베이스 | MariaDB |
-| 인증 | Spring Security, JJWT 기반 JWT |
-| API 문서 | Springdoc OpenAPI / Swagger UI |
-| 테스트 | JUnit 5, Spring Boot Test, H2 |
-| 컨테이너 | Docker, Eclipse Temurin 21 |
+Java 21 · Spring Boot 3.5 · Spring Data JPA(Hibernate) · JdbcTemplate · Spring Security · JJWT · MariaDB · Springdoc OpenAPI · JUnit 5 · H2 · Docker(Eclipse Temurin 21)
 
-## 주요 설계
+## 구조
 
-### 공고 유형 통합 검색
-
-공고 유형별로 테이블과 접수일 필드가 다르므로 각 JPA Repository에서 공통 검색 조건을 적용하고, 결과를 `AnnouncementListItem`으로 변환해 합칩니다. 요청 페이지에 필요한 만큼 유형별 후보를 조회한 뒤 접수 시작일 기준으로 전역 정렬하고 페이지를 구성합니다. 유형별 선행 조회량을 제한하기 위해 통합 검색은 `(page + 1) × size ≤ 10000` 범위만 허용합니다.
-
-검색 조건은 공고 유형, 지역 코드, 주택명 키워드, 접수 시작일 범위이며, 유형을 지정하지 않으면 5개 유형을 모두 조회합니다. 접수일 컬럼과 데이터 형식은 유형별로 다르기 때문에 조회와 정렬 시 해당 차이를 반영합니다.
-
-```mermaid
-flowchart TD
-    Request["통합 공고 조회"] --> Service["AnnouncementSearchService.searchAll()"]
-    Service --> APT["APT Repository"]
-    Service --> URBAN["URBAN Repository"]
-    Service --> REM["REMAINING Repository"]
-    Service --> RENT["PUBLIC_RENTAL Repository"]
-    Service --> OPT["OPTIONAL Repository"]
-    APT --> DTO["공통 AnnouncementListItem 변환"]
-    URBAN --> DTO
-    REM --> DTO
-    RENT --> DTO
-    OPT --> DTO
-    DTO --> Sort["전체 후보 접수 시작일 기준 정렬"]
-    Sort --> Page["요청 페이지 구간 반환"]
+```text
+com.toady.web
+├── app
+│   ├── announcement   # 공고 통합 검색·상세·경쟁률·댓글
+│   ├── planner        # 나의 청약·맞춤 청약·가점 비교·캘린더·메일 알림·공개 HTML·사이트맵·공유 이미지
+│   │   └── research   # 국토부 실거래·카카오 좌표·단지별 가격·분양가 vs 주변 시세·주변 시설
+│   ├── user           # 가입·로그인·내 정보(AccountService)·프로필 캐릭터
+│   ├── certify        # 메일 인증·비밀번호 재설정
+│   ├── push           # 웹 푸시 구독·하루 한 번 묶음 발송(RFC 8291/8292 직접 구현)
+│   └── analytics      # 익명 페이지 조회·행동 기록
+└── core               # 보안(JWT·요청 제한·내부 경로 차단)·예외·응답·헬스체크·로깅
 ```
 
-### 전체 기간 자동완성
+## 설계 포인트
 
-`GET /api/v1/announcements/suggestions`는 특정 월에 한정하지 않고 5개 공고 유형에서 키워드를 검색합니다. 각 유형에서 제한된 수의 후보를 가져와 접수 시작일 최신순으로 합친 뒤 요청한 최대 건수만 반환합니다. 빈 키워드는 빈 목록을 반환하며, 기본 limit은 10이고 허용 범위는 1~20입니다.
+### 5개 유형 통합 검색
+유형마다 테이블·접수일 필드가 달라 각 Repository에 같은 조건(유형·지역·키워드·기간)을 적용한 뒤 공통 `AnnouncementListItem`으로 바꿔 접수 시작일 기준으로 합칩니다. 깊은 페이지의 선행 조회량을 막기 위해 `(page+1)×size` 상한을 둡니다. 목록의 댓글 수는 반환할 공고 키를 한 번에 집계합니다.
 
-### 복합키 매핑
+### 실거래 지도와 외부 API 한도
+- 국토교통부 매매 실거래는 시군구·월 단위로 캐시하고, 응답 시간 한도 안에 못 받은 달은 `partial`로 먼저 돌려준 뒤 화면이 이어서 받습니다.
+- 호출은 동시 3개·0.12초 간격으로 조절하고, 429·일일 한도 초과(resultCode 22)·키 오류를 받으면 차단기를 켜 모든 호출을 잠시 멈춥니다(초당 한도 1분, 일일 한도 자정까지, 키 오류 1시간). 공공데이터포털 게이트웨이 오류 형식(`returnReasonCode`)도 같이 처리합니다.
+- 실거래에는 좌표가 없어 지번을 카카오 로컬 API로 좌표로 바꾸고 `TB_APT_COMPLEX_LOCATION`에 남깁니다. 응답의 법정동 코드·지번이 일치할 때만 저장해 다른 단지 좌표로 오염되지 않게 합니다.
+- 분양가 vs 주변 시세는 최근 최대 6개월·전용 ±5㎡ 거래의 1~3사분위 범위로 비교하고, 준공 10년 이내 거래가 충분하면 신축 기준을 씁니다. 접수 중·예정 공고는 매일 미리 계산해 `TB_PRICE_GAP`에 둡니다.
 
-공고 상세 엔티티는 `houseManageNo`와 `pblancNo`를 `@IdClass`로 매핑합니다. 주택형·경쟁률 등 관련 엔티티는 각각 필요한 식별자 클래스를 사용해 복합 식별자를 표현합니다.
+### 인증·보안
+- JWT에 비밀번호 기반 확인값을 넣어 비밀번호 변경·잠금·탈퇴 시 다른 기기의 토큰을 즉시 거부합니다. 만료 30분 전에 자동 갱신하되 최초 로그인 시각(`tca`)을 이어받아 최대 14일이 지나면 다시 로그인하게 하고, 닉네임 변경으로 새로 받는 토큰도 이 시각을 이어받습니다.
+- 로그인 실패는 IP·이메일 기준으로, 현재 비밀번호 확인(비밀번호 변경·탈퇴)은 IP와 회원 기준으로 제한합니다. 계정 변경은 회원 행 잠금으로 직렬화하고 잠금 안에서 제한을 다시 검사합니다.
+- `/internal/**`은 컨테이너 내부 요청만 받고(`InternalPathFilter`), 요청 수 제한은 경로별 규칙으로 둡니다(`RequestLimitFilter`). 문자열로 만드는 SQL은 고정 허용 목록의 테이블명과 `?` 자리표시자만 씁니다.
+- 외부 호출(청약홈·국토부·카카오·웹 푸시)은 호스트 허용 목록, 리다이렉트 금지, 전체 시간 제한, 응답 크기 제한을 둡니다.
 
-### 인증 및 인가
+### 메일 발송 한도
+Gmail 한 계정의 하루 한도 안에서 인증 메일이 막히지 않도록 최근 24시간 발송 시도를 DB(`TB_MAIL_BUDGET`·`TB_MAIL_ATTEMPT`)로 세고 인증용 여유분을 남깁니다. 가입 인증 메일은 별도 상한을 둬 무작위 가입 반복이 비밀번호 찾기 메일을 막지 못하게 합니다. 발신 주소(`MAIL_FROM`)를 설정할 수 있어 메일 서비스를 옮길 때 환경변수만 바꾸면 됩니다.
 
-JWT 인증을 사용하며 요청마다 DB의 계정 상태와 비밀번호에 연결된 토큰 검증값을 확인합니다. 잠금·탈퇴·비밀번호 변경 후에는 기존 토큰을 거부합니다. 검증값은 서버 키로 계산하며 비밀번호 해시 자체를 JWT에 넣지 않습니다. 이 검증값이 없는 기존 토큰은 재로그인이 필요합니다. 만료 30분 전 요청에서 토큰을 새로 발급하되 최초 로그인 시각(`tca`)은 그대로 옮기고, 최초 로그인부터 `toady.security.session-max-ms`(기본 14일)가 지나면 갱신하지 않고 다시 로그인하게 합니다. 통합 목록 응답에는 삭제되지 않은 댓글·답글의 `commentCount`가 포함됩니다. 반환할 페이지의 정확한 공고 키를 한 번의 그룹 집계로 조회해 공고마다 추가 쿼리를 실행하지 않습니다. 공고 조회 API는 비회원도 호출할 수 있으며, 댓글 작성·수정·삭제는 `ROLE_USER` 권한이 필요합니다. 비밀번호는 Spring Security의 BCrypt 인코더를 사용합니다. 가입 인증 링크는 24시간, 비밀번호 재설정 코드는 10분 동안 유효합니다. 가입 인증·재발송과 비밀번호 재설정은 계정 행을 먼저 잠근 뒤 필요한 코드 행을 잠가 같은 계정의 변경을 직렬화합니다. 비밀번호 변경 시 해당 계정의 미사용 재설정 코드를 모두 폐기합니다. 코드 발급은 메일 발송이 실패하면 롤백하여 즉시 재요청할 수 있습니다. 로그인 화면 또는 `/certify`에서 가입 인증 메일을 다시 요청할 수 있습니다. 재발송은 4분 간격이며, 새 링크 발송이 성공하면 이전 가입 링크는 폐기됩니다. 메일 본문은 `TB_CERTIFY.CERTIFY_MESSAGE TEXT NOT NULL`에 저장합니다. 가입·비밀번호 재설정 메일은 `EmailTemplates`의 공통 HTML 레이아웃을 사용하며, 외부 이미지 없이 인증 버튼·코드와 유효시간을 표시합니다. 닉네임과 링크는 HTML 이스케이프하고 인증 코드는 `SecureRandom`으로 생성합니다.
-
-## 코드 구성
-
-- `AnnouncementService`: 기존 공고 조회 계약의 진입점
-- `AnnouncementSearchService`: 유형별·통합 검색과 자동완성
-- `AnnouncementListMapper`: 유형별 엔티티를 통합 목록 DTO로 변환
-- `AnnouncementDetailService`: 상세·주택형 조회와 존재 확인
-- `AnnouncementCompetitionService`: 경쟁률·가점·특별공급 조회
-- `AnnouncementCommentService`: 댓글 및 답글 처리
-- `HealthController`: DB 연결을 포함한 `/internal/health` 준비 상태 응답
+### 웹 푸시
+RFC 8291(aes128gcm)·RFC 8292(VAPID ES256)를 JDK 기본 암호 기능으로 직접 구현해(`WebPushCrypto`) 외부 암호 라이브러리 없이 보내고, RFC 부록 테스트 벡터로 검증합니다. 구독마다 하루 한 번(18시 무렵) 관심 공고의 내일 일정·생활권 새 공고·주간 브리핑을 한 알림으로 묶고, 404·410을 받은 구독은 지웁니다.
 
 ## API 요약
 
-| Method | Endpoint | 설명 | 접근 |
-| --- | --- | --- | --- |
-| `POST` | `/webApi/certify/resend-account-verification` | 가입 인증 메일 재발송 (`userEmail`, 4분 간격) | 공개 |
-| `GET` | `/api/v1/announcements` | 5개 유형 공고 통합 검색 및 페이지 조회 | 공개 |
-| `GET` | `/api/v1/announcements/suggestions` | 전체 기간 공고 자동완성 검색 | 공개 |
-| `GET` | `/api/v1/{type}/announcements` | 공고 유형별 검색 | 공개 |
-| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}` | 공고 상세 조회 | 공개 |
-| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/competition-rates` | 경쟁률 조회 | 공개 |
-| `GET` | `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/scores` | APT 당첨 가점 조회 | 공개 |
-| `GET` | `/api/v1/apt/announcements/{houseManageNo}/{pblancNo}/special-supply-status` | APT 특별공급 신청현황 조회 | 공개 |
-| `GET` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments` | 댓글 목록 조회 | 공개 |
-| `POST` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments` | 댓글 작성 | 로그인 필요 |
-| `PATCH` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 수정 | 로그인 필요 |
-| `DELETE` | `/api/v1/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}` | 본인 댓글 삭제 | 로그인 필요 |
+| 경로 | 내용 | 접근 |
+| --- | --- | --- |
+| `GET /api/v1/announcements`, `/suggestions` | 통합 검색, 전체 기간 자동완성 | 공개 |
+| `GET /api/v1/{type}/announcements/{house}/{notice}` (+`/competition-rates`, `/scores`, `/special-supply-status`) | 상세·경쟁률·가점·특별공급 | 공개 |
+| `GET·POST·PUT·DELETE …/{house}/{notice}/comments` | 이야기(댓글·답글) | 조회 공개, 작성·수정·삭제 회원 |
+| `GET /api/v1/research/complexes`, `/sales`, `/price-gap`, `/transactions`, `/nearby` | 실거래 지도·분양가 비교·동네 실거래·주변 시설 | 공개 |
+| `/api/v1/me/favorites`, `/api/v1/me/calendar-feed`, `/api/v1/planner/*` | 관심 공고·캘린더 구독·요약·결과 | 회원(요약은 공개) |
+| `/api/v1/me/account/*` | 내 정보, 닉네임·비밀번호·캐릭터 변경, 내가 쓴 이야기, 받은 답글, 탈퇴 | 회원 |
+| `/webApi/user/*`, `/webApi/certify/*` | 가입·로그인·메일 인증·비밀번호 재설정 | 공개 |
+| `/api/v1/push/*` | 웹 푸시 설정·구독·해지 | 공개 |
+| `/api/v1/public/*` | 공개 HTML·사이트맵·OG 이미지·맞춤 청약·가점 비교 데이터 | 공개 |
+| `POST /api/v1/analytics/page-views`, `/events` | 익명 측정 | 공개 |
+| `GET /internal/health`, `/internal/schema` | 준비 상태(DB 연결)·필수 테이블 점검 | 컨테이너 내부 |
 
-`{type}`은 `apt`, `urban`, `remaining`, `public-rental`, `optional` 중 하나입니다. 경쟁률 조회는 `cancel-resupply`도 지원합니다. 취소후재공급 공고의 상세 유형은 `remaining`으로 유지하고 `houseSecd=06`일 때 경쟁률만 `cancel-resupply`로 조회합니다. 전체 API 명세는 애플리케이션 실행 후 `http://localhost:8080/swagger-ui/index.html`에서 확인할 수 있습니다. 예제 환경 설정의 `SERVER_PORT=8081`을 사용하면 프론트 개발 프록시와 연결됩니다.
+로컬에서 실행하면 `http://localhost:8081/swagger-ui/index.html`에서 전체 명세를 볼 수 있습니다.
 
-### 자동완성 요청 예시
+## 실행
 
-```http
-GET /api/v1/announcements/suggestions?keyword=자이&limit=10
-```
-
-응답은 공통 `ResData` 형식이며, `data`는 자동완성 결과 배열입니다.
-
-```json
-{
-  "data": [
-    {
-      "type": "apt",
-      "houseManageNo": "2026000123",
-      "pblancNo": "2026000123",
-      "houseNm": "메이플자이",
-      "houseSecdNm": "민영",
-      "subscrptAreaCodeNm": "서울",
-      "hssplyAdres": "서울특별시 서초구",
-      "rceptBgnde": "2026-08-12",
-      "rceptEndde": "2026-08-14"
-    }
-  ],
-  "resultCode": "SUCCESS",
-  "resultMessage": "성공"
-}
-```
-
-## 로컬 실행
-
-필요 환경: Java 21, MariaDB, Gradle Wrapper.
-
-기본 설정은 이 디렉터리의 `.env` 파일을 읽습니다. 실제 비밀값은 Git에서 제외하고 예제만 공개합니다.
+필요 환경: Java 21, MariaDB(스키마 준비 필요, `ddl-auto=none`).
 
 ```bash
-cp .env.example .env
-# .env의 DB 접속 정보를 수정하고 JWT_SECRET에 아래 명령의 출력값을 넣습니다.
-openssl rand -base64 64 | tr -d '\n'
-
-# 외부 DB 없이 실행할 수 있는 기본 테스트
-bash ./gradlew test
-
-# IntelliJ에서 서버를 띄워 둔 채 테스트할 때: 출력 폴더를 나눠 devtools 재시작과 겹치지 않게 한다
-TOADY_BUILD_DIR=build/cli bash ./gradlew test
-
-# 준비된 MariaDB와 스키마를 사용해 실행
-bash ./gradlew bootRun
+cp .env.example .env        # DB_URL·DB_USERNAME·DB_PASSWORD, JWT_SECRET(openssl rand -base64 64)
+./gradlew bootRun           # SERVER_PORT=8081(프런트 개발 서버의 프록시 대상)
 ```
 
-예제의 `SERVER_PORT=8081`은 프론트 개발 서버의 프록시 대상입니다. 환경변수를 별도로 설정하지 않은 기본 서버 포트는 `8080`입니다. 이메일 기능에는 SMTP 설정이 필요합니다. SMTP 연결·읽기·쓰기 타임아웃은 각각 기본 5초이며 `MAIL_CONNECTION_TIMEOUT_MS`, `MAIL_READ_TIMEOUT_MS`, `MAIL_WRITE_TIMEOUT_MS`로 밀리초 단위로 조정합니다. 로컬 전용 `application-local.yml`이나 `.env.local`에 의존하지 않으므로 새 clone에서도 동일한 설정 경로를 사용합니다.
+| 환경변수 | 용도 |
+| --- | --- |
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | MariaDB 접속 |
+| `JWT_SECRET` | JWT 서명 키(64바이트 이상 Base64) |
+| `MAIL_HOST`·`MAIL_PORT`·`MAIL_USERNAME`·`MAIL_PASSWORD`, `MAIL_FROM`·`MAIL_FROM_NAME` | SMTP와 보내는 사람(비우면 SMTP 계정) |
+| `GMAIL_ROLLING_LIMIT`, `GMAIL_AUTH_RESERVE`, `PLANNER_REMINDERS_ENABLED` | 24시간 발송 상한, 인증용 여유분, 일정 알림 사용 |
+| `MOLIT_TRADE_SERVICE_KEY` | 국토교통부 아파트 매매 실거래 인증키(서버 전용) |
+| `KAKAO_REST_API_KEY` | 카카오 로컬 API(주소 좌표·주변 시설, 서버 전용) |
+| `WEB_PUSH_VAPID_PUBLIC_KEY`·`WEB_PUSH_VAPID_PRIVATE_KEY`·`WEB_PUSH_SUBJECT`, `PUSH_DIGEST_ENABLED` | 웹 푸시 키와 발송 사용 |
 
-애플리케이션은 `spring.jpa.hibernate.ddl-auto=none`으로 실행되므로 데이터베이스와 필요한 테이블을 별도로 준비해야 합니다. 댓글·경쟁률·관리자 테이블 생성문과 기존 DB 변경 참고 SQL은 루트 `database.sql`에 모았습니다. 실행 방법과 전체 초기 스키마 미제공 범위는 [DB 변경 관리](../README.md#공유-db-변경-관리)를 확인하세요.
+키가 없는 기능(실거래·좌표·푸시·메일 알림)은 꺼진 채로 나머지가 동작합니다. 필요한 테이블은 루트 [database.sql](../database.sql)의 구역 번호로 관리합니다.
 
-## 테스트 및 Docker
-
-빠른 회귀 검증은 H2로, 실제 PK·MariaDB SQL 및 DML 권한 검증은 별도 작업으로 나눕니다.
+## 테스트
 
 ```bash
-# 개발 DB 검증: .env.local 또는 TOADY_TEST_DB_URL / USERNAME / PASSWORD 설정 사용
-bash ./gradlew mariadbTest
+./gradlew test                                   # H2(MariaDB 모드), 외부 연결 없음 — 168개
+TOADY_BUILD_DIR=build/cli ./gradlew test         # IDE에서 서버를 띄워 둔 채 실행할 때(출력 폴더 분리)
+./gradlew mariadbTest                            # 개발 DB에서 실제 PK·SQL·DML 확인(테스트 행만 쓰고 롤백)
 ```
 
-`mariadbTest`는 기존 테이블의 PK와 읽기 전용 날짜 정렬을 확인하고, 고유한 테스트 행의 INSERT·UPDATE·DELETE를 실행한 뒤 롤백합니다. 기존 행은 변경하지 않습니다. 개발 계정에는 SELECT·INSERT·UPDATE·DELETE가 필요합니다. 운영 DB 설정을 지정하지 마세요.
+| 테스트 | 내용 |
+| --- | --- |
+| `ApplicationFlowRegressionTest` | 가입 → 메일 인증 → 로그인 → 댓글 작성·수정·삭제·소유권 → 비밀번호 변경 후 기존 토큰 거부, 요청 제한 |
+| `AccountSettingsTest` | 내 정보 요약, 닉네임 변경(최초 로그인 시각 유지), 비밀번호 변경·탈퇴, 회원 기준 대입 제한, 받은 답글 |
+| `CertifyTransactionTest` | 가입 실패 롤백, 인증 코드 동시 사용·재발송 |
+| `NeighborhoodResearchServiceTest`, `ComplexPriceServiceTest` | 실거래 응답 파싱, 일부 응답, 차단기, 호출 속도 조절 |
+| `PushIntegrationTest` | 실제 푸시 서비스 대신 전송을 가로채 복호화해 내용·410 삭제·하루 1회 확인 |
+| `MainApplicationTests`, `PublicPagesUnitTest` 등 | 통합 조회·날짜 필터·자동완성·공개 HTML·캘린더 파일 |
 
-CREATE TEMPORARY TABLE 권한이 있는 별도 테스트 계정에서는 다음 명령으로 임시 테이블의 SQL·트랜잭션 검증도 실행할 수 있습니다. CI는 격리된 MariaDB 서비스에서 이 검증까지 수행합니다.
-
-```bash
-bash ./gradlew mariadbTest -Dtoady.mariadb.temporary.enabled=true
-```
-
-
-테스트는 H2 데이터베이스를 사용해 애플리케이션 컨텍스트, 주요 API 흐름, 통합 공고 검색 및 자동완성 동작을 확인합니다.
-
-```bash
-./gradlew clean test
-```
-
-Docker 이미지 빌드는 프로젝트 루트에서 실행합니다. 컨테이너 실행 시 데이터베이스 접속 정보와 JWT 키를 환경변수로 전달해야 하며, 컨테이너에서 접근 가능한 MariaDB가 준비되어 있어야 합니다.
-
-```bash
-docker build -t toady-web-api .
-docker run --rm -p 8080:8080 \
-  -e DB_URL='jdbc:mariadb://host.docker.internal:3306/toady' \
-  -e DB_USERNAME='your-db-user' \
-  -e DB_PASSWORD='your-db-password' \
-  -e JWT_SECRET='your-base64-encoded-secret' \
-  toady-web-api
-```
-
-`host.docker.internal`은 로컬 Docker 컨테이너에서 호스트 머신의 데이터베이스에 접근할 때 사용하는 예시입니다. 배포 환경에 맞는 DB 주소와 환경변수를 설정하세요.
-
-### 입력 검증과 댓글 페이지 이동
-
-회원가입은 메일 발송 실패뿐 아니라 인증 링크 생성 등 저장 이후의 모든 예외에 대해 회원·인증 정보를 함께 롤백합니다. 잘못된 JWT 서명 키나 서비스 도메인은 시작 시 거부해 정상 배포로 판정되지 않도록 합니다. 인증 JSON의 누락·null·잘못된 타입과 게시판 조회의 잘못된 조건은 400 공통 응답으로 처리합니다.
-
-댓글은 등록 번호 내림차순입니다. 기존 `page` 조회를 유지하며, `beforeCommentSeq`를 지정하면 해당 번호보다 이전 댓글만 조회합니다(`page=0` 필요). 커서 응답의 `totalElements`와 `totalPages`는 커서 이전에 남아 있는 댓글 범위의 값입니다. 프론트는 최초 댓글 수를 유지하며 이전 번호를 따라 조회해, 도중 신규 등록·삭제가 있어도 오프셋 이동으로 댓글을 건너뛰거나 중복 조회하지 않습니다.
-
-게시판은 `useYn=Y`, `deleteYn=N`과 예약 게시 시작·종료 시각을 함께 적용합니다. 지역 조회는 enum 이름(`PAJUSI`)과 저장 코드(`PAJU`)를 모두 받아 실제 저장 코드로 검색합니다.
-
-### 익명 방문 로그
-
-배포 전에 루트 `database.sql`의 **7번 TB_PAGE_VIEW 생성문**을 운영 DB에 실행합니다. API 계정에는 해당 테이블의 INSERT 권한이 필요합니다. DDL은 자동 실행하지 않습니다. `ANALYTICS_ENABLED=false`로 수집을 끌 수 있습니다.
-
-`POST /api/v1/analytics/page-views`는 eventId·visitorId·sessionId(UUID)와 허용된 path만 받으며, 서버 한국시간으로 저장합니다. 같은 eventId는 한 번만 저장합니다. 정상·중복·수집 중지는 204, 잘못된 입력은 400, DB 장애는 503입니다. JWT가 필요하지 않으며 조회 통계 API는 외부에 공개하지 않습니다. 일별 방문자·세션·조회 수와 페이지별 집계 SQL은 `database.sql`에 있습니다.
-
-원본 IP, 회원 ID, User-Agent, Referer, 쿼리 문자열은 저장하지 않습니다. 운영 Nginx의 요청 로그 보관 정책은 별도로 설정해야 합니다. 기본 보관 기간은 자동 강제하지 않으며, 운영자는 보관 정책을 정하고 집계 보존 및 삭제 작업을 설정해야 합니다. 90일 정리 SQL 예시도 제공합니다. 원본 삭제 후 해당 기간의 통계는 다시 계산할 수 없습니다.
-
-이 통계는 브라우저 이벤트 기반 추정치입니다. 저장소 삭제·차단, 봇, 전송 실패에 따라 오차가 있고 공개 수집 API에 대한 위조를 막는 보안 지표가 아닙니다. 운영 프록시에서 수집 엔드포인트의 요청 빈도를 제한하는 것을 권장합니다. 저장 실패는 DEBUG 로그에 남으며 브라우저는 한 번만 재시도합니다.
-
-### 관심 공고와 Gmail 일정 알림
-
-배포 전에 `database.sql` 8·9번과 미적용 시 7번을 실행합니다. 새 테이블에 앱 계정의 SELECT·INSERT·UPDATE·DELETE 권한이 필요합니다. `TB_MAIL_BUDGET (ID=1)` 초기 행도 필수이며 DDL은 자동 실행하지 않습니다. 기존 인증 메일도 발송량 제한을 사용하므로 알림이 꺼져 있어도 8번 테이블은 필요합니다.
-
-- 인증된 `/api/v1/me/favorites`: GET 목록, POST `/{type}/{house}/{notice}` 저장/수정, DELETE 같은 경로 해제. 사용자 번호는 JWT에서만 가져옵니다. 최대 50개, 메모 2,000자, 체크리스트 비트 0~31입니다. 공고 요약과 날짜는 서버의 원본으로 계산합니다.
-- POST `/api/v1/me/favorites/disable-emails`: 해당 회원의 모든 공고 알림을 해제합니다. 메일 하단에서 `/my` 설정으로 이동할 수 있습니다.
-- 공개 `/api/v1/living-areas`, `/api/v1/planner/settings`, POST `/api/v1/planner/summaries`(최대 50개 키)로 비회원 조회를 지원합니다. 공유 HTML은 `/api/v1/public/announcements/{type}/{house}/{notice}`, 사이트맵은 `/api/v1/public/sitemap.xml`과 `/api/v1/public/sitemaps/{type}/{page}.xml`입니다. HTML에는 회원 메모를 포함하지 않습니다.
-- 생활권 공개 HTML은 `/api/v1/public/areas`, `/api/v1/public/areas/{slug}`이고 생활권 사이트맵은 `/api/v1/public/sitemaps/areas.xml`입니다. 공고 HTML과 같은 `LivingAreas.match` 기준(주소·단지명의 생활권 보조 키워드)을 사용합니다.
-- 공개 모음 HTML `/api/v1/public/zupzup`, `/api/v1/public/weekly`, 생활권 공개 캘린더 `/api/v1/public/areas/{slug}/calendar.ics`(30분 캐시, 알림 없음), 가점 비교 기준 `/api/v1/public/score-benchmarks`(1시간 캐시, 공고별 공개 최저·최고 당첨가점)를 제공합니다.
-- 경쟁률 예상 투표: `GET/POST /api/v1/polls/rate/apt/{house}/{notice}`. 익명 방문자 ID당 한 표(마감 전 변경 가능), 접수 마감일 이후·1순위 경쟁률 공개 후에는 409로 받지 않고 실제 최고 경쟁률 구간을 함께 반환합니다. `database.sql` 12번 테이블이 필요합니다.
-- 회원 캘린더 구독: `GET/POST/DELETE /api/v1/me/calendar-feed`(조회·발급 또는 재발급·해지), 공개 `GET /api/v1/public/calendar/{token}.ics`. 토큰은 256비트 무작위 값이며 재발급·해지·탈퇴·잠금 시 404를 반환합니다. 메모는 내보내지 않습니다. `database.sql` 11번 테이블이 필요합니다.
-- `POST /api/v1/analytics/page-views`는 선택 필드 `referrerHost`(소문자 도메인만)를 받습니다. `REFERRER_HOST` 컬럼이 없으면 경고 로그를 남기고 10분간 유입 없이 저장한 뒤 다시 시도합니다.
-- `PLANNER_REMINDERS_ENABLED=true`일 때 API 서버에서 한국시간 08:00~18:30, 30분마다 알림을 검사합니다. 오늘/내일 관심 공고 일정이 있는 인증·정상 회원에게 하루 한 통을 보냅니다. 서버 중단 후 같은 시간대에 복구하면 재검사합니다. 개인별 공급 자격에 따른 맞춤 판정이 아닌 공개된 접수·발표·계약 일정 안내입니다. 변경 감지 알림이나 지역 신규 공고 추천은 포함하지 않습니다.
-- SMTP는 기존 Gmail 하나만 사용합니다. `GMAIL_ROLLING_LIMIT=400`, `GMAIL_AUTH_RESERVE=100`이 기본값입니다. 회원가입 인증 메일은 따로 `GMAIL_SIGNUP_LIMIT`(기본 0 = 전체의 절반)까지만 보내, 무작위 가입 반복이 비밀번호 찾기 메일까지 막지 않게 합니다. 실제 Gmail 할당량 보장이 아니라 보수적인 애플리케이션 제한입니다. 최근 24시간의 AUTH/REMINDER 시도량을 DB 잠금 아래 함께 계산하며, 실패한 SMTP 시도도 차감합니다. 인증 용량 확보를 위해 REMINDER는 최대 300회입니다. 이 계정에서 별도로 보내는 개인 메일은 집계하지 못합니다.
-- 알림 할당량 부족은 다음 검사로 미룹니다. SMTP 결과가 불명확하면 UNKNOWN, 다른 실패는 FAILED로 남기고 그 날짜에는 자동 재전송하지 않습니다. 프로세스 중단 후 15분 넘은 SENDING도 UNKNOWN으로 정리합니다. 중복·누락이 전혀 없는 전달 보장은 아니며 재시도보다 중복 방지를 우선합니다. DB를 조회해 상태를 점검할 수 있습니다. 주소·본문이 없는 발송 시도 이력은 7일 이후 정리합니다. 알림 수신 이력과 관심 메모는 별도 보관 정책이 필요합니다.
-
-추가 회귀 테스트 `PlannerIntegrationTest`는 회원 간 격리, 입력 검증, 생활권/주소 검색, HTML 이스케이프, 동시 발송 할당량, 묶음 메일 중복과 전체 해제를 검증합니다. 테스트에서는 SMTP를 모킹하며 실제 메일을 발송하지 않습니다. 운영 MariaDB DDL·Nginx 연동과 실제 Gmail 도착 여부는 별도 배포 확인 대상입니다.
-
-일정 요약은 `ScheduleEvents`에서 날짜별로 정리합니다. 같은 날의 해당·경기·기타지역 순위를 합치고, 상세 접수 일정과 겹치는 일반 시작/마감 표시는 생략합니다. 원래 접수 기간은 요약의 startDate/endDate로 유지합니다. `ScheduleEventsTest`는 예시 10개 일정이 6개 날짜로 합쳐져도 발표·계약 일정과 지역 구분이 남는지 검증합니다. 이 규칙은 API 요약·일정 이메일·공유 HTML에 함께 적용되며 DB 변경은 필요하지 않습니다.
-
-### 가입 인증과 메일 요청 제한
-
-- 가입 인증(`POST /webApi/certify/certify-check`)은 메일 링크의 코드와 가입 비밀번호(`userPassword`)가 모두 맞아야 완료됩니다. 비밀번호가 틀리면 코드를 소비하지 않습니다. 이메일 인증을 마치지 않은 계정에 같은 이메일로 다시 가입하면 비밀번호·닉네임을 새 정보로 덮어써, 남이 먼저 가입해 둔 비밀번호가 활성화되는 선점을 막습니다.
-- 비용이 큰 공개 요청은 요청자 IP별 10분·하루 창으로 제한하고 초과하면 429를 반환합니다(`RequestLimitFilter`): 메일 발송(가입·인증 재발송·비밀번호 찾기 10분 5회·하루 20회), 동네 실거래, 관심 공고 요약, 자동완성, 웹 푸시 구독, 경쟁률 투표. IP는 앞단 프록시(사설·루프백 주소)에서 온 요청의 `X-Real-IP`만 신뢰합니다.
-- 로그인은 15분 안에 IP 20회 또는 이메일 5회 실패하면 15분간 막습니다(`LoginAttemptLimiter`). 없는 이메일과 틀린 비밀번호는 같은 응답이며, 미인증·잠금·탈퇴 안내는 비밀번호가 맞을 때만 보여 줍니다. 비밀번호 찾기·인증 재발송도 가입 여부와 관계없이 같은 응답을 돌려주고, 탈퇴·잠금 계정에는 메일을 보내지 않습니다. 로그에는 이메일을 가려서 남깁니다.
-- 인증 코드는 SHA-256(base64url)으로만 저장하고 메일 본문은 보관하지 않습니다. 배포 전에 발급된 평문 코드도 유효기간 안에서는 확인됩니다.
-- `GET /internal/schema`(서버 안에서만 호출)는 API가 쓰는 테이블 중 없는 것을 알려 주며, 배포 확인 스크립트가 경고로 출력합니다.
-- 통합 공고 검색은 `(page+1)×size ≤ 1000`, 공개 HTML(`/areas`, `/zupzup`, `/weekly`)은 5분간 서버에서 재사용합니다.
-
-### 웹 푸시 알림
-
-- 구독: `GET /api/v1/push/config`(사용 여부·VAPID 공개키), `PUT /api/v1/push/subscription`(엔드포인트·키·범위 저장, 로그인 상태면 회원 관심 공고로 연결), `POST /api/v1/push/subscription/lookup`, `POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`(구독한 본인 브라우저에만, 30초에 한 번). 엔드포인트는 접근 로그에 남지 않도록 본문으로만 받고, 서버가 임의 주소로 요청하지 않도록 FCM·Mozilla·Apple·WNS 푸시 서비스 호스트만 허용합니다.
-- 발송: `PUSH_DIGEST_ENABLED=true`일 때 한국시간 18:00~20:30, 30분마다 확인해 구독마다 하루 한 번 '관심 공고의 내일 일정'과 '구독 생활권의 새 공고'를 하나의 알림으로 묶어 보냅니다. 같은 tag·Topic이라 재시도해도 겹쳐 쌓이지 않습니다. 푸시 서비스가 404·410을 주면 구독을 바로 삭제합니다. 생활권 새 공고는 `TB_PUSH_AREA_SEEN`에 처음 확인한 시각을 남겨, 구독자가 마지막으로 알림을 받은 뒤 처음 보인 공고만 보냅니다(첫 기록 때 기존 공고는 제외).
-- 암호화는 RFC 8291(aes128gcm)·RFC 8292(VAPID ES256)를 JDK 기본 암호 기능으로 직접 구현했습니다(`WebPushCrypto`). 필요한 연산이 P-256 ECDH·HKDF·AES-GCM·ES256뿐이라 BouncyCastle·비동기 HTTP 클라이언트를 끌어오는 라이브러리 없이 처리하고, RFC 8291 부록 A 테스트 벡터로 결과를 검증합니다.
-- 환경변수: `WEB_PUSH_VAPID_PUBLIC_KEY`(비압축 P-256 공개키 base64url), `WEB_PUSH_VAPID_PRIVATE_KEY`(32바이트 개인키 base64url), `WEB_PUSH_SUBJECT`(`mailto:` 또는 `https://`, 비우면 `TOADY_WEB_DOMAIN`), `PUSH_DIGEST_ENABLED`. 키가 없거나 서로 맞지 않으면 푸시 전체가 꺼지고 웹의 알림 켜기 화면도 숨겨집니다. 키를 바꾸면 기존 구독은 모두 무효가 되므로 한 번 정한 키를 유지합니다.
-- `database.sql` 13번 테이블(`TB_PUSH_SUBSCRIPTION`, `TB_PUSH_AREA_SEEN`)이 필요합니다. `PushIntegrationTest`는 실제 푸시 서비스 대신 전송을 가로채 브라우저처럼 복호화해 내용·410 삭제·하루 1회를 검증합니다.
-
-### 접속할 때 브라우저 자체 로그인 창이 뜨는 경우
-
-일반 서비스 API는 Bearer JWT를 사용하고 HTTP Basic·폼 로그인은 비활성화합니다. 공개 API는 로그인 없이 조회하며, 회원 전용 API의 인증 실패는 WWW-Authenticate 헤더 없이 JSON 401로 반환합니다. 브라우저에 사용자 이름/비밀번호 창이 뜨면 응답의 `WWW-Authenticate: Basic` 여부와 실제 API 포트의 실행 프로세스를 확인합니다. 오래 실행 중인 백엔드에 최신 설정이 반영되지 않았다면 API를 재시작해야 합니다. 웹 로그인 계정을 브라우저 자체 인증 창에 입력하는 방식으로 해결하지 않습니다.
-
-### 동네 아파트 실거래가
-
-청약 상세의 **동네 실거래**에서 공고와 같은 법정동의 최근 3개월 신고 거래를 조회합니다. 국토교통부 일반 매매 API `RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade`를 사용하며, 취소 거래를 제외하고 최근 20건과 전체 일치 건수를 제공합니다. 전용면적 필터는 선택 면적 ±5㎡입니다. 시군구·월별 응답은 서버 메모리에 6시간 캐시합니다. 오류나 불완전한 페이지는 빈 거래로 표시하지 않습니다.
-
-공공데이터포털의 **국토교통부 아파트 매매 실거래가 자료** 활용신청 후 인증키를 서버 환경변수 `MOLIT_TRADE_SERVICE_KEY`에 설정하세요. 일반·인코딩 키 모두 지원하며 프런트엔드에는 전달하지 않습니다. 로컬은 Git에서 제외된 `.env`, 운영은 Docker Compose가 읽는 `/home/ec2-user/toady/toadyWebApi/.env.prod`에 설정하고 API 컨테이너를 재생성해야 합니다. DB 테이블 추가는 필요하지 않습니다. 주소의 법정동 확인에는 기존 카카오 지도 JavaScript SDK의 Geocoder를 사용합니다. 네이버 검색 API는 사용하지 않습니다.
-
-### 공유용 HTML·이미지
-
-`/api/v1/public/announcements/{type}/{house}/{notice}?tabType=rate`는 JavaScript 없이 공고별 제목·설명·OG/Twitter 태그를 제공합니다. `tabType`은 detail/rate/map/comment를 허용합니다. 공개 PNG는 `/api/v1/public/announcement-images/{type}/{house}/{notice}.png?tabType=rate`에서 생성하며 원본 공고의 공개 정보만 담습니다. 없는 공고는 404, 응답 캐시는 5분입니다. Docker 런타임에 한글 렌더링용 Noto CJK 폰트를 설치합니다. 이미지·메타태그 수정 후 카카오의 기존 URL 캐시 초기화가 필요할 수 있습니다.
-
-청약홈 공통 상세 양식의 모집공고문 링크는 `GET /api/v1/notice-documents/{type}/{house}/{notice}`로 조회합니다. 저장된 공고에 한해 공식 호스트와 공고 번호가 일치하는 첨부 링크를 추출하며, 정상 결과는 1시간, 조회 실패는 1분 동안 캐시합니다. 파일을 복제하거나 별도 테이블에 저장하지 않습니다. 원문 양식 변경이나 연결 실패 시 상세의 원문 확인 경로를 제공합니다.
-
-경쟁률 공유 미리보기는 공개된 APT 당첨가점이 있으면 전체 공개 주택형·지역의 최저/최고 점수를 설명과 PNG 카드에 표시합니다. 0·누락·미공개 및 유효 범위 밖 점수는 제외하고 지역별 평균을 다시 평균내지 않습니다. 미리보기 이미지 버전은 `v=2`입니다.
+Docker 이미지는 `docker build -t toady-web-api .`로 만들며, 공유 이미지의 한글을 위해 Noto CJK 폰트를 함께 설치합니다.
