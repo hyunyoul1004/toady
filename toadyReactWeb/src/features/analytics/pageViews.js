@@ -7,15 +7,17 @@ const HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z
 const OWN = /(^|\.)toady\.co\.kr$/;
 
 /**
- * 외부 유입 도메인만 돌려준다. TOADY 공개 페이지(공고·생활권)를 거쳐 앱에 들어오면 그 페이지가 넘긴 src를 쓰고,
- * 공유받은 주소에 남은 src는 실제 유입처가 외부일 때 무시한다. 전체 URL·검색어는 다루지 않는다.
+ * 외부 유입 도메인만 돌려준다. 전체 URL·검색어는 다루지 않는다.
+ * - 외부 사이트에서 왔으면(referrer) 그 도메인. 주소에 남은 src보다 실제 유입처가 우선이다.
+ * - TOADY 공개 페이지(공고·생활권·주간)를 거쳐 왔으면 그 페이지가 넘긴 src.
+ * - 유입 정보가 없으면(카카오톡 등 앱 안 브라우저·직접 입력) 링크에 붙인 꼬리표 src(예: ?src=kakao.com).
+ *   앱은 첫 기록 뒤 주소에서 src를 지워, 그 주소를 다시 공유해도 출처가 따라가지 않게 한다.
  */
 export function externalReferrer(referrer, search, ownHost) {
   try {
     const host = referrer ? new URL(referrer).hostname.toLowerCase() : '';
     const fromSelf = host && (host === ownHost || OWN.test(host));
     if (host && !fromSelf) return HOST.test(host) && host.length <= 100 ? host : null;
-    if (!fromSelf) return null;
     const source = (new URLSearchParams(search).get('src') || '').toLowerCase();
     return HOST.test(source) && source.length <= 100 && !OWN.test(source) && source !== ownHost ? source : null;
   } catch { return null; }

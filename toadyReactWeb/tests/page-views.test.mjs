@@ -60,7 +60,12 @@ test('referrer host is limited to an external domain and passes through TOADY pu
   assert.equal(externalReferrer('https://www.toady.co.kr/areas/unjeong', '?area=unjeong&src=m.search.naver.com', 'www.toady.co.kr'), 'm.search.naver.com');
   assert.equal(externalReferrer('https://toady.co.kr/announcements/apt/1/1', '?src=evil.toady.co.kr', 'www.toady.co.kr'), null);
   assert.equal(externalReferrer('https://www.toady.co.kr/', '?src=<script>', 'www.toady.co.kr'), null);
-  assert.equal(externalReferrer('', '?src=www.google.com', 'www.toady.co.kr'), null, 'direct visits cannot claim a source');
+  // 유입 정보가 없는 방문(카카오톡 앱 안 브라우저·직접 입력)은 링크에 붙인 꼬리표로 출처를 구분한다.
+  assert.equal(externalReferrer('', '?src=kakao.com', 'www.toady.co.kr'), 'kakao.com');
+  assert.equal(externalReferrer('', '?src=blog.naver.com&month=2026-11', 'www.toady.co.kr'), 'blog.naver.com');
+  assert.equal(externalReferrer('', '?src=www.toady.co.kr', 'www.toady.co.kr'), null, '자기 도메인은 출처가 아니다');
+  assert.equal(externalReferrer('', '?src=kakao', 'www.toady.co.kr'), null, '도메인 모양이 아니면 버린다');
+  assert.equal(externalReferrer('', '', 'www.toady.co.kr'), null);
   assert.equal(externalReferrer('http://localhost:3000/', '?src=www.google.com', 'localhost'), 'www.google.com');
   assert.equal(externalReferrer('http://localhost:3000/', '', 'www.toady.co.kr'), null, 'single-label hosts are not recorded');
 });

@@ -30,8 +30,13 @@ final class PublicHtml {
         if (min == null || max == null) return "";
         return min.equals(max) ? manwon(min) : manwon(min).replace("만원", "만").replace("억원", "억") + " ~ " + manwon(max);
     }
-    /** 공개 페이지에서 앱으로 이동할 때 원래 유입처(검색·메신저 도메인)만 넘긴다. 전체 URL·검색어는 넘기지 않는다. */
-    static final String SOURCE_SCRIPT = "<script>(function(){try{var h=new URL(document.referrer).hostname;if(!h||/(^|\\.)toady\\.co\\.kr$/.test(h))return;"
+    /**
+     * 공개 페이지에서 앱으로 이동할 때 원래 유입처(검색·메신저 도메인)만 넘긴다. 전체 URL·검색어는 넘기지 않는다.
+     * 외부 유입 정보가 없으면(카카오톡 등 앱 안 브라우저, TOADY 공개 페이지끼리 이동) 이 페이지 주소에 붙은 꼬리표 src를 대신 넘긴다(예: /weekly?src=kakao.com).
+     */
+    static final String SOURCE_SCRIPT = "<script>(function(){try{var own=/(^|\\.)toady\\.co\\.kr$/,h='';try{h=new URL(document.referrer).hostname;}catch(e){}"
+        + "if(!h||own.test(h)){h=(new URLSearchParams(location.search).get('src')||'').toLowerCase();if(!/^[a-z0-9.-]{3,100}$/.test(h)||h.indexOf('.')<0)h='';}"
+        + "if(!h||own.test(h))return;"
         + "document.querySelectorAll('a[data-app]').forEach(function(a){var u=new URL(a.href);u.searchParams.set('src',h);a.href=u.toString();});}catch(e){}})();</script>";
     /**
      * 공개 HTML은 요청마다 공고 쿼리를 여러 번 실행하므로 같은 주소의 응답을 5분간 재사용한다.
