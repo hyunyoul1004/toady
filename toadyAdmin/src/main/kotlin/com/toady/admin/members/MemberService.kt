@@ -1,8 +1,10 @@
 package com.toady.admin.members
 
 import com.toady.admin.Kst
-import org.slf4j.LoggerFactory
+import com.toady.admin.Page
 import com.toady.admin.announcements.AnnouncementService
+import com.toady.admin.likeContains
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
@@ -24,7 +26,7 @@ class MemberService(private val jdbc: JdbcTemplate, private val announcements: A
 
 	fun detail(seq: Long): Detail? {
 		val member = search(null, null, 0, 1, seq).items.firstOrNull() ?: return null
-		val updated = jdbc.queryForObject("SELECT UPDATE_DT FROM TB_USER WHERE USER_SEQ=?", java.sql.Timestamp::class.java, seq)?.toLocalDateTime()
+		val updated = jdbc.queryForObject("SELECT UPDATE_DT FROM TB_USER WHERE USER_SEQ=?", Timestamp::class.java, seq)?.toLocalDateTime()
 		val favorites = try {
 			val rows = jdbc.query("SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, STAGE, REG_DT FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", { r, _ ->
 				Favorite("${r.getString(1)}/${r.getString(2)}/${r.getString(3)}", null, r.getInt(4), r.getTimestamp(5)?.toLocalDateTime())
@@ -45,17 +47,13 @@ class MemberService(private val jdbc: JdbcTemplate, private val announcements: A
 			else -> "정상"
 		}
 	}
-	data class Page(val items: List<Member>, val total: Long, val page: Int, val size: Int) {
-		val pages get() = maxOf(1, ((total + size - 1) / size).toInt())
-	}
 
 	/** filter: all · certified · unverified · locked · withdrawn. 검색어는 이메일·닉네임 부분 일치. */
-	fun search(query: String?, filter: String?, page: Int, size: Int = PAGE_SIZE, seq: Long? = null): Page {
+	fun search(query: String?, filter: String?, page: Int, size: Int = PAGE_SIZE, seq: Long? = null): Page<Member> {
 		val where = StringBuilder(" WHERE 1=1"); val args = ArrayList<Any>()
 		seq?.let { where.append(" AND U.USER_SEQ=?"); args += it }
 		query?.trim()?.takeIf { it.isNotEmpty() }?.take(100)?.let {
-			// LIKE 특수문자는 글자 그대로 찾도록 이스케이프한다.
-			val like = "%" + it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+			val like = likeContains(it)
 			where.append(" AND (U.USER_EMAIL LIKE ? OR U.USER_NIC_NAME LIKE ?)"); args += like; args += like
 		}
 		when (filter) {

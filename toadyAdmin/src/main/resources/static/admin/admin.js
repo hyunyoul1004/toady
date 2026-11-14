@@ -5,10 +5,15 @@ document.addEventListener('submit', event => {
 });
 
 // 수집 화면: 편집 중인 기간·스케줄 입력은 그대로 두고, 실행 상태와 이력만 5초마다 새로 그린다.
+// 마지막 입력 뒤 10분이 지나면 멈춘다. 자동 요청이 관리자 세션(30분 미사용 만료)을 계속 연장해 자리를 비운 화면이 로그인된 채 남지 않게 한다.
 if (document.getElementById('history')) {
-  let refreshing = false;
+  const IDLE_LIMIT = 10 * 60 * 1000;
+  let refreshing = false, lastInput = Date.now();
+  for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+    document.addEventListener(type, () => { lastInput = Date.now(); }, { passive: true });
+  }
   const refresh = async () => {
-    if (document.hidden || refreshing) return;
+    if (document.hidden || refreshing || Date.now() - lastInput > IDLE_LIMIT) return;
     refreshing = true;
     try {
       const response = await fetch(window.location.pathname, { credentials: 'same-origin', cache: 'no-store' });

@@ -1,10 +1,12 @@
 package com.toady.admin.operations
 
 import com.toady.admin.Kst
+import com.toady.admin.jobs.JobKind
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.RowCallbackHandler
 import org.springframework.stereotype.Service
+import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDateTime
 
@@ -22,7 +24,7 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 	 */
 	data class LastRun(val kind: String, val status: String?, val finishedAt: LocalDateTime?, val lastSuccess: LocalDateTime?,
 	                   val jobId: String? = null, val source: String? = null, val message: String? = null) {
-		val kindLabel get() = com.toady.admin.jobs.JobKind.label(kind)
+		val kindLabel get() = JobKind.label(kind)
 		val sourceLabel get() = when (source) { "SCHEDULE" -> "자동"; "MANUAL" -> "수동"; else -> source ?: "" }
 		val health get() = when {
 			status == "FAILED" -> "FAILED"
@@ -56,8 +58,8 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 			r.getTimestamp(2)?.let { successes[r.getString(1)] = it.toLocalDateTime() }
 		})
 		// 작업 종류 순서(전체 → 공고 → 경쟁률 → 가점)대로 보여 준다.
-		com.toady.admin.jobs.JobKind.entries.mapNotNull { k -> latest[k.name]?.copy(lastSuccess = successes[k.name]) } +
-			latest.values.filter { r -> com.toady.admin.jobs.JobKind.entries.none { it.name == r.kind } }
+		JobKind.entries.mapNotNull { k -> latest[k.name]?.copy(lastSuccess = successes[k.name]) } +
+			latest.values.filter { r -> JobKind.entries.none { it.name == r.kind } }
 	} catch (missing: DataAccessException) { null }
 
 	private fun collections(): List<Collection> = TABLES.map { (label, table) ->
@@ -95,7 +97,7 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 			count("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE LAST_SUCCESS_DT >= ?", Timestamp.valueOf(now.minusDays(7))),
 			// 오늘 발송을 시도했는데 푸시 서비스가 받지 않은 구독(만료·차단 의심)
 			count("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE LAST_ATTEMPT_DATE = ? AND (LAST_SUCCESS_DT IS NULL OR LAST_SUCCESS_DT < ?)",
-				java.sql.Date.valueOf(now.toLocalDate()), Timestamp.valueOf(now.toLocalDate().atStartOfDay())),
+				Date.valueOf(now.toLocalDate()), Timestamp.valueOf(now.toLocalDate().atStartOfDay())),
 			jdbc.queryForObject("SELECT MAX(LAST_DIGEST_DT) FROM TB_PUSH_SUBSCRIPTION", Timestamp::class.java)?.toLocalDateTime(),
 			topics.entries.sortedByDescending { it.value }.take(12).map { it.key to it.value })
 	} catch (missing: DataAccessException) { null }

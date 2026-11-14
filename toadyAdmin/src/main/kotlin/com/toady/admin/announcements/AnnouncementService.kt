@@ -1,9 +1,13 @@
 package com.toady.admin.announcements
 
 import com.toady.admin.Kst
+import com.toady.admin.Page
+import com.toady.admin.likeContains
+import com.toady.admin.metrics.ExclusionService
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
+import java.net.URLEncoder
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -12,7 +16,7 @@ import java.time.LocalDateTime
  * 유형마다 컬럼 이름과 날짜 형식(YYYY-MM-DD / YYYYMMDD)이 달라 유형별 정의(TYPES)로 맞춘다.
  */
 @Service
-class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions: com.toady.admin.metrics.ExclusionService) {
+class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions: ExclusionService) {
 	/** 유형별 테이블·컬럼 정의. 공고 ID는 서비스와 같은 '유형/주택관리번호/공고번호'. */
 	data class Type(val key: String, val label: String, val detail: String, val model: String, val start: String, val end: String, val address: String,
 	                val unitLabel: String, val unitArea: String?, val unitAmount: String)
@@ -21,9 +25,6 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 		val typeLabel get() = TYPES[type]?.label ?: type
 		val status get() = status(start, end)
 		val statusLabel get() = when (status) { "OPEN" -> "접수 중"; "UPCOMING" -> "접수 예정"; "CLOSED" -> "마감"; else -> "일정 없음" }
-	}
-	data class Page(val items: List<Row>, val total: Long, val page: Int, val size: Int) {
-		val pages get() = maxOf(1, ((total + size - 1) / size).toInt())
 	}
 	data class Unit(val label: String, val area: String?, val households: String?, val amount: String?) {
 		/** 청약홈 공급금액은 만원 단위다. 숫자가 아니면 받은 그대로 보여 준다. */
@@ -35,7 +36,7 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 	data class Detail(val row: Row, val kind: String?, val noticeDate: String?, val winnerDate: String?, val contract: String?, val moveIn: String?, val url: String?,
 	                  val collectedAt: LocalDateTime?, val units: List<Unit>, val views30: Long?, val viewers30: Long?, val favorites: Long?,
 	                  val gap: Gap?, val polls: List<Long>?) {
-		val appPath get() = "/?subscriptSeq=" + java.net.URLEncoder.encode(row.id, Charsets.UTF_8)
+		val appPath get() = "/?subscriptSeq=" + URLEncoder.encode(row.id, Charsets.UTF_8)
 		val pollTotal get() = polls?.sum() ?: 0
 		val hasUnitArea get() = units.any { it.area != null }
 	}
@@ -45,10 +46,10 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 	 * 유형별 테이블의 문자 정렬 방식(collation)이 서로 달라 UNION으로 묶을 수 없으므로 유형마다 따로 읽어 합친 뒤 정렬·페이지를 나눈다
 	 * (관리자 전용이고 전체 공고가 수천 건 규모라 메모리 처리로 충분하다).
 	 */
-	fun search(query: String?, type: String?, status: String?, page: Int, size: Int = PAGE_SIZE): Page {
+	fun search(query: String?, type: String?, status: String?, page: Int, size: Int = PAGE_SIZE): Page<Row> {
 		val types = TYPES.values.filter { type == null || type == "all" || it.key == type }
 		val keyword = query?.trim()?.takeIf { it.isNotEmpty() }?.take(100)
-		val like = keyword?.let { "%" + it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%" }
+		val like = keyword?.let(::likeContains)
 		val all = types.flatMap { t ->
 			val sql = "SELECT HOUSE_MANAGE_NO, PBLANC_NO, HOUSE_NM, ${t.address} AS ADDR, ${t.start} AS S, ${t.end} AS E, SUBSCRPT_AREA_CODE_NM, TOT_SUPLY_HSHLDCO FROM ${t.detail}" +
 				(if (like != null) " WHERE HOUSE_NM LIKE ? OR ${t.address} LIKE ?" else "")
@@ -61,7 +62,7 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 			when (status) {
 				"open" -> row.status == "OPEN"; "upcoming" -> row.status == "UPCOMING"; "closed" -> row.status == "CLOSED"; else -> true
 			}
-		}.sortedWith(compareByDescending<Row> { it.start ?: java.time.LocalDate.MIN }.thenBy { it.houseNm })
+		}.sortedWith(compareByDescending<Row> { it.start ?: LocalDate.MIN }.thenBy { it.houseNm })
 		val safePage = page.coerceIn(0, maxOf(0, (all.size - 1) / size))
 		return Page(all.drop(safePage * size).take(size), all.size.toLong(), safePage, size)
 	}

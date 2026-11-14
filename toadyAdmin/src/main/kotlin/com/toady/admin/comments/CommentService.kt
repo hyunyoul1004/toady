@@ -1,12 +1,16 @@
 package com.toady.admin.comments
 
 import com.toady.admin.Kst
+import com.toady.admin.Page
+import com.toady.admin.announcements.AnnouncementService
+import com.toady.admin.likeContains
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.jdbc.core.JdbcTemplate
-import com.toady.admin.announcements.AnnouncementService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.net.URLEncoder
 import java.sql.Timestamp
 import java.time.LocalDateTime
 
@@ -22,19 +26,16 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		/** 숨김 사유. 작성자가 직접 지운 댓글은 관리자가 되살리지 않는다. */
 		val hiddenLabel get() = if (adminHidden) "관리자 숨김" else "작성자 삭제"
 		/** 앱 공고 상세 주소(새 창). */
-		val appPath get() = "/?subscriptSeq=" + java.net.URLEncoder.encode(announcementId, Charsets.UTF_8)
+		val appPath get() = "/?subscriptSeq=" + URLEncoder.encode(announcementId, Charsets.UTF_8)
 		/** 관리자 공고 상세 주소. */
 		val adminPath get() = "/admin/announcements/$announcementId"
-	}
-	data class Page(val items: List<Comment>, val total: Long, val page: Int, val size: Int) {
-		val pages get() = maxOf(1, ((total + size - 1) / size).toInt())
 	}
 
 	/**
 	 * state: visible · hidden · all. 검색어는 내용·작성자 닉네임 부분 일치.
 	 * announcementId·authorSeq를 주면 그 공고·회원의 댓글만(상세 화면용).
 	 */
-	fun search(query: String?, state: String?, page: Int, size: Int = PAGE_SIZE, announcementId: String? = null, authorSeq: Long? = null): Page {
+	fun search(query: String?, state: String?, page: Int, size: Int = PAGE_SIZE, announcementId: String? = null, authorSeq: Long? = null): Page<Comment> {
 		val where = StringBuilder(" WHERE 1=1"); val args = ArrayList<Any>()
 		announcementId?.split('/')?.takeIf { it.size == 3 }?.let { (type, house, notice) ->
 			where.append(" AND C.ANNOUNCEMENT_TYPE=? AND C.HOUSE_MANAGE_NO=? AND C.PBLANC_NO=?")
@@ -47,7 +48,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 			else -> where.append(" AND C.DELETE_YN='N'")
 		}
 		query?.trim()?.takeIf { it.isNotEmpty() }?.take(100)?.let {
-			val like = "%" + it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+			val like = likeContains(it)
 			where.append(" AND (C.CONTENT LIKE ? OR U.USER_NIC_NAME LIKE ?)"); args += like; args += like
 		}
 		val from = " FROM TB_LTTOT_PBLANC_COMMENT C LEFT JOIN TB_USER U ON U.USER_SEQ=C.CREATE_USER_SEQ"
@@ -88,7 +89,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		val unrecorded = targets.count {
 			try {
 				jdbc.update("INSERT INTO TB_COMMENT_ADMIN_HIDE (COMMENT_SEQ, ADMIN_NAME, REG_DT) VALUES (?,?,?)", it, admin.take(100), now); false
-			} catch (duplicate: org.springframework.dao.DuplicateKeyException) { false
+			} catch (duplicate: DuplicateKeyException) { false
 			} catch (failure: DataAccessException) { true }
 		}
 		if (unrecorded > 0) log.warn("관리자 숨김 기록 {}건을 남기지 못했습니다(TB_COMMENT_ADMIN_HIDE, database.sql 21번 적용 여부 확인).", unrecorded)
