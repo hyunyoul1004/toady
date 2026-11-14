@@ -21,7 +21,7 @@ function StepAction({ action, item, busy, onStage }) {
   if (action.stage !== undefined) return <Button size="small" disabled={busy} onClick={() => onStage(action.stage)}>{action.label}</Button>;
   if (action.href) return <Button size="small" component="a" href={action.href} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewRounded fontSize="inherit" />}>{action.label}</Button>;
   if (action.to) return <Button size="small" component={Link} to={action.to}>{action.label}</Button>;
-  return <Button size="small" component={Link} to={`/my?subscriptSeq=${encodeURIComponent(item.id)}${action.tab === 'rate' ? '&tabType=rate' : ''}`} state={{ plannerDetail: true }}>{action.label}</Button>;
+  return <Button size="small" component={Link} to={`/my?subscriptSeq=${encodeURIComponent(item.id)}${action.tab === 'rate' || action.tab === 'map' ? `&tabType=${action.tab}` : ''}`} state={{ plannerDetail: true }}>{action.label}</Button>;
 }
 
 export default function FavoriteCard({ item, planner, selected, onSelect, report, result, myScore, gap }) {

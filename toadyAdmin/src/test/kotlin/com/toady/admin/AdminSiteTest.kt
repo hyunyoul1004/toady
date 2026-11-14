@@ -82,7 +82,7 @@ class AdminSiteTest {
 		mvc.perform(get("/admin/members").param("filter", "locked").with(admin)).andExpect(content().string(org.hamcrest.Matchers.containsString("a@example.test")))
 	}
 
-	@Test fun hidingARootCommentHidesRepliesAndReplyCannotBeRestoredAlone() {
+	@Test fun hidingARootCommentHidesRepliesAndRestoringItBringsThemBack() {
 		mvc.perform(get("/admin/comments").with(admin)).andExpect(status().isOk)
 			// 댓글 내용은 글자 그대로(이스케이프) 표시한다.
 			.andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;script&gt;")))
@@ -93,7 +93,7 @@ class AdminSiteTest {
 		assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
 		mvc.perform(post("/admin/comments/11/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
 		mvc.perform(post("/admin/comments/10/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
-		mvc.perform(post("/admin/comments/11/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		// 원댓글을 되살리면 함께 숨겼던 답글도 같이 돌아온다(답글을 하나씩 찾아 되살리지 않아도 된다).
 		assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
 	}
 	@Test fun commentsTheAuthorDeletedAreNeverRestoredByTheAdmin() {
@@ -166,6 +166,20 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/exclusions/remove").param("visitorId", me).with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(2L, metrics.today().visitors)
 	}
+	@Test fun funnelCountsEachVisitorOnceAndComparesReturnsOfAlertUsers() {
+		val today = Kst.today()
+		// v1: 10일 전 첫 방문 → 오늘 다시 옴, 상세·저장·알림까지. v2: 10일 전 한 번만(재방문 없음). v3: 오늘 처음(아직 판단 못 함).
+		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('f1','v1','s1','/',NULL,?,CURRENT_TIMESTAMP),('f2','v1','s2','/',NULL,?,CURRENT_TIMESTAMP),('f3','v2','s3','/',NULL,?,CURRENT_TIMESTAMP),('f4','v3','s4','/',NULL,?,CURRENT_TIMESTAMP)",
+			today.minusDays(10), today, today.minusDays(10), today)
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('g1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('g2','v1','detail_view','apt/H1/P2',?,CURRENT_TIMESTAMP),('g3','v1','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP),('g4','v1','push_enable','tool/push',?,CURRENT_TIMESTAMP),('g5','v3','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)",
+			today, today, today, today, today)
+		val funnel = metrics.funnel(28, today)
+		assertEquals(listOf(3L, 2L, 1L, 1L), funnel.steps.map { it.visitors }, "방문 3 → 상세 2 → 저장 1 → 알림 1 (같은 방문자는 한 번)")
+		assertEquals(2L, funnel.returnBase, "첫 방문이 7일 지난 v1·v2만 재방문을 판단")
+		assertEquals(50L, funnel.returnRate)
+		assertEquals(100L, funnel.alertReturnRate, "알림 켠 v1은 다시 왔다")
+		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("방문 → 알림 흐름")))
+	}
 }
 
 class MetricsRulesTest {
@@ -176,4 +190,5 @@ class MetricsRulesTest {
 		assertEquals(LocalDate.of(2026, 11, 9), MetricsService.weekStart(LocalDate.of(2026, 11, 15)))
 		assertTrue(MetricsService.Week(LocalDate.MIN, LocalDate.MIN, 3, 0, 0, 1, 0, 0, 0, 0).returningRate == 33L)
 	}
+
 }

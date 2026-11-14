@@ -31,7 +31,13 @@ export function markRepliesSeen(userSeq, latestSeq) {
   try { localStorage.setItem(SEEN_KEY(userSeq), String(latestSeq)); } catch { /* 기억하지 못하면 다음에 다시 새 답글로 보인다 */ }
   seenListeners.forEach(listener => listener());
 }
-function subscribeSeen(listener) { seenListeners.add(listener); return () => seenListeners.delete(listener); }
+// 다른 탭에서 답글을 확인해도(localStorage 변경) 이 탭의 새 답글 표시가 바로 꺼지게 storage 이벤트도 듣는다.
+function subscribeSeen(listener) {
+  seenListeners.add(listener);
+  const onStorage = event => { if (!event.key || event.key.startsWith('toady.replies.seen.')) listener(); };
+  window.addEventListener('storage', onStorage);
+  return () => { seenListeners.delete(listener); window.removeEventListener('storage', onStorage); };
+}
 
 export function useMyReplies() {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);

@@ -216,12 +216,12 @@ public class NeighborhoodResearchService {
         catch(Exception first) {
             // 429(요청 과다)·4xx는 다시 불러도 같고 한도를 더 쓰므로 재시도하지 않는다.
             boolean refused=first instanceof ResearchTransport.ProviderStatus status && !status.retryable();
-            if(first instanceof ResearchTransport.ProviderStatus status && Set.of(401,403,429).contains(status.status()))
-                // 429는 초당 호출 제한이라 잠깐(1분)만 쉬면 풀린다. 오래 멈추면 그동안 새로 연 지역의 시세가 모두 비어 보인다.
-                pauseMolit(status.status()==429?Duration.ofMinutes(1):Duration.ofHours(1),"HTTP "+status.status());
+            pauseOnRefusal(first);
             if(refused || first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
-            body=molitGet(uri,deadline);
+            // 다시 시도에서 받은 거절(429 등)도 똑같이 차단기를 켠다.
+            try { body=molitGet(uri,deadline); }
+            catch(Exception second) { pauseOnRefusal(second); throw second; }
         }
         try { return parseTrades(body); }
         catch(ProviderRejected rejected) {
@@ -232,6 +232,11 @@ public class NeighborhoodResearchService {
             else if(Set.of("20","30","31","32").contains(rejected.code)) pauseMolit(Duration.ofHours(1),"resultCode "+rejected.code);
             throw rejected;
         }
+    }
+    private void pauseOnRefusal(Exception failure) {
+        // 429는 초당 호출 제한이라 잠깐(1분)만 쉬면 풀린다. 오래 멈추면 그동안 새로 연 지역의 시세가 모두 비어 보인다.
+        if(failure instanceof ResearchTransport.ProviderStatus status && Set.of(401,403,429).contains(status.status()))
+            pauseMolit(status.status()==429?Duration.ofMinutes(1):Duration.ofHours(1),"HTTP "+status.status());
     }
     /**
      * 국토부 호출 속도 조절: 동시에 MOLIT_SLOTS개까지, 호출 시작 간격 MOLIT_SPACING_MS 이상.
@@ -304,7 +309,10 @@ public class NeighborhoodResearchService {
         factory.setFeature("http://xml.org/sax/features/external-parameter-entities",false);
         factory.setXIncludeAware(false);factory.setExpandEntityReferences(false);
         Document doc=factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
+        // 공공데이터포털 게이트웨이가 거절하면(키 오류·일일 한도 등) resultCode 대신
+        // <OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>로 오므로 그 코드도 같은 차단 규칙에 태운다.
         String code=text(doc.getDocumentElement(),"resultCode");
+        if(code.isBlank()) code=text(doc.getDocumentElement(),"returnReasonCode");
         if(!Set.of("00","000").contains(code)) throw new ProviderRejected(code);
         int total=Integer.parseInt(text(doc.getDocumentElement(),"totalCount"));
         NodeList items=doc.getElementsByTagName("item");List<Trade> trades=new ArrayList<>();

@@ -36,8 +36,8 @@ public class AccountController {
     }
 
     @PatchMapping("/nickname")
-    public ResponseEntity<ResData<?>> nickname(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody NicknameChange request) {
-        return respond(service.changeNickname(user.getUserSeq(), request.nickname()));
+    public ResponseEntity<ResData<?>> nickname(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody NicknameChange request, jakarta.servlet.http.HttpServletRequest http) {
+        return respond(service.changeNickname(user.getUserSeq(), request.nickname(), http));
     }
 
     @PatchMapping("/profile-icon")

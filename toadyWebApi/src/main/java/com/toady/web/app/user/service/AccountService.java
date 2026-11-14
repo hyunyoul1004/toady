@@ -61,6 +61,24 @@ public class AccountService {
             "OPTIONAL", new String[]{"optional", "TB_OPT_LTTOT_PBLANC_DETAIL"});
     static final int MY_COMMENTS_PAGE = 10;
 
+    /**
+     * 회원별 현재 비밀번호 틀린 횟수(15분). IP별 요청 제한만으로는 토큰을 가진 사람이 IP를 바꿔 가며 대입할 수 있어
+     * 비밀번호 변경·탈퇴의 비밀번호 확인을 회원 기준으로도 막는다. 서버 여러 대로 늘리면 공용 저장소로 옮긴다.
+     */
+    static final int MAX_PASSWORD_GUESSES = 5;
+    static final String TOO_MANY_GUESSES = "비밀번호를 여러 번 틀려서 잠시 막아 두었어요. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 이용해 주세요.";
+    private final com.google.common.cache.Cache<Long, java.util.concurrent.atomic.AtomicInteger> passwordGuesses =
+            com.google.common.cache.CacheBuilder.newBuilder().maximumSize(10_000).expireAfterWrite(java.time.Duration.ofMinutes(15)).build();
+    private boolean passwordGuessBlocked(long userSeq) {
+        var count = passwordGuesses.getIfPresent(userSeq);
+        return count != null && count.get() >= MAX_PASSWORD_GUESSES;
+    }
+    private Outcome wrongPassword(long userSeq, String message) {
+        try { passwordGuesses.get(userSeq, java.util.concurrent.atomic.AtomicInteger::new).incrementAndGet(); }
+        catch (java.util.concurrent.ExecutionException impossible) { /* 기본값 생성은 실패하지 않는다 */ }
+        return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, message);
+    }
+
     /** 프로필 캐릭터를 바꾼다(null이면 닉네임 첫 글자로 되돌림). */
     public Outcome changeProfileIcon(long userSeq, String icon) {
         String key = icon == null || icon.isBlank() ? null : icon.trim();
@@ -216,8 +234,13 @@ public class AccountService {
         return view;
     }
 
+
+    /**
+     * 닉네임 변경. 새 토큰은 지금 토큰의 최초 로그인 시각을 이어받는다(request가 있을 때).
+     * 비밀번호 없이 되는 변경이라, 새로 로그인한 것처럼 시각을 새로 정하면 닉네임만 바꿔 가며 최대 로그인 유지 기간을 끝없이 늘릴 수 있다.
+     */
     @Transactional
-    public Outcome changeNickname(long userSeq, String requested) {
+    public Outcome changeNickname(long userSeq, String requested, jakarta.servlet.http.HttpServletRequest request) {
         String nickname = requested == null ? "" : requested.trim();
         if (!NICKNAME.matcher(nickname).matches()) {
             return Outcome.fail(ResultCode.VALID_ERROR, "닉네임은 한글·영문·숫자로 2~15자까지 쓸 수 있어요(공백·특수문자 제외).");
@@ -237,15 +260,17 @@ public class AccountService {
             return Outcome.fail(ResultCode.ALREADY_NIC_NAME, ResultCode.ALREADY_NIC_NAME.getMessage());
         }
         log.info("닉네임 변경: userSeq={}", userSeq);
-        return Outcome.done("닉네임을 바꿨어요. 내가 쓴 이야기에도 새 닉네임으로 보여요.", token(user));
+        return Outcome.done("닉네임을 바꿨어요. 내가 쓴 이야기에도 새 닉네임으로 보여요.", renewedToken(user, request));
     }
 
     @Transactional
     public Outcome changePassword(long userSeq, String current, String next, String confirm) {
+        if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         UserEntity user = lockedUser(userSeq);
         if (current == null || current.length() > 72 || !encoder.matches(current, user.getUserPassword())) {
-            return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, "현재 비밀번호가 맞지 않아요.");
+            return wrongPassword(userSeq, "현재 비밀번호가 맞지 않아요.");
         }
+        passwordGuesses.invalidate(userSeq);
         if (next == null || !next.equals(confirm)) return Outcome.fail(ResultCode.PASSWORD_MISMATCH_ERROR, "새 비밀번호와 확인이 서로 달라요.");
         if (!PASSWORD.matcher(next).matches()) {
             return Outcome.fail(ResultCode.PASSWORD_PATTERN_VALID1_ERROR, "새 비밀번호는 6~20자로, 영문과 숫자 또는 특수문자를 함께 써 주세요.");
@@ -267,10 +292,12 @@ public class AccountService {
      */
     @Transactional
     public Outcome withdraw(long userSeq, String password, String phrase) {
+        if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         UserEntity user = lockedUser(userSeq);
         if (password == null || password.length() > 72 || !encoder.matches(password, user.getUserPassword())) {
-            return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, "비밀번호가 맞지 않아요.");
+            return wrongPassword(userSeq, "비밀번호가 맞지 않아요.");
         }
+        passwordGuesses.invalidate(userSeq);
         if (!WITHDRAW_PHRASE.equals(phrase == null ? "" : phrase.trim())) {
             return Outcome.fail(ResultCode.VALID_ERROR, "확인 문구 '" + WITHDRAW_PHRASE + "'를 그대로 입력해 주세요.");
         }
@@ -292,10 +319,22 @@ public class AccountService {
         return Outcome.done("탈퇴했어요. 그동안 TOADY를 이용해 주셔서 고마워요.", null);
     }
 
+    /**
+     * 비밀번호 재설정·인증 처리와 같은 계정 잠금으로 직렬화한다.
+     * 엔티티를 먼저 읽으면(findById) 잠금 조회가 그 엔티티를 그대로 돌려줘, 잠금을 기다리는 동안 바뀐 비밀번호를 보지 못한다.
+     * 그래서 이메일만 JDBC로 읽고, 엔티티는 잠금 조회로 처음 읽는다.
+     */
     private UserEntity lockedUser(long userSeq) {
-        UserEntity user = users.findById(userSeq).orElseThrow();
-        // 비밀번호 재설정·인증 처리와 같은 계정 잠금으로 직렬화한다.
-        return users.findByEmailForUpdate(user.getUserEmail());
+        String email = jdbc.queryForObject("SELECT USER_EMAIL FROM TB_USER WHERE USER_SEQ=?", String.class, userSeq);
+        UserEntity user = users.findByEmailForUpdate(email);
+        if (user == null) throw new java.util.NoSuchElementException("user " + userSeq);
+        return user;
+    }
+
+    private String renewedToken(UserEntity user, jakarta.servlet.http.HttpServletRequest request) {
+        String header = request == null ? null : request.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) return token(user);
+        return userService.renewToken(request, (CustomUserDetails) details.loadUserByUsername(user.getUserEmail()));
     }
 
     private String token(UserEntity user) {

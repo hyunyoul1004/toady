@@ -197,4 +197,31 @@ class AccountSettingsTest {
         assertEquals(2, story.get("replyCount").asInt(), "내 이야기의 답글 수(지운 답글·내 답글 제외)");
         assertEquals(401, status(get("/api/v1/me/account/replies"), null));
     }
+
+    String claim(String jwt, String key) throws Exception {
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(jwt.split("\\.")[1]), java.nio.charset.StandardCharsets.UTF_8);
+        return json.readTree(payload).get(key).asText();
+    }
+
+    @Test void nicknameChangeKeepsTheOriginalLoginTimeSoSessionsCannotBeExtended() throws Exception {
+        String token = login("me@example.test");
+        Thread.sleep(1100);
+        JsonNode ok = call(patch("/api/v1/me/account/nickname"), token, Map.of("nickname", "늘리기없음"));
+        assertEquals("SUCCESS", ok.get("resultCode").asText(), ok.toString());
+        assertEquals(claim(token, "tca"), claim(ok.get("data").get("accessToken").asText(), "tca"), "닉네임 변경은 최초 로그인 시각을 이어받는다");
+    }
+
+    @Test void currentPasswordGuessesAreLimitedPerMemberEvenAcrossAddresses() throws Exception {
+        String token = login("me@example.test");
+        Map<String, String> wrong = Map.of("currentPassword", "Wrong123!", "newPassword", "Changed2!", "newPasswordConfirm", "Changed2!");
+        for (int i = 0; i < 5; i++) {
+            ip = "203.0.113." + (i + 1);  // IP를 바꿔도
+            assertEquals("현재 비밀번호가 맞지 않아요.", call(post("/api/v1/me/account/password"), token, wrong).get("resultMessage").asText());
+        }
+        ip = "203.0.113.99";
+        JsonNode blocked = call(post("/api/v1/me/account/withdraw"), token, Map.of("password", "Original1!", "phrase", "탈퇴합니다"));
+        assertNotEquals("SUCCESS", blocked.get("resultCode").asText(), "5번 틀린 뒤에는 맞는 비밀번호라도 15분간 막는다");
+        assertTrue(blocked.get("resultMessage").asText().contains("15분"), blocked.toString());
+        assertEquals("N", jdbc.queryForObject("SELECT WITHDRAWAL_YN FROM TB_USER WHERE USER_SEQ=?", String.class, seq));
+    }
 }

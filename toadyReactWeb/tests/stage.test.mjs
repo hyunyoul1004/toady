@@ -36,6 +36,20 @@ test('당첨·미당첨·계약 완료', () => {
   assert.equal(nextStep(3, summary, '2026-12-09').action.stage, 5);
   assert.equal(nextStep(4, summary, '2026-12-01').action.to, '/match');
   assert.equal(nextStep(5, summary, '2026-12-01').tone, 'done');
+  // 계약 뒤에는 입주까지 남은 기간과 주변 시세(위치 탭)로 이어진다.
+  const contracted = nextStep(5, { ...summary, moveInMonth: '2029-01' }, '2026-12-01');
+  assert.match(contracted.text, /입주 예정 2029년 1월 · 약 2년 1개월 남음/);
+  assert.equal(contracted.action.tab, 'map');
+  assert.match(nextStep(5, summary, '2026-12-01').text, /주변 시세/, '입주 예정월을 모르면 시세 비교만 안내');
+});
+
+test('입주 예정까지 남은 기간', async () => {
+  const { moveInText } = await import('../src/features/planner/stageRules.js');
+  assert.equal(moveInText('2027-03', '2026-12-15'), '입주 예정 2027년 3월 · 약 3개월 남음');
+  assert.equal(moveInText('2028-12', '2026-12-15'), '입주 예정 2028년 12월 · 약 2년 남음');
+  assert.equal(moveInText('2026-12', '2026-12-15'), '입주 시작(2026년 12월)');
+  assert.equal(moveInText('', '2026-12-15'), '');
+  assert.equal(moveInText('2029-1', '2026-12-15'), '', '형식이 다르면 비운다');
 });
 
 test('결과 요약: 경쟁률·당첨가점과 내 가점 비교', () => {

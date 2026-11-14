@@ -148,4 +148,12 @@ class PublicPagesUnitTest {
         assertTrue(poll.voterAllowed("ip", "apt/A/1", "v0"), "이미 투표한 방문자는 선택을 바꿀 수 있다");
         assertTrue(poll.voterAllowed("ip", "apt/B/1", "new"), "공고가 다르면 따로 센다");
     }
+
+    @org.junit.jupiter.api.Test void moveInMonthIsNormalizedForThePlanner() {
+        org.junit.jupiter.api.Assertions.assertEquals("2029-01", PlannerSummary.moveInMonth("202901"));
+        org.junit.jupiter.api.Assertions.assertEquals("2029-01", PlannerSummary.moveInMonth("2029.01"));
+        org.junit.jupiter.api.Assertions.assertNull(PlannerSummary.moveInMonth("202913"), "없는 달");
+        org.junit.jupiter.api.Assertions.assertNull(PlannerSummary.moveInMonth(""));
+        org.junit.jupiter.api.Assertions.assertNull(PlannerSummary.moveInMonth(null));
+    }
 }

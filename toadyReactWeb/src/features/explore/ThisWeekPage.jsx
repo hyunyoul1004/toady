@@ -3,6 +3,9 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Skeleton, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
+import IosShareRounded from '@mui/icons-material/IosShareRounded';
+import { shareLink, weeklyShareText } from '@/utils/share.util';
+import { trackAction } from '@/features/analytics/trackAction';
 import apiClient from '@/api/client';
 import { Main } from '@/views/main/Main';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
@@ -72,6 +75,13 @@ export default function ThisWeekPage() {
   const winners = data?.winners || [];
   const nextWeek = data?.nextWeek || [];
   const openCount = current.filter(item => item.status === 'OPEN').length;
+  // 이번 주 모음 공유: 검색·미리보기용 서버 페이지(/weekly) 주소를 보낸다(카톡 미리보기에 요약이 보인다).
+  const [shareNote, setShareNote] = useState('');
+  const share = async () => {
+    const result = await shareLink({ title: '이번 주 청약 · TOADY', text: weeklyShareText({ current: current.length, winners: winners.length, nextWeek: nextWeek.length }), url: 'https://www.toady.co.kr/weekly' });
+    if (result === 'shared' || result === 'copied') trackAction('share', 'tool/weekly');
+    setShareNote(result === 'copied' ? '공유 문구와 링크를 복사했어요.' : result === 'failed' ? '공유하지 못했어요. 주소창의 링크를 복사해 주세요.' : '');
+  };
   // 오늘의 요약 숫자에서 들어오면(#week-winners) 자료를 받은 뒤 그 목록으로 내려간다.
   // 처음 들어올 때 한 번만 내려간다(상세를 닫고 돌아올 때 보던 위치에서 다시 점프하지 않게).
   const jumped = useRef(false);
@@ -91,6 +101,8 @@ export default function ThisWeekPage() {
         <button type="button" onClick={() => jump('week-winners')}><strong>{data ? winners.length : '–'}</strong><span>당첨자 발표</span></button>
         <button type="button" onClick={() => jump('week-next')}><strong>{data ? nextWeek.length : '–'}</strong><span>다음 주 시작</span></button>
       </div>
+      {data && <div className="explore-share"><Button size="small" variant="outlined" startIcon={<IosShareRounded />} onClick={share}>이번 주 청약 공유하기</Button>
+        {shareNote && <span role="status">{shareNote}</span>}</div>}
     </header>
 
     {weekly.isLoading ? <div className="explore-loading"><Skeleton variant="rounded" height={120} /><Skeleton variant="rounded" height={120} /></div>

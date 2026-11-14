@@ -16,6 +16,7 @@ import TuneRounded from '@mui/icons-material/TuneRounded';
 import FormatListBulletedRounded from '@mui/icons-material/FormatListBulletedRounded';
 import MyLocationRounded from '@mui/icons-material/MyLocationRounded';
 import {useHistoryOverlay} from '@/hooks/useHistoryOverlay';
+import {closeStackSteps,liftedOverlayStates} from '@/utils/overlay.util';
 import {trackAction} from '@/features/analytics/trackAction';
 import {ensureKakaoLoaded} from '@/config/ensureKakaoLoaded';
 import {koreaToday} from '@/features/planner/plannerUtils';
@@ -49,9 +50,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const navigate=useNavigate(),routeLocation=useLocation();
   // 다른 분양 공고 열기: 지금 화면 주소에서 상세 값만 바꿔 히스토리 한 단계를 쌓는다(뒤로가기로 이 공고 지도에 돌아온다).
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
-  // 지도에서 고른 단지·공고(price-map-complex 레이어)는 새 공고로 따라가지 않게 빼고 넘긴다(남기면 새 공고에서 '닫기'가 이전 공고로 뒤로가기 됐다).
+  // 지도에서 고른 단지·공고(price-map-complex)와 전체 화면(map-fullscreen) 레이어는 새 공고로 따라가지 않게 빼고 넘긴다
+  // (남기면 새 공고에서 '닫기'·전체 화면 닫기가 이전 공고로 뒤로가기 됐다).
   const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');
-    const state=routeLocation.state?{...routeLocation.state,overlayLayers:(routeLocation.state.overlayLayers || []).filter(layer=>layer.id!=='price-map-complex')}:routeLocation.state;
+    const state=routeLocation.state?{...routeLocation.state,overlayLayers:(routeLocation.state.overlayLayers || []).filter(layer=>layer.id!=='price-map-complex' && layer.id!=='map-fullscreen')}:routeLocation.state;
     navigate({pathname:routeLocation.pathname,search:`?${next}`},{state});};
   const today=koreaToday();
   const saleBubbles=useRef(new Map()),salePanelRef=useRef(null);
@@ -86,8 +88,16 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   },[fullscreen,mapHost,visible,mapError]);
   useEffect(()=>()=>clearTimeout(holdTimer.current),[]);
   useEffect(()=>{if(!fullscreen)setFsPanel(null);},[fullscreen]);
-  const openFullscreen=()=>{holdCenter();setFullscreenLayer(true);trackAction('map_tool','tool/map-fullscreen');};
-  const closeFullscreen=()=>{holdCenter();setFullscreenLayer(false);};
+  // 고른 단지가 있으면 전체 화면 위로 옮겨 쌓는다([단지, 전체 화면]이 되면 단지만 닫을 때 히스토리가 어긋난다).
+  const openFullscreen=()=>{
+    holdCenter();trackAction('map_tool','tool/map-fullscreen');
+    const states=liftedOverlayStates(routeLocation.state,'map-fullscreen',true,['price-map-complex']);
+    if(!states){setFullscreenLayer(true);return;}
+    const url=routeLocation.pathname+routeLocation.search+routeLocation.hash;
+    navigate(url,{state:states[0],replace:true});navigate(url,{state:states[1]});
+  };
+  // 위에 고른 단지가 있으면 함께 닫는다(전체 화면만 빼면 뒤로가기 때 전체 화면이 다시 열린다).
+  const closeFullscreen=()=>{holdCenter();const steps=closeStackSteps(routeLocation.state,'map-fullscreen');if(steps>1)navigate(-steps);else setFullscreenLayer(false);};
   const toggleFsPanel=panel=>{holdCenter();setFsPanel(current=>(current===panel?null:panel));};
   // Esc: 열린 패널이 있으면 패널부터, 아니면 전체 화면을 닫는다(고른 단지는 그 단지 레이어가 따로 닫는다).
   const escRef=useRef(null);

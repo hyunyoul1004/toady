@@ -68,3 +68,5 @@
   .explore-stats span{font-size:11.5px}
   .explore-section h2{font-size:16.5px}
 }
+.explore-share{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.explore-share span{font-size:13px;color:#475569}

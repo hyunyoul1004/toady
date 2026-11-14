@@ -51,6 +51,12 @@ server:
     min-response-size: 2048
 
 toady:
+  mail:
+    # 보내는 사람 주소·이름. 비우면 SMTP 로그인 계정이 보낸 사람이 된다(Gmail).
+    # 발송 서비스(Amazon SES 등)로 옮길 때: MAIL_HOST·MAIL_USERNAME·MAIL_PASSWORD를 그 서비스 값으로, MAIL_FROM을 확인된 주소로,
+    # GMAIL_ROLLING_LIMIT을 그 서비스 한도에 맞게 바꾼다. 코드는 그대로 쓴다.
+    from: ${MAIL_FROM:}
+    from-name: ${MAIL_FROM_NAME:TOADY}
   research:
     molit-service-key: ${MOLIT_TRADE_SERVICE_KEY:}
     # 카카오 로컬 REST API 키(서버 전용). 있으면 매일 접수 중·예정 공고의 주변 시세 비교를 미리 계산한다.

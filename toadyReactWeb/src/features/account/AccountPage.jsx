@@ -31,6 +31,13 @@ const joined = value => {
   return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 가입`;
 };
 
+/** 서버가 준 새 토큰으로 이 기기 로그인을 이어 간다. 토큰을 읽지 못하면 다시 로그인하라고 안내한다(조용히 실패하지 않게). */
+function adoptToken(login, token) {
+  if (!token) return true;
+  try { login(token); return true; } catch { return false; }
+}
+const RELOGIN = '변경은 됐지만 이 기기의 로그인 정보를 갱신하지 못했어요. 다시 로그인해 주세요.';
+
 /** 서버 결과(성공·실패 문구)와 요청 제한·통신 오류를 화면 안내로 바꾼다. */
 async function run(request) {
   try {
@@ -60,7 +67,7 @@ function NicknameForm({ current, onDone, onCancel }) {
     setBusy(false);
     if (!result.ok) { setError(result.message); return; }
     // 화면 곳곳의 닉네임(메뉴 등)이 토큰에서 오므로 새 토큰으로 바꾼다.
-    if (result.data?.accessToken) login(result.data.accessToken);
+    if (!adoptToken(login, result.data?.accessToken)) { setError(RELOGIN); return; }
     onDone(result.message);
   };
   return <form className="account-form" onSubmit={submit}>
@@ -88,7 +95,7 @@ function PasswordForm({ onDone, onCancel }) {
     setBusy(false);
     if (!result.ok) { setError(result.message); return; }
     // 비밀번호가 바뀌면 이전 토큰은 모두 무효가 되므로, 이 기기는 새 토큰으로 로그인을 이어 간다.
-    if (result.data?.accessToken) login(result.data.accessToken);
+    if (!adoptToken(login, result.data?.accessToken)) { setError(RELOGIN); return; }
     onDone(result.message);
   };
   return <form className="account-form" onSubmit={submit}>
@@ -193,7 +200,7 @@ function ReceivedReplies() {
 }
 
 /** 내가 쓴 이야기. 누르면 그 공고의 이야기 탭을 열고 해당 이야기로 이동한다(뒤로가기로 이 목록에 돌아온다). */
-function MyStories({ onClose }) {
+function MyStories({ onClose, seen }) {
   const navigate = useNavigate();
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
   const stories = useInfiniteQuery({
@@ -205,8 +212,6 @@ function MyStories({ onClose }) {
     staleTime: 30000
   });
   const items = (stories.data?.pages || []).flatMap(page => page?.items || []);
-  // 이 목록을 연 순간의 '본 답글' 번호(받은 답글이 보이면 곧 갱신되므로 처음 값을 붙잡아 둔다)
-  const [seen] = useState(() => (userSeq == null ? null : readSeen(userSeq)));
   const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
   return <section className="account-card account-stories" id="account-stories" aria-labelledby="account-stories-title">
     <div className="account-stories-head"><h2 id="account-stories-title"><ChatBubbleOutlineRounded fontSize="small" />내가 쓴 이야기</h2>
@@ -230,6 +235,9 @@ function MyStories({ onClose }) {
 
 /** 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다. */
 export default function AccountPage() {
+  // 이 화면에 들어온 순간의 '본 답글' 번호. 받은 답글이 보이면 곧 최신으로 바뀌므로, 내가 쓴 이야기의 '새 답글' 표시는 이 값으로 정한다.
+  const enteredUser = useAuthStore(state => state.user?.userSeq ?? null);
+  const [seenOnEnter] = useState(() => (enteredUser == null ? null : readSeen(enteredUser)));
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const logout = useAuthStore(state => state.logout);
   const location = useLocation(), navigate = useNavigate();
@@ -302,7 +310,7 @@ export default function AccountPage() {
 
     <ReceivedReplies />
 
-    {storiesOpen && <MyStories onClose={toggleStories} />}
+    {storiesOpen && <MyStories onClose={toggleStories} seen={seenOnEnter} />}
 
     <section className="account-card" aria-labelledby="account-login-title">
       <h2 id="account-login-title"><LockOutlined fontSize="small" />로그인 정보</h2>

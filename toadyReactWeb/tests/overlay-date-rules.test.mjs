@@ -51,3 +51,15 @@ test('날짜로 고른 구간: 입력이 부족해지면 이전 자동 선택을
   assert.equal(periodPickUpdate(pending, undefined, true), undefined, '이미 비어 있으면 그대로');
   assert.equal(periodPickUpdate(pending, 5, false), undefined, '날짜를 만지지 않았으면 직접 고른 값을 지우지 않는다');
 });
+
+test('지도 전체 화면: 위 레이어까지 닫는 칸 수와 고른 단지를 위로 옮겨 쌓기', async () => {
+  const { closeStackSteps, liftedOverlayStates } = await import('../src/utils/overlay.util.js');
+  const fs = { id: 'map-fullscreen', value: true }, complex = { id: 'price-map-complex', value: 'c1' };
+  assert.equal(closeStackSteps({ overlayLayers: [fs, complex] }, 'map-fullscreen'), 2, '전체 화면을 닫으면 위의 단지도 함께 닫는다');
+  assert.equal(closeStackSteps({ overlayLayers: [fs] }, 'map-fullscreen'), 1);
+  assert.equal(closeStackSteps({}, 'map-fullscreen'), 0);
+  const states = liftedOverlayStates({ keep: 1, overlayLayers: [complex] }, 'map-fullscreen', true, ['price-map-complex']);
+  assert.deepEqual(states.map(state => state.overlayLayers), [[fs], [fs, complex]], '[단지] 칸을 [전체 화면]으로 바꾸고 [전체 화면, 단지]를 쌓는다');
+  assert.equal(states[1].keep, 1, '다른 state 값은 그대로');
+  assert.equal(liftedOverlayStates({ overlayLayers: [] }, 'map-fullscreen', true, ['price-map-complex']), null, '옮길 레이어가 없으면 평소처럼 연다');
+});

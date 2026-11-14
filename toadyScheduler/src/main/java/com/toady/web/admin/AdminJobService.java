@@ -114,6 +114,8 @@ public class AdminJobService {
         // 일부 공고만 실패한 구간: 나머지는 저장됐으므로 다음 구간을 계속 수집하고 끝에서 함께 알린다.
         // (오래된 달의 공고 하나가 계속 실패해도 이번 달 구간이 막히지 않게)
         List<String> partialFailures = new ArrayList<>();
+        // 지금 구간에서 생긴 일부 실패. 같은 구간의 다음 단계(경쟁률)가 다른 오류로 끝나도 실패 문구에 함께 남긴다.
+        String chunkPartial = null;
         try {
             AdminJob job = repository.find(id).orElseThrow();
             for (DateRange chunk : chunks(job.startDate(), job.endDate())) {
@@ -144,6 +146,7 @@ public class AdminJobService {
                                     } catch (ApplyhomePartialFailureException failure) {
                                         // 일부 주택형만 실패했으면 나머지는 저장됐으므로 결과 데이터 수집까지 마친 뒤 실패를 알린다.
                                         partial = failure;
+                                        chunkPartial = chunk.start() + "~" + chunk.end() + ": " + failure.getMessage();
                                     }
                                     announcementsDone = true;
                                 }
@@ -171,6 +174,7 @@ public class AdminJobService {
                     log.warn("Manual scheduler job partially failed: id={}, range={}~{}, {}", id, chunk.start(), chunk.end(), partial.getMessage());
                     partialFailures.add(chunk.start() + "~" + chunk.end() + ": " + partial.getMessage());
                 }
+                chunkPartial = null;
                 // 모든 하위 수집이 끝난 구간만 진행률에 포함한다. 개별 API 행 수와는 다른 지표다.
                 completed++;
                 if (!repository.update(id, "RUNNING", completed, "해당 기간 수집 완료", now())) return;
@@ -206,7 +210,9 @@ public class AdminJobService {
                         + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", now());
                 return;
             }
-            String earlier = partialFailures.isEmpty() ? "" : " 앞 기간의 일부 실패: " + String.join(" / ", partialFailures);
+            List<String> notes = new ArrayList<>(partialFailures);
+            if (chunkPartial != null) notes.add(chunkPartial);
+            String earlier = notes.isEmpty() ? "" : " 일부 실패: " + String.join(" / ", notes);
             String message = "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요." + earlier;
             repository.finish(id, "FAILED", message.length() > 900 ? message.substring(0, 900) + "…" : message, now());
         } finally {

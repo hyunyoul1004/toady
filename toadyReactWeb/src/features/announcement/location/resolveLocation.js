@@ -136,9 +136,14 @@ const suggestCache=new Map();
 export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=2500}={}) {
   const value=normalize(text);
   if(value.length<2) return [];
-  if(suggestCache.has(value)) return suggestCache.get(value);
+  // 장소 순서는 지도 중심에 따라 달라지므로 대략적인 중심(약 10km 격자)까지 키에 넣는다.
+  const area=center?.getLat?`${center.getLat().toFixed(1)},${center.getLng().toFixed(1)}`:'';
+  const key=`${value}|${area}`;
+  if(suggestCache.has(key)) return suggestCache.get(key);
   const result=await askSuggestions(maps,value,{center,limit,timeoutMs});
-  suggestCache.set(value,result);
+  // 빈 결과(시간 초과일 수도 있음)는 기억하지 않는다. 다시 입력하면 다시 묻는다.
+  if(!result.length) return result;
+  suggestCache.set(key,result);
   if(suggestCache.size>50) suggestCache.delete(suggestCache.keys().next().value);
   return result;
 }

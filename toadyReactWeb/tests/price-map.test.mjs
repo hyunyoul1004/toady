@@ -374,3 +374,9 @@ test('radius summary compares the median price per pyeong inside the circle with
   assert.deepEqual(radiusSummary(rows, { center, meters: 50 }), { count: 0 });
   assert.deepEqual(radiusSummary(rows, null), { count: 0 });
 });
+
+test('weekly share text summarizes the three lists', async () => {
+  const { weeklyShareText } = await import('../src/utils/share.util.js');
+  assert.equal(weeklyShareText({ current: 5, winners: 3, nextWeek: 4 }), '이번 주 청약 접수 5건 · 당첨자 발표 3건 · 다음 주 시작 4건');
+  assert.equal(weeklyShareText({}), '이번 주 청약 접수 0건 · 당첨자 발표 0건 · 다음 주 시작 0건');
+});

@@ -33,6 +33,8 @@ public class AdminScheduleManager {
     private final AdminJobService jobs;
     private final ThreadPoolTaskScheduler timer = new ThreadPoolTaskScheduler();
     private final Map<JobKind, ScheduledFuture<?>> futures = new EnumMap<>(JobKind.class);
+    /** 다른 작업과 겹쳐 미뤄 둔 재시도(설정이 바뀌면 함께 취소). 타이머 스레드와 refresh가 함께 쓰므로 동시 맵. */
+    private final Map<JobKind, ScheduledFuture<?>> retries = new java.util.concurrent.ConcurrentHashMap<>();
     // 설정 내용이 같으면 기존 타이머를 유지한다. 조회 때마다 다음 실행 시각이 재설정되는 것을 방지한다.
     private final Map<JobKind, String> versions = new EnumMap<>(JobKind.class);
     private final String defaultDaily;
@@ -139,6 +141,9 @@ public class AdminScheduleManager {
             var old = futures.remove(schedule.kind());
             // 타이머 교체는 이후 자동 실행만 바꾼다. 이미 시작한 수집의 중지는 별도 중지 요청으로 처리한다.
             if (old != null) old.cancel(false);
+            // 겹쳐서 미뤄 둔 재시도도 이전 설정으로 실행되지 않게 함께 취소한다(자동 실행을 끈 뒤에 한 번 더 도는 일 방지).
+            var pendingRetry = retries.remove(schedule.kind());
+            if (pendingRetry != null) pendingRetry.cancel(false);
             if (schedule.enabled()) {
                 futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule, false),
                         new CronTrigger(schedule.cronExpression(), ZONE)));
@@ -161,7 +166,7 @@ public class AdminScheduleManager {
             }
             log.info("Scheduled submission for {} is busy; retrying once in {}", schedule.kind(), busyRetryDelay);
             try {
-                timer.schedule(() -> trigger(schedule, true), Instant.now().plus(busyRetryDelay));
+                retries.put(schedule.kind(), timer.schedule(() -> { retries.remove(schedule.kind()); trigger(schedule, true); }, Instant.now().plus(busyRetryDelay)));
             } catch (RuntimeException rejected) {
                 log.warn("Scheduled retry could not be registered for {}: {}", schedule.kind(), rejected.getMessage());
             }

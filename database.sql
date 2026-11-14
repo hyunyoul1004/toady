@@ -528,3 +528,10 @@ CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (
     PROFILE_ICON VARCHAR(30) NOT NULL COMMENT '캐릭터 키(화면 ProfileAvatar.jsx와 같은 목록)',
     UPDATE_DT DATETIME(6) NOT NULL COMMENT '한국시간 변경 시각'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 프로필 캐릭터';
+
+-- ============================================================================
+-- 24. 회원별 이야기 조회 인덱스 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 받은 답글(5분마다·창으로 돌아올 때), 내가 쓴 이야기, 내 정보 요약이 모두 작성자(CREATE_USER_SEQ) 기준으로 댓글을 찾는다.
+-- 인덱스가 없으면 로그인 회원 수 × 댓글 수만큼 전체 테이블을 읽는다.
+CREATE INDEX IF NOT EXISTS IX_LTTOT_COMMENT_USER ON TB_LTTOT_PBLANC_COMMENT (CREATE_USER_SEQ, DELETE_YN);

@@ -20,9 +20,14 @@ public class PlannerSummary {
     /** minPriceManwon/maxPriceManwon은 APT 주택형별 최고 공급금액 중 최저·최고값이다. 최저 분양가가 아니다. */
     public record Summary(String id, String houseNm, String address, String supply, String housingType,
             LocalDate startDate, LocalDate endDate, LocalDate winnerDate, String priceSummary, List<Event> events, boolean unavailable,
-            Long minPriceManwon, Long maxPriceManwon) {
+            Long minPriceManwon, Long maxPriceManwon, String moveInMonth) {
+        /** 입주 예정월 없이 만드는 기존 모양(캘린더·테스트용). */
+        public Summary(String id, String houseNm, String address, String supply, String housingType, LocalDate startDate, LocalDate endDate, LocalDate winnerDate,
+                String priceSummary, List<Event> events, boolean unavailable, Long minPriceManwon, Long maxPriceManwon) {
+            this(id, houseNm, address, supply, housingType, startDate, endDate, winnerDate, priceSummary, events, unavailable, minPriceManwon, maxPriceManwon, null);
+        }
         /** 원본 공고가 사라진 저장 항목을 화면·메일·캘린더에서 같은 모양으로 표시한다. */
-        public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null); }
+        public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null,null); }
     }
     public Summary get(String type, String house, String notice) {
         Map<String,Object> data = announcements.getDetail(AnnouncementType.fromPath(type), house, notice);
@@ -50,7 +55,15 @@ public class PlannerSummary {
             LongSummaryStatistics amounts=models.stream().map(m -> manwon(value(m,"lttotTopAmount"))).filter(Objects::nonNull).mapToLong(Long::longValue).summaryStatistics();
             if(amounts.getCount()>0) { min=amounts.getMin(); max=amounts.getMax(); }
         }
-        return new Summary(id,value(a,"houseNm"),value(a,"hssplyAdres","hssplyHshldco"),value(a,"totSuplyHshldco"),value(a,"houseSecdNm"),start,end,winner,prices,ScheduleEvents.normalize(events),false,min,max);
+        return new Summary(id,value(a,"houseNm"),value(a,"hssplyAdres","hssplyHshldco"),value(a,"totSuplyHshldco"),value(a,"houseSecdNm"),start,end,winner,prices,ScheduleEvents.normalize(events),false,min,max,
+            moveInMonth(value(a,"mvnPrearngeYm")));
+    }
+    /** 입주 예정월 '202901' → '2029-01'. 형식이 다르면 null(당첨·계약 뒤 화면이 입주까지 남은 기간을 보여 준다). */
+    static String moveInMonth(String value) {
+        String digits=value==null?"":value.replaceAll("\\D","");
+        if(digits.length()!=6) return null;
+        int month=Integer.parseInt(digits.substring(4));
+        return month>=1 && month<=12 ? digits.substring(0,4)+"-"+digits.substring(4) : null;
     }
     private static void add(List<Event> events,String label,LocalDate date) { if(date != null) events.add(new Event(label,date)); }
     private static String value(Map<String,Object> a,String...keys) { for(String key:keys) { Object v=a.get(key); if(v!=null && !v.toString().isBlank()) return v.toString(); } return ""; }

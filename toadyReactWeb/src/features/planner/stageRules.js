@@ -51,10 +51,26 @@ export function nextStep(stage, summary = {}, today, result) {
     if (left !== null && left >= 0) return { tone: 'urgent', text: `축하해요! 계약 ${left === 0 ? '오늘' : `D-${left}`} (${md(contract)}) · 계약금과 서류를 준비하세요`, action: { label: '자금 계획', tab: 'detail' } };
     return { tone: 'done', text: '축하해요! 계약을 마쳤다면 ‘계약 완료’로 바꿔 두세요.', action: { label: '계약 완료로', stage: 5 } };
   }
+  if (stage === 5) {
+    // 계약 뒤에는 입주까지 남은 기간과 주변 시세(분양가 비교)를 이어서 챙긴다.
+    const moveIn = moveInText(summary.moveInMonth, today);
+    return { tone: 'done', text: moveIn ? `계약 완료! ${moveIn} · 주변 시세로 분양가를 비교해 보세요` : '계약 완료! 주변 시세로 분양가를 비교해 보세요. 입주 일정이 정해지면 공고에서 확인할 수 있어요.', action: { label: '주변 시세', tab: 'map' } };
+  }
   if (stage === 4) {
     return result?.scorePublished
       ? { tone: 'info', text: '공개 당첨가점과 내 가점을 비교하고 다음 청약을 준비해요.', action: { label: '다음 청약 찾기', to: '/match' } }
       : { tone: 'info', text: '당첨가점이 공개되면 비교해 드릴게요. 다음 청약도 찾아보세요.', action: { label: '다음 청약 찾기', to: '/match' } };
   }
-  return { tone: 'done', text: '계약 완료! 입주 일정이 정해지면 공고에서 확인하세요.' };
+  return { tone: 'info', text: '단계를 골라 주세요.' };
+}
+
+/** 입주 예정월까지 남은 기간: '입주 예정 2029년 1월 · 약 2년 2개월 남음'. 지났으면 '입주 시작(2029년 1월)'. 모르면 ''. */
+export function moveInText(month, today) {
+  if (!/^\d{4}-\d{2}$/.test(month || '') || !/^\d{4}-\d{2}/.test(today || '')) return '';
+  const [year, mon] = month.split('-').map(Number);
+  const left = (year - Number(today.slice(0, 4))) * 12 + (mon - Number(today.slice(5, 7)));
+  const label = `${year}년 ${mon}월`;
+  if (left <= 0) return `입주 시작(${label})`;
+  const years = Math.floor(left / 12), months = left % 12;
+  return `입주 예정 ${label} · 약 ${[years ? `${years}년` : '', months ? `${months}개월` : ''].filter(Boolean).join(' ')} 남음`;
 }

@@ -58,6 +58,19 @@
         </tbody></table></div>
         <p class="hint">활성 탐색자: 한 주에 서로 다른 공고 상세를 2개 이상 보거나 관심 공고를 저장한 방문자. 재방문: 그 주 마지막 방문 이전(그 주 시작 전 4주 안)에 다른 날에도 방문한 방문자.</p>
     </section>
+    <section class="panel spaced"><div class="panel-head"><h2>방문 → 알림 흐름 · 최근 28일</h2><span class="panel-note">같은 방문자는 한 번만 셉니다</span></div>
+        <div class="alert error" th:if="${funnel.error}" th:text="${funnel.error}"></div>
+        <th:block th:unless="${funnel.error}">
+        <ul class="sources funnel">
+            <li th:each="step : ${funnel.steps}"><div><strong th:text="${step.label}"></strong></div><span class="bar"><i th:style="${'width:' + (step.percent < 1 and step.visitors > 0 ? 1 : step.percent) + '%'}"></i></span><em th:text="${#numbers.formatInteger(step.visitors,1,'COMMA') + '명 · ' + step.percent + '%'}"></em></li>
+        </ul>
+        <p class="hint lead">
+            <span th:text="${'7일 뒤 다시 온 비율: 전체 ' + (funnel.returnRate != null ? funnel.returnRate + '%' : '—') + ' (' + funnel.returnBase + '명 중)'}"></span>
+            <span th:text="${' · 알림 켠 방문자 ' + (funnel.alertReturnRate != null ? funnel.alertReturnRate + '%' : '—') + ' (' + funnel.alertBase + '명 중)'}"></span>
+        </p>
+        <p class="hint">첫 방문이 7일 이상 지난 방문자만 재방문을 셉니다. 알림을 켠 방문자의 재방문율이 전체보다 높으면 알림이 재방문을 만든다는 뜻입니다.</p>
+        </th:block>
+    </section>
     <section class="panel spaced"><div class="panel-head"><h2>유입 경로 · 최근 28일</h2><span class="panel-note" th:text="${'세션 ' + report.sourceSessions + '개 · 검색 ' + report.searchPercent + '%'}"></span></div>
         <div class="alert notice" th:if="${report.sourceNotice}" th:text="${report.sourceNotice}"></div>
         <ul class="sources" th:if="${report.sourceNotice == null and report.sourceSessions > 0}">

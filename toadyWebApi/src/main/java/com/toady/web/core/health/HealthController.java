@@ -32,7 +32,8 @@ public class HealthController {
     /** API가 쓰는 운영 테이블(database.sql 구역 번호). 배포 확인 스크립트가 빠진 테이블을 경고로 알려 준다. */
     static final List<String> REQUIRED_TABLES = List.of(
             "TB_USER", "TB_CERTIFY", "TB_LTTOT_PBLANC_COMMENT", "TB_PAGE_VIEW", "TB_FAVORITE", "TB_MAIL_BUDGET", "TB_MAIL_ATTEMPT",
-            "TB_REMINDER_DELIVERY", "TB_USAGE_EVENT", "TB_CALENDAR_FEED", "TB_RATE_POLL", "TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN", "TB_PRICE_GAP");
+            "TB_REMINDER_DELIVERY", "TB_USAGE_EVENT", "TB_CALENDAR_FEED", "TB_RATE_POLL", "TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN", "TB_PRICE_GAP",
+            "TB_APT_COMPLEX_LOCATION", "TB_USER_PROFILE");
     /** 나중에 추가한 컬럼(database.sql 10·15·16번). 빠지면 'TB_X.COLUMN' 형태로 알린다. */
     static final List<String[]> REQUIRED_COLUMNS = List.of(
             new String[]{"TB_PAGE_VIEW", "REFERRER_HOST"}, new String[]{"TB_PUSH_AREA_SEEN", "LAST_SEEN_DT"}, new String[]{"TB_FAVORITE", "STAGE"});

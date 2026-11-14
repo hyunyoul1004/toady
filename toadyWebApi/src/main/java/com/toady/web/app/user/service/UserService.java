@@ -88,6 +88,12 @@ public class UserService {
         return rtnMap;
     }
 
+    /** 지금 쓰는 토큰의 최초 로그인 시각을 그대로 옮겨 새 토큰을 발급합니다(닉네임 변경처럼 다시 로그인한 것이 아닌 경우). */
+    public String renewToken(jakarta.servlet.http.HttpServletRequest request, CustomUserDetails details) {
+        Authentication authentication = new UsernamePasswordAuthenticationToken(details, details.getPassword(), details.getAuthorities());
+        return jwtProvider.renewToken(request, authentication);
+    }
+
     /** 사용자 인증 정보로 JWT를 발급합니다. */
     public String generatorToken(CustomUserDetails details) {
         Authentication authentication = new UsernamePasswordAuthenticationToken(details, details.getPassword(), details.getAuthorities());

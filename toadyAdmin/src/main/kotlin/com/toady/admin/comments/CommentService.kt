@@ -107,8 +107,19 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 			val parentHidden = jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", Long::class.java, parentSeq) ?: 0
 			if (parentHidden > 0) return RestoreResult.PARENT_HIDDEN
 		}
-		val changed = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", Timestamp.valueOf(Kst.now()), seq)
+		val now = Timestamp.valueOf(Kst.now())
+		val changed = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", now, seq)
 		jdbc.update("DELETE FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ=?", seq)
+		// 원댓글을 숨길 때 함께 숨긴 답글도 되살린다(관리자가 숨긴 기록이 있는 답글만, 작성자가 지운 답글은 그대로).
+		if (changed == 1 && parent.first() == null) {
+			val replies = jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ=? AND DELETE_YN='Y'", Long::class.java, seq)
+			val hiddenByAdmin = adminHidden(replies).toList()
+			if (hiddenByAdmin.isNotEmpty()) {
+				val marks = hiddenByAdmin.joinToString(",") { "?" }
+				jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ IN ($marks) AND DELETE_YN='Y'", now, *hiddenByAdmin.toTypedArray())
+				jdbc.update("DELETE FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ IN ($marks)", *hiddenByAdmin.toTypedArray())
+			}
+		}
 		if (changed == 1) log.info("관리자 댓글 복구: commentSeq={}, admin={}", seq, admin)
 		return if (changed == 1) RestoreResult.RESTORED else RestoreResult.NOT_FOUND
 	}
