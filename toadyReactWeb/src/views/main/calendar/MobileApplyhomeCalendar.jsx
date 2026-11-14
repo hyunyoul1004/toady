@@ -161,6 +161,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
           // 해당 주에 선택된 날짜가 포함되어 있는지 확인
           const isSelectedInWeek = week.some((cell) => cell && cell.dateStr === selectedDate);
           const isWeekExpanded = isSelectedInWeek && isListOpen;
+          // 선택한 날짜가 첫·마지막 칸이면 목록 상자의 그쪽 위 모서리를 각지게 해 날짜 칸 테두리와 끊기지 않게 잇는다.
+          const selectedCol = week.findIndex((cell) => cell && cell.dateStr === selectedDate);
 
           return (
             <React.Fragment key={weekIdx}>
@@ -268,11 +270,12 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                 <Collapse in={isListOpen} timeout={250} unmountOnExit>
                   <Box
                     sx={{
-                      mx: 0.5,
+                      // 날짜 칸과 같은 가로 범위에 둬야 양 끝 날짜의 세로 테두리가 목록 상자 테두리와 이어진다.
+                      mx: 0,
                       mt: '-1.5px',
                       mb: 1.5,
                       p: 1.5,
-                      borderRadius: 2,
+                      borderRadius: `${selectedCol === 0 ? 0 : 8}px ${selectedCol === week.length - 1 ? 0 : 8}px 8px 8px`,
                       border: '1.5px solid #3b82f6',
                       bgcolor: '#ffffff',
                       boxShadow: '0 4px 12px rgba(37,99,235,0.08)',
