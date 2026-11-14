@@ -4,6 +4,7 @@ package com.toady.web.core.security.service;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.constants.AuthorityCd;
+import com.toady.web.core.util.CmnUtils;
 import com.toady.web.core.util.SecUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +42,7 @@ public class SimpleUserDetailsService implements UserDetailsService {
 	{
 
 		// 이메일로 계정을 조회하고, 잠금·탈퇴·이메일 미인증 상태를 로그인 전에 차단합니다.
-		log.debug("계정 조회 [{}]", com.toady.web.core.util.CmnUtils.maskEmail(userEmail));
+		log.debug("계정 조회 [{}]", CmnUtils.maskEmail(userEmail));
 		UserEntity dbUserInfo = userRepository.findByUserEmail(userEmail);
 		
 		if (dbUserInfo == null) {

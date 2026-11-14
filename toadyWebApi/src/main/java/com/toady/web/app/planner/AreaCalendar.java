@@ -1,6 +1,7 @@
 package com.toady.web.app.planner;
 
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,8 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 /**
  * 로그인 없이 생활권 단위로 구독하는 공개 캘린더. 같은 생활권 검색 기준의 접수 중·예정 공고만 담는다.
@@ -28,10 +31,10 @@ public class AreaCalendar {
     private static final Duration CACHE = Duration.ofMinutes(30);
     private final PublicAreaPage areas; private final PlannerSummary summaries; private final String domain; private final Clock clock;
     /** 생활권별 피드. 만료 순간 요청이 몰려도 같은 생활권은 한 번만 만든다. */
-    private final com.google.common.cache.Cache<String, String> cache = com.google.common.cache.CacheBuilder.newBuilder()
+    private final Cache<String, String> cache = CacheBuilder.newBuilder()
             .maximumSize(50).expireAfterWrite(CACHE).build();
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public AreaCalendar(PublicAreaPage areas, PlannerSummary summaries, @Value("${toady.web.domain}") String domain) {
         this(areas, summaries, domain, Clock.system(ZoneId.of("Asia/Seoul")));
     }
@@ -55,12 +58,7 @@ public class AreaCalendar {
     public ResponseEntity<String> feed(@PathVariable String slug) {
         var found = LivingAreas.bySlug(slug);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
-        String body;
-        try { body = cache.get(slug, () -> build(found.get(), clock.instant())); }
-        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
-            if (failed.getCause() instanceof RuntimeException runtime) throw runtime;
-            throw new IllegalStateException(failed.getCause());
-        }
+        String body = PublicHtml.load(cache, slug, () -> build(found.get(), clock.instant()));
         return ResponseEntity.ok().header("Content-Type", "text/calendar;charset=UTF-8")
             .header("Content-Disposition", "inline; filename=\"toady-" + slug + ".ics\"")
             .cacheControl(CacheControl.maxAge(CACHE).cachePublic()).body(body);

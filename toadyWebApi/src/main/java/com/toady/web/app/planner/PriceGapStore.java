@@ -2,9 +2,14 @@ package com.toady.web.app.planner;
 
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
+import java.util.stream.Stream;
 
 /** TB_PRICE_GAP 조회. 계산 작업(PriceGapSnapshots)과 목록·공개 페이지·알림이 함께 쓴다. */
 @Component
@@ -29,13 +34,13 @@ public class PriceGapStore {
                 List<String> chunk = list.subList(from, Math.min(list.size(), from + 200));
                 String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
                 // 계산한 지 7일이 지난 값은 보여주지 않는다(마감 뒤 다시 계산되지 않는 공고의 옛 값을 '최근' 값처럼 보이지 않게).
-                jdbc.query("SELECT * FROM TB_PRICE_GAP WHERE STATUS='READY' AND COMPUTED_DT >= ? AND ANNOUNCEMENT_ID IN (" + marks + ")", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+                jdbc.query("SELECT * FROM TB_PRICE_GAP WHERE STATUS='READY' AND COMPUTED_DT >= ? AND ANNOUNCEMENT_ID IN (" + marks + ")", (RowCallbackHandler) r -> {
                     long low = r.getLong("Q1_MANWON") - r.getLong("SUPPLY_MANWON"), high = r.getLong("Q3_MANWON") - r.getLong("SUPPLY_MANWON");
                     String id = r.getString("ANNOUNCEMENT_ID");
                     out.put(id, new Gap(id, r.getInt("AREA"), r.getLong("SUPPLY_MANWON"), r.getString("SCOPE"), r.getString("BASIS"), r.getInt("BASIS_COUNT"),
                         r.getString("CONFIDENCE"), r.getLong("Q1_MANWON"), r.getLong("Q3_MANWON"), low, high, r.getInt("MONTHS"), r.getString("DONG"),
                         PriceGapRules.tone(low, high), PriceGapRules.text(low, high), r.getTimestamp("COMPUTED_DT").toLocalDateTime().toLocalDate().toString()));
-                }, java.util.stream.Stream.concat(java.util.stream.Stream.of((Object) java.sql.Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(SHOW_DAYS))), chunk.stream()).toArray());
+                }, Stream.concat(Stream.of((Object) Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusDays(SHOW_DAYS))), chunk.stream()).toArray());
             }
             // 정정 공고로 분양가가 바뀌었으면 다시 계산할 때까지 숨긴다. 목록·공개 페이지·나의 청약·알림이 모두 이 경로를 쓴다.
             Map<String, Map<Integer, Long>> current = currentSupplies(out.keySet());
@@ -58,7 +63,7 @@ public class PriceGapStore {
                 List<String[]> chunk = keys.subList(from, Math.min(keys.size(), from + 200));
                 String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
                 jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_TY,LTTOT_TOP_AMOUNT FROM " + MODEL_TABLES.get(type) + " WHERE HOUSE_MANAGE_NO IN (" + marks + ")",
-                    (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+                    (RowCallbackHandler) r -> {
                         var area = EligibilityFeed.area(r.getString(3));
                         Integer amount = EligibilityFeed.number(r.getString(4));
                         if (area == null || area.doubleValue() < 10 || amount == null || amount <= 0) return;

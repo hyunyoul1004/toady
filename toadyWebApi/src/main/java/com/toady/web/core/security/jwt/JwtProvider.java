@@ -21,7 +21,7 @@ public interface JwtProvider {
 	String generatorToken(Authentication authentication);
 
 	/** 만료가 가까운 토큰을 새로 발급하되 최초 로그인 시각(tca)은 그대로 옮겨, 최대 로그인 유지 기간을 넘겨 연장되지 않게 한다. */
-	String renewToken(jakarta.servlet.http.HttpServletRequest request, Authentication authentication);
+	String renewToken(HttpServletRequest request, Authentication authentication);
 
 	/**
 	 * 인증 정보 가져오기

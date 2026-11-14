@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Date;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
@@ -77,26 +80,26 @@ public class PushSubscriptions {
 
     /** 오늘 아직 묶음 발송을 시도하지 않은 구독. */
     List<Row> pending(LocalDate today) {
-        return jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<? ORDER BY REG_DT", (r, n) -> map(r), java.sql.Date.valueOf(today));
+        return jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<? ORDER BY REG_DT", (r, n) -> map(r), Date.valueOf(today));
     }
     /** 여러 서버가 동시에 실행돼도 하루에 한 번만 보내도록 행 단위로 선점한다. */
     boolean claim(String hash, LocalDate today) {
         return jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=? WHERE ENDPOINT_HASH=? AND (LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<?)",
-            java.sql.Date.valueOf(today), hash, java.sql.Date.valueOf(today)) == 1;
+            Date.valueOf(today), hash, Date.valueOf(today)) == 1;
     }
     void release(String hash, LocalDate previous) {
-        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=? WHERE ENDPOINT_HASH=?", previous == null ? null : java.sql.Date.valueOf(previous), hash);
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=? WHERE ENDPOINT_HASH=?", previous == null ? null : Date.valueOf(previous), hash);
     }
     void delivered(String hash, LocalDateTime at, boolean digest) {
         if (digest) jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_SUCCESS_DT=?,LAST_DIGEST_DT=? WHERE ENDPOINT_HASH=?", Timestamp.valueOf(at), Timestamp.valueOf(at), hash);
         else jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_SUCCESS_DT=? WHERE ENDPOINT_HASH=?", Timestamp.valueOf(at), hash);
     }
 
-    private static Row map(java.sql.ResultSet r) throws java.sql.SQLException {
+    private static Row map(ResultSet r) throws SQLException {
         long user = r.getLong("USER_SEQ");
         boolean guest = r.wasNull();
         Timestamp digest = r.getTimestamp("LAST_DIGEST_DT");
-        java.sql.Date attempt = r.getDate("LAST_ATTEMPT_DATE");
+        Date attempt = r.getDate("LAST_ATTEMPT_DATE");
         return new Row(r.getString("ENDPOINT_HASH"), r.getString("ENDPOINT"), r.getString("P256DH"), r.getString("AUTH"), guest ? null : user,
             r.getBoolean("FAVORITES_ENABLED"), split(r.getString("FAVORITE_IDS")), split(r.getString("AREA_SLUGS")),
             r.getTimestamp("REG_DT").toLocalDateTime(), digest == null ? null : digest.toLocalDateTime(), attempt == null ? null : attempt.toLocalDate());

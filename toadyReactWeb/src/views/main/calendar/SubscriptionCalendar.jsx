@@ -509,6 +509,4 @@ export function SubscriptionCalendar(props) {
   );
 }
 
-// 하위 호환을 위해 TuiCalendar 이름으로도 export
-export { SubscriptionCalendar as TuiCalendar };
 export default SubscriptionCalendar;

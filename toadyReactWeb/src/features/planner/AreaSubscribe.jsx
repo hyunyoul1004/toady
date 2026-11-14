@@ -7,7 +7,7 @@ import apiClient from '@/api/client';
 import { usePushStore } from '@/features/push/pushStore';
 
 /** 생활권 공개 캘린더 주소. 개인 정보가 없어 로그인 없이 구독한다. */
-export function areaFeedLinks(slug, origin) {
+function areaFeedLinks(slug, origin) {
   const url = `${origin}/calendar/areas/${slug}.ics`;
   const webcal = url.replace(/^https?:\/\//, 'webcal://');
   return { url, webcal, google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}` };

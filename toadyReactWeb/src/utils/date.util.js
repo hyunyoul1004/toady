@@ -60,17 +60,6 @@ export function formatDateRange(start, end) {
 }
 
 /**
- * 일시 포맷 (YYYY-MM-DD HH:mm:ss)
- * @param {string|Date} value 일시 값
- * @returns {string}
- */
-export function formatDateTime(value) {
-  if (!value) return '-';
-  const d = dayjs(value);
-  return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(value);
-}
-
-/**
  * 상대 시간 포맷 (방금 전, 5분 전, 2시간 전 또는 YYYY.MM.DD)
  * @param {string|Date} value 일시 값
  * @returns {string}

@@ -1,7 +1,6 @@
 package com.toady.web.app.push;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.toady.web.app.planner.LivingAreas;
 import com.toady.web.app.planner.PlannerSummary;
 import com.toady.web.core.security.service.CustomUserDetails;
 import jakarta.persistence.EntityNotFoundException;

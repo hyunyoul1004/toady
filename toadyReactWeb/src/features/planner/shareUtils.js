@@ -1,5 +1,5 @@
-export const SHARE_TABS = ['detail','rate','map','comment'];
-export function shareTab(value) {return SHARE_TABS.includes(value)?value:'detail';}
+const SHARE_TABS = ['detail','rate','map','comment'];
+function shareTab(value) {return SHARE_TABS.includes(value)?value:'detail';}
 export function announcementShareUrl(id,tab='detail',origin='https://www.toady.co.kr') {
   const url=new URL(`/announcements/${id}`,origin);
   if(shareTab(tab)!=='detail') url.searchParams.set('tabType',shareTab(tab));

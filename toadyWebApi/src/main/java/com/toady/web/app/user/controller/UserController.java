@@ -4,8 +4,11 @@ import com.toady.web.app.user.dto.UserDTO;
 import com.toady.web.app.user.service.UserService;
 import com.toady.web.core.constants.ResultCode;
 import com.toady.web.core.response.ResData;
+import com.toady.web.core.security.LoginAttemptLimiter;
+import com.toady.web.core.security.RequestLimitFilter;
 import com.toady.web.core.util.CmnUtils;
 import com.toady.web.core.util.email.EmailDeliveryException;
+import com.toady.web.core.util.email.MailGate;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
 
@@ -45,22 +49,22 @@ public class UserController {
     private UserService userService;
 
     @Autowired
-    private com.toady.web.core.util.email.MailGate mailGate;
+    private MailGate mailGate;
 
     @Autowired
-    private com.toady.web.core.security.LoginAttemptLimiter loginAttempts;
+    private LoginAttemptLimiter loginAttempts;
 
     /**
      * USER 로그인 API
      */
     @Operation(summary = "로그인", description = "사용자 로그인", tags = "사용자 계정 API")
     @PostMapping("/login")
-    public ResponseEntity<ResData> custLogin(@Valid @RequestBody UserDTO.Login param, BindingResult result, jakarta.servlet.http.HttpServletRequest request) {
+    public ResponseEntity<ResData> custLogin(@Valid @RequestBody UserDTO.Login param, BindingResult result, HttpServletRequest request) {
 
         if (result.hasErrors()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ResData.of(ResultCode.VALID_ERROR.getCode(), CmnUtils.getErrMsg(result, '\n')));
         }
-        String ip = com.toady.web.core.security.RequestLimitFilter.clientIp(request);
+        String ip = RequestLimitFilter.clientIp(request);
         if (!loginAttempts.tryAcquire(ip, param.getUserEmail())) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ResData.of("ERR-429", "로그인 시도가 너무 많습니다. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 이용해 주세요."));
         }

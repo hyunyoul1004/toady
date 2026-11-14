@@ -145,6 +145,10 @@ class CertifyTransactionTest {
         code("ACCOUNT", LocalDateTime.now().minusHours(25));
         assertEquals("SUCCESS", service.resendAccountVerification(new CertifyDTO.UserInfo("verify@example.test")).getBody().getResultCode());
         assertEquals("Y", jdbc.queryForObject("SELECT CERTIFY_YN FROM TB_CERTIFY WHERE CERTIFY_CODE='code'", String.class));
+        // 폐기된 예전 링크는 '이미 인증된 계정'이 아니라 최신 메일을 쓰라고 안내한다(계정은 아직 미인증).
+        var stale = service.certifyCheck(check()).getBody();
+        assertEquals("ERR-204", stale.getResultCode());
+        assertTrue(stale.getResultMessage().contains("가장 최근"), stale.getResultMessage());
         String fresh = mailedCode();
         assertTrue(jdbc.queryForObject("SELECT CERTIFY_CODE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class).startsWith("h1:"), "코드는 해시로만 저장한다");
         assertFalse(jdbc.queryForObject("SELECT CERTIFY_MESSAGE FROM TB_CERTIFY WHERE CERTIFY_YN='N'", String.class).contains(fresh), "메일 본문(코드)은 저장하지 않는다");

@@ -10,8 +10,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.*;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 공급 주소를 카카오 로컬 REST API로 확인해 법정동 코드를 얻는다. 화면(resolveLocation.js)과 같은 규칙만 쓴다.
@@ -76,7 +78,7 @@ public class AddressLocator {
         String prefix = prefixMatch.find() ? prefixMatch.group(1) : "";
         Matcher insideMatch = Pattern.compile("\\(([^)]+)\\)").matcher(raw);
         String inside = insideMatch.find() ? insideMatch.group(1) : null;
-        java.util.function.UnaryOperator<String> clean = value -> value.replace("번지", "").replaceAll("\\s*(일원|일대|외\\s*\\d+필지).*$", "").trim();
+        UnaryOperator<String> clean = value -> value.replace("번지", "").replaceAll("\\s*(일원|일대|외\\s*\\d+필지).*$", "").trim();
         LinkedHashSet<String> values = new LinkedHashSet<>();
         if (inside != null) {
             values.add(clean.apply(inside));
@@ -109,7 +111,7 @@ public class AddressLocator {
         String actual = !row.path("address").path("address_name").asText("").isBlank() ? row.path("address").path("address_name").asText()
             : !row.path("road_address").path("address_name").asText("").isBlank() ? row.path("road_address").path("address_name").asText() : row.path("address_name").asText("");
         String requested = parcel(candidate);
-        boolean matches = requested != null && java.util.stream.Stream.of(row.path("address").path("address_name").asText(""), row.path("road_address").path("address_name").asText(""), row.path("address_name").asText(""))
+        boolean matches = requested != null && Stream.of(row.path("address").path("address_name").asText(""), row.path("road_address").path("address_name").asText(""), row.path("address_name").asText(""))
             .anyMatch(value -> requested.equals(parcel(value)));
         return coord && (type.equals("REGION_ADDR") || type.equals("ROAD_ADDR")) && matches && sameRegion(address, actual);
     }

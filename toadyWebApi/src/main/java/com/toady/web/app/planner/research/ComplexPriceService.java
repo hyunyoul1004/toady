@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -41,7 +44,7 @@ public class ComplexPriceService {
     /** 1년보다 오래된 달에서 모은 단지 요약(원본 거래는 버린다). 최신 달부터 거꾸로 받으므로 처음 본 달이 그 면적의 마지막 거래월이다. */
     static final class Older {
         final Map<String, List<NeighborhoodResearchService.Trade>> lastMonthTrades = new LinkedHashMap<>();
-        final Map<String, java.time.YearMonth> lastMonth = new HashMap<>();
+        final Map<String, YearMonth> lastMonth = new HashMap<>();
         int nextOffset = OLDER_FROM;
         /** 지금 달(nextOffset)이 제공처 오류로 연속 실패한 횟수. 3번까지는 다음 요청에서 다시 받고, 그 뒤에는 건너뛴다. */
         int failures = 0;
@@ -110,7 +113,7 @@ public class ComplexPriceService {
 
         List<Complex> complexes = busiest.stream().map(e -> toComplex(e.getKey(), e.getValue(), points.get(e.getKey()))).toList();
         boolean partial = district.partial() || !olderDone;
-        String from = period == 12 && olderDone ? java.time.YearMonth.parse(district.toMonth()).minusMonths(OLDER_TO - 1).toString() : district.fromMonth();
+        String from = period == 12 && olderDone ? YearMonth.parse(district.toMonth()).minusMonths(OLDER_TO - 1).toString() : district.fromMonth();
         Result result = new Result("READY", bcode, from, district.toMonth(), district.checkedAt(), district.months(), partial,
             pending, district.trades().size(), complexes);
         if (pending == 0 && !partial) done.put(cacheKey, result);
@@ -120,11 +123,11 @@ public class ComplexPriceService {
     /** 13~36개월 전 달을 시간 안에서 이어 받아 단지·면적별 마지막 거래월의 거래만 남긴다. 같은 시·군·구는 한 번에 한 요청만 진행한다. */
     private Older olderState(String lawd5, long deadline) {
         Older state;
-        try { state = older.get(lawd5, Older::new); } catch (java.util.concurrent.ExecutionException impossible) { state = new Older(); }
+        try { state = older.get(lawd5, Older::new); } catch (ExecutionException impossible) { state = new Older(); }
         synchronized (state) {
-            java.time.YearMonth end = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Seoul"));
+            YearMonth end = YearMonth.now(ZoneId.of("Asia/Seoul"));
             while (!state.done() && System.nanoTime() < deadline) {
-                java.time.YearMonth month = end.minusMonths(state.nextOffset);
+                YearMonth month = end.minusMonths(state.nextOffset);
                 // 최근 실패해 쉬는 달이나 제공처 호출을 멈춘 동안에는 실제 요청이 없으므로 실패로 세지 않고 다음 요청에서 이어 받는다.
                 if (research.monthWaiting(lawd5, month)) break;
                 Optional<List<NeighborhoodResearchService.Trade>> trades = research.monthTrades(lawd5, month, deadline);
@@ -133,7 +136,7 @@ public class ComplexPriceService {
                 if (trades.isEmpty() && ++state.failures < OLDER_RETRIES) break;
                 for (NeighborhoodResearchService.Trade trade : trades.orElse(List.of())) {
                     String key = complexKey(lawd5, trade) + "#" + trade.area().setScale(0, RoundingMode.HALF_UP).intValue();
-                    java.time.YearMonth seen = state.lastMonth.get(key);
+                    YearMonth seen = state.lastMonth.get(key);
                     if (seen == null) { state.lastMonth.put(key, month); state.lastMonthTrades.computeIfAbsent(key, k -> new ArrayList<>()).add(trade); }
                     else if (seen.equals(month)) state.lastMonthTrades.get(key).add(trade);
                 }
@@ -176,8 +179,8 @@ public class ComplexPriceService {
             List<Long> amounts = list.stream().map(NeighborhoodResearchService.Trade::amountManwon).sorted().toList();
             NeighborhoodResearchService.Trade first = list.get(0);
             // 마지막 거래가 있었던 달의 거래만 평균한다(한 건만 튀는 값에 덜 흔들리게, 그러면서도 최근 수준을 보이게).
-            java.time.YearMonth month = java.time.YearMonth.from(first.date());
-            List<Long> sameMonth = list.stream().filter(t -> java.time.YearMonth.from(t.date()).equals(month)).map(NeighborhoodResearchService.Trade::amountManwon).toList();
+            YearMonth month = YearMonth.from(first.date());
+            List<Long> sameMonth = list.stream().filter(t -> YearMonth.from(t.date()).equals(month)).map(NeighborhoodResearchService.Trade::amountManwon).toList();
             long average = Math.round(sameMonth.stream().mapToLong(Long::longValue).average().orElse(first.amountManwon()));
             return new AreaPrice(e.getKey(), list.size(), first.amountManwon(), first.date().toString(), first.floor(),
                 NeighborhoodResearchService.median(amounts), amounts.get(0), amounts.get(amounts.size() - 1), month.toString(), average, sameMonth.size());

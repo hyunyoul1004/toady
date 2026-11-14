@@ -4,6 +4,7 @@ import com.toady.web.app.announcement.service.AnnouncementService;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 
 /** 공개된 주택형·지역 전체의 최저/최고만 요약한다. 평균들의 평균이나 미공개 점수는 만들지 않는다. */
 @Service
@@ -24,8 +25,8 @@ public class ShareScores {
         return range(rows.stream().map(row -> row.getLwetScore()).toList(), rows.stream().map(row -> row.getTopScore()).toList());
     }
     static Range range(List<String> lows, List<String> highs) {
-        var low = lows.stream().map(ShareScores::number).filter(java.util.Objects::nonNull).min(BigDecimal::compareTo);
-        var high = highs.stream().map(ShareScores::number).filter(java.util.Objects::nonNull).max(BigDecimal::compareTo);
+        var low = lows.stream().map(ShareScores::number).filter(Objects::nonNull).min(BigDecimal::compareTo);
+        var high = highs.stream().map(ShareScores::number).filter(Objects::nonNull).max(BigDecimal::compareTo);
         return new Range(low.map(n -> n.stripTrailingZeros().toPlainString()).orElse(""), high.map(n -> n.stripTrailingZeros().toPlainString()).orElse(""));
     }
     static BigDecimal number(String value) {

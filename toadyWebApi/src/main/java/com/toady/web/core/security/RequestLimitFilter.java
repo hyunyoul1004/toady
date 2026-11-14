@@ -6,11 +6,14 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -20,7 +23,9 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * 비용이 큰 공개 요청을 요청자 IP별로 제한한다(규칙마다 10분·하루 창).
@@ -32,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class RequestLimitFilter extends OncePerRequestFilter {
     /** pattern: 경로 중간에 변수가 있는 규칙(예: 공고별 댓글)용. 없으면 null. */
-    record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, java.util.regex.Pattern pattern, int shortLimit, int dailyLimit) {
+    record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, Pattern pattern, int shortLimit, int dailyLimit) {
         Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, int shortLimit, int dailyLimit) {
             this(name, methods, prefixes, exact, null, shortLimit, dailyLimit);
         }
@@ -63,27 +68,27 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("analytics", Set.of("POST"), List.of("/api/v1/analytics/"), Set.of(), 300, 3000),
             // 댓글 작성·수정: 도배와 저장소 증가를 막는다(회원만 쓸 수 있어 넉넉하지 않게).
             new Rule("comment", Set.of("POST", "PATCH"), List.of(), Set.of(),
-                java.util.regex.Pattern.compile("^/api/v1/[a-z-]+/announcements/[^/]+/[^/]+/comments(/[^/]+)?$"), 20, 200),
+                Pattern.compile("^/api/v1/[a-z-]+/announcements/[^/]+/[^/]+/comments(/[^/]+)?$"), 20, 200),
             // 공유 이미지(PNG 렌더링)와 통합 목록 조회는 요청 한 번의 서버 비용이 커서 반복 호출을 제한한다.
             new Rule("image", Set.of("GET"), List.of("/api/v1/public/announcement-images/"), Set.of(), 120, 1500),
             new Rule("list", Set.of("GET"), List.of(), Set.of("/api/v1/announcements"), 300, 5000),
             new Rule("suggest", Set.of("GET"), List.of(), Set.of("/api/v1/announcements/suggestions"), 300, 5000),
             // 유형별 목록(이전 API)도 통합 목록과 같은 한도를 둔다.
             new Rule("type-list", Set.of("GET"), List.of(), Set.of(),
-                java.util.regex.Pattern.compile("^/api/v1/(apt|urban|remaining|public-rental|optional)/announcements$"), 300, 5000),
+                Pattern.compile("^/api/v1/(apt|urban|remaining|public-rental|optional)/announcements$"), 300, 5000),
             new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
     }
 
-    private static final java.util.regex.Pattern IP_LITERAL = java.util.regex.Pattern.compile("[0-9A-Fa-f:.]{2,45}");
-    private static final org.springframework.web.util.UrlPathHelper PATHS = new org.springframework.web.util.UrlPathHelper();
+    private static final Pattern IP_LITERAL = Pattern.compile("[0-9A-Fa-f:.]{2,45}");
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
     private final List<Rule> rules;
     private final Duration shortWindow;
     private final Clock clock;
     private final Cache<String, Deque<Long>> hits = CacheBuilder.newBuilder()
             .maximumSize(200_000).expireAfterAccess(1, TimeUnit.DAYS).build();
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public RequestLimitFilter(@Value("${toady.security.mail-requests-per-10min:5}") int mailShort,
                               @Value("${toady.security.mail-requests-per-day:20}") int mailDaily) {
         this(rules(mailShort, mailDaily), Duration.ofMinutes(10), Clock.systemUTC());
@@ -124,7 +129,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     boolean allow(Rule rule, String ip) {
         long now = clock.millis(), shortFrom = now - shortWindow.toMillis(), dayFrom = now - Duration.ofDays(1).toMillis();
         Deque<Long> times;
-        try { times = hits.get(rule.name() + "|" + ip, ArrayDeque::new); } catch (java.util.concurrent.ExecutionException impossible) { return true; }
+        try { times = hits.get(rule.name() + "|" + ip, ArrayDeque::new); } catch (ExecutionException impossible) { return true; }
         synchronized (times) {
             while (!times.isEmpty() && times.peekFirst() <= dayFrom) times.pollFirst();
             long recent = times.stream().filter(time -> time > shortFrom).count();
@@ -151,7 +156,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     public static String limitKey(String ip) {
         try {
             InetAddress parsed = InetAddress.getByName(ip);
-            if (parsed instanceof java.net.Inet6Address) {
+            if (parsed instanceof Inet6Address) {
                 byte[] bytes = parsed.getAddress();
                 StringBuilder prefix = new StringBuilder("v6:");
                 for (int i = 0; i < 8; i += 2) prefix.append(String.format("%02x%02x", bytes[i], bytes[i + 1])).append(i < 6 ? ":" : "");

@@ -1,24 +1,36 @@
 package com.toady.web.app.planner;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /** 생활권은 행정 경계와 다르다. 아래 주소·단지명 키워드는 검색 보조 기준으로만 사용한다. */
 @RestController
 public class LivingAreas {
-    @org.springframework.beans.factory.annotation.Value("${toady.planner.reminders-enabled:false}") private boolean remindersEnabled;
-    @GetMapping("/api/v1/planner/settings") public java.util.Map<String,Object> settings() { return java.util.Map.of("remindersEnabled",remindersEnabled,"maxFavorites",50); }
-    @org.springframework.beans.factory.annotation.Autowired private PlannerSummary summaries;
-    public record SummaryKeys(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max=50)
-        List<@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
-    @org.springframework.web.bind.annotation.PostMapping("/api/v1/planner/summaries")
-    public List<PlannerSummary.Summary> summaries(@jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody SummaryKeys request) {
+    @Value("${toady.planner.reminders-enabled:false}") private boolean remindersEnabled;
+    @GetMapping("/api/v1/planner/settings") public Map<String,Object> settings() { return Map.of("remindersEnabled",remindersEnabled,"maxFavorites",50); }
+    @Autowired private PlannerSummary summaries;
+    public record SummaryKeys(@NotNull @Size(max=50)
+        List<@NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
+    @PostMapping("/api/v1/planner/summaries")
+    public List<PlannerSummary.Summary> summaries(@Valid @RequestBody SummaryKeys request) {
         return request.ids().stream().distinct().map(id -> {
             String[] parts=id.split("/");
             try { return summaries.get(parts[0],parts[1],parts[2]); }
-            catch(jakarta.persistence.EntityNotFoundException missing) { return PlannerSummary.Summary.missing(id); }
+            catch(EntityNotFoundException missing) { return PlannerSummary.Summary.missing(id); }
         }).toList();
     }
     /**
@@ -46,10 +58,10 @@ public class LivingAreas {
         return area.terms().stream().map(term -> new Matcher(term, term.contains(" ") ? List.of() : area.scope())).toList();
     }
     @GetMapping("/api/v1/living-areas") public List<Area> areas() { return ALL; }
-    public static java.util.Optional<Area> bySlug(String slug) { return ALL.stream().filter(area -> area.slug().equals(slug)).findFirst(); }
+    public static Optional<Area> bySlug(String slug) { return ALL.stream().filter(area -> area.slug().equals(slug)).findFirst(); }
     /** 검색과 같은 기준(주소·단지명에 생활권 보조 키워드 포함)으로 공고의 생활권을 판정한다. */
-    public static java.util.Optional<Area> match(String... texts) {
-        String text = String.join(" ", java.util.Arrays.stream(texts).map(value -> value == null ? "" : value).toList()).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    public static Optional<Area> match(String... texts) {
+        String text = String.join(" ", Arrays.stream(texts).map(value -> value == null ? "" : value).toList()).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
         return ALL.stream().filter(area -> matchers(area).stream().anyMatch(matcher -> matcher.matches(text))).findFirst();
     }
     /** 검색어가 생활권 별칭이면 그 생활권의 조건들, 아니면 검색어 하나(시·군 조건 없음). */

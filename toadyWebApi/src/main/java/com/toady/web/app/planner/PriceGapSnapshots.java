@@ -9,9 +9,14 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,7 +28,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 접수 중·예정 공고의 '주변 시세 대비' 요약을 매일 미리 계산해 TB_PRICE_GAP(database.sql 18번)에 둔다.
@@ -36,14 +43,14 @@ import java.util.*;
 public class PriceGapSnapshots {
     private static final Logger log = LoggerFactory.getLogger(PriceGapSnapshots.class);
     static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180, MAX_MINUTES = 20;
-    @org.springframework.context.annotation.Configuration @org.springframework.scheduling.annotation.EnableScheduling static class Scheduling { }
+    @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc;
     private final PriceGapStore store;
     private final EligibilityFeed feed;
     private final AddressLocator locator;
     private final NeighborhoodResearchService research;
     private final Clock clock;
-    @Autowired(required = false) private org.springframework.transaction.support.TransactionTemplate transactions;
+    @Autowired(required = false) private TransactionTemplate transactions;
 
     @Autowired
     public PriceGapSnapshots(JdbcTemplate jdbc, PriceGapStore store, EligibilityFeed feed, AddressLocator locator, NeighborhoodResearchService research) {
@@ -65,7 +72,7 @@ public class PriceGapSnapshots {
         try {
             var report = run();
             log.info("주변 시세 비교 미리 계산: ready={}, noLocation={}, noTrades={}, unavailable={}, kept={}", report.get("READY"), report.get("NO_LOCATION"), report.get("NO_TRADES"), report.get("UNAVAILABLE"), report.get("KEPT"));
-        } catch (org.springframework.jdbc.BadSqlGrammarException missing) {
+        } catch (BadSqlGrammarException missing) {
             log.warn("TB_PRICE_GAP을 사용할 수 없어 주변 시세 비교를 미리 계산하지 않습니다. database.sql 18번을 적용하세요.");
         } catch (DataAccessException failure) {
             log.warn("주변 시세 비교 저장 실패: error={}", failure.getMostSpecificCause().getMessage());
@@ -80,12 +87,12 @@ public class PriceGapSnapshots {
         @SuppressWarnings("unchecked")
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.load(today).get("items");
         Map<String, Object[]> previous = new HashMap<>();
-        jdbc.query("SELECT ANNOUNCEMENT_ID,STATUS,COMPUTED_DT,AREA,SUPPLY_MANWON FROM TB_PRICE_GAP", (org.springframework.jdbc.core.RowCallbackHandler) r ->
+        jdbc.query("SELECT ANNOUNCEMENT_ID,STATUS,COMPUTED_DT,AREA,SUPPLY_MANWON FROM TB_PRICE_GAP", (RowCallbackHandler) r ->
             previous.put(r.getString(1), new Object[]{r.getString(2), r.getTimestamp(3).toLocalDateTime(), r.getObject(4) == null ? null : r.getInt(4), r.getObject(5) == null ? null : r.getLong(5)}));
         // 접수 중인 공고를 먼저 계산한다.
         List<EligibilityFeed.Item> ordered = items.stream().sorted(Comparator.comparing((EligibilityFeed.Item item) -> "OPEN".equals(item.status()) ? 0 : 1)).toList();
         int processed = 0;
-        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MINUTES.toNanos(MAX_MINUTES);
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(MAX_MINUTES);
         for (EligibilityFeed.Item item : ordered) {
             // 제공처가 느려도 저녁 알림 작업을 오래 막지 않도록 한 번 실행 시간을 제한한다(남은 공고는 다음 날).
             if (processed >= MAX_PER_RUN || System.nanoTime() > deadline) break;
@@ -114,7 +121,7 @@ public class PriceGapSnapshots {
     /** 날짜 기준으로 판단한다(매일 같은 시각에 돌므로 시각 비교면 하루씩 밀린다). UNAVAILABLE은 다음 날 다시 계산한다. */
     static boolean fresh(String status, LocalDateTime computed, LocalDateTime now) {
         int days = "READY".equals(status) ? READY_DAYS : "UNAVAILABLE".equals(status) ? 1 : RETRY_DAYS;
-        return java.time.temporal.ChronoUnit.DAYS.between(computed.toLocalDate(), now.toLocalDate()) < days;
+        return ChronoUnit.DAYS.between(computed.toLocalDate(), now.toLocalDate()) < days;
     }
     /** 전용면적(반올림) → 그 면적 주택형의 최고 공급금액. */
     static Map<Integer, Long> supplies(EligibilityFeed.Item item) {

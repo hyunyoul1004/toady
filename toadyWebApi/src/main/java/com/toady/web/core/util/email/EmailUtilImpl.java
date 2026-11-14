@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import com.toady.web.app.planner.MailBudget;
+import com.toady.web.app.planner.MailQuotaException;
 
 /**
  * packageName    : com.toady.web.core.util
@@ -26,19 +28,19 @@ public class EmailUtilImpl implements EmailUtilService {
     private JavaMailSender sender;
 
     @Autowired
-    private com.toady.web.app.planner.MailBudget budget;
+    private MailBudget budget;
 
     @Override
-    public void sendEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.AUTH); }
+    public void sendEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.AUTH); }
 
     @Override
-    public void sendSignupEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.SIGNUP); }
+    public void sendSignupEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.SIGNUP); }
 
     @Override
-    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, com.toady.web.app.planner.MailBudget.Kind.REMINDER); }
+    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.REMINDER); }
 
-    private void send(String toAddress, String subject, String body, com.toady.web.app.planner.MailBudget.Kind kind) {
-        if (!budget.reserve(kind)) throw new com.toady.web.app.planner.MailQuotaException();
+    private void send(String toAddress, String subject, String body, MailBudget.Kind kind) {
+        if (!budget.reserve(kind)) throw new MailQuotaException();
 
         MimeMessage message = sender.createMimeMessage();
         //MimeMessageHelper helper = new MimeMessageHelper(message);

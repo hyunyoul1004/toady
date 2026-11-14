@@ -37,22 +37,6 @@ public class UserDTO {
     }
 
     /**
-     * 사용자 기본정보 (공통)
-     */
-    @Setter
-    @Getter
-    @AllArgsConstructor
-    @NoArgsConstructor (access = AccessLevel.PROTECTED)
-    public static class UserInfo {
-
-        private Long userSeq;
-
-        private String userNicName;
-
-        private String userEmail;
-    }
-
-    /**
      * 회원가입시 받는 정보.
      */
     @Setter

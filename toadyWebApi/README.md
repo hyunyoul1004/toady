@@ -131,6 +131,9 @@ openssl rand -base64 64 | tr -d '\n'
 # 외부 DB 없이 실행할 수 있는 기본 테스트
 bash ./gradlew test
 
+# IntelliJ에서 서버를 띄워 둔 채 테스트할 때: 출력 폴더를 나눠 devtools 재시작과 겹치지 않게 한다
+TOADY_BUILD_DIR=build/cli bash ./gradlew test
+
 # 준비된 MariaDB와 스키마를 사용해 실행
 bash ./gradlew bootRun
 ```

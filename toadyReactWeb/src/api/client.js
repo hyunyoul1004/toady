@@ -8,6 +8,8 @@
 import config from 'config';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 
+const BASE_HEADERS = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+
 /**
  * 화면과 동일한 인증 스토어의 토큰으로 Authorization 헤더를 생성합니다.
  * @returns {Record<string, string>} HTTP Headers 객체
@@ -17,7 +19,7 @@ export function getAuthHeaders() {
   const accessToken = useAuthStore.getState().accessToken;
   return {
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'
+    ...BASE_HEADERS
   };
 }
 
@@ -67,8 +69,20 @@ export async function handleResponse(response, requestToken = null) {
   return data || { resultCode: 'SUCCESS', resultMessage: '성공' };
 }
 
+const toUrl = endpoint => (endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`);
+
 /**
- * 기본 apiClient 객체 (GET, POST, PATCH, DELETE)
+ * 공통 요청: auth가 false면 로그인 토큰을 싣지 않는다. body는 이미 직렬화된 문자열(없으면 생략).
+ * 응답 처리에 요청 당시 토큰을 넘겨, 다른 세션으로 바뀐 뒤 도착한 응답이 새 세션을 건드리지 않게 한다.
+ */
+async function send(method, url, { auth = true, body } = {}) {
+  const headers = auth ? getAuthHeaders() : { ...BASE_HEADERS };
+  const res = await fetch(url, body === undefined ? { method, headers } : { method, headers, body });
+  return handleResponse(res, headers.Authorization?.slice(7));
+}
+
+/**
+ * 기본 apiClient 객체 (GET, POST, PUT, PATCH, DELETE)
  */
 export const apiClient = {
   /**
@@ -78,7 +92,7 @@ export const apiClient = {
    * @param {{auth?: boolean}} [options] auth:false면 로그인 토큰을 싣지 않는다(익명 식별자를 보내는 요청용).
    */
   async get(endpoint, params, { auth = true } = {}) {
-    let url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
+    let url = toUrl(endpoint);
     if (params) {
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, val]) => {
@@ -91,13 +105,7 @@ export const apiClient = {
         url += (url.includes('?') ? '&' : '?') + qs;
       }
     }
-
-    const headers = auth ? getAuthHeaders() : { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
-    const res = await fetch(url, {
-      method: 'GET',
-      headers
-    });
-    return handleResponse(res, headers.Authorization?.slice(7));
+    return send('GET', url, { auth });
   },
 
   /**
@@ -106,60 +114,22 @@ export const apiClient = {
    * @param {any} body 요청 바디 데이터
    */
   async post(endpoint, body, { auth = true } = {}) {
-    const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
-    const headers = auth ? getAuthHeaders() : { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body || {})
-    });
-    return handleResponse(res, headers.Authorization?.slice(7));
+    return send('POST', toUrl(endpoint), { auth, body: JSON.stringify(body || {}) });
   },
 
-  /**
-   * PUT 요청
-   * @param {string} endpoint 엔드포인트 경로
-   * @param {any} body 요청 바디 데이터
-   */
+  /** PUT 요청 */
   async put(endpoint, body) {
-    const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
-    const headers = getAuthHeaders();
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(body || {})
-    });
-    return handleResponse(res, headers.Authorization?.slice(7));
+    return send('PUT', toUrl(endpoint), { body: JSON.stringify(body || {}) });
   },
 
-  /**
-   * PATCH 요청
-   * @param {string} endpoint 엔드포인트 경로
-   * @param {any} body 요청 바디 데이터
-   */
+  /** PATCH 요청 */
   async patch(endpoint, body) {
-    const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
-    const headers = getAuthHeaders();
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(body || {})
-    });
-    return handleResponse(res, headers.Authorization?.slice(7));
+    return send('PATCH', toUrl(endpoint), { body: JSON.stringify(body || {}) });
   },
 
-  /**
-   * DELETE 요청
-   * @param {string} endpoint 엔드포인트 경로
-   */
+  /** DELETE 요청 */
   async delete(endpoint) {
-    const url = endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`;
-    const headers = getAuthHeaders();
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers
-    });
-    return handleResponse(res, headers.Authorization?.slice(7));
+    return send('DELETE', toUrl(endpoint));
   }
 };
 

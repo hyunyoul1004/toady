@@ -1,19 +1,31 @@
 package com.toady.web.app.planner;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.toady.web.core.security.RequestLimitFilter;
 
 /**
  * 아파트 공고의 "가장 인기 있는 주택형 1순위 경쟁률" 예상 투표. 접수 마감일까지만 받고,
@@ -27,17 +39,17 @@ public class RatePoll {
     static final List<String> LABELS = List.of("미달 (1:1 미만)", "1 ~ 5 : 1", "5 ~ 10 : 1", "10 ~ 30 : 1", "30 ~ 100 : 1", "100 : 1 이상");
     private final JdbcTemplate jdbc; private final PlannerSummary summaries; private final Clock clock;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public RatePoll(JdbcTemplate jdbc, PlannerSummary summaries) { this(jdbc, summaries, Clock.system(ZoneId.of("Asia/Seoul"))); }
     RatePoll(JdbcTemplate jdbc, PlannerSummary summaries, Clock clock) { this.jdbc = jdbc; this.summaries = summaries; this.clock = clock; }
 
     static final int VOTERS_PER_IP = 20;
-    private final com.google.common.cache.Cache<String, java.util.Set<String>> voters = com.google.common.cache.CacheBuilder.newBuilder()
-            .maximumSize(100_000).expireAfterWrite(java.time.Duration.ofDays(1)).build();
+    private final Cache<String, Set<String>> voters = CacheBuilder.newBuilder()
+            .maximumSize(100_000).expireAfterWrite(Duration.ofDays(1)).build();
     boolean voterAllowed(String ipKey, String announcementId, String visitorId) {
-        java.util.Set<String> seen;
-        try { seen = voters.get(ipKey + "|" + announcementId, () -> java.util.concurrent.ConcurrentHashMap.newKeySet()); }
-        catch (java.util.concurrent.ExecutionException impossible) { return true; }
+        Set<String> seen;
+        try { seen = voters.get(ipKey + "|" + announcementId, () -> ConcurrentHashMap.newKeySet()); }
+        catch (ExecutionException impossible) { return true; }
         synchronized (seen) {
             if (seen.contains(visitorId)) return true;
             if (seen.size() >= VOTERS_PER_IP) return false;
@@ -80,7 +92,7 @@ public class RatePoll {
 
     @PostMapping("/api/v1/polls/rate/apt/{house}/{notice}")
     public ResponseEntity<Map<String, Object>> vote(@PathVariable String house, @PathVariable String notice, @Valid @RequestBody Vote vote,
-                                                    jakarta.servlet.http.HttpServletRequest request) {
+                                                    HttpServletRequest request) {
         if (!valid(house, notice)) return ResponseEntity.notFound().build();
         var found = summary(house, notice);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
@@ -90,13 +102,13 @@ public class RatePoll {
         // 방문자 ID는 브라우저가 만들므로, 같은 네트워크에서 공고 하나에 새 ID로 표를 늘리는 것을 하루 몇 개로 제한한다.
         // 이미 표가 있는 방문자의 선택 변경은 언제나 허용한다(재시작으로 메모리가 비어도 DB 기준). 공용 IP(회사·통신사)를 고려해 여유를 둔다.
         boolean existing = current.get("myChoice") != null;
-        if (!existing && !voterAllowed(com.toady.web.core.security.RequestLimitFilter.limitKey(com.toady.web.core.security.RequestLimitFilter.clientIp(request)), id, vote.visitorId().toString()))
+        if (!existing && !voterAllowed(RequestLimitFilter.limitKey(RequestLimitFilter.clientIp(request)), id, vote.visitorId().toString()))
             return ResponseEntity.status(429).body(Map.of("message", "같은 네트워크에서 이 공고에 투표한 사람이 많아 잠시 후 다시 시도해 주세요."));
-        var now = java.sql.Timestamp.valueOf(LocalDateTime.now(clock.withZone(ZoneId.of("Asia/Seoul"))));
+        var now = Timestamp.valueOf(LocalDateTime.now(clock.withZone(ZoneId.of("Asia/Seoul"))));
         // 같은 방문자는 마감 전까지 선택을 바꿀 수 있다(행 하나). MariaDB·H2 공통 문법으로 갱신 후 없으면 추가한다.
         if (jdbc.update("UPDATE TB_RATE_POLL SET CHOICE=?,REG_DT=? WHERE ANNOUNCEMENT_ID=? AND VISITOR_ID=?", vote.choice(), now, id, vote.visitorId().toString()) == 0) {
             try { jdbc.update("INSERT INTO TB_RATE_POLL (ANNOUNCEMENT_ID,VISITOR_ID,CHOICE,REG_DT) VALUES (?,?,?,?)", id, vote.visitorId().toString(), vote.choice(), now); }
-            catch (org.springframework.dao.DuplicateKeyException raced) { jdbc.update("UPDATE TB_RATE_POLL SET CHOICE=?,REG_DT=? WHERE ANNOUNCEMENT_ID=? AND VISITOR_ID=?", vote.choice(), now, id, vote.visitorId().toString()); }
+            catch (DuplicateKeyException raced) { jdbc.update("UPDATE TB_RATE_POLL SET CHOICE=?,REG_DT=? WHERE ANNOUNCEMENT_ID=? AND VISITOR_ID=?", vote.choice(), now, id, vote.visitorId().toString()); }
         }
         return ResponseEntity.ok(view(found.get(), house, notice, vote.visitorId()));
     }
@@ -110,7 +122,7 @@ public class RatePoll {
         LocalDate last = s.endDate() != null ? s.endDate() : s.startDate();
         boolean open = actual == null && !allShort && last != null && !today().isAfter(last);
         long[] counts = new long[LABELS.size()];
-        jdbc.query("SELECT CHOICE,COUNT(*) FROM TB_RATE_POLL WHERE ANNOUNCEMENT_ID=? GROUP BY CHOICE", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+        jdbc.query("SELECT CHOICE,COUNT(*) FROM TB_RATE_POLL WHERE ANNOUNCEMENT_ID=? GROUP BY CHOICE", (RowCallbackHandler) r -> {
             int choice = r.getInt(1); if (choice >= 0 && choice < counts.length) counts[choice] = r.getLong(2);
         }, id);
         Integer mine = visitorId == null ? null : jdbc.query("SELECT CHOICE FROM TB_RATE_POLL WHERE ANNOUNCEMENT_ID=? AND VISITOR_ID=?", (r, n) -> r.getInt(1), id, visitorId.toString()).stream().findFirst().orElse(null);

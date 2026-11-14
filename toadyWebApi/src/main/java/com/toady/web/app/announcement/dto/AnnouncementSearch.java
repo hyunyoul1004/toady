@@ -2,6 +2,7 @@ package com.toady.web.app.announcement.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 
@@ -13,7 +14,7 @@ public class AnnouncementSearch {
     private String regionCode;
 
     @Schema(description = "주택명 검색어", example = "자이")
-    @jakarta.validation.constraints.Size(max = 50)
+    @Size(max = 50)
     private String keyword;
 
     @Schema(description = "청약접수 시작일 조회 시작일(YYYY-MM-DD)", example = "2026-10-01")

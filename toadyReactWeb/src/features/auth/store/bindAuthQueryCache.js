@@ -11,7 +11,7 @@ function identity(state) {
 const USER_QUERY_ROOTS = new Set(['planner', 'plannerSettings', 'calendarFeed', 'ratePoll']);
 
 /** 계정별 조회인지 판정한다. 공고 댓글은 작성자 표시·권한이 계정에 따라 달라 함께 비운다. */
-export function isUserScopedQuery(queryKey = []) {
+function isUserScopedQuery(queryKey = []) {
   const [root, kind] = queryKey;
   return USER_QUERY_ROOTS.has(root) || (root === 'announcements' && kind === 'comments');
 }

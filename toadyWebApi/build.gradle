@@ -4,6 +4,12 @@ plugins {
 	id 'java'
 }
 
+// IntelliJ에서 띄운 서버(devtools)는 build/classes를 지켜보다가 바뀌면 다시 시작한다. 명령줄 테스트가 같은 폴더를 다시 컴파일하면
+// 재시작이 컴파일 도중에 걸려 서버가 멈출 수 있으므로, 명령줄에서는 TOADY_BUILD_DIR(예: build/cli)로 출력 폴더를 따로 둘 수 있다.
+if (System.getenv('TOADY_BUILD_DIR')) {
+	layout.buildDirectory = file(System.getenv('TOADY_BUILD_DIR'))
+}
+
 group = 'com.toady'
 version = '0.0.1-SNAPSHOT'
 
@@ -30,14 +36,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 
-	implementation 'org.apache.commons:commons-lang3'
 	implementation 'com.google.guava:guava:32.1.3-jre'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
-	runtimeOnly 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.12.1'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

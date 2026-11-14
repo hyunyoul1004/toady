@@ -1,8 +1,12 @@
 package com.toady.web.app.planner;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.service.AnnouncementSearchService;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -10,10 +14,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import static com.toady.web.app.planner.PublicHtml.esc;
 
@@ -26,7 +33,7 @@ public class PublicCollectionPages {
     static final List<String> UNRANKED_TYPES = List.of("remaining", "optional");
     private final PublicAreaPage areas; private final AnnouncementSearchService search; private final JdbcTemplate jdbc; private final String domain; private final Clock clock;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public PublicCollectionPages(PublicAreaPage areas, AnnouncementSearchService search, JdbcTemplate jdbc, @Value("${toady.web.domain}") String domain) {
         this(areas, search, jdbc, domain, Clock.system(ZoneId.of("Asia/Seoul")));
     }
@@ -116,8 +123,8 @@ public class PublicCollectionPages {
     public record WeeklyWinner(String id, String houseNm, String address, String date) { }
     public record WeeklySummary(String monday, String sunday, String nextMonday, String nextSunday, String today,
                                 List<WeeklyItem> current, List<WeeklyWinner> winners, List<WeeklyItem> nextWeek) { }
-    private final com.google.common.cache.Cache<String, WeeklySummary> weeklyCache = com.google.common.cache.CacheBuilder.newBuilder()
-        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+    private final Cache<String, WeeklySummary> weeklyCache = CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(Duration.ofMinutes(10)).build();
 
     /** 앱 안 '이번 주 청약' 화면 데이터. 서버 HTML(/weekly)과 같은 기준이며 10분 캐시한다. */
     @GetMapping("/api/v1/public/weekly-summary")
@@ -130,11 +137,11 @@ public class PublicCollectionPages {
                 data.winners().stream().map(w -> new WeeklyWinner(w.id(), w.houseNm(), w.address(), w.date() == null ? null : w.date().toString())).toList(),
                 data.nextWeek().stream().map(WeeklyItem::of).toList());
         });
-        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+        return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
-    private final com.google.common.cache.Cache<String, List<WeeklyItem>> activeCache = com.google.common.cache.CacheBuilder.newBuilder()
-        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+    private final Cache<String, List<WeeklyItem>> activeCache = CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(Duration.ofMinutes(10)).build();
     /**
      * 앱 '지역별 청약' 화면용: 전국 접수 중·예정 공고(전 유형). 화면이 주소로 시·도/시·군·구를 묶는다(캘린더 검색과 같은 지역 목록).
      * 접수 기간이 긴 공고도 넣도록 시작일을 넉넉히 거슬러 올라간다. 10분 캐시.
@@ -144,12 +151,12 @@ public class PublicCollectionPages {
         LocalDate today = today();
         List<WeeklyItem> body = PublicHtml.load(activeCache, today.toString(), () -> {
             var groups = PublicAreaPage.classify(startingBetween(today.minusDays(LOOKBACK_DAYS), today.plusDays(60)), today, 0);
-            List<WeeklyItem> items = new java.util.ArrayList<>();
+            List<WeeklyItem> items = new ArrayList<>();
             groups.open().forEach(item -> items.add(WeeklyItem.of(item)));
             groups.upcoming().forEach(item -> items.add(WeeklyItem.of(item)));
             return items;
         });
-        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+        return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
     record Weekly(Week week, Week next, List<PublicAreaPage.Item> current, List<Winner> winners, List<PublicAreaPage.Item> nextWeek) { }
@@ -163,8 +170,8 @@ public class PublicCollectionPages {
             return start != null && week.overlaps(start, end);
         }).toList(), today, Integer.MAX_VALUE);
         var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today, Integer.MAX_VALUE);
-        List<PublicAreaPage.Item> current = new java.util.ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
-        current.sort(java.util.Comparator.comparing(PublicAreaPage.Item::start));
+        List<PublicAreaPage.Item> current = new ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
+        current.sort(Comparator.comparing(PublicAreaPage.Item::start));
         return new Weekly(week, next, current, winners(week), nextWeek.upcoming());
     }
 
@@ -178,7 +185,7 @@ public class PublicCollectionPages {
         query.setStartDate(from); query.setEndDate(to); query.setSize(MAX_ITEMS); query.setPage(0);
         var result = search.searchAll(query, null);
         if (result.getTotalElements() > MAX_ITEMS)
-            org.slf4j.LoggerFactory.getLogger(getClass()).warn("이번 주 청약 집계 대상이 {}건을 넘어 일부가 빠질 수 있습니다: {}", MAX_ITEMS, result.getTotalElements());
+            LoggerFactory.getLogger(getClass()).warn("이번 주 청약 집계 대상이 {}건을 넘어 일부가 빠질 수 있습니다: {}", MAX_ITEMS, result.getTotalElements());
         return result.getContent();
     }
 

@@ -1,5 +1,6 @@
 package com.toady.web.core.security.jwt.filter;
 
+import com.toady.web.core.security.ApiSecurityError;
 import com.toady.web.core.security.jwt.JwtProvider;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -33,7 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Authentication authentication = jwtProvider.getAuthentication(request);
                 if (authentication == null) {
-                    com.toady.web.core.security.ApiSecurityError.unauthorized(response);
+                    ApiSecurityError.unauthorized(response);
                     return;
                 }
                 SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -46,7 +47,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             } catch (JwtException | IllegalArgumentException exception) {
                 SecurityContextHolder.clearContext();
-                com.toady.web.core.security.ApiSecurityError.unauthorized(response);
+                ApiSecurityError.unauthorized(response);
                 return;
             }
         }

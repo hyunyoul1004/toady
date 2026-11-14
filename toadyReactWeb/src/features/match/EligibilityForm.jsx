@@ -22,7 +22,7 @@ function Choice({ label, value, onChange, options, hint }) {
 }
 
 /** 입력이 모두 끝났는지. 조건에 따라 나오는 질문(보유 주택 수·과거 소유·혼인 7년)도 확인한다. */
-export function formReady(form) {
+function formReady(form) {
   const base = form.sido && form.accountMonths !== null && form.homeless !== null && form.householder !== null && form.marriage !== null;
   const home = form.homeless ? form.everOwned !== null : form.homes !== null;
   const marriage = form.marriage !== 'married' || form.marriedWithin7 !== null;

@@ -8,20 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      api: path.resolve(__dirname, './src/api'),
-      components: path.resolve(__dirname, './src/components'),
-      features: path.resolve(__dirname, './src/features'),
-      routes: path.resolve(__dirname, './src/routes'),
-      utils: path.resolve(__dirname, './src/utils'),
-      config: path.resolve(__dirname, './src/config'),
-      // 레거시 호환 경로
-      _actions: path.resolve(__dirname, './src/features/legacy-compat'),
-      _constants: path.resolve(__dirname, './src/features/legacy-compat'),
-      _reducers: path.resolve(__dirname, './src/features/legacy-compat'),
-      _services: path.resolve(__dirname, './src/api'),
-      _helpers: path.resolve(__dirname, './src/utils'),
-      _utils: path.resolve(__dirname, './src/utils'),
-      views: path.resolve(__dirname, './src/features')
+      config: path.resolve(__dirname, './src/config')
     }
   },
   server: {

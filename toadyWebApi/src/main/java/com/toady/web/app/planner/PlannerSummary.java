@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /** 화면·메일·비교에서 공통으로 사용하는 원본 공고 요약. 클라이언트의 제목/날짜를 신뢰하지 않는다. */
 @Service
@@ -45,7 +46,7 @@ public class PlannerSummary {
         if(type.equals("apt")) {
             List<Map<String,Object>> models=mapper.convertValue(data.get("models"),new TypeReference<>() {});
             prices=models.stream().filter(m -> !value(m,"lttotTopAmount").isBlank()).limit(5)
-                .map(m -> value(m,"houseTy")+": "+value(m,"lttotTopAmount")+"만원 (최고가)").collect(java.util.stream.Collectors.joining(" / "));
+                .map(m -> value(m,"houseTy")+": "+value(m,"lttotTopAmount")+"만원 (최고가)").collect(Collectors.joining(" / "));
             LongSummaryStatistics amounts=models.stream().map(m -> manwon(value(m,"lttotTopAmount"))).filter(Objects::nonNull).mapToLong(Long::longValue).summaryStatistics();
             if(amounts.getCount()>0) { min=amounts.getMin(); max=amounts.getMax(); }
         }

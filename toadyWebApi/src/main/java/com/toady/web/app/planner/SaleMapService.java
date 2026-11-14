@@ -5,6 +5,7 @@ import com.google.common.cache.CacheBuilder;
 import com.toady.web.app.planner.research.AddressLocator;
 import jakarta.annotation.PreDestroy;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 /**
  * 위치 탭 지도에 함께 놓을 분양 공고: 청약 중·예정(맞춤 청약과 같은 EligibilityFeed)과
@@ -55,7 +57,7 @@ public class SaleMapService {
         Thread thread = new Thread(task, "sale-locate"); thread.setDaemon(true); return thread;
     }, new ThreadPoolExecutor.AbortPolicy()); // 큐가 차면 예외 → inFlight에서 빼고 다음 요청에서 다시 맡긴다
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public SaleMapService(EligibilityFeed feed, AnnouncementSearchService search, AddressLocator locator) {
         this(feed, search, locator, Clock.system(ZoneId.of("Asia/Seoul")));
     }
@@ -77,7 +79,7 @@ public class SaleMapService {
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.cached(today).get("items");
         // 주소에 시·군·구 이름이 들어 있는 공고만 위치를 확인한다(전국 공고를 모두 조회하지 않게).
         List<EligibilityFeed.Item> nearby = new ArrayList<>(items.stream().filter(item -> inRegion(item.address(), names, province)).toList());
-        Set<String> current = nearby.stream().map(EligibilityFeed.Item::id).collect(java.util.stream.Collectors.toSet());
+        Set<String> current = nearby.stream().map(EligibilityFeed.Item::id).collect(Collectors.toSet());
         if (!names.isEmpty()) nearby.addAll(pastItems(names, province, today).stream().filter(item -> !current.contains(item.id())).toList());
 
         List<Future<?>> waiting = new ArrayList<>();
@@ -128,7 +130,7 @@ public class SaleMapService {
         query.setSize(MAX_PAST);
         var page = search.searchAll(query, List.of("apt"));
         List<AnnouncementListItem> finished = pastCandidates(page.getContent(), names, province, today);
-        List<EligibilityFeed.Item> built = feed.items(finished, finished.stream().collect(java.util.stream.Collectors.toMap(
+        List<EligibilityFeed.Item> built = feed.items(finished, finished.stream().collect(Collectors.toMap(
                 source -> source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo(), source -> DONE, (a, b) -> a)))
             .stream().filter(item -> beforeMoveIn(item.moveIn(), YearMonth.from(today))).toList();
         past.put(cacheKey, built);

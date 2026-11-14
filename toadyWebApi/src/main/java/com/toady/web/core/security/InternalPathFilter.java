@@ -8,6 +8,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
 
@@ -18,9 +19,12 @@ import java.io.IOException;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class InternalPathFilter extends OncePerRequestFilter {
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
+
+    /** 컨트롤러 매핑과 같은 기준(디코딩·정규화한 경로)으로 본다. '/%69nternal/…'처럼 인코딩해 우회하지 못하게 한다. */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith("/internal/");
+        return !PATHS.getLookupPathForRequest(request).startsWith("/internal/");
     }
 
     @Override

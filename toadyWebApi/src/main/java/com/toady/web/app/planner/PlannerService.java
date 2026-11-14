@@ -2,9 +2,13 @@ package com.toady.web.app.planner;
 
 import com.toady.web.app.user.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 /** 회원별 관심 공고의 키와 준비 상태만 저장한다. 제목과 일정은 조회할 때 원본에서 갱신한다. */
@@ -20,7 +24,7 @@ public class PlannerService {
     boolean stageColumn() {
         if(stageColumn) return true;
         try { jdbc.queryForList("SELECT STAGE FROM TB_FAVORITE WHERE 1=0"); stageColumn=true; }
-        catch(org.springframework.jdbc.BadSqlGrammarException missing) { return false; }
+        catch(BadSqlGrammarException missing) { return false; }
         return true;
     }
     public List<Favorite> list(long user) {
@@ -47,7 +51,7 @@ public class PlannerService {
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         } else {
             if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?",Integer.class,user)>=50) throw new PlannerLimitException("관심 공고는 50개까지 저장할 수 있어요. 지난 공고를 정리한 뒤 다시 저장해 주세요.");
-            jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,CHECKLIST,EMAIL_ENABLED,REG_DT) VALUES (?,?,?,?,?,?,?,?)",user,type,house,notice,note,checklist,email,java.sql.Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"))));
+            jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,CHECKLIST,EMAIL_ENABLED,REG_DT) VALUES (?,?,?,?,?,?,?,?)",user,type,house,notice,note,checklist,email,Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul"))));
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         }
     }

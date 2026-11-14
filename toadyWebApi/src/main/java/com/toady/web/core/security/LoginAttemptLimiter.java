@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Locale;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -80,6 +81,6 @@ public class LoginAttemptLimiter {
         try {
             Deque<Long> times = failures.get(key, ArrayDeque::new);
             synchronized (times) { times.addLast(clock.millis()); }
-        } catch (java.util.concurrent.ExecutionException impossible) { /* 기록 실패는 로그인 흐름에 영향 없음 */ }
+        } catch (ExecutionException impossible) { /* 기록 실패는 로그인 흐름에 영향 없음 */ }
     }
 }

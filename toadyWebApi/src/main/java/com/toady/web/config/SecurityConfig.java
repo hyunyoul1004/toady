@@ -1,5 +1,6 @@
 package com.toady.web.config;
 
+import com.toady.web.core.security.ApiSecurityError;
 import com.toady.web.core.security.jwt.JwtProvider;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.security.jwt.filter.JwtAuthenticationFilter;
@@ -56,9 +57,9 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->
-                                com.toady.web.core.security.ApiSecurityError.unauthorized(response))
+                                ApiSecurityError.unauthorized(response))
                         .accessDeniedHandler((request, response, exception) ->
-                                com.toady.web.core.security.ApiSecurityError.forbidden(response)))
+                                ApiSecurityError.forbidden(response)))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .userDetailsService(userDetailsService)

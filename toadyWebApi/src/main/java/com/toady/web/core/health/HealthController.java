@@ -3,12 +3,14 @@ package com.toady.web.core.health;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** 배포 확인용 준비 상태. 데이터베이스 접속 실패의 세부 정보는 공개하지 않습니다. */
@@ -42,12 +44,12 @@ public class HealthController {
     @GetMapping("/internal/schema")
     public ResponseEntity<Map<String, Object>> schema() {
         try {
-            List<String> missing = jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<List<String>>) connection -> {
+            List<String> missing = jdbcTemplate.execute((ConnectionCallback<List<String>>) connection -> {
                 var meta = connection.getMetaData();
                 List<String> absent = new ArrayList<>();
                 for (String table : REQUIRED_TABLES) {
                     boolean found = false;
-                    for (String name : List.of(table, table.toLowerCase(java.util.Locale.ROOT))) {
+                    for (String name : List.of(table, table.toLowerCase(Locale.ROOT))) {
                         try (var rows = meta.getTables(connection.getCatalog(), connection.getSchema(), name, new String[]{"TABLE"})) {
                             if (rows.next()) { found = true; break; }
                         }
@@ -57,7 +59,7 @@ public class HealthController {
                 for (String[] column : REQUIRED_COLUMNS) {
                     if (absent.contains(column[0])) continue;
                     boolean found = false;
-                    for (String[] name : List.of(column, new String[]{column[0].toLowerCase(java.util.Locale.ROOT), column[1].toLowerCase(java.util.Locale.ROOT)})) {
+                    for (String[] name : List.of(column, new String[]{column[0].toLowerCase(Locale.ROOT), column[1].toLowerCase(Locale.ROOT)})) {
                         try (var rows = meta.getColumns(connection.getCatalog(), connection.getSchema(), name[0], name[1])) {
                             if (rows.next()) { found = true; break; }
                         }

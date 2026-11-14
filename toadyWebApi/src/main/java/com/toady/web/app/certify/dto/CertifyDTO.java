@@ -2,6 +2,7 @@ package com.toady.web.app.certify.dto;
 
 import lombok.*;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -25,7 +26,7 @@ public class CertifyDTO {
     @Getter
     @AllArgsConstructor
     @NoArgsConstructor(access = AccessLevel.PUBLIC)
-    public class Save {
+    public static class Save {
 
         private Long userSeq;
 
@@ -35,7 +36,7 @@ public class CertifyDTO {
 
         private String certifyType;
 
-        private String SendType;
+        private String sendType;
 
     }
 
@@ -49,7 +50,7 @@ public class CertifyDTO {
     public static class CheckParam {
 
         @NotBlank(message = "사용자 EMAIL을 넣어주세요.")
-        @jakarta.validation.constraints.Email
+        @Email
         @Size(max = 100)
         private String userEmail;
 
@@ -76,7 +77,7 @@ public class CertifyDTO {
     public static class UserInfo {
 
         @NotBlank(message = "이메일을 입력해 주세요.")
-        @jakarta.validation.constraints.Email(message = "올바른 이메일을 입력해 주세요.")
+        @Email(message = "올바른 이메일을 입력해 주세요.")
         @Size(max = 100)
         private String userEmail;
 
@@ -93,7 +94,7 @@ public class CertifyDTO {
     public static class PasswordChange {
 
         @NotBlank(message = "이메일을 입력해 주세요.")
-        @jakarta.validation.constraints.Email
+        @Email
         @Size(max = 100)
         private String userEmail;
 

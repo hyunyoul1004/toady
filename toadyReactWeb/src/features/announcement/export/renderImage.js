@@ -1,7 +1,7 @@
 const FONT='"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 const WIDTH=1200, MARGIN=60, TABLE_WIDTH=1080;
 /** 한 장 높이 상한. 휴대폰 브라우저(특히 iOS Safari)의 캔버스 면적 한도(약 1,677만 픽셀) 안에 들게 둔다. */
-export const MAX_IMAGE_HEIGHT=13900;
+const MAX_IMAGE_HEIGHT=13900;
 const DEFAULT_NOTE='공개된 자료 기준입니다. 최종 조건은 공식 모집공고를 확인하세요.';
 
 function lines(ctx,value,width) {

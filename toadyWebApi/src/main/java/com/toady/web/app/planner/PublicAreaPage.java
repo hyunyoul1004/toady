@@ -1,18 +1,25 @@
 package com.toady.web.app.planner;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.service.AnnouncementSearchService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 import static com.toady.web.app.planner.PublicHtml.esc;
 
 /** 생활권 검색어(예: 운정 청약)로 들어오는 사용자에게 같은 기준의 공고 목록을 서버 HTML로 제공한다. */
@@ -35,7 +42,7 @@ public class PublicAreaPage {
          * 캘린더는 접수 시작일이 그 달 조회 범위에 있는 공고만 가져오므로, 지난달에 시작한 접수 중 공고도 시작월로 연다.
          */
         String month(LocalDate today) {
-            return java.util.stream.Stream.concat(open.stream(), upcoming.stream()).map(Item::start).filter(java.util.Objects::nonNull)
+            return Stream.concat(open.stream(), upcoming.stream()).map(Item::start).filter(Objects::nonNull)
                 .min(Comparator.naturalOrder()).orElse(today).toString().substring(0, 7);
         }
     }
@@ -45,14 +52,14 @@ public class PublicAreaPage {
     /** 생활권 공개 페이지와 같은 기준의 접수 중·예정 공고. 웹 푸시의 생활권 새 공고 판정에 쓴다. */
     public List<AnnouncementListItem> active(LivingAreas.Area area, LocalDate today) {
         Groups groups = groups(area.label(), null, today, 45);
-        return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+        return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
     }
 
     /** 접수 마감이 오늘부터 days일 안쪽(오늘 포함)인 APT 공고 ID. 결과 알림의 공개 시각 기록에 쓴다. */
     public List<String> aptEndedWithin(LocalDate today, int days) {
         AnnouncementSearch query = new AnnouncementSearch();
         query.setStartDate(today.minusDays(days + 60)); query.setEndDate(today); query.setSize(500);
-        List<String> ids = new java.util.ArrayList<>();
+        List<String> ids = new ArrayList<>();
         for (AnnouncementListItem item : search.searchAll(query, List.of("apt")).getContent()) {
             LocalDate start = PlannerSummary.date(item.rceptBgnde() == null ? "" : item.rceptBgnde());
             LocalDate end = PlannerSummary.date(item.rceptEndde() == null ? "" : item.rceptEndde());
@@ -81,7 +88,7 @@ public class PublicAreaPage {
     /** 무순위·잔여세대·임의공급의 접수 중·예정 공고. 웹 푸시의 '줍줍' 새 공고 판정에 쓴다. */
     public List<AnnouncementListItem> activeUnranked(LocalDate today) {
         Groups groups = groups(null, PublicCollectionPages.UNRANKED_TYPES, today, 45);
-        return java.util.stream.Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+        return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
     }
 
     /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
@@ -99,7 +106,7 @@ public class PublicAreaPage {
         return classify(page.getContent(), today, closedLimit);
     }
     static final int SEARCH_LIMIT = 100;
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PublicAreaPage.class);
+    private static final Logger log = LoggerFactory.getLogger(PublicAreaPage.class);
     static Groups classify(List<AnnouncementListItem> sources, LocalDate today) { return classify(sources, today, 12); }
     /** closedLimit: 최근 마감 목록을 몇 건까지 남길지(생활권 페이지 12건). 집계에 쓰는 곳은 Integer.MAX_VALUE로 자르지 않는다. */
     static Groups classify(List<AnnouncementListItem> sources, LocalDate today, int closedLimit) {
@@ -133,8 +140,8 @@ public class PublicAreaPage {
 
     /** 앱 '생활권별 청약' 화면용: 생활권마다 접수 중·예정 건수와 캘린더에서 열 달. 10분 캐시. */
     public record AreaSummary(String slug, String label, String description, int open, int upcoming, String month) { }
-    private final com.google.common.cache.Cache<String, List<AreaSummary>> areaSummaryCache = com.google.common.cache.CacheBuilder.newBuilder()
-        .maximumSize(4).expireAfterWrite(java.time.Duration.ofMinutes(10)).build();
+    private final Cache<String, List<AreaSummary>> areaSummaryCache = CacheBuilder.newBuilder()
+        .maximumSize(4).expireAfterWrite(Duration.ofMinutes(10)).build();
     @GetMapping("/api/v1/public/area-summaries")
     public ResponseEntity<List<AreaSummary>> areaSummaries() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -142,7 +149,7 @@ public class PublicAreaPage {
             Groups groups = groups(area, today);
             return new AreaSummary(area.slug(), area.label(), area.description(), groups.open().size(), groups.upcoming().size(), groups.month(today));
         }).toList());
-        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePublic()).body(body);
+        return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
     @GetMapping(value = "/api/v1/public/areas/{slug}", produces = "text/html;charset=UTF-8")

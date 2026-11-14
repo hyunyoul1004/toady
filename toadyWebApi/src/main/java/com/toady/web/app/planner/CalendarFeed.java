@@ -4,6 +4,7 @@ import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.response.ResData;
 import com.toady.web.core.security.service.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.sql.Timestamp;
 import java.time.*;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -57,11 +59,11 @@ public class CalendarFeed {
     @PostMapping("/api/v1/me/calendar-feed") @Secured("ROLE_USER") @Transactional
     public ResData<?> issue(@AuthenticationPrincipal CustomUserDetails user) {
         String token = newToken();
-        var now = java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        var now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
         // MariaDB·H2 공통으로 동작하도록 갱신 후 없으면 추가한다. 회원당 한 행이라 기존 주소는 바로 무효가 된다.
         if (jdbc.update("UPDATE TB_CALENDAR_FEED SET FEED_TOKEN=?,REG_DT=?,LAST_READ_DT=NULL WHERE USER_SEQ=?", token, now, user.getUserSeq()) == 0) {
             try { jdbc.update("INSERT INTO TB_CALENDAR_FEED (USER_SEQ,FEED_TOKEN,REG_DT) VALUES (?,?,?)", user.getUserSeq(), token, now); }
-            catch (org.springframework.dao.DuplicateKeyException raced) {
+            catch (DuplicateKeyException raced) {
                 // 처음 발급 요청이 동시에 두 번 오면 먼저 들어간 행을 이번 토큰으로 바꾼다(마지막 요청의 주소가 유효).
                 jdbc.update("UPDATE TB_CALENDAR_FEED SET FEED_TOKEN=?,REG_DT=?,LAST_READ_DT=NULL WHERE USER_SEQ=?", token, now, user.getUserSeq());
             }
@@ -82,7 +84,7 @@ public class CalendarFeed {
         // 탈퇴·잠금 계정의 주소는 남아 있어도 일정을 내보내지 않는다.
         if (user == null || users.findById(user).filter(account -> !"Y".equals(account.getWithdrawalYn()) && !"Y".equals(account.getLockYn())).isEmpty())
             return ResponseEntity.notFound().build();
-        jdbc.update("UPDATE TB_CALENDAR_FEED SET LAST_READ_DT=? WHERE USER_SEQ=?", java.sql.Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul"))), user);
+        jdbc.update("UPDATE TB_CALENDAR_FEED SET LAST_READ_DT=? WHERE USER_SEQ=?", Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul"))), user);
         String ics = CalendarIcs.build(planner.list(user).stream().map(PlannerService.Favorite::summary).toList(), domain, Instant.now());
         return ResponseEntity.ok().header("Content-Type", "text/calendar;charset=UTF-8")
             .header("Content-Disposition", "inline; filename=\"toady.ics\"").header("X-Robots-Tag", "noindex")

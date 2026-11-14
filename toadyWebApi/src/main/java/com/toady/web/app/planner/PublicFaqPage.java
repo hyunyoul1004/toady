@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -126,7 +127,7 @@ public class PublicFaqPage {
     /** 앱의 자주 묻는 질문 화면용. 답의 [문구](경로) 표기는 앱이 링크로 바꾼다. */
     @GetMapping("/api/v1/public/faq-items")
     public ResponseEntity<List<Group>> items() {
-        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePublic()).body(GROUPS);
+        return PublicHtml.publicJson(GROUPS, Duration.ofHours(1));
     }
 
     /** 답을 문단(줄바꿈 기준)별 &lt;p&gt;로 만든다. */

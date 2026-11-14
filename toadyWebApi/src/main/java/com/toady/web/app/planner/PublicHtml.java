@@ -5,6 +5,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.HtmlUtils;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.Locale;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 
 /** 공고·생활권 공개 페이지가 같은 문구 규칙과 스타일을 쓰도록 모은다. 검색 봇과 사람이 같은 HTML을 본다. */
 final class PublicHtml {
@@ -16,8 +23,8 @@ final class PublicHtml {
     static String manwon(long amount) {
         long eok = amount / 10000, rest = amount % 10000;
         // 서버 기본 로캘과 상관없이 1,000 단위 쉼표를 쓴다.
-        if (eok == 0) return String.format(java.util.Locale.ROOT, "%,d만원", rest);
-        return rest == 0 ? String.format(java.util.Locale.ROOT, "%,d억원", eok) : String.format(java.util.Locale.ROOT, "%,d억 %,d만원", eok, rest);
+        if (eok == 0) return String.format(Locale.ROOT, "%,d만원", rest);
+        return rest == 0 ? String.format(Locale.ROOT, "%,d억원", eok) : String.format(Locale.ROOT, "%,d억 %,d만원", eok, rest);
     }
     static String priceRange(Long min, Long max) {
         if (min == null || max == null) return "";
@@ -30,20 +37,15 @@ final class PublicHtml {
      * 공개 HTML은 요청마다 공고 쿼리를 여러 번 실행하므로 같은 주소의 응답을 5분간 재사용한다.
      * get(key, loader)는 같은 키를 동시에 한 번만 만들어, 만료 순간 요청이 몰려도 쿼리가 겹치지 않는다.
      */
-    private static final com.google.common.cache.Cache<String, ResponseEntity<String>> PAGES = com.google.common.cache.CacheBuilder.newBuilder()
-            .maximumSize(200).expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
-    static ResponseEntity<String> cached(String key, java.util.function.Supplier<ResponseEntity<String>> render) {
-        try { return PAGES.get(key, render::get); }
-        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
-            Throwable cause = failed.getCause();
-            if (cause instanceof RuntimeException runtime) throw runtime;
-            throw new IllegalStateException(cause);
-        }
+    private static final Cache<String, ResponseEntity<String>> PAGES = CacheBuilder.newBuilder()
+            .maximumSize(200).expireAfterWrite(Duration.ofMinutes(5)).build();
+    static ResponseEntity<String> cached(String key, Supplier<ResponseEntity<String>> render) {
+        return load(PAGES, key, render::get);
     }
     /** Guava 캐시가 감싼 예외를 풀어 다시 던진다(DB 오류가 공통 처리기에서 503으로 바뀌도록). */
-    static <K, V> V load(com.google.common.cache.Cache<K, V> cache, K key, java.util.concurrent.Callable<V> loader) {
+    static <K, V> V load(Cache<K, V> cache, K key, Callable<V> loader) {
         try { return cache.get(key, loader); }
-        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
+        catch (ExecutionException | UncheckedExecutionException failed) {
             Throwable cause = failed.getCause();
             if (cause instanceof RuntimeException runtime) throw runtime;
             throw new IllegalStateException(cause);
@@ -51,6 +53,11 @@ final class PublicHtml {
     }
     /** 테스트에서 데이터를 바꾼 뒤 새로 그리게 한다. */
     static void clearCache() { PAGES.invalidateAll(); }
+
+    /** 공개 JSON 응답: 브라우저·프록시가 maxAge 동안 공용 캐시로 재사용한다. */
+    static <T> ResponseEntity<T> publicJson(T body, Duration maxAge) {
+        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(maxAge).cachePublic()).body(body);
+    }
 
     /** 공개 페이지 공통 문서 틀. 검색 결과 제목·설명·대표 주소를 한곳에서 같은 규칙으로 만든다. current는 상단 메뉴에서 지금 페이지를 표시할 경로다. */
     static ResponseEntity<String> page(String domain, String current, String title, String description, String canonical, String body) {

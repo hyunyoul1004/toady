@@ -3,6 +3,10 @@ package com.toady.web.app.planner;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
 /** 크롤러가 JavaScript 없이 읽을 수 있는 공고별 PNG 카드. 공개된 공고 정보만 사용한다. */
@@ -10,11 +14,11 @@ final class AnnouncementShareCard {
     private AnnouncementShareCard() { }
     private static final String FONT_FAMILY = fontFamily();
     private static String fontFamily() {
-        var families = java.util.Set.of(GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames(java.util.Locale.ENGLISH));
-        return java.util.stream.Stream.of("Noto Sans CJK KR", "Noto Sans CJK JP", "Apple SD Gothic Neo", "Malgun Gothic", "SansSerif")
+        var families = Set.of(GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames(Locale.ENGLISH));
+        return Stream.of("Noto Sans CJK KR", "Noto Sans CJK JP", "Apple SD Gothic Neo", "Malgun Gothic", "SansSerif")
                 .filter(families::contains).findFirst().orElse("SansSerif");
     }
-    static byte[] png(PlannerSummary.Summary summary,String section,ShareScores.Range scores) throws java.io.IOException {
+    static byte[] png(PlannerSummary.Summary summary,String section,ShareScores.Range scores) throws IOException {
         BufferedImage image=new BufferedImage(1200,630,BufferedImage.TYPE_INT_RGB);
         Graphics2D g=image.createGraphics();
         try {

@@ -5,11 +5,11 @@
  * status: ok(조건 충족 가능성 높음) · check(확인 필요) · no(어려움) · info(참고)
  */
 export const SIDO = ['서울', '경기', '인천', '부산', '대구', '광주', '대전', '울산', '세종', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
-export const CAPITAL = new Set(['서울', '경기', '인천']);
+const CAPITAL = new Set(['서울', '경기', '인천']);
 const RANK = { ok: 3, check: 2, info: 1, no: 0 };
 
 /** 프로필에서 판정에 꼭 필요한 값. 이 값들이 있어야 결과를 보여준다. */
-export const REQUIRED = ['sido', 'homeless', 'householder', 'accountMonths', 'marriage'];
+const REQUIRED = ['sido', 'homeless', 'householder', 'accountMonths', 'marriage'];
 export function profileComplete(profile) {
   return Boolean(profile) && REQUIRED.every(key => profile[key] !== null && profile[key] !== undefined && profile[key] !== '');
 }

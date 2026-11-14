@@ -9,6 +9,7 @@ import com.toady.web.core.constants.ResultCode;
 import com.toady.web.core.response.ResData;
 import com.toady.web.core.util.StrUtils;
 import com.toady.web.core.util.email.EmailDeliveryException;
+import com.toady.web.core.util.email.EmailTemplates;
 import com.toady.web.core.util.email.EmailUtilService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,13 +17,22 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import jakarta.annotation.PostConstruct;
 
 /**
  * packageName    : com.toady.web.app.certify.service
@@ -55,10 +65,10 @@ public class CertifyService {
     private PasswordEncoder passwordEncoder;
 
 
-    @jakarta.annotation.PostConstruct
+    @PostConstruct
     void validateDomain() {
         try {
-            var uri = java.net.URI.create(DOMAIN);
+            var uri = URI.create(DOMAIN);
             if (uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
                 throw new IllegalArgumentException("Invalid service domain");
@@ -74,19 +84,19 @@ public class CertifyService {
     /** 인증 코드를 SHA-256(base64url, 43자)으로 바꿔 저장한다. DB가 유출돼도 유효한 코드를 바로 쓸 수 없게 한다. */
     static String hashCode(String code) {
         try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return HASH_PREFIX + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(code.getBytes(StandardCharsets.UTF_8));
+            return HASH_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     /** 해시로 찾고, 배포 전에 발급된 평문 코드(최대 24시간 유효)도 받아 준다. */
     private CertifyEntity findCode(String type, String code, Long userSeq) {
         if (code == null || code.startsWith(HASH_PREFIX)) return null;
         // 메일에서 복사하며 섞인 공백·줄바꿈을 빼고, 비밀번호 찾기 코드(하이픈 없이 대문자로 발급)는 하이픈을 빼고 대문자로 맞춘 값도 찾아본다.
         String trimmed = code.replaceAll("\\s", "");
-        String normalized = "FIND_PW".equals(type) ? trimmed.replace("-", "").toUpperCase(java.util.Locale.ROOT) : trimmed;
-        for (String candidate : new java.util.LinkedHashSet<>(java.util.List.of(trimmed, normalized))) {
+        String normalized = "FIND_PW".equals(type) ? trimmed.replace("-", "").toUpperCase(Locale.ROOT) : trimmed;
+        for (String candidate : new LinkedHashSet<>(List.of(trimmed, normalized))) {
             // 저장된 해시값을 그대로 입력하는 경우는 정리한 값에서도 막는다.
-            if (candidate.startsWith(HASH_PREFIX) || candidate.toLowerCase(java.util.Locale.ROOT).startsWith(HASH_PREFIX)) return null;
+            if (candidate.startsWith(HASH_PREFIX) || candidate.toLowerCase(Locale.ROOT).startsWith(HASH_PREFIX)) return null;
             CertifyEntity hashed = certifyRepository.findByCertifyTypeAndCertifySendTypeAndCertifyCodeAndCreateUserSeq(type, "EMAIL", hashCode(candidate), userSeq);
             if (hashed != null) return hashed;
             // 배포 전에 발급된 평문 코드(최대 24시간 유효)도 받아 준다.
@@ -102,10 +112,10 @@ public class CertifyService {
         try {
             String certifyCode = StrUtils.createCode();
 
-            String url = org.springframework.web.util.UriComponentsBuilder.fromUriString(DOMAIN)
+            String url = UriComponentsBuilder.fromUriString(DOMAIN)
                     .path("/certify").queryParam("userEmail", "{email}").queryParam("certifyCode", "{code}")
                     .encode().buildAndExpand(param.getUserEmail(), certifyCode).toUriString();
-            String sendMessage = com.toady.web.core.util.email.EmailTemplates.accountVerification(
+            String sendMessage = EmailTemplates.accountVerification(
                     param.getUserNicName(), url, DOMAIN);
 
             CertifyEntity certifyParam = CertifyEntity.builder()
@@ -142,15 +152,15 @@ public class CertifyService {
 
 
     /** 미인증 계정에 새 가입 링크를 발송한다. 이전 링크 폐기와 발급은 함께 롤백된다. */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ResponseEntity<ResData> resendAccountVerification(CertifyDTO.UserInfo param) {
-        UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+        UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
         // 계정 유무·인증 여부·상태와 상관없이 같은 응답을 돌려 이메일 존재 여부가 드러나지 않게 한다.
         if (user == null || "Y".equals(user.getEmailCertifyYn()) || !"N".equals(user.getLockYn()) || !"N".equals(user.getWithdrawalYn())) return resendAccepted();
         var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
         if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return resendAccepted();
         certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
-        CertifyDTO.Save request = new CertifyDTO().new Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL");
+        CertifyDTO.Save request = new CertifyDTO.Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL");
         saveCertify(request);
         return resendAccepted();
     }
@@ -160,11 +170,11 @@ public class CertifyService {
     }
 
     /** 가입 인증 코드를 확인하고 이메일 인증 상태를 갱신합니다. */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ResponseEntity<ResData> certifyCheck(CertifyDTO.CheckParam param){
 
         try {
-            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
 
             // 없는 이메일도 '인증 요청 없음'과 같은 응답을 준다(이 경로로 가입 여부를 대량 확인하지 못하게).
             CertifyEntity certifyEntity = userEntity == null ? null : findCode("ACCOUNT", param.getCertifyCode(), userEntity.getUserSeq());
@@ -180,6 +190,11 @@ public class CertifyService {
             }
 
             if("Y".equals(certifyEntity.getCertifyYn())){
+                // 재발송·재가입으로 폐기된 예전 링크도 certifyYn='Y'다. 계정이 아직 미인증이면 '이미 인증됨'이 아니라 최신 메일을 쓰라고 안내한다.
+                if (!"Y".equals(userEntity.getEmailCertifyYn())) {
+                    return ResponseEntity.ok().body(ResData.of(ResultCode.EXPIRATION_TIME_EXCEEDED_ERROR.getCode(),
+                            "새 인증 메일이 발송되어 이 링크는 더 이상 쓸 수 없습니다. 가장 최근에 받은 인증 메일의 링크를 열어 주세요."));
+                }
                 return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_CERTIFY_ERROR.getCode(), ResultCode.ALREADY_CERTIFY_ERROR.getMessage()));
             }
             // 가입 링크는 발급 후 24시간까지만 허용한다.
@@ -217,7 +232,7 @@ public class CertifyService {
         var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
         if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return false;
         certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
-        saveCertify(new CertifyDTO().new Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL"));
+        saveCertify(new CertifyDTO.Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL"));
         return true;
     }
 
@@ -227,11 +242,11 @@ public class CertifyService {
     }
 
     /** 비밀번호 재설정 코드를 발급합니다. 재요청은 4분 간격으로 제한합니다. */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ResponseEntity<ResData> findPasswordRequestCertify(CertifyDTO.UserInfo param){
         // ASCII가 아닌 주소(예: 켈빈 기호 K)는 소문자로 바꾸면 다른 계정 주소와 같아질 수 있어 계정을 찾지 않는다.
         if (!EmailRules.ascii(param.getUserEmail())) return passwordRequestAccepted();
-        UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+        UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
 
         // 가입 여부·계정 상태·재요청 간격과 상관없이 같은 응답을 돌려 이메일 존재 여부를 알아낼 수 없게 한다.
         // 탈퇴·잠금 계정에는 메일을 보내지 않는다.
@@ -253,7 +268,7 @@ public class CertifyService {
             String certifyCode = StrUtils.createCode();
             certifyCode = certifyCode.replaceAll("-","");
 
-            String sendMessage = com.toady.web.core.util.email.EmailTemplates.passwordReset(
+            String sendMessage = EmailTemplates.passwordReset(
                     userEntity.getUserNicName(), certifyCode, DOMAIN);
 
             CertifyEntity certifyParam = CertifyEntity.builder()
@@ -289,13 +304,13 @@ public class CertifyService {
 
 
     /** 10분 이내의 비밀번호 재설정 코드를 확인하고 새 비밀번호를 저장합니다. */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ResponseEntity<ResData> certifyConfrimAndPasswordChange(CertifyDTO.PasswordChange param){
 
 
 
         try {
-            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+            UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
             // 없는 계정·잠금·탈퇴 계정도 '코드가 맞지 않음'과 같은 응답으로 돌린다(잠기기 전에 받은 코드로 비밀번호를 바꾸지 못하게).
             if(userEntity == null || !"N".equals(userEntity.getLockYn()) || !"N".equals(userEntity.getWithdrawalYn())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));

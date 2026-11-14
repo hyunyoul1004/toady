@@ -52,5 +52,14 @@ class InternalPathFilterTest {
         var apiChain = new org.springframework.mock.web.MockFilterChain();
         filter.doFilter(api, new org.springframework.mock.web.MockHttpServletResponse(), apiChain);
         org.junit.jupiter.api.Assertions.assertNotNull(apiChain.getRequest(), "일반 API는 영향 없음");
+
+        // 컨트롤러는 디코딩한 경로로 찾으므로 '%69'(i)로 인코딩해도 같은 내부 경로로 본다.
+        var encoded = new org.springframework.mock.web.MockHttpServletRequest("GET", "/%69nternal/schema");
+        encoded.addHeader("X-Real-IP", "203.0.113.5");
+        var encodedResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        var encodedChain = new org.springframework.mock.web.MockFilterChain();
+        filter.doFilter(encoded, encodedResponse, encodedChain);
+        assertEquals(404, encodedResponse.getStatus());
+        org.junit.jupiter.api.Assertions.assertNull(encodedChain.getRequest(), "인코딩한 내부 경로도 막는다");
     }
 }

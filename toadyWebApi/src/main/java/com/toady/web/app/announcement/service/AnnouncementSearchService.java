@@ -6,6 +6,7 @@ import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.dto.AnnouncementSuggestionResponse;
 import com.toady.web.app.announcement.entity.*;
 import com.toady.web.app.announcement.repository.*;
+import com.toady.web.app.planner.LivingAreas;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
@@ -24,6 +26,10 @@ import java.util.Locale;
 import java.util.Set;
 import java.time.format.DateTimeFormatter;
 import java.util.function.Function;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 @Service
 @RequiredArgsConstructor
@@ -132,8 +138,8 @@ public class AnnouncementSearchService {
             Function<T, AnnouncementSuggestionResponse> mapper
     ) {
         Specification<T> specification = (root, query, builder) -> {
-            var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
-            for (var matcher : com.toady.web.app.planner.LivingAreas.matchers(keyword)) {
+            var matches = new ArrayList<Predicate>();
+            for (var matcher : LivingAreas.matchers(keyword)) {
                 matches.add(livingAreaPredicate(builder, root, addressProperty, matcher));
             }
             var date = builder.function("replace", String.class,
@@ -142,7 +148,7 @@ public class AnnouncementSearchService {
                     builder.asc(builder.<Integer>selectCase().when(builder.isNull(date), 1).otherwise(0)),
                     builder.desc(date), builder.asc(root.get("houseManageNo")), builder.asc(root.get("pblancNo"))
             );
-            return builder.or(matches.toArray(jakarta.persistence.criteria.Predicate[]::new));
+            return builder.or(matches.toArray(Predicate[]::new));
         };
         return repository.findBy(specification, query -> query.limit(limit).all())
                 .stream()
@@ -204,15 +210,15 @@ public class AnnouncementSearchService {
     }
 
     /** (단지명 또는 주소에 term) 그리고 scope가 있으면 (단지명 또는 주소에 scope 중 하나). LivingAreas.match와 같은 규칙이다. */
-    private static jakarta.persistence.criteria.Predicate livingAreaPredicate(jakarta.persistence.criteria.CriteriaBuilder builder,
-            jakarta.persistence.criteria.Root<?> root, String addressProperty, com.toady.web.app.planner.LivingAreas.Matcher matcher) {
-        java.util.function.Function<String, jakarta.persistence.criteria.Predicate> contains = value -> {
+    private static Predicate livingAreaPredicate(CriteriaBuilder builder,
+            Root<?> root, String addressProperty, LivingAreas.Matcher matcher) {
+        Function<String, Predicate> contains = value -> {
             String pattern = "%" + value.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
             return builder.or(builder.like(builder.lower(root.get("houseNm")), pattern, '\\'), builder.like(builder.lower(root.get(addressProperty)), pattern, '\\'));
         };
         var term = contains.apply(matcher.term());
         if (matcher.scope().isEmpty()) return term;
-        return builder.and(term, builder.or(matcher.scope().stream().map(contains).toArray(jakarta.persistence.criteria.Predicate[]::new)));
+        return builder.and(term, builder.or(matcher.scope().stream().map(contains).toArray(Predicate[]::new)));
     }
 
     private static <T> Specification<T> searchSpecification(AnnouncementSearch search) {
@@ -222,12 +228,12 @@ public class AnnouncementSearchService {
                 predicates = builder.and(predicates, builder.equal(root.get("subscrptAreaCode"), search.regionCode()));
             }
             if (search.keyword() != null && !search.keyword().isBlank()) {
-                var matches = new ArrayList<jakarta.persistence.criteria.Predicate>();
+                var matches = new ArrayList<Predicate>();
                 String address = root.getJavaType() == UrbanAnnouncementEntity.class ? "hssplyHshldco" : "hssplyAdres";
-                for (var matcher : com.toady.web.app.planner.LivingAreas.matchers(search.keyword())) {
+                for (var matcher : LivingAreas.matchers(search.keyword())) {
                     matches.add(livingAreaPredicate(builder, root, address, matcher));
                 }
-                predicates = builder.and(predicates, builder.or(matches.toArray(jakarta.persistence.criteria.Predicate[]::new)));
+                predicates = builder.and(predicates, builder.or(matches.toArray(Predicate[]::new)));
             }
 
             // 날짜 조건은 모집공고일이 아닌 청약접수 시작일을 대상으로 적용합니다.
@@ -257,9 +263,9 @@ public class AnnouncementSearchService {
         };
     }
 
-    private static <T> jakarta.persistence.criteria.Expression<String> normalizedReceptionStartDate(
-            jakarta.persistence.criteria.Root<T> root,
-            jakarta.persistence.criteria.CriteriaBuilder builder
+    private static <T> Expression<String> normalizedReceptionStartDate(
+            Root<T> root,
+            CriteriaBuilder builder
     ) {
         // APT와 나머지 유형의 컬럼명이 다르므로 엔티티 유형에 맞는 청약접수 시작일을 선택합니다.
         String receptionStartDateField = root.getJavaType() == AptAnnouncementEntity.class
@@ -289,7 +295,7 @@ public class AnnouncementSearchService {
         }
         Set<AnnouncementType> selected = EnumSet.noneOf(AnnouncementType.class);
         requestedTypes.stream()
-                .flatMap(value -> java.util.Arrays.stream(value.split(",")))
+                .flatMap(value -> Arrays.stream(value.split(",")))
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
                 .map(AnnouncementType::fromPath)

@@ -2,7 +2,7 @@ package com.toady.web.app.planner;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import org.springframework.http.CacheControl;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,7 +31,7 @@ public class ScoreBenchmarks {
     /** 전체 기간 공고별 요약. 1시간마다 다시 읽고, 같은 시점의 동시 요청은 한 번만 조회한다. */
     private final Cache<String, List<Item>> index = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofHours(1)).build();
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public ScoreBenchmarks(JdbcTemplate jdbc) { this(jdbc, Clock.system(ZoneId.of("Asia/Seoul"))); }
     ScoreBenchmarks(JdbcTemplate jdbc, Clock clock) { this.jdbc = jdbc; this.clock = clock; }
 
@@ -62,20 +62,14 @@ public class ScoreBenchmarks {
         return ok(search(all(), today(clock.instant()), sido, district, area, years, q, sort));
     }
 
-    private static <T> ResponseEntity<T> ok(T body) {
-        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic()).body(body);
-    }
+    private static <T> ResponseEntity<T> ok(T body) { return PublicHtml.publicJson(body, Duration.ofMinutes(10)); }
     private static LocalDate today(Instant now) { return LocalDate.ofInstant(now, ZoneId.of("Asia/Seoul")); }
 
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { index.invalidateAll(); }
 
     List<Item> all() {
-        try { return index.get("all", this::load); }
-        catch (java.util.concurrent.ExecutionException | com.google.common.util.concurrent.UncheckedExecutionException failed) {
-            if (failed.getCause() instanceof RuntimeException runtime) throw runtime;
-            throw new IllegalStateException(failed.getCause());
-        }
+        return PublicHtml.load(index, "all", this::load);
     }
     private List<Item> load() {
         List<String[]> rows = jdbc.query("SELECT d.HOUSE_MANAGE_NO,d.PBLANC_NO,d.HOUSE_NM,d.HSSPLY_ADRES,d.RCEPT_BGNDE,s.LWET_SCORE,s.TOP_SCORE "

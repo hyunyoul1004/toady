@@ -1,5 +1,6 @@
 package com.toady.web.app.planner.research;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 
@@ -8,7 +9,7 @@ public interface ResearchTransport {
     byte[] get(URI uri, Map<String,String> headers) throws Exception;
 
     /** 제공처가 200이 아닌 상태 코드로 응답함. 429(요청 과다)·4xx는 다시 불러도 같으므로 재시도하지 않는다. */
-    final class ProviderStatus extends java.io.IOException {
+    final class ProviderStatus extends IOException {
         private final int status;
         public ProviderStatus(int status) { super("Provider unavailable: HTTP " + status); this.status = status; }
         public int status() { return status; }

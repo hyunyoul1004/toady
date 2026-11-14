@@ -2,9 +2,11 @@ package com.toady.web.app.push;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
+import com.toady.web.app.planner.AnnouncementResults;
 import com.toady.web.app.planner.LivingAreas;
 import com.toady.web.app.planner.PlannerService;
 import com.toady.web.app.planner.PlannerSummary;
+import com.toady.web.app.planner.PriceGapStore;
 import com.toady.web.app.planner.PublicAreaPage;
 import com.toady.web.app.user.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -13,15 +15,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * 하루 한 번, 구독마다 '관심 공고의 내일 일정'과 '구독 생활권의 새 공고'를 하나의 알림으로 묶어 보낸다.
@@ -40,18 +47,18 @@ public class PushDigest {
     private final PushSubscriptions store; private final WebPushSender sender; private final JdbcTemplate jdbc;
     private final PlannerService planner; private final PlannerSummary summaries; private final PublicAreaPage areas;
     private final UserRepository users; private final ObjectMapper mapper; private final Clock clock;
-    private final com.toady.web.app.planner.AnnouncementResults results;
-    private final com.toady.web.app.planner.PriceGapStore gapStore;
+    private final AnnouncementResults results;
+    private final PriceGapStore gapStore;
 
     @Autowired
     public PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results,
-            com.toady.web.app.planner.PriceGapStore gapStore) {
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, AnnouncementResults results,
+            PriceGapStore gapStore) {
         this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, gapStore, Clock.system(PushSubscriptions.KST));
     }
     PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
-            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, com.toady.web.app.planner.AnnouncementResults results,
-            com.toady.web.app.planner.PriceGapStore gapStore, Clock clock) {
+            PublicAreaPage areas, UserRepository users, ObjectMapper mapper, AnnouncementResults results,
+            PriceGapStore gapStore, Clock clock) {
         this.store = store; this.sender = sender; this.jdbc = jdbc; this.planner = planner; this.summaries = summaries;
         this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.gapStore = gapStore; this.clock = clock;
     }
@@ -80,8 +87,8 @@ public class PushDigest {
         Map<String, List<Seen>> news = new HashMap<>();
         Map<Long, List<PlannerSummary.Summary>> members = new HashMap<>();
         Map<String, LocalDateTime> resultSeen = new HashMap<>();
-        Map<String, Optional<com.toady.web.app.planner.PriceGapStore.Gap>> gapMemo = new HashMap<>();
-        Map<String, com.toady.web.app.planner.AnnouncementResults.Result> resultCache = new HashMap<>();
+        Map<String, Optional<PriceGapStore.Gap>> gapMemo = new HashMap<>();
+        Map<String, AnnouncementResults.Result> resultCache = new HashMap<>();
         Set<String> startedResultKinds = new HashSet<>();
         PublicAreaPage.WeekCounts[] week = new PublicAreaPage.WeekCounts[1];
         Map<String, Optional<PlannerSummary.Summary>> guestSummaries = new HashMap<>();
@@ -112,7 +119,7 @@ public class PushDigest {
                 for (String slug : row.areas()) {
                     // 주간 브리핑: 일요일 저녁 묶음에만 다음 주(월~일) 접수 시작 공고 수를 넣는다.
                     if (PushTopics.WEEKLY.equals(slug)) {
-                        if (today.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) continue;
+                        if (today.getDayOfWeek() != DayOfWeek.SUNDAY) continue;
                         if (week[0] == null) {
                             try { week[0] = areas.startingCounts(today.plusDays(1), today.plusDays(7)); }
                             catch (RuntimeException failure) { log.warn("주간 브리핑 집계 실패: error={}", failure.getClass().getSimpleName()); week[0] = new PublicAreaPage.WeekCounts(0, 0, 0); }
@@ -157,17 +164,17 @@ public class PushDigest {
         return out;
     }
     /** 실패한 계산은 빈 결과로 이번 실행 동안 기억해, 같은 실패를 구독마다 되풀이하지 않고 다른 알림 줄은 계속 보낸다. */
-    private <T> List<T> safely(String what, java.util.function.Supplier<List<T>> work) {
+    private <T> List<T> safely(String what, Supplier<List<T>> work) {
         try { return work.get(); }
         catch (RuntimeException failure) { log.warn("웹 푸시 {} 계산 실패: error={}", what, failure.getClass().getSimpleName()); return List.of(); }
     }
     /** 접수 마감 30일 이내 APT 공고의 결과 공개 시각을 구독자와 무관하게 기록한다. */
-    void trackResults(LocalDate today, LocalDateTime now, Map<String, com.toady.web.app.planner.AnnouncementResults.Result> cache,
+    void trackResults(LocalDate today, LocalDateTime now, Map<String, AnnouncementResults.Result> cache,
             Map<String, LocalDateTime> seen, Set<String> started) {
         List<String> ids = areas.aptEndedWithin(today, RESULT_FRESH_DAYS);
         if (ids.isEmpty()) return;
         for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
-        Map<String, com.toady.web.app.planner.AnnouncementResults.Result> found = results.forIds(ids);
+        Map<String, AnnouncementResults.Result> found = results.forIds(ids);
         for (String id : ids) {
             var result = found.get(id);
             cache.put(id, result);
@@ -177,7 +184,7 @@ public class PushDigest {
         }
     }
     /** 새 공고 줄 이름. 미리 계산한 주변 시세 비교가 있으면 '시세 대비 약 1.2억 낮음'을 붙인다(없으면 '새 공고'). */
-    private String newLabel(String id, Map<String, Optional<com.toady.web.app.planner.PriceGapStore.Gap>> memo) {
+    private String newLabel(String id, Map<String, Optional<PriceGapStore.Gap>> memo) {
         var gap = memo.computeIfAbsent(id, key -> Optional.ofNullable(gapStore.forIds(List.of(key)).get(key)));
         // 화면 뱃지(gapBadge)와 같은 문구: 신축 기준이면 '신축'을 밝히고, 참고 비교임을 덧붙인다.
         return gap.map(value -> {
@@ -198,7 +205,7 @@ public class PushDigest {
     static final String RATE_SLUG = "result-rate", SCORE_SLUG = "result-score";
     /** 관심 공고의 1순위 경쟁률·당첨가점이 마지막 알림 뒤 처음 공개됐으면 한 줄씩 만든다. 공개 시점은 TB_PUSH_AREA_SEEN에 결과 종류별로 기록한다. */
     List<PushMessage.Line> resultLines(List<PlannerSummary.Summary> favorites, LocalDate today, LocalDateTime since, LocalDateTime now,
-            Map<String, com.toady.web.app.planner.AnnouncementResults.Result> cache, Map<String, LocalDateTime> seen, Set<String> started) {
+            Map<String, AnnouncementResults.Result> cache, Map<String, LocalDateTime> seen, Set<String> started) {
         List<PlannerSummary.Summary> fresh = favorites.stream().filter(summary -> summary.id().startsWith("apt/") && summary.endDate() != null
             && !summary.endDate().isBefore(today.minusDays(RESULT_FRESH_DAYS)) && !summary.endDate().isAfter(today)).toList();
         if (fresh.isEmpty()) return List.of();
@@ -206,7 +213,7 @@ public class PushDigest {
         for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
         List<String> missing = fresh.stream().map(PlannerSummary.Summary::id).filter(id -> !cache.containsKey(id)).toList();
         if (!missing.isEmpty()) {
-            Map<String, com.toady.web.app.planner.AnnouncementResults.Result> found = results.forIds(missing);
+            Map<String, AnnouncementResults.Result> found = results.forIds(missing);
             for (String id : missing) cache.put(id, found.get(id));
         }
         // 결과는 '최근 하루 안에 처음 공개된 것'만 새 소식으로 본다. 오래 알림을 받지 않아 since가 몇 주 전이어도
@@ -229,7 +236,7 @@ public class PushDigest {
         boolean before = jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID='*'", Integer.class, slug) > 0;
         if (!before) {
             try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,'*',?)", slug, Timestamp.valueOf(BASELINE)); }
-            catch (org.springframework.dao.DuplicateKeyException raced) { /* 다른 실행이 먼저 시작 */ }
+            catch (DuplicateKeyException raced) { /* 다른 실행이 먼저 시작 */ }
         }
         started.add(before ? slug : slug + "*");
     }
@@ -241,7 +248,7 @@ public class PushDigest {
             // slug+"*": 이번 실행에서 기록을 시작했다 → 지금 공개돼 있는 결과는 모두 기준 시각으로 둔다.
             LocalDateTime at = started.contains(slug + "*") ? BASELINE : now;
             try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(at)); }
-            catch (org.springframework.dao.DuplicateKeyException raced) { at = BASELINE; }
+            catch (DuplicateKeyException raced) { at = BASELINE; }
             markSeen(slug, List.of(id), now);
             return at;
         });
@@ -272,13 +279,13 @@ public class PushDigest {
     /** 생활권·알림 주제(slug)의 접수 중·예정 공고를 기록하고, 공고별 최초 확인 시각을 돌려준다. 첫 기록은 기존 공고를 새 공고로 보지 않는다. */
     List<Seen> refresh(String slug, List<AnnouncementListItem> active, LocalDateTime now) {
         Map<String, LocalDateTime> known = new HashMap<>();
-        jdbc.query("SELECT ANNOUNCEMENT_ID,FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=?", (org.springframework.jdbc.core.RowCallbackHandler) r ->
+        jdbc.query("SELECT ANNOUNCEMENT_ID,FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=?", (RowCallbackHandler) r ->
             known.put(r.getString(1), r.getTimestamp(2).toLocalDateTime()), slug);
         LocalDateTime firstSeen = known.isEmpty() ? BASELINE : now;
         // 접수 중 공고가 없는 생활권도 기록 시작 시점을 남겨, 나중에 처음 올라온 공고를 새 공고로 판정한다.
         if (known.isEmpty()) {
             try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,'*',?)", slug, Timestamp.valueOf(BASELINE)); }
-            catch (org.springframework.dao.DuplicateKeyException raced) { firstSeen = now; }
+            catch (DuplicateKeyException raced) { firstSeen = now; }
         }
         List<Seen> result = new ArrayList<>();
         for (AnnouncementListItem item : active) {
@@ -286,7 +293,7 @@ public class PushDigest {
             LocalDateTime at = known.get(id);
             if (at == null) {
                 try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(firstSeen)); at = firstSeen; }
-                catch (org.springframework.dao.DuplicateKeyException raced) { at = BASELINE; }
+                catch (DuplicateKeyException raced) { at = BASELINE; }
                 known.put(id, at);
             }
             result.add(new Seen(item, at));
@@ -306,7 +313,7 @@ public class PushDigest {
         try {
             for (String id : ids) jdbc.update("UPDATE TB_PUSH_AREA_SEEN SET LAST_SEEN_DT=? WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID=?", Timestamp.valueOf(now), slug, id);
             lastSeenColumn = 1;
-        } catch (org.springframework.jdbc.BadSqlGrammarException missingColumn) {
+        } catch (BadSqlGrammarException missingColumn) {
             lastSeenColumn = -1;
             log.warn("TB_PUSH_AREA_SEEN.LAST_SEEN_DT 컬럼이 없어 마지막 확인 시각을 기록하지 않습니다. database.sql 15번을 적용하세요.");
         }

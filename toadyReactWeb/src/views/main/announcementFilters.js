@@ -1,17 +1,6 @@
 import Citys from './Citys.js';
 import { RCEPT_SE_META } from './calendar/calendarGroup.js';
 
-// 청약 순위 텍스트 매핑
-export function subscriptTypeName(item) {
-  if (item.type === 'remaining' && item.houseSecdNm) {
-    return item.houseSecdNm;
-  }
-
-  // 이름은 달력·필터와 같은 기준(RCEPT_SE_META)을 쓴다.
-  const map = Object.fromEntries(Object.entries(RCEPT_SE_META).map(([code, meta]) => [code, meta.label]));
-  return map[item.rceptSe] || '일반공급';
-}
-
 // 청약홈 표준 공급지역 코드 (SUBSCRPT_AREA_CODE) 정의
 export const REGION_SEOUL = { code: '100', name: '서울', matchNames: ['서울', '서울특별시'] };
 

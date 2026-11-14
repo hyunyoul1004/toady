@@ -9,7 +9,7 @@ export const STAGES = [
   { value: 4, label: '미당첨' },
   { value: 5, label: '계약 완료' }
 ];
-export const APPLYHOME_URL = 'https://www.applyhome.co.kr';
+const APPLYHOME_URL = 'https://www.applyhome.co.kr';
 export function normalizeStage(value) { const n = Number(value); return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 0; }
 const md = date => (date ? `${Number(date.slice(5, 7))}.${Number(date.slice(8, 10))}` : '');
 export const formatRate = rate => (Number.isFinite(rate) ? `${rate >= 100 ? Math.round(rate).toLocaleString('ko-KR') : String(Math.round(rate * 100) / 100)} : 1` : '');

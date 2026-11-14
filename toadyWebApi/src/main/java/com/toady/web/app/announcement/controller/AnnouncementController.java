@@ -15,6 +15,7 @@ import com.toady.web.core.security.service.CustomUserDetails;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -72,7 +73,7 @@ public class AnnouncementController {
     )
     public ResponseEntity<ResData<List<AnnouncementSuggestionResponse>>> suggestions(
             @Parameter(description = "검색 키워드 (공백이면 빈 목록 반환)", example = "자이")
-            @RequestParam(required = false) @jakarta.validation.constraints.Size(max = 50) String keyword,
+            @RequestParam(required = false) @Size(max = 50) String keyword,
             @Parameter(description = "최대 반환 건수 (1~20)", example = "10")
             @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
     ) {

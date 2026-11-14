@@ -3,6 +3,7 @@ package com.toady.web.app.planner.research;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.*;
@@ -10,9 +11,12 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
+import java.time.DateTimeException;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -39,13 +43,13 @@ public class NeighborhoodResearchService {
         this.transport=transport;
         // 공공데이터포털의 일반/인코딩 인증키를 모두 허용하되 요청에는 한 번만 인코딩한다.
         String key=molitKey.trim();
-        this.molitKey=key.contains("%")?java.net.URLDecoder.decode(key,StandardCharsets.UTF_8):key;
+        this.molitKey=key.contains("%")?URLDecoder.decode(key,StandardCharsets.UTF_8):key;
         // 키가 없으면 화면은 미제공 상태로만 보이므로 운영 로그에서 설정 누락을 바로 알 수 있게 남긴다.
         if(!tradesEnabled()) log.warn("Neighborhood trades are disabled: MOLIT_TRADE_SERVICE_KEY is not configured");
     }
     /** 법정동 코드 앞 2자리(시·도). 12: 전남광주통합특별시(광주·전남 통합 뒤 새 코드). */
     static final java.util.Set<String> SIDO_CODES=java.util.Set.of("11","12","26","27","28","29","30","31","36","41","42","43","44","45","46","47","48","50","51","52");
-    private final com.google.common.cache.Cache<String,Boolean> failedMonths=com.google.common.cache.CacheBuilder.newBuilder()
+    private final Cache<String,Boolean> failedMonths=CacheBuilder.newBuilder()
         // 제공처 일시 오류(초당 호출 제한 등)로 한 달이 실패해도 그 달만 잠깐(30초) 쉬고, 같은 시·군·구의 다른 달은 계속 쓴다.
         .maximumSize(5000).expireAfterWrite(FAILED_MONTH_SECONDS,TimeUnit.SECONDS).build();
     static final int FAILED_MONTH_SECONDS=30;
@@ -222,7 +226,7 @@ public class NeighborhoodResearchService {
         catch(ProviderRejected rejected) {
             // 일일 한도 초과(22)는 자정(한국시간)에 풀리고, 접근 거부·키 오류(20·30·31·32)는 운영자가 고칠 때까지 1시간씩 쉰다.
             // 그 밖의 코드는 그 달만 실패로 둔다.
-            if("22".equals(rejected.code)) pauseMolit(Duration.between(java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")),
+            if("22".equals(rejected.code)) pauseMolit(Duration.between(ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")),
                 java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul"))),"resultCode 22");
             else if(Set.of("20","30","31","32").contains(rejected.code)) pauseMolit(Duration.ofHours(1),"resultCode "+rejected.code);
             throw rejected;
@@ -237,7 +241,7 @@ public class NeighborhoodResearchService {
         long until=System.currentTimeMillis()+Math.max(60_000,duration.toMillis());
         if(until>molitPausedUntil) {
             molitPausedUntil=until;
-            org.slf4j.LoggerFactory.getLogger(NeighborhoodResearchService.class).warn("국토부 실거래 호출을 {}분 멈춤: {}",Math.max(1,duration.toMinutes()),reason);
+            LoggerFactory.getLogger(NeighborhoodResearchService.class).warn("국토부 실거래 호출을 {}분 멈춤: {}",Math.max(1,duration.toMinutes()),reason);
         }
     }
     /** 차단기가 열려 있는지(화면 안내·테스트용). */
@@ -288,7 +292,7 @@ public class NeighborhoodResearchService {
                 if(name.isBlank() || dong.isBlank() || amount<=0 || area.signum()<=0) continue;
                 LocalDate date=LocalDate.of(Integer.parseInt(text(row,"dealYear")),Integer.parseInt(text(row,"dealMonth")),Integer.parseInt(text(row,"dealDay")));
                 trades.add(new Trade(name,dong,dongCode,area,Integer.parseInt(text(row,"floor")),text(row,"buildYear"),date,amount,text(row,"jibun")));
-            } catch(NumberFormatException|java.time.DateTimeException invalid) { /* 이 줄만 건너뛴다 */ }
+            } catch(NumberFormatException|DateTimeException invalid) { /* 이 줄만 건너뛴다 */ }
         }
         return new Page(total,items.getLength(),List.copyOf(trades));
     }

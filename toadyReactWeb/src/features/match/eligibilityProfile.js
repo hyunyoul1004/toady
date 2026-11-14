@@ -1,10 +1,5 @@
-import { useSyncExternalStore } from 'react';
+import { createLocalStore } from '../../utils/localStore.js';
 import { SIDO } from './eligibilityRules.js';
-
-/** 자격 진단 입력은 서버로 보내지 않고 이 브라우저에만 둔다(가점 계산기와 같은 방식). */
-const KEY = 'toady.eligibility';
-const listeners = new Set();
-let cache;
 
 const bool = value => (value === true || value === false ? value : null);
 const int = (value, min, max) => { const n = Number(value); return value === null || value === '' || !Number.isInteger(n) || n < min || n > max ? null : n; };
@@ -28,23 +23,15 @@ export function normalizeProfile(raw = {}) {
     usedSpecial: bool(raw.usedSpecial)
   };
 }
-function read() {
-  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); return saved ? normalizeProfile(saved) : null; } catch { return null; }
-}
-function snapshot() { if (cache === undefined) cache = read(); return cache; }
-function emit() { listeners.forEach(listener => listener()); }
-if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) { cache = read(); emit(); } });
+/** 자격 진단 입력은 서버로 보내지 않고 이 브라우저에만 둔다(가점 계산기와 같은 방식). */
+const store = createLocalStore('toady.eligibility', saved => (saved ? normalizeProfile(saved) : null));
 
 export function saveProfile(profile) {
-  const value = normalizeProfile(profile);
-  try { localStorage.setItem(KEY, JSON.stringify(value)); } catch { /* 저장소가 막혀도 이번 화면에서는 쓴다 */ }
-  cache = value; emit();
-  return value;
+  return store.save(normalizeProfile(profile));
 }
 export function clearProfile() {
-  try { localStorage.removeItem(KEY); } catch { /* 무시 */ }
-  cache = null; emit();
+  store.clear();
 }
 export function useEligibilityProfile() {
-  return useSyncExternalStore(callback => { listeners.add(callback); return () => listeners.delete(callback); }, snapshot, () => null);
+  return store.useValue();
 }

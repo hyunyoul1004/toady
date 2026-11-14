@@ -27,7 +27,6 @@ import { normalizeSearchTargets, readSearchTargets } from '@/features/planner/se
 import AnnouncementFilters from './components/AnnouncementFilters';
 import AnnouncementNotice from './components/AnnouncementNotice';
 import { useAnnouncementSearch } from './hooks/useAnnouncementSearch';
-import { fn_rceptSeBgColor } from './rceptSeColorUtil';
 
 import { updateAnnouncementSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { useAnnouncementsQuery, useAnnouncementDetailQuery, useAptScoresQuery } from '@/features/announcement/hooks/useAnnouncements';
@@ -58,11 +57,13 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import 'simplebar-react/dist/simplebar.min.css';
 import './main.css';
 
 /** 무순위·잔여세대(06), 임의공급(07), 불법행위 재공급(08) */
 const UNRANKED_RCEPT_SE=['06','07','08'];
+
+/** 상단 필터 영역은 MUI 기본 테마(기본 글꼴·색)로 표시한다. */
+const FILTER_THEME = createTheme();
 
 export const Main = ({detailOnly=false,onDetailClose}) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -278,9 +279,12 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
       routeSeqRef.current = subscriptSeq;
       setModalOpen(true);
 
-      const tabMap = { detail: 0, rate: 1, map: 2, comment: 3 };
+      // 'trades'는 상세 탭 안의 '동네 실거래'(새로고침·공유해도 보던 하위 탭이 유지되게 주소에 남긴다).
+      const tabMap = { detail: 0, trades: 0, rate: 1, map: 2, comment: 3 };
       if (tabType && tabMap[tabType] !== undefined) {
         setDetailTabValue(tabMap[tabType]);
+        if (tabType === 'trades') setResearchTab('trades');
+        else if (tabType === 'detail') setResearchTab('info');
       } else if (changedSeq) {
         // 알림·공유 링크처럼 탭 지정 없이 다른 공고를 열면, 직전에 보던 탭이 아니라 '상세'로 연다.
         setDetailTabValue(0);
@@ -306,16 +310,23 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     else navigate('/', { replace: true });
   };
 
-  const handleTabChange = (event, newValue) => {
-    setDetailTabValue(newValue);
-    const tabNames = ['detail', 'rate', 'map', 'comment'];
+  // 다른 메뉴(맞춤 청약·가점 계산 등) 위에 연 상세도 보던 탭을 주소에 남긴다. 그래야 탭 안 팝업(이미지 저장 등)이 쌓은 히스토리와
+  // 앞으로가기·새로고침 뒤 화면이 맞는다. 주소의 다른 값(src 등)은 그대로 두고 탭만 바꾼다(히스토리를 쌓지 않음).
+  const writeTabType = tabType => {
     if (!selectedSubscriptSeq) return;
-    // 다른 메뉴(맞춤 청약·가점 계산 등) 위에 연 상세도 보던 탭을 주소에 남긴다. 그래야 탭 안 팝업(이미지 저장 등)이 쌓은 히스토리와
-    // 앞으로가기·새로고침 뒤 화면이 맞는다. 주소의 다른 값(src 등)은 그대로 두고 탭만 바꾼다.
     const next = new URLSearchParams(searchParams);
     if (!route.type) next.set('subscriptSeq', selectedSubscriptSeq);
-    next.set('tabType', tabNames[newValue]);
+    next.set('tabType', tabType);
     setSearchParams(next, { replace: true, state: location.state });
+  };
+  const handleTabChange = (event, newValue) => {
+    setDetailTabValue(newValue);
+    const tabNames = [researchTab === 'trades' ? 'trades' : 'detail', 'rate', 'map', 'comment'];
+    writeTabType(tabNames[newValue]);
+  };
+  const handleResearchTabChange = value => {
+    setResearchTab(value);
+    writeTabType(value === 'trades' ? 'trades' : 'detail');
   };
 
   // 공고 공유하기 (Web Share API 및 클립보드 복사 폴백)
@@ -365,28 +376,13 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     }
   };
 
-  const theme = createTheme({
-    palette: {
-      rceptSeBgColor01: { main: fn_rceptSeBgColor('01'), contrastText: '#fff' },
-      rceptSeBgColor02: { main: fn_rceptSeBgColor('02'), contrastText: '#fff' },
-      rceptSeBgColor03: { main: fn_rceptSeBgColor('03'), contrastText: '#fff' },
-      rceptSeBgColor04: { main: fn_rceptSeBgColor('04'), contrastText: '#fff' },
-      rceptSeBgColor05: { main: fn_rceptSeBgColor('05'), contrastText: '#fff' },
-      rceptSeBgColor06: { main: fn_rceptSeBgColor('06'), contrastText: '#fff' },
-      rceptSeBgColor07: { main: fn_rceptSeBgColor('07'), contrastText: '#fff' },
-      rceptSeBgColor08: { main: fn_rceptSeBgColor('08'), contrastText: '#fff' },
-      rceptSeBgColor09: { main: fn_rceptSeBgColor('09'), contrastText: '#fff' },
-      rceptSeBgColor10: { main: fn_rceptSeBgColor('10'), contrastText: '#fff' },
-    },
-  });
-
   return (
     <>
       {!detailOnly && <div>
         {/* 첫 화면: ① 검색 한 줄 → ② 오늘의 요약 → ③ 달력·목록 (소개는 처음 온 사람에게만 한 줄) */}
         <ServiceIntro />
         <Box sx={{ pt: 0.5 }}>
-          <ThemeProvider theme={theme}>
+          <ThemeProvider theme={FILTER_THEME}>
             {/* 상단 통합 필터 카드 (공급유형 + 공급지역을 한 화면에 조화롭게 배치) */}
             <AnnouncementFilters
               paramInfo={paramInfo}
@@ -676,7 +672,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           </Box>
         </Box>
 
-        {detailTabValue===0 && !isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <Box className="announcement-section-nav" sx={{px:{xs:2,sm:2.5},bgcolor:'#fff',flexShrink:0}}><ResearchTabs value={researchTab} onChange={setResearchTab}/></Box>}
+        {detailTabValue===0 && !isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <Box className="announcement-section-nav" sx={{px:{xs:2,sm:2.5},bgcolor:'#fff',flexShrink:0}}><ResearchTabs value={researchTab} onChange={handleResearchTabChange}/></Box>}
 
         {/* 3. 본문 스크롤 영역 */}
         <Box ref={detailScrollRef} data-testid="announcement-scroll"
@@ -706,7 +702,7 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
             </Alert>
           ) : (
             <>
-              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={setResearchTab} onShowMap={() => handleTabChange(null, 2)} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
+              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={handleResearchTabChange} onShowMap={() => handleTabChange(null, 2)} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
               {detailTabValue === 1 && currentSubscriptDetail && (
                 <SubscriptRate subscriptDetail={currentSubscriptDetail} />
               )}

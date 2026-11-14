@@ -2,6 +2,10 @@ package com.toady.web.app.user.repository;
 
 import com.toady.web.app.user.entity.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 /**
  * packageName    : com.toady.web.app.user.repository
@@ -21,9 +25,9 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     public UserEntity findByUserEmail(String userEmail);
 
     /** 인증 코드 발급·검증과 비밀번호 변경을 계정 단위로 직렬화한다. 반드시 트랜잭션 안에서 호출한다. */
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @org.springframework.data.jpa.repository.Query("select u from UserEntity u where u.userEmail = :email")
-    UserEntity findByEmailForUpdate(@org.springframework.data.repository.query.Param("email") String email);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from UserEntity u where u.userEmail = :email")
+    UserEntity findByEmailForUpdate(@Param("email") String email);
 
     //닉네임 조회.
     /** 가입 시 닉네임 중복 여부를 확인합니다. */

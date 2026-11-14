@@ -19,11 +19,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 import { authApi } from '@/features/auth/api/authApi';
-
-function isEmail(email) {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(String(email).toLowerCase());
-}
+import { isEmail } from '@/utils/text.util';
 
 export const FindPassword = (props) => {
   // 01: 이메일 입력 단계, 02: 인증코드 및 새 비밀번호 입력 단계

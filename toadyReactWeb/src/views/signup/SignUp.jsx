@@ -19,12 +19,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 import { authApi } from '@/features/auth/api/authApi';
-import { formatServerMessage } from '@/utils/text.util';
-
-function isEmail(email) {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(String(email).toLowerCase());
-}
+import { formatServerMessage, isEmail } from '@/utils/text.util';
 
 export const SignUp = (props) => {
   const userNicNameFocus = useRef(null);

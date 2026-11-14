@@ -215,3 +215,7 @@
 /* 조건 밖 점: 보이는 크기는 12px로 두고 누르는 영역만 28px로 넓힌다 */
 .pm-dot{position:relative}
 .pm-dot::before{content:'';position:absolute;inset:-8px;border-radius:50%}
+
+/* 지도 위 실거래 로딩 표시(아래쪽 가운데, 지도 조작을 막지 않음) */
+.pm-map-loading{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:11;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:rgba(17,24,39,.82);color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.pm-map-loading .MuiCircularProgress-root{color:#fff}

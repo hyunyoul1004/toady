@@ -16,6 +16,7 @@ import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -81,7 +82,7 @@ public class WebPushSender {
             byte[] body = WebPushCrypto.encrypt(json.getBytes(StandardCharsets.UTF_8), WebPushCrypto.b64(target.p256dh()), WebPushCrypto.b64(target.auth()));
             String audience = uri.getScheme() + "://" + uri.getHost();
             String jwt = WebPushCrypto.vapidJwt(audience, subject, clock.instant().plus(Duration.ofHours(12)).getEpochSecond(), privateKey);
-            Map<String, String> headers = new java.util.LinkedHashMap<>();
+            Map<String, String> headers = new LinkedHashMap<>();
             headers.put("Authorization", "vapid t=" + jwt + ", k=" + publicKey);
             headers.put("Content-Encoding", "aes128gcm");
             headers.put("Content-Type", "application/octet-stream");

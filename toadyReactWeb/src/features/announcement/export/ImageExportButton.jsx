@@ -7,7 +7,7 @@ import { imagePages } from './exportData';
 import { renderAllImage, renderTableImage, downloadCanvas } from './renderImage';
 
 /** 선택 목록에서 '모든 표를 한 장으로'를 뜻하는 값. 표별 페이지는 0부터다. */
-export const ALL_PAGES=-1;
+const ALL_PAGES=-1;
 
 export default function ImageExportButton({detail,sections,disabled=false,label='이미지 저장',kind='detail'}) {
   const [open,setOpen]=useHistoryOverlay(`image-export:${kind}`);

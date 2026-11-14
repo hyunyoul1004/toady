@@ -10,7 +10,7 @@ import { modelPrices } from '@/features/planner/researchUtils';
 import { formatDate, formatDateRange } from '@/utils/date.util';
 import { buildAnnouncementQueryParams } from '@/features/announcement/api/announcementParams';
 
-export const TYPE_TO_RCEPT_SE = {
+const TYPE_TO_RCEPT_SE = {
   apt: '01',
   urban: '05',
   remaining: '06',
@@ -36,7 +36,7 @@ function getDisplayRceptSe(item, type) {
  * 청약홈 모집공고 상세 페이지 URL을 유형별로 조합합니다.
  * 백엔드에서 pblancUrl을 제공하지 않았을 때의 대체(fallback) URL로 사용됩니다.
  */
-export function getFallbackPblancUrl(type, houseManageNo, pblancNo) {
+function getFallbackPblancUrl(type, houseManageNo, pblancNo) {
   if (!houseManageNo || !pblancNo) return '#';
   const hNo = encodeURIComponent(houseManageNo);
   const pNo = encodeURIComponent(pblancNo);
@@ -155,7 +155,7 @@ function buildRankSchedules(rceptSe, columns) {
  * APT 공고 1건(row) → 특별공급(01) / 1순위(02) / 2순위(03) 일정 목록.
  * 특별공급 전용 컬럼이 없으므로 청약접수 시작일(rceptBgnde)이 1순위 접수일보다 앞서면 특별공급일로 간주.
  */
-export function buildAptSchedules(item) {
+function buildAptSchedules(item) {
   const rank1 = buildRankSchedules('02', [
     { label: '해당지역', value: item.gnrlRnk1CrspareaRcptde },
     { label: '경기', value: item.gnrlRnk1EtcGgRcptde },

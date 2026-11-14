@@ -11,7 +11,7 @@ import { unitLabel } from '../../../features/planner/researchUtils.js';
 const isBlank=value=>value==null || String(value).trim()==='' || String(value).trim()==='-';
 
 /** 숫자로 읽을 수 있는 값만 숫자로 바꾼다. 콤마는 허용한다. */
-export function toCount(value) {
+function toCount(value) {
   if(isBlank(value))return null;
   const number=Number(String(value).trim().replaceAll(',',''));
   return Number.isFinite(number)?number:null;

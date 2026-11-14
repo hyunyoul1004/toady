@@ -18,7 +18,7 @@ public class ResearchController {
     @GetMapping("/transactions") public NeighborhoodResearchService.TradeResult trades(
             @RequestParam @Pattern(regexp="[0-9]{10}") String bcode,
             @RequestParam @NotBlank @Size(max=40) String dong,
-            @RequestParam(required=false) @DecimalMin("10") @DecimalMax("400") java.math.BigDecimal area) {
+            @RequestParam(required=false) @DecimalMin("10") @DecimalMax("400") BigDecimal area) {
         return research.trades(bcode,dong.trim(),area);
     }
     /**

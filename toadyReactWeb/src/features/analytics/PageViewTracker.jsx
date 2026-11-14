@@ -16,7 +16,7 @@ function track(path) {
 }
 
 /** 공고 상세는 공유 주소(/announcements/…)든 앱 안 주소(?subscriptSeq=)든 같은 '/announcements'로 센다. */
-export function logicalPath(pathname, search) {
+function logicalPath(pathname, search) {
   if (pathname.startsWith('/announcements/')) return '/announcements';
   if (new URLSearchParams(search).has('subscriptSeq')) return '/announcements';
   return pathname;

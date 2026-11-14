@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -74,7 +75,7 @@ public class ComplexLocator {
                 for (int from = 0; from < misses.size(); from += 200) {
                     List<String> chunk = misses.subList(from, Math.min(misses.size(), from + 200));
                     String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
-                    jdbc.query("SELECT COMPLEX_KEY,LATITUDE,LONGITUDE,STATUS,CHECKED_DT FROM TB_APT_COMPLEX_LOCATION WHERE COMPLEX_KEY IN (" + marks + ")", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+                    jdbc.query("SELECT COMPLEX_KEY,LATITUDE,LONGITUDE,STATUS,CHECKED_DT FROM TB_APT_COMPLEX_LOCATION WHERE COMPLEX_KEY IN (" + marks + ")", (RowCallbackHandler) r -> {
                         String k = r.getString(1);
                         if ("FOUND".equals(r.getString(4))) {
                             Optional<Point> point = Optional.of(new Point(r.getDouble(2), r.getDouble(3)));

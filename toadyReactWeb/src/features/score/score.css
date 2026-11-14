@@ -56,11 +56,6 @@
 .score-section-heading{margin-bottom:14px}
 .score-section h2{font-size:19px;font-weight:800;letter-spacing:-.4px}
 .score-section-heading p{margin-top:6px !important;font-size:13px;color:var(--score-muted);line-height:1.6;word-break:keep-all}
-.score-area-tabs{display:flex !important;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.score-area-tabs .MuiToggleButton-root{border:1px solid #dbe3ec !important;border-radius:999px !important;margin:0 !important;padding:5px 14px;font-weight:700;color:#475569;font-size:13px;gap:6px}
-.score-area-tabs .MuiToggleButton-root em{font-style:normal;font-size:11px;color:#94a3b8}
-.score-area-tabs .MuiToggleButton-root.Mui-selected,.score-area-tabs .MuiToggleButton-root.Mui-selected:hover{background:#172b42 !important;color:#fff !important;border-color:#172b42 !important}
-.score-area-tabs .MuiToggleButton-root.Mui-selected em{color:#cbd5e1}
 .score-bench-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:10px}
 .score-bench-list button{width:100%;text-align:left;background:#fff;border:1px solid var(--score-line);border-radius:14px;padding:14px 38px 14px 16px;cursor:pointer;position:relative;font:inherit;color:inherit;transition:border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px}
 .score-bench-list button:hover{border-color:#bfd2f6;box-shadow:0 4px 14px -6px rgba(37,99,235,.3)}

@@ -9,6 +9,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +26,7 @@ import java.util.Date;
 import java.util.HexFormat;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 /** 서명된 JWT 발급·검증과 클레임에서 Spring Security 인증 정보를 복원합니다. */
 @RequiredArgsConstructor
@@ -50,7 +52,7 @@ public class JwtProviderImpl implements JwtProvider {
     private long sessionMaxMs;
 
     /** 인증이 불가능한 설정으로 배포 준비 상태가 성공하지 않도록 시작 시 검증한다. */
-    @jakarta.annotation.PostConstruct
+    @PostConstruct
     void validateConfiguration() {
         byte[] decoded;
         try {
@@ -167,7 +169,7 @@ public class JwtProviderImpl implements JwtProvider {
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(Decoders.BASE64.decode(secretKey), "HmacSHA256"));
+            mac.init(new SecretKeySpec(Decoders.BASE64.decode(secretKey), "HmacSHA256"));
             return HexFormat.of().formatHex(mac.doFinal(passwordHash.getBytes(StandardCharsets.UTF_8)));
         } catch (GeneralSecurityException exception) {
             throw new IllegalStateException("Could not derive credential version", exception);

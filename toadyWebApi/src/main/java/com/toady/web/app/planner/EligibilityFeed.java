@@ -5,8 +5,8 @@ import com.google.common.cache.CacheBuilder;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.service.AnnouncementSearchService;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -67,7 +68,7 @@ public class EligibilityFeed {
     public ResponseEntity<Map<String, Object>> announcements() {
         LocalDate today = LocalDate.now(clock);
         Map<String, Object> body = cached(today);
-        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic()).body(body);
+        return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
     /** 10분 캐시를 함께 쓰는 목록(지도 분양 말풍선처럼 자주 부르는 곳이 DB를 매번 다시 읽지 않게). */
@@ -82,7 +83,7 @@ public class EligibilityFeed {
         query.setEndDate(today.plusDays(FUTURE_DAYS));
         query.setSize(MAX_ITEMS);
         var page = search.searchAll(query, TYPES);
-        if (page.getTotalElements() > MAX_ITEMS) org.slf4j.LoggerFactory.getLogger(EligibilityFeed.class)
+        if (page.getTotalElements() > MAX_ITEMS) LoggerFactory.getLogger(EligibilityFeed.class)
             .warn("자격 판정 목록이 {}건을 넘어 일부 공고가 빠졌습니다: total={}", MAX_ITEMS, page.getTotalElements());
         var groups = PublicAreaPage.classify(page.getContent(), today, 0);
         List<PublicAreaPage.Item> active = new ArrayList<>(groups.open());
@@ -171,7 +172,7 @@ public class EligibilityFeed {
     }
     /** 주택형 '084.9500A' → 전용 84.95㎡. 숫자로 시작하지 않으면 면적을 모르는 것으로 둔다. */
     static BigDecimal area(String houseTy) {
-        var match = java.util.regex.Pattern.compile("^(\\d{1,3}(?:\\.\\d+)?)").matcher(houseTy == null ? "" : houseTy);
+        var match = Pattern.compile("^(\\d{1,3}(?:\\.\\d+)?)").matcher(houseTy == null ? "" : houseTy);
         if (!match.find()) return null;
         BigDecimal value = new BigDecimal(match.group(1)).stripTrailingZeros();
         return value.signum() > 0 && value.compareTo(BigDecimal.valueOf(400)) <= 0 ? value : null;

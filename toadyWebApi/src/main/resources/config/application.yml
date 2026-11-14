@@ -42,10 +42,6 @@ spring:
             enable: true
             required: true
 
-decorator:
-  datasource:
-    enabled: false
-
 server:
   port: ${SERVER_PORT:8080}
   # 지도용 단지 시세처럼 큰 JSON 응답을 압축한다(앞단 프록시 설정과 무관하게 전송량을 줄인다).
@@ -90,12 +86,9 @@ config:
   logging:
     path: ${LOG_PATH:./logs}
     name: toadyWebLog
-    pattern: log
     level:
       root: ${LOG_LEVEL_ROOT:INFO}
       src: ${LOG_LEVEL_SRC:INFO}
-      jdbc: ${LOG_LEVEL_JDBC:OFF}
       jdbc-bind: ${LOG_LEVEL_JDBC_BIND:OFF}
-      p6spy: ${LOG_LEVEL_P6SPY:OFF}
       # 운영 기본은 SQL 로그를 남기지 않는다(요청마다 여러 SQL이 기록되어 로그가 하루 수십 MB씩 쌓인다). 필요하면 환경변수로 켠다.
       hibernate-sql: ${LOG_LEVEL_HIBERNATE_SQL:OFF}

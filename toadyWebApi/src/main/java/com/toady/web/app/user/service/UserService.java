@@ -2,6 +2,7 @@ package com.toady.web.app.user.service;
 
 import com.toady.web.app.certify.dto.CertifyDTO;
 import com.toady.web.app.certify.service.CertifyService;
+import com.toady.web.app.certify.service.EmailRules;
 import com.toady.web.app.user.dto.UserDTO;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
@@ -13,17 +14,23 @@ import com.toady.web.core.security.service.SimpleUserDetailsService;
 import com.toady.web.core.util.email.EmailDeliveryException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,12 +65,12 @@ public class UserService {
     private CertifyService certifyService;
 
     /** 없는 계정도 실제 비교와 비슷한 시간이 걸리게 하는 더미 해시. 응답 시간으로 가입 여부를 알아내지 못하게 한다. */
-    private static final String DUMMY_HASH = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(java.util.UUID.randomUUID().toString());
+    private static final String DUMMY_HASH = new BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
 
     /** 이메일과 비밀번호를 확인하고 로그인 토큰을 반환합니다. */
     public Map<String, Object> getUser(UserDTO.Login param) throws Exception {
 
-        String email = param.getUserEmail().toLowerCase(java.util.Locale.ROOT);
+        String email = param.getUserEmail().toLowerCase(Locale.ROOT);
         // 비밀번호부터 확인한다. 계정 상태(미인증·잠금·탈퇴) 안내는 비밀번호를 아는 사람에게만 보여 가입 여부·상태가 드러나지 않게 한다.
         UserEntity account = userRepository.findByUserEmail(email);
         String hash = account == null ? DUMMY_HASH : account.getUserPassword();
@@ -94,10 +101,10 @@ public class UserService {
 
         try {
 
-            if (!com.toady.web.app.certify.service.EmailRules.ascii(param.getUserEmail())) {
+            if (!EmailRules.ascii(param.getUserEmail())) {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.VALID_ERROR.getCode(), "이메일은 영문·숫자·기호로 된 주소만 사용할 수 있어요."));
             }
-            param.setUserEmail(param.getUserEmail().toLowerCase(java.util.Locale.ROOT));
+            param.setUserEmail(param.getUserEmail().toLowerCase(Locale.ROOT));
 
             if(!param.getUserPassword().equals(param.getUserPasswordConfirm())){
                 return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_MISMATCH_ERROR.getCode(), ResultCode.PASSWORD_MISMATCH_ERROR.getMessage()));
@@ -127,7 +134,7 @@ public class UserService {
                 existing.setUpdateDt(LocalDateTime.now());
                 try {
                     userRepository.saveAndFlush(existing);
-                } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+                } catch (DataIntegrityViolationException raced) {
                     throw new NicknameTakenException();
                 }
                 certifyService.reissueAccountVerification(existing);
@@ -150,37 +157,28 @@ public class UserService {
 
             try {
                 userRepository.saveAndFlush(userParam);
-            } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+            } catch (DataIntegrityViolationException raced) {
                 // 같은 닉네임·이메일로 동시에 가입하면 유니크 제약이 먼저 막는다. 500 대신 어느 쪽이 겹쳤는지 안내한다.
                 // 실패한 저장 뒤에는 세션을 다시 쓰지 않고 제약 이름으로 구분한다.
-                if (String.valueOf(raced.getMostSpecificCause().getMessage()).toLowerCase(java.util.Locale.ROOT).contains("uk_subscript_email"))
+                if (String.valueOf(raced.getMostSpecificCause().getMessage()).toLowerCase(Locale.ROOT).contains("uk_subscript_email"))
                     throw new EmailTakenException();
                 throw new NicknameTakenException();
             }
 
-            CertifyDTO.Save certifyParam = new CertifyDTO().new Save();
-
-
-            certifyParam.setUserEmail(userParam.getUserEmail());
-            certifyParam.setUserNicName(userParam.getUserNicName());
-            certifyParam.setCertifyType("ACCOUNT");
-            certifyParam.setSendType("EMAIL");
-            certifyParam.setUserSeq(userParam.getUserSeq());
-
-            certifyService.saveCertify(certifyParam);
+            certifyService.saveCertify(new CertifyDTO.Save(userParam.getUserSeq(), userParam.getUserEmail(), userParam.getUserNicName(), "ACCOUNT", "EMAIL"));
 
         } catch (EmailDeliveryException e) {
             throw e;
-        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+        } catch (PessimisticLockingFailureException e) {
             // 거의 동시에 들어온 가입(버튼 두 번 누름, 같은 범위의 다른 새 이메일)은 MariaDB 갭 잠금 교착으로 한쪽이 되돌려진다.
             // 이메일이 정말 쓰였는지 단정할 수 없으므로 '이미 등록됨' 대신 다시 시도하라고 안내한다.
-            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.SIGNUP_BUSY_ERROR.getCode(), ResultCode.SIGNUP_BUSY_ERROR.getMessage()));
         } catch (EmailTakenException e) {
-            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
         } catch (NicknameTakenException e) {
-            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_NIC_NAME.getCode(), ResultCode.ALREADY_NIC_NAME.getMessage()));
         } catch (Exception e) {
             log.error("회원가입 처리에 실패했습니다.", e);

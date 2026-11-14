@@ -32,11 +32,9 @@
     <springProperty scope="context" name="LOG_LEVEL_SRC" source="config.logging.level.src" defaultValue="INFO" />
     <springProperty scope="context" name="LOG_LEVEL_ROOT" source="config.logging.level.root" defaultValue="INFO" />
     <springProperty scope="context" name="LOG_LEVEL_JDBC_BIND" source="config.logging.level.jdbc-bind" defaultValue="OFF" />
-    <springProperty scope="context" name="LOG_LEVEL_P6SPY" source="config.logging.level.p6spy" defaultValue="OFF" />
     <springProperty scope="context" name="LOG_LEVEL_HIBERNATE_SQL" source="config.logging.level.hibernate-sql" defaultValue="DEBUG" />
 
     <!-- pattern -->
-<!--    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss} %d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>-->
     <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss} %-4relative [%thread] %-5level %logger{35} - %msg%n"/>
 
     <!--
@@ -105,32 +103,15 @@
 
     <!-- Spring Loggers -->
     <!-- 화면 비우기를 방지하는 데 사용되는 타사 패키지의 로그 필터링 수준 -->
-    <logger name="net.sf.ehcache" level="WARN" />
     <logger name="org.jboss.logging" level="WARN" />
-    <logger name="com.alibaba" level="WARN" />
-    <logger name="druid.sql.Connection" level="WARN" />
     <logger name="org.hibernate" level="WARN" />
     <logger name="org.springframework" level="INFO" />
     <logger name="org.apache" level="WARN" />
-
-    <!-- log4jdbc 옵션 설정 -->
-    <!--
-        - jdbc.connection       : 커넥션 open close 이벤트를 로그로 남긴다.
-        - jdbc.sqlonly          : SQL문만을 로그로 남기며, PreparedStatement일 경우 관련된 argument 값으로 대체된 SQL문이 보여진다.
-        - jdbc.sqltiming        : SQL문과 해당 SQL을 실행시키는데 수행된 시간 정보(milliseconds)를 포함한다.
-        - jdbc.audit            : ResultSet을 제외한 모든 JDBC 호출 정보를 로그로 남긴다. 많은 양의 로그가 생성되므로 특별히 JDBC 문제를 추적해야 할 필요가 있는 경우를 제외하고는 사용을 권장하지 않는다.
-        - jdbc.resultset        : ResultSet을 포함한 모든 JDBC 호출 정보를 로그로 남기므로 매우 방대한 양의 로그가 생성된다.
-        - jdbc.resultsettable   : SQL 결과 조회된 데이터의 table을 로그로 남긴다.
-    -->
-    <logger name="jdbc" level="OFF" />
-
 
     <!-- Package Logger -->
     <logger name="com.toady" level="${LOG_LEVEL_SRC}" />
 
     <!-- Hibernate SQL 구성 -->
-    <logger name="p6spy" level="${LOG_LEVEL_P6SPY}" />
-
     <springProfile name="local">
         <appender name="BOUND_SQL" class="com.toady.web.core.logging.BoundSqlLoggingAppender" />
         <logger name="org.hibernate.SQL" level="${LOG_LEVEL_HIBERNATE_SQL}" additivity="false">
