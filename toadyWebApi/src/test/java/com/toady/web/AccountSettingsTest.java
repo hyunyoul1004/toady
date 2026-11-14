@@ -166,4 +166,35 @@ class AccountSettingsTest {
         assertFalse(second.get("hasMore").asBoolean());
         assertEquals(401, status(get("/api/v1/me/account/comments"), null));
     }
+
+    @Test void repliesToMyStoriesAreCountedAndListedWithANewMark() throws Exception {
+        String token = login("me@example.test");
+        long other = jdbc.queryForObject("SELECT USER_SEQ FROM TB_USER WHERE USER_EMAIL='other@example.test'", Long.class);
+        String insert = "INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,PARENT_COMMENT_SEQ,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('APT','H1','P1',?,?,0,0,?,?,CURRENT_TIMESTAMP)";
+        jdbc.update(insert, null, "내 이야기", "N", seq);
+        long mine = jdbc.queryForObject("SELECT MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT", Long.class);
+        jdbc.update(insert, mine, "첫 답글", "N", other);
+        long firstReply = jdbc.queryForObject("SELECT MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT", Long.class);
+        jdbc.update(insert, mine, "지운 답글", "Y", other);
+        jdbc.update(insert, mine, "내가 단 답글", "N", seq);
+        jdbc.update(insert, mine, "두 번째 답글", "N", other);
+
+        JsonNode all = call(get("/api/v1/me/account/replies"), token, null).get("data");
+        assertEquals(2, all.get("unread").asInt(), "처음에는 최근 7일 답글이 새 답글(지운 답글·내 답글 제외)");
+        assertEquals("두 번째 답글", all.get("items").get(0).get("content").asText(), "최신순");
+        assertEquals("다른사람", all.get("items").get(0).get("nickname").asText());
+        assertEquals("내 이야기", all.get("items").get(0).get("parentContent").asText());
+        assertEquals("apt/H1/P1", all.get("items").get(0).get("announcementId").asText());
+
+        JsonNode after = call(get("/api/v1/me/account/replies").param("after", String.valueOf(firstReply)), token, null).get("data");
+        assertEquals(1, after.get("unread").asInt(), "마지막으로 본 답글 뒤의 답글만 새 답글");
+        assertTrue(after.get("items").get(0).get("isNew").asBoolean());
+        assertFalse(after.get("items").get(1).get("isNew").asBoolean());
+
+        JsonNode stories = call(get("/api/v1/me/account/comments"), token, null).get("data").get("items");
+        JsonNode story = null;
+        for (JsonNode item : stories) if (item.get("commentSeq").asLong() == mine) story = item;
+        assertEquals(2, story.get("replyCount").asInt(), "내 이야기의 답글 수(지운 답글·내 답글 제외)");
+        assertEquals(401, status(get("/api/v1/me/account/replies"), null));
+    }
 }

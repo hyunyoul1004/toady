@@ -16,6 +16,7 @@ import TuneRounded from '@mui/icons-material/TuneRounded';
 import FormatListBulletedRounded from '@mui/icons-material/FormatListBulletedRounded';
 import MyLocationRounded from '@mui/icons-material/MyLocationRounded';
 import {useHistoryOverlay} from '@/hooks/useHistoryOverlay';
+import {trackAction} from '@/features/analytics/trackAction';
 import {ensureKakaoLoaded} from '@/config/ensureKakaoLoaded';
 import {koreaToday} from '@/features/planner/plannerUtils';
 import {useAnnouncementLocation} from '@/features/announcement/location/useAnnouncementLocation';
@@ -85,7 +86,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   },[fullscreen,mapHost,visible,mapError]);
   useEffect(()=>()=>clearTimeout(holdTimer.current),[]);
   useEffect(()=>{if(!fullscreen)setFsPanel(null);},[fullscreen]);
-  const openFullscreen=()=>{holdCenter();setFullscreenLayer(true);};
+  const openFullscreen=()=>{holdCenter();setFullscreenLayer(true);trackAction('map_tool','tool/map-fullscreen');};
   const closeFullscreen=()=>{holdCenter();setFullscreenLayer(false);};
   const toggleFsPanel=panel=>{holdCenter();setFsPanel(current=>(current===panel?null:panel));};
   // Esc: 열린 패널이 있으면 패널부터, 아니면 전체 화면을 닫는다(고른 단지는 그 단지 레이어가 따로 닫는다).
@@ -98,7 +99,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     return()=>window.removeEventListener('keydown',onKey);
   },[fullscreen]);
   /** 기준 위치(공고 위치 또는 직접 검색한 위치)로 지도를 되돌린다. */
+  // 검색으로 공고와 다른 지역으로 옮겼을 때 그 이름(지도 위에 '○○ 일대 보는 중'으로 계속 보여 준다).
+  const [viewing,setViewing]=useState(null);
   function recenter(){
+    setViewing(null);
     const map=mapRef.current,kakao=kakaoRef.current;if(!map || !kakao)return;
     const point=approx?{lat:approx.latitude,lng:approx.longitude}:result && Number.isFinite(result.latitude)?{lat:result.latitude,lng:result.longitude}:null;
     if(!point)return;
@@ -111,11 +115,19 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 거리 재기·반경의 기준: 지금 지도 가운데 있는 확정 위치(공고 위치 또는 직접 검색한 주소). 검색 후보 위치는 기준으로 쓰지 않는다.
   const origin=precise?{lat:result.latitude,lng:result.longitude}:null;
   const tools=useMapTools({mapRef,kakaoRef,containerRef:container,mapReady,origin});
+  // 기능 사용 측정: 거리를 실제로 잰 때(두 지점째)와 반경을 다 그린 때만 센다(켰다 끈 것은 세지 않음).
+  const measured=tools.points.length>=2,radiusDone=Boolean(tools.circle && !tools.circle.live);
+  useEffect(()=>{if(measured)trackAction('map_tool','tool/map-measure');},[measured]);
+  useEffect(()=>{if(radiusDone)trackAction('map_tool','tool/map-radius');},[radiusDone,tools.circle?.meters]);
   const selectRef=useRef(priceMap.select);selectRef.current=priceMap.select;
   const addPointRef=useRef(tools.addPoint);addPointRef.current=tools.addPoint;
   const addDistrictRef=useRef(priceMap.addDistrict);addDistrictRef.current=priceMap.addDistrict;
 
-  useEffect(()=>{setManualResult(null);setShowCandidate(false);setSearchMessage('');setSearchInfo('');setText('');generation.current++;},[detail.subscriptSeq]);
+  useEffect(()=>{setManualResult(null);setShowCandidate(false);setSearchMessage('');setSearchInfo('');setText('');setViewing(null);generation.current++;},[detail.subscriptSeq]);
+  // 직접 검색한 주소로 바뀌면(지도를 다시 만듦) '보는 중' 표시는 그 위치 안내(직접 검색한 위치)로 대신한다.
+  useEffect(()=>{setViewing(null);},[manualResult]);
+  // 짧은 안내(검색 결과 등)는 몇 초 뒤 저절로 닫는다. 경고(찾지 못함)는 닫을 때까지 둔다.
+  useEffect(()=>{if(!searchInfo)return undefined;const timer=setTimeout(()=>setSearchInfo(''),4000);return()=>clearTimeout(timer);},[searchInfo]);
   useEffect(()=>{
     let active=true,map,observer,kakaoApi;const listeners=[],areaShapes=[];
     setMapError('');
@@ -374,7 +386,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         return suggestAddresses(kakao.maps,value,{center,limit:5});
       }).then(items=>{if(active)setRemote({text:value,items,loading:false});})
         .catch(()=>{if(active)setRemote({text:value,items:[],loading:false});});
-    },300);
+    },350);
     return()=>{active=false;clearTimeout(timer);};
   },[text]);
   const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel}):[],[showPrices,priceMap.complexes,priceMap.sales,text]);
@@ -386,6 +398,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   /** 자동완성 후보를 고르면: 단지·분양은 그 말풍선을 고르고, 번지까지 있는 주소는 위치로 확정, 나머지는 그 일대로 지도만 옮긴다. */
   function pickSuggestion(option){
     if(!option || typeof option==='string')return;
+    trackAction('map_tool','tool/map-suggest');
     generation.current++;setSearching(false);setSearchMessage('');setSearchInfo('');
     if(option.kind==='address' && option.exact){runSearch(option.label);return;}
     setText('');if(showPrices)priceMap.setFilters({query:''});
@@ -396,10 +409,11 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       holdCenter();priceMap.select(option.key);
       return;
     }
-    moveTo({latitude:option.lat,longitude:option.lng,level:option.kind==='place'?4:5});
-    setSearchInfo(`'${option.label}' 일대로 지도를 옮겼어요`);
+    moveTo({latitude:option.lat,longitude:option.lng,level:option.kind==='place'?4:5,name:option.label});
   }
-  function search(e) {e.preventDefault();runSearch(text.trim());}
+  // '검색' 단추. 엔터는 자동완성 onChange가 먼저 처리하므로 바로 뒤의 폼 제출은 건너뛴다(두 번 검색하지 않게).
+  const enterAt=useRef(0);
+  function search(e) {e.preventDefault();if(Date.now()-enterAt.current<500)return;if(text.trim())trackAction('map_tool','tool/map-search');runSearch(text.trim());}
   async function runSearch(value) {
     if(!value)return;
     // 단지 이름으로 걸러진 단지가 있으면 가장 위 단지를 고른다.
@@ -417,7 +431,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         // 번지까지 맞는 주소가 아니면(동·도로명·지역·장소 이름) 위치를 확정하지 않고 그 일대로 지도만 옮긴다.
         const area=await searchArea(kakao.maps,value,regionPrefix);
         if(request!==generation.current)return;
-        if(area && moveTo(area)){setText('');setSearchInfo(`'${area.name}' 일대로 지도를 옮겼어요`);if(showPrices)priceMap.setFilters({query:''});}
+        if(area && moveTo(area)){setText('');if(showPrices)priceMap.setFilters({query:''});}
         else setSearchMessage(`'${value}'을(를) 찾지 못했어요. 동·도로명·지역 이름이나 번지까지 입력해 보세요(예: ${addressExample}).`);
       }
       // 공고의 확정 위치와 같은 곳(약 20m 안)이면 '직접 검색한 위치'로 바꾸지 않고 공고 위치 그대로 둔다.
@@ -437,12 +451,12 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   /** 확정 위치를 바꾸지 않고 지도 화면만 옮긴다(가격 지도는 멈춘 뒤 그 지역 거래를 불러온다). */
   function moveTo(area){
     const map=mapRef.current,kakao=kakaoRef.current;if(!map || !kakao)return false;
-    priceMap.select(null);
+    priceMap.select(null);setViewing(area.name || null);
     map.setLevel(area.level);
     map.setCenter(new kakao.maps.LatLng(area.latitude,area.longitude));
     return true;
   }
-  function backToAnnouncement() {generation.current++;setManualResult(null);setSearchMessage('');setSearching(false);setText('');if(showPrices)priceMap.setFilters({query:''});}
+  function backToAnnouncement() {setViewing(null);generation.current++;setManualResult(null);setSearchMessage('');setSearching(false);setText('');if(showPrices)priceMap.setFilters({query:''});}
 
   // 시·군·구가 없는 값(예: 공급지역명 '경기')은 주소가 아니다. 오피스텔·도시형 일부는 청약홈 자료에 주소가 없어 이렇게 온다.
   const rawAddress=detail.hssplyAdres || detail.supplyLocation || '';
@@ -460,7 +474,11 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       loading={remote.loading} blurOnSelect selectOnFocus={false} clearText="검색어 지우기"
       slotProps={{popper:{className:'pm-suggest-popper'},listbox:{className:'pm-suggest-list'}}}
       onInputChange={(_,value,reason)=>{if(reason==='input')changeText(value);else if(reason==='clear')clearText();}}
-      onChange={(_,option)=>pickSuggestion(option)}
+      onChange={(_,option)=>{
+        // 후보를 고르지 않고 엔터: 자동완성이 입력값(문자열)을 넘겨 준다. 폼 제출 대신 여기서 검색한다.
+        if(typeof option==='string'){enterAt.current=Date.now();if(option.trim()){trackAction('map_tool','tool/map-search');runSearch(option.trim());}return;}
+        pickSuggestion(option);
+      }}
       renderOption={({key,...props},option)=><li key={key} {...props}>
         <span className={`pm-suggest-icon is-${option.kind}`}>{kindIcon[option.kind]}</span>
         <span className="pm-suggest-text"><b>{option.label}</b>{option.detail && <small>{option.detail}</small>}</span>
@@ -505,8 +523,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       <div key="canvas" ref={container} className="price-map-canvas" role="region" aria-label={precise?'공급 주소 기준 지도':approx?'주소의 법정동 일대 지도(추정, 부지 미확정)':'미확인 위치 검색 후보 지도'}/>
       {/* 처음 보는 지역은 국토부 실거래 조회에 몇 초 걸려 지도가 비어 보이므로, 지도 위에 받는 중임을 표시한다. */}
       {mapReady>0 && showPrices && (priceMap.query.isLoading || priceMap.loadingOthers) && <Box className="pm-map-loading" role="status" aria-live="polite"><CircularProgress size={14} thickness={5}/>{priceMap.query.isLoading?'주변 실거래를 불러오는 중…':'옮긴 지역 실거래를 불러오는 중…'}</Box>}
+      {mapReady>0 && showPrices && !priceMap.query.isLoading && !priceMap.loadingOthers && (priceMap.waitingOthers || priceMap.query.data?.status==='UNAVAILABLE') && <Box className="pm-map-loading is-waiting" role="status" aria-live="polite">실거래 제공처가 잠시 바빠요 · 곧 자동으로 다시 불러와요</Box>}
       {mapReady>0 && <MapToolRail tools={tools} onZoom={zoomBy}/>}
-      {mapReady>0 && <MapToolbar tools={tools} rows={showPrices?priceMap.rows:[]}>
+      {viewing && <div className="pm-viewing" role="status"><span><b>{viewing}</b> 일대 보는 중</span><button type="button" onClick={recenter}><MyLocationRounded fontSize="inherit"/>{manualResult?'검색한 위치로':'공고 위치로'}</button></div>}
+      {mapReady>0 && <MapToolbar tools={tools} rows={showPrices?priceMap.rows:[]} supply={showPrices?supply:null}>
         {showPrices && <PriceModeToggle filters={priceMap.filters} setFilters={priceMap.setFilters}/>}
         {!fullscreen && <button type="button" className="pm-fs-open" onClick={openFullscreen} aria-label="지도 전체 화면으로 보기"><OpenInFullRounded fontSize="inherit"/>전체 화면</button>}
       </MapToolbar>}
@@ -554,7 +574,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       {searchMessage && <Alert severity="warning" sx={{mb:1}}>{searchMessage}</Alert>}{searchInfo && <Alert severity="info" sx={{mb:1}} onClose={()=>setSearchInfo('')}>{searchInfo}</Alert>}
       {showPrices && <>
         {unsupported?<Alert severity="info" sx={{mt:1}}>이 지역은 아직 주변 실거래 조회를 지원하지 않아요.</Alert>
-          :priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</Alert>
+          :priceError?<Alert severity="warning" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>priceMap.query.refetch()}>다시 시도</Button>}>주변 실거래를 아직 불러오지 못했어요. 잠시 뒤 자동으로 다시 불러오고, 바로 다시 시도할 수도 있어요.</Alert>
           :<PriceMapStatus grouping={tier} approx={Boolean(approx)} nearby={nearby.data?.status==='READY' && nearby.data.places.length>0} query={priceMap.query} rows={priceMap.rows} outside={priceMap.outside} sales={priceMap.sales} unlocatedSales={priceMap.unlocatedSales} onOpenSale={openSale} filters={priceMap.filters} pending={priceMap.pending} districtCount={priceMap.districtCount} loadingOthers={priceMap.loadingOthers} zoomedOut={zoomedOut} grouped={tier!=='single'?tier:''}/>}
         {priceMap.query.data?.status==='READY' && !priceMap.rows.length && <Alert severity="info" sx={{mt:1}} action={<Button color="inherit" size="small" onClick={()=>{clearText();priceMap.setFilters({areaMin:0,areaMax:165,priceMin:0,priceMax:400000,age:'all',query:''});}}>조건 풀기</Button>}>{priceMap.outside.length?`조건에 맞는 거래가 없어요. 거래가 있는 단지 ${priceMap.outside.length.toLocaleString('ko-KR')}곳은 지도에 회색 점으로 보여요. 조건을 풀어 보세요.`:'조건에 맞는 거래가 없어요. 조건을 풀어 보세요.'}</Alert>}
         {priceMap.query.data?.status==='EMPTY' && <Alert severity="info" sx={{mt:1}}>이 기간에 신고된 아파트 매매 거래가 없어요. 기간을 늘려 보세요.</Alert>}

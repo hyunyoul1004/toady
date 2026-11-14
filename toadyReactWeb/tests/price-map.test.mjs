@@ -356,3 +356,21 @@ test('map search suggestions rank dongs, sales and complexes and skip unlocated 
   assert.deepEqual(suggestPlaces(complexes, sales, '  '), []);
   assert.equal(suggestPlaces(complexes, sales, '작전', { limit: 2 }).length, 2);
 });
+
+test('radius summary compares the median price per pyeong inside the circle with the supply price', async () => {
+  const { radiusSummary } = await import('../src/features/announcement/location/priceMapRules.js');
+  const center = { lat: 37.5, lng: 127 };
+  const row = (lat, latest, pyeong) => ({ lat, lng: 127, rep: { latest, pyeong } });
+  // 약 111m·222m·333m 떨어진 단지와 1km 넘게 떨어진 단지
+  const rows = [row(37.501, 70000, 2000), row(37.502, 80000, 2500), row(37.503, 90000, 3000), row(37.51, 200000, 9000), { lat: 37.5005, lng: 127, rep: null }];
+  const summary = radiusSummary(rows, { center, meters: 400 }, { pyeong: 2750 });
+  assert.equal(summary.count, 3, '원 밖과 조건 밖(rep 없음) 단지는 세지 않는다');
+  assert.equal(summary.price, 80000);
+  assert.equal(summary.pyeong, 2500);
+  assert.equal(summary.diff, 10, '분양가가 반경 중간 평당가보다 10% 높다');
+  assert.equal(summary.year, null, '준공 연도를 모르면 비워 둔다');
+  assert.equal(radiusSummary(rows.map((item, index) => ({ ...item, buildYear: String(1990 + index * 10) })), { center, meters: 400 }).year, 2000);
+  assert.equal(radiusSummary(rows, { center, meters: 400 }, null).diff, null, '분양가를 모르면 비교하지 않는다');
+  assert.deepEqual(radiusSummary(rows, { center, meters: 50 }), { count: 0 });
+  assert.deepEqual(radiusSummary(rows, null), { count: 0 });
+});

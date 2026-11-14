@@ -521,3 +521,19 @@ export function suggestPlaces(complexes = [], sales = [], text = '', { limit = 6
     .slice(0, limit)
     .map(({ rank, ...item }) => item);
 }
+
+/**
+ * 반경 안 시세 요약: 원 안 거래 단지 수, 대표 거래가·평당가의 중간값, 이 공고 분양가와의 평당가 차이(%).
+ * 면적이 다른 단지를 함께 보므로 분양가 비교는 평당가로 한다. 단지가 없으면 count 0.
+ */
+export function radiusSummary(rows = [], circle = null, supply = null) {
+  if (!circle?.center || !(circle.meters > 0)) return { count: 0 };
+  const inside = rows.filter(row => Number.isFinite(row.lat) && Number.isFinite(row.lng) && row.rep && distanceMeters(circle.center, row) <= circle.meters);
+  if (!inside.length) return { count: 0 };
+  const price = median(inside.map(row => row.rep.latest).filter(value => value > 0));
+  const pyeong = median(inside.map(row => row.rep.pyeong).filter(value => value > 0));
+  const diff = supply?.pyeong > 0 && pyeong > 0 ? Math.round((supply.pyeong - pyeong) / pyeong * 100) : null;
+  // 오래된 단지가 많으면 신축 분양가와 차이가 크게 보이므로 비교한 단지들의 중간 준공 연도를 함께 준다.
+  const years = inside.map(row => Number(row.buildYear)).filter(value => value >= 1950);
+  return { count: inside.length, price, pyeong, diff, year: years.length ? median(years) : null };
+}

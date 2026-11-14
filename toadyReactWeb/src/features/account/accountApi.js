@@ -15,6 +15,8 @@ export const accountApi = {
   setProfileIcon: icon => apiClient.patch('/api/v1/me/account/profile-icon', { icon }),
   /** 내가 쓴 이야기 최신순 10개씩 */
   myComments: page => apiClient.get('/api/v1/me/account/comments', { page }).then(res => res?.data || { items: [], total: 0, hasMore: false }),
+  /** 내 이야기에 달린 답글 최신 20개와 새 답글 수(after: 이 기기에서 마지막으로 본 답글 번호) */
+  replies: after => apiClient.get('/api/v1/me/account/replies', after ? { after } : {}).then(res => res?.data || { unread: 0, latestSeq: null, items: [] }),
   withdraw: (password, phrase) => apiClient.post('/api/v1/me/account/withdraw', { password, phrase }),
   disableFavoriteEmails: () => apiClient.post('/api/v1/me/favorites/disable-emails', {})
 };

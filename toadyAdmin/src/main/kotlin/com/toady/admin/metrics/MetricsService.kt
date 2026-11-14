@@ -80,6 +80,15 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		rows.map { (id, views, people) -> Ranked(id, names[id]?.takeIf { it.isNotBlank() } ?: id, views, people, people * 100 / max) }
 	} catch (missing: DataAccessException) { emptyList() }
 
+	/** 최근 days일 지도 기능 사용(위치 탭): 기능별 횟수와 사람 수. 측정 이름은 웹 trackAction('map_tool', 'tool/…')과 같다. */
+	fun mapTools(days: Int = 7, today: LocalDate = Kst.today()): List<Ranked> = try {
+		val rows = jdbc.query("""SELECT SUBJECT_ID, COUNT(*) AS USES, COUNT(DISTINCT VISITOR_ID) AS PEOPLE FROM TB_USAGE_EVENT
+			WHERE ACTION_NAME='map_tool' AND VISIT_DATE >= ?${exclusions.clause()} GROUP BY SUBJECT_ID ORDER BY USES DESC""".trimIndent(),
+			{ r, _ -> Triple(r.getString(1), r.getLong(2), r.getLong(3)) }, today.minusDays((days - 1).toLong()))
+		val max = maxOf(1L, rows.maxOfOrNull { it.second } ?: 1L)
+		rows.map { (subject, uses, people) -> Ranked(subject, MAP_TOOL_NAMES[subject] ?: subject, uses, people, uses * 100 / max) }
+	} catch (missing: DataAccessException) { emptyList() }
+
 	/** 최근 days일 화면별 페이지뷰. */
 	fun topPages(days: Int = 7, today: LocalDate = Kst.today()): List<Ranked> = try {
 		val rows = jdbc.query("""SELECT PAGE_PATH, COUNT(*) AS VIEWS, COUNT(DISTINCT VISITOR_ID) AS PEOPLE FROM TB_PAGE_VIEW
@@ -171,6 +180,8 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		/** 재방문 판정에 보는 이전 기간(주). TB_PAGE_VIEW 보관 90일 안에서 모든 주가 같은 기간을 보게 한다. */
 		const val RETURN_WEEKS = 4
 		fun weekStart(day: LocalDate): LocalDate = day.with(DayOfWeek.MONDAY)
+		val MAP_TOOL_NAMES = mapOf("tool/map-fullscreen" to "지도 전체 화면", "tool/map-measure" to "거리 재기", "tool/map-radius" to "반경 그리기",
+			"tool/map-search" to "지도 검색", "tool/map-suggest" to "검색 자동완성 선택")
 		val PAGE_NAMES = mapOf("/" to "청약 캘린더", "/announcements" to "공고 상세", "/match" to "맞춤 청약", "/match/zupzup" to "무순위·줍줍", "/score" to "가점 계산기",
 			"/my" to "나의 청약", "/faq" to "자주 묻는 질문", "/this-week" to "이번 주 청약", "/regions" to "지역별 청약", "/login" to "로그인", "/certify" to "이메일 인증",
 			"/showSubscriptDetail" to "공고 상세(이전 주소)")

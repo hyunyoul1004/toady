@@ -45,6 +45,7 @@ class AdminController(
 		model.addAttribute("report", metrics.report())
 		model.addAttribute("topAnnouncements", metrics.topAnnouncements())
 		model.addAttribute("topPages", metrics.topPages())
+		model.addAttribute("mapTools", metrics.mapTools())
 		model.addAttribute("signups", metrics.recentSignups())
 		model.addAttribute("recentComments", comments.search(null, "visible", 0, 6).items)
 		model.addAttribute("exclusions", exclusions.list())

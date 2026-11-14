@@ -212,15 +212,16 @@ public class NeighborhoodResearchService {
         long pausedUntil=molitPausedUntil;
         if(System.currentTimeMillis()<pausedUntil) throw new ProviderPaused();
         byte[] body;
-        try { body=transport.get(uri,Map.of()); }
+        try { body=molitGet(uri,deadline); }
         catch(Exception first) {
             // 429(요청 과다)·4xx는 다시 불러도 같고 한도를 더 쓰므로 재시도하지 않는다.
             boolean refused=first instanceof ResearchTransport.ProviderStatus status && !status.retryable();
             if(first instanceof ResearchTransport.ProviderStatus status && Set.of(401,403,429).contains(status.status()))
-                pauseMolit(status.status()==429?Duration.ofMinutes(10):Duration.ofHours(1),"HTTP "+status.status());
+                // 429는 초당 호출 제한이라 잠깐(1분)만 쉬면 풀린다. 오래 멈추면 그동안 새로 연 지역의 시세가 모두 비어 보인다.
+                pauseMolit(status.status()==429?Duration.ofMinutes(1):Duration.ofHours(1),"HTTP "+status.status());
             if(refused || first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
-            body=transport.get(uri,Map.of());
+            body=molitGet(uri,deadline);
         }
         try { return parseTrades(body); }
         catch(ProviderRejected rejected) {
@@ -231,6 +232,33 @@ public class NeighborhoodResearchService {
             else if(Set.of("20","30","31","32").contains(rejected.code)) pauseMolit(Duration.ofHours(1),"resultCode "+rejected.code);
             throw rejected;
         }
+    }
+    /**
+     * 국토부 호출 속도 조절: 동시에 MOLIT_SLOTS개까지, 호출 시작 간격 MOLIT_SPACING_MS 이상.
+     * 지도를 옮기면 여러 시·군·구 × 12개월을 한꺼번에 부르게 되는데, 몰아서 부르면 제공처가 429(초당 한도)로 거절한다.
+     * 응답 시간 한도 안에 차례가 오지 않으면 DeadlineExceeded로 돌려, 받은 달까지만 응답하고 화면이 이어 부르게 한다.
+     */
+    static final int MOLIT_SLOTS=3;
+    static volatile long MOLIT_SPACING_MS=120;
+    private final java.util.concurrent.Semaphore molitSlots=new java.util.concurrent.Semaphore(MOLIT_SLOTS,true);
+    private final Object molitPace=new Object();
+    private long nextMolitStart;
+    private byte[] molitGet(URI uri,long deadline) throws Exception {
+        long wait=deadline-System.nanoTime();
+        if(wait<=0 || !molitSlots.tryAcquire(wait,TimeUnit.NANOSECONDS)) throw new DeadlineExceeded();
+        try {
+            long sleep;
+            synchronized(molitPace) {
+                long now=System.nanoTime(),start=Math.max(now,nextMolitStart);
+                nextMolitStart=start+TimeUnit.MILLISECONDS.toNanos(MOLIT_SPACING_MS);
+                sleep=start-now;
+            }
+            if(sleep>0) {
+                if(System.nanoTime()+sleep>deadline) throw new DeadlineExceeded();
+                TimeUnit.NANOSECONDS.sleep(sleep);
+            }
+            return transport.get(uri,Map.of());
+        } finally { molitSlots.release(); }
     }
     /**
      * 국토부가 한도 초과·인증 오류로 거절하면 모든 지역·달의 호출을 잠시 멈춘다(차단기). 지역·달마다 따로 실패를

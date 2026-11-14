@@ -30,7 +30,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
-import { useMyProfileIcon } from '@/features/account/useMyAccount';
+import { useMyProfileIcon, useMyReplies } from '@/features/account/useMyAccount';
 import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
@@ -51,6 +51,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
 
   const nickname = user?.userNicName || user?.sub || '회원';
   const myProfileIcon = useMyProfileIcon();
+  const { unread: replyUnread } = useMyReplies();
 
   const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
   /**
@@ -257,6 +258,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
               sx={{ fontWeight: 700, borderRadius: 1.5, mt: 0.5 }}
             >
               내 정보
+              {replyUnread > 0 && <Box component="span" sx={{ ml: 0.75, px: 0.75, minWidth: 20, borderRadius: 999, bgcolor: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: '18px' }} aria-label={`새 답글 ${replyUnread}개`}>{replyUnread > 99 ? '99+' : replyUnread}</Box>}
             </Button>
             <Button
               fullWidth

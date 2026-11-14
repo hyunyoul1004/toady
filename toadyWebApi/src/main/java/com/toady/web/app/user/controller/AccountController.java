@@ -52,6 +52,13 @@ public class AccountController {
                 .body(ResData.of(service.myComments(user.getUserSeq(), page), "SUCCESS", "성공"));
     }
 
+    /** 내 이야기에 달린 답글(최신 20개)과 새 답글 수. after: 이 기기에서 마지막으로 본 답글 번호 */
+    @GetMapping("/replies")
+    public ResponseEntity<ResData<?>> replies(@AuthenticationPrincipal CustomUserDetails user, @RequestParam(required = false) Long after) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ResData.of(service.replies(user.getUserSeq(), after), "SUCCESS", "성공"));
+    }
+
     @PostMapping("/password")
     public ResponseEntity<ResData<?>> password(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody PasswordChange request) {
         return respond(service.changePassword(user.getUserSeq(), request.currentPassword(), request.newPassword(), request.newPasswordConfirm()));

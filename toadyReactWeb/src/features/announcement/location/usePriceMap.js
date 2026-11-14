@@ -88,13 +88,14 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
       queryKey: ['complexPrices', item.bcode.slice(0, 5), item.region || '', filters.months],
       queryFn: () => apiClient.get('/api/v1/research/complexes', { bcode: item.bcode, region: item.region, months: filters.months }),
       enabled: ready,
-      // 제공처 일시 실패(UNAVAILABLE)는 캐시하지 않고 15초 간격으로 몇 번만 다시 묻는다(다시 시도 단추도 그대로 둔다).
+      // 제공처 일시 실패(UNAVAILABLE)는 캐시하지 않고 20초 간격으로 8번(약 3분)까지 다시 묻는다(다시 시도 단추도 그대로 둔다).
+      // 서버는 초당 한도(429)를 받으면 1분 쉬므로, 그 뒤에 저절로 채워지도록 그보다 길게 기다린다.
       staleTime: q => (q.state.data?.status === 'UNAVAILABLE' ? 0 : 600000),
       retry: false,
       placeholderData: keepPreviousData,
       refetchInterval: q => {
         const data = q.state.data;
-        if (data?.status === 'UNAVAILABLE') return q.state.dataUpdateCount < 4 ? 15000 : false;
+        if (data?.status === 'UNAVAILABLE') return q.state.dataUpdateCount < 8 ? 20000 : false;
         return data && (data.pending > 0 || data.partial) && q.state.dataUpdateCount < MAX_FOLLOW_UPS ? 4000 : false;
       }
     }))
@@ -126,6 +127,8 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
   const siteType = String(currentId).split('/')[0], siteYear = Number(koreaToday().slice(0, 4));
   const siteComplex = useMemo(() => complexes.find(complex => isSameComplex(complex, location, { type: siteType, year: siteYear })) || null, [complexes, location?.address, location?.dong, siteType, siteYear]);
   const loadingOthers = others.some(item => item.isFetching);
+  // 옮긴 지역 중 제공처가 잠시 응답하지 않은 곳이 있으면(자동으로 다시 부르는 중) 지도에 짧게 알린다.
+  const waitingOthers = others.some(item => item.data?.status === 'UNAVAILABLE' && !item.isFetching);
   const pending = queries.reduce((sum, item) => sum + (item.data?.pending || 0), 0);
 
   const origin = location?.status === 'ADDRESS' && Number.isFinite(location.latitude) ? { lat: location.latitude, lng: location.longitude } : null;
@@ -137,5 +140,5 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
   const selected = selectedKey && !selectedSale ? complexes.find(item => item.key === selectedKey) || null : null;
   const selectedRow = selected ? rows.find(row => row.key === selected.key) || outside.find(row => row.key === selected.key) || { ...selected, rep: null, distance: Infinity } : null;
   return { capabilities, available: Boolean(bcode), ready, query, filters, setFilters, rows, outside, origin, year, selected: selectedRow, select: setSelectedKey,
-    addDistrict, districtCount: districts.length, unlocatedSales, districtNames, siteComplex, areaDefault, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
+    addDistrict, districtCount: districts.length, waitingOthers, unlocatedSales, districtNames, siteComplex, areaDefault, loadingOthers, pending, complexes, sales, selectedSale, selectedKey };
 }

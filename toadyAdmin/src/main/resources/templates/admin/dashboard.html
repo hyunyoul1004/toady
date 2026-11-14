@@ -30,6 +30,11 @@
             <ul class="rank" th:unless="${#lists.isEmpty(topPages)}"><li th:each="p : ${topPages}">
                 <span class="name" th:text="${p.label}" th:title="${p.key}"></span><span class="bar"><i th:style="${'width:' + p.percent + '%'}"></i></span><em th:text="${p.count + '회 · ' + p.visitors + '명'}"></em></li></ul>
         </section>
+        <section class="panel"><div class="panel-head"><h2>지도 기능 사용 · 7일</h2><span class="panel-note">위치 탭</span></div>
+            <div class="empty" th:if="${#lists.isEmpty(mapTools)}"><p>최근 7일 지도 기능 사용이 없습니다.</p></div>
+            <ul class="rank" th:unless="${#lists.isEmpty(mapTools)}"><li th:each="t : ${mapTools}">
+                <span class="name" th:text="${t.label}" th:title="${t.key}"></span><span class="bar"><i th:style="${'width:' + t.percent + '%'}"></i></span><em th:text="${t.count + '회 · ' + t.visitors + '명'}"></em></li></ul>
+        </section>
         <section class="panel"><div class="panel-head"><h2>최근 가입</h2><a th:href="@{/admin/members}">회원 전체 →</a></div>
             <ul class="mini"><li th:each="m : ${signups}"><a th:href="@{/admin/members/{seq}(seq=${m.seq})}" th:text="${m.nickname + ' · ' + m.email}"></a>
                 <small th:text="${(m.certified ? '' : '미인증 · ') + (m.createdAt != null ? #temporals.format(m.createdAt, 'MM.dd HH:mm') : '')}"></small></li></ul>

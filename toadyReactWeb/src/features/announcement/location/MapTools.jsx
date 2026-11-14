@@ -5,7 +5,7 @@ import RemoveRounded from '@mui/icons-material/RemoveRounded';
 import StraightenRounded from '@mui/icons-material/StraightenRounded';
 import RadioButtonUncheckedRounded from '@mui/icons-material/RadioButtonUncheckedRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
-import { distanceMeters, measureText, northOf, travelMinutes } from './priceMapRules';
+import { distanceMeters, measureText, northOf, radiusSummary, shortPrice, travelMinutes } from './priceMapRules';
 import './priceMap.css';
 
 /** 반경으로 인정하는 가장 작은 크기(m). 이보다 짧게 끌면 '조금 더 끌어 주세요'로 안내한다. */
@@ -249,12 +249,10 @@ export function MapToolRail({ tools, onZoom }) {
 }
 
 /** 지도 왼쪽 위: 표시 방식 등 버튼과 거리 재기·반경 그리기의 결과·안내 카드. 사용 중에는 안내·결과 카드를 보여 준다. rows가 있으면 원 안의 단지 수를 센다. */
-export function MapToolbar({ tools, rows = [], children }) {
+export function MapToolbar({ tools, rows = [], supply = null, children }) {
   const { measuring, points, total, drawing, circle, drawHint } = tools;
   const time = travelMinutes(total);
-  const inside = useMemo(() => (circle && !circle.live
-    ? rows.filter(row => Number.isFinite(row.lat) && Number.isFinite(row.lng) && distanceMeters(circle.center, row) <= circle.meters).length
-    : 0), [circle, rows]);
+  const summary = useMemo(() => (circle && !circle.live ? radiusSummary(rows, circle, supply) : { count: 0 }), [circle, rows, supply?.pyeong]);
   return <Box className="pm-toolbar" onClick={event => event.stopPropagation()}>
     {children && <Box className="pm-toolbar-buttons">{children}</Box>}
 
@@ -283,11 +281,21 @@ export function MapToolbar({ tools, rows = [], children }) {
         : <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0 }}>{drawHint}</Typography>}
     </Box>}
 
-    {/* 반경을 다 그린 뒤: 반지름·원 안 단지 수와 지우기 */}
-    {!drawing && circle && !circle.live && <Box className="pm-measure-card is-compact" role="status">
-      <RadioButtonUncheckedRounded className="pm-card-icon is-radius" fontSize="small" aria-hidden="true" />
-      <span>반경 <b className="is-radius">{measureText(circle.meters)}</b>{rows.length ? ` · 안의 단지 ${inside.toLocaleString('ko-KR')}곳` : ''}</span>
-      <Button size="small" variant="outlined" color="inherit" startIcon={<CloseRounded />} onClick={tools.clearCircle} className="pm-card-clear" aria-label="반경 지우기">지우기</Button>
+    {/* 반경을 다 그린 뒤: 원 안 시세 요약과 이 공고 분양가 비교, 지우기 */}
+    {!drawing && circle && !circle.live && <Box className="pm-measure-card pm-radius-card" role="status">
+      <Box className="pm-radius-head">
+        <RadioButtonUncheckedRounded className="pm-card-icon is-radius" fontSize="small" aria-hidden="true" />
+        <span>반경 <b className="is-radius">{measureText(circle.meters)}</b>{rows.length ? ` · 거래 단지 ${summary.count.toLocaleString('ko-KR')}곳` : ''}</span>
+        <Button size="small" variant="outlined" color="inherit" startIcon={<CloseRounded />} onClick={tools.clearCircle} className="pm-card-clear" aria-label="반경 지우기">지우기</Button>
+      </Box>
+      {rows.length > 0 && (summary.count > 0
+        ? <>
+          <Typography variant="caption" component="p" className="pm-radius-line">중간 거래가 <b>{shortPrice(summary.price)}</b> · 평당 <b>{Math.round(summary.pyeong).toLocaleString('ko-KR')}만</b>{summary.year ? <> · 중간 준공 <b>{summary.year}년</b></> : null}</Typography>
+          {summary.diff != null && <Typography variant="caption" component="p" className={`pm-radius-compare ${summary.diff > 0 ? 'is-up' : summary.diff < 0 ? 'is-down' : ''}`}>
+            이 공고 분양가({supply.area}㎡ 평당 {Math.round(supply.pyeong).toLocaleString('ko-KR')}만)는 {summary.diff === 0 ? '반경 시세와 비슷해요' : `반경 시세보다 ${Math.abs(summary.diff)}% ${summary.diff > 0 ? '높아요' : '낮아요'}`}
+          </Typography>}
+        </>
+        : <Typography variant="caption" color="text.secondary" component="p" className="pm-radius-line">지금 조건에 맞는 거래 단지가 원 안에 없어요. 원을 넓히거나 조건을 풀어 보세요.</Typography>)}
     </Box>}
   </Box>;
 }

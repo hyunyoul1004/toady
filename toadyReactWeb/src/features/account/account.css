@@ -85,3 +85,13 @@ button.account-stat.is-open .account-chevron{transform:rotate(90deg);color:#60a5
 .account-story small{color:var(--acc-muted);font-size:12px}
 .account-story-go{position:absolute;right:4px;top:50%;transform:translateY(-50%);color:#cbd5e1}
 .account-stories-empty{padding:12px 0 4px}
+/* 받은 답글 */
+.account-replies h2{display:flex;align-items:center;gap:6px}
+.account-new-count{margin-left:4px;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:800}
+.account-reply{flex-direction:row;align-items:center;gap:10px;padding-left:8px}
+.account-reply-body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.account-reply.is-new{background:#fff7ed}
+.account-reply .account-story-content b{color:#0f172a;font-weight:800}
+.account-new-dot{margin-left:6px;padding:1px 6px;border-radius:999px;background:#ef4444;color:#fff;font-style:normal;font-size:10.5px;font-weight:800;vertical-align:1px}
+.account-reply-count{color:#2563eb;font-weight:700}
+.account-reply-count.is-new{color:#dc2626}

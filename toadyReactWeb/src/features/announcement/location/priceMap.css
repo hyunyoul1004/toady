@@ -347,3 +347,28 @@
 @media (max-width:600px){
   .price-map-wrap:not(.is-fullscreen) .pm-tool-rail{top:auto;bottom:76px}
 }
+/* 반경 결과: 원 안 시세 요약과 분양가 비교 */
+.pm-radius-card{width:300px;padding:6px 6px 8px 10px}
+.pm-radius-head{display:flex;align-items:center;gap:6px;font-size:13px;color:#334155}
+.pm-radius-head>span{flex:1;min-width:0}
+.pm-radius-head b.is-radius{color:#1d4ed8;font-size:15px}
+.pm-radius-line{margin:4px 0 0 28px !important;color:#334155;font-size:12.5px !important}
+.pm-radius-line b{color:#0f172a}
+.pm-radius-compare{margin:4px 0 0 28px !important;padding:4px 8px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:12px !important;font-weight:700 !important}
+.pm-radius-compare.is-up{background:#fef2f2;color:#b91c1c}
+.pm-radius-compare.is-down{background:#ecfdf5;color:#047857}
+@media (max-width:600px){.pm-radius-card{width:auto;max-width:100%}}
+/* 검색으로 다른 지역을 볼 때 계속 보이는 표시와 돌아가기 */
+.pm-viewing{position:absolute;left:10px;bottom:34px;z-index:11;display:flex;align-items:center;gap:6px;max-width:calc(100% - 150px);padding:4px 4px 4px 12px;border-radius:999px;background:#1e293b;color:#fff;font-size:12.5px;box-shadow:0 2px 10px rgba(15,23,42,.25)}
+.pm-viewing span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-viewing b{font-weight:800}
+.pm-viewing button{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;min-height:30px;padding:0 10px;border:0;border-radius:999px;background:#fff;color:#1e293b;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.pm-viewing button svg{font-size:15px;color:#2563eb}
+.price-map-wrap.is-fullscreen .pm-viewing{left:12px;bottom:58px}
+@media (max-width:760px){
+  /* 모바일 전체 화면: 안내 문구는 위쪽 도구 줄을 가리지 않게 아래(개수 표시 위)에 띄운다 */
+  .price-map-wrap.is-fullscreen .pm-fs-toast{top:auto;bottom:60px}
+  .price-map-wrap.is-fullscreen .pm-viewing~.pm-fs-toast{bottom:100px}
+}
+.pm-map-loading.is-waiting{background:rgba(146,64,14,.9)}
+@media (max-width:600px){.pm-map-loading.is-waiting{white-space:normal;max-width:calc(100% - 24px);text-align:center;bottom:72px}}

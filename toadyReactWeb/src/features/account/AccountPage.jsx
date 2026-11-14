@@ -15,7 +15,8 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import EditRounded from '@mui/icons-material/EditRounded';
 import SubdirectoryArrowRightRounded from '@mui/icons-material/SubdirectoryArrowRightRounded';
 import ProfileAvatar, { PROFILE_ICONS } from './ProfileAvatar';
-import { useMyAccount } from './useMyAccount';
+import { readSeen, useMyAccount, useMyReplies } from './useMyAccount';
+import ForumOutlined from '@mui/icons-material/ForumOutlined';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import PushSettingsDialog from '@/features/push/PushSettingsDialog';
@@ -162,6 +163,35 @@ const storyDate = value => {
   return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 };
 
+/** 받은 답글: 내 이야기에 다른 회원이 단 답글. 화면에 보이면 '봤음'으로 기억해 메뉴의 새 답글 표시를 끈다(목록의 '새 답글' 표시는 이번 화면에서는 남긴다). */
+function ReceivedReplies() {
+  const navigate = useNavigate();
+  const replies = useMyReplies();
+  const items = replies.data?.items || [];
+  const latest = replies.data?.latestSeq;
+  useEffect(() => { if (latest) replies.markSeen(); }, [latest]);
+  if (replies.isLoading || (!items.length && !replies.isError)) return null;
+  const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  const fresh = items.filter(item => item.isNew).length;
+  return <section className="account-card account-replies" aria-labelledby="account-replies-title">
+    <div className="account-stories-head"><h2 id="account-replies-title"><ForumOutlined fontSize="small" />받은 답글{fresh > 0 && <span className="account-new-count">새 답글 {fresh}</span>}</h2></div>
+    {replies.isError && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => replies.refetch()}>다시 시도</Button>}>답글을 불러오지 못했어요.</Alert>}
+    <ul className="account-story-list">
+      {items.slice(0, 5).map(item => <li key={item.commentSeq}>
+        <button type="button" className={`account-story account-reply${item.isNew ? ' is-new' : ''}`} onClick={() => open(item)}>
+          <ProfileAvatar icon={item.profileIcon} name={item.nickname || '?'} size={32} decorative />
+          <span className="account-reply-body">
+            <span className="account-story-house">{item.houseNm || '공고 정보 없음'}{item.isNew && <i className="account-new-dot">새 답글</i>}</span>
+            <span className="account-story-content"><b>{item.nickname || '회원'}</b> {item.content}</span>
+            <small>내 이야기: {item.parentContent} · {storyDate(item.regDt)}</small>
+          </span>
+          <ChevronRightRounded className="account-story-go" />
+        </button>
+      </li>)}
+    </ul>
+  </section>;
+}
+
 /** 내가 쓴 이야기. 누르면 그 공고의 이야기 탭을 열고 해당 이야기로 이동한다(뒤로가기로 이 목록에 돌아온다). */
 function MyStories({ onClose }) {
   const navigate = useNavigate();
@@ -175,6 +205,8 @@ function MyStories({ onClose }) {
     staleTime: 30000
   });
   const items = (stories.data?.pages || []).flatMap(page => page?.items || []);
+  // 이 목록을 연 순간의 '본 답글' 번호(받은 답글이 보이면 곧 갱신되므로 처음 값을 붙잡아 둔다)
+  const [seen] = useState(() => (userSeq == null ? null : readSeen(userSeq)));
   const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
   return <section className="account-card account-stories" id="account-stories" aria-labelledby="account-stories-title">
     <div className="account-stories-head"><h2 id="account-stories-title"><ChatBubbleOutlineRounded fontSize="small" />내가 쓴 이야기</h2>
@@ -187,7 +219,7 @@ function MyStories({ onClose }) {
         <button type="button" className="account-story" onClick={() => open(item)}>
           <span className="account-story-house">{item.reply && <SubdirectoryArrowRightRounded fontSize="inherit" aria-label="답글" />}{item.houseNm || '공고 정보 없음'}</span>
           <span className="account-story-content">{item.content}</span>
-          <small>{storyDate(item.regDt)}{item.edited ? ' · 수정됨' : ''}</small>
+          <small>{storyDate(item.regDt)}{item.edited ? ' · 수정됨' : ''}{item.replyCount > 0 && <span className={`account-reply-count${seen && item.lastReplySeq > seen ? ' is-new' : ''}`}> · 답글 {item.replyCount}</span>}</small>
           <ChevronRightRounded className="account-story-go" />
         </button>
       </li>)}
@@ -267,6 +299,8 @@ export default function AccountPage() {
       <div className="account-stat"><MailOutlineRounded /><span>이메일 알림 공고</span><b>{count(data?.emailAlerts)}</b></div>
       <div className="account-stat"><NotificationsNoneRounded /><span>알림 받는 기기</span><b>{count(data?.pushDevices)}</b></div>
     </nav>
+
+    <ReceivedReplies />
 
     {storiesOpen && <MyStories onClose={toggleStories} />}
 

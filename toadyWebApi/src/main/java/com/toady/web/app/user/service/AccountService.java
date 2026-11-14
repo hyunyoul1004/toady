@@ -104,12 +104,98 @@ public class AccountService {
                 } catch (DataAccessException missing) { item.put("houseNm", null); }
             }
         }
+        attachReplyCounts(userSeq, items);
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("items", items);
         view.put("total", total == null ? 0 : total);
         view.put("page", safePage);
         view.put("hasMore", total != null && (long) (safePage + 1) * MY_COMMENTS_PAGE < total);
         return view;
+    }
+
+    /** 내 이야기마다 다른 회원이 단 답글 수와 마지막 답글 번호(지운 답글·내 답글은 세지 않는다). */
+    private void attachReplyCounts(long userSeq, List<Map<String, Object>> items) {
+        List<Object> seqs = items.stream().filter(item -> !Boolean.TRUE.equals(item.get("reply"))).map(item -> item.get("commentSeq")).collect(java.util.stream.Collectors.toList());
+        items.forEach(item -> { item.put("replyCount", 0L); item.put("lastReplySeq", null); });
+        if (seqs.isEmpty()) return;
+        Map<Long, long[]> counts = new java.util.HashMap<>();
+        String marks = String.join(",", java.util.Collections.nCopies(seqs.size(), "?"));
+        List<Object> args = new ArrayList<>(seqs); args.add(userSeq);
+        try {
+            jdbc.query("SELECT PARENT_COMMENT_SEQ, COUNT(*), MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ IN (" + marks + ")"
+                    + " AND DELETE_YN='N' AND CREATE_USER_SEQ<>? GROUP BY PARENT_COMMENT_SEQ",
+                    rs -> { counts.put(rs.getLong(1), new long[]{rs.getLong(2), rs.getLong(3)}); }, args.toArray());
+        } catch (DataAccessException missing) { return; }
+        items.forEach(item -> {
+            long[] found = counts.get((Long) item.get("commentSeq"));
+            if (found != null) { item.put("replyCount", found[0]); item.put("lastReplySeq", found[1]); }
+        });
+    }
+
+    static final int REPLY_LIMIT = 20;
+    /**
+     * 내 이야기에 다른 회원이 단 답글 최신순 20개와 새 답글 수.
+     * afterSeq(이 기기에서 마지막으로 본 답글 번호)보다 큰 답글이 새 답글이다. 처음(afterSeq 없음)에는 최근 7일 답글을 새 답글로 본다.
+     * 번호로 비교하므로 서버·DB 시간대와 관계없이 순서가 맞다.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> replies(long userSeq, Long afterSeq) {
+        LocalDateTime weekAgo = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(7);
+        List<Map<String, Object>> items = new ArrayList<>();
+        List<Long> authors = new ArrayList<>();
+        long unread = 0;
+        try {
+            String from = " FROM TB_LTTOT_PBLANC_COMMENT c JOIN TB_LTTOT_PBLANC_COMMENT p ON p.COMMENT_SEQ=c.PARENT_COMMENT_SEQ"
+                    + " WHERE p.CREATE_USER_SEQ=? AND p.DELETE_YN='N' AND c.DELETE_YN='N' AND c.CREATE_USER_SEQ<>?";
+            Long counted = afterSeq != null
+                    ? jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.COMMENT_SEQ>?", Long.class, userSeq, userSeq, afterSeq)
+                    : jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.REG_DT>=?", Long.class, userSeq, userSeq, weekAgo);
+            unread = counted == null ? 0 : counted;
+            jdbc.query("SELECT c.COMMENT_SEQ, c.PARENT_COMMENT_SEQ, c.ANNOUNCEMENT_TYPE, c.HOUSE_MANAGE_NO, c.PBLANC_NO, c.CONTENT, c.REG_DT, c.CREATE_USER_SEQ, u.USER_NIC_NAME, p.CONTENT AS PARENT_CONTENT"
+                            + from.replace(" WHERE", " LEFT JOIN TB_USER u ON u.USER_SEQ=c.CREATE_USER_SEQ WHERE") + " ORDER BY c.COMMENT_SEQ DESC LIMIT ?",
+                    rs -> {
+                        String[] type = TYPES.get(rs.getString("ANNOUNCEMENT_TYPE"));
+                        if (type == null) return;
+                        long seq = rs.getLong("COMMENT_SEQ");
+                        LocalDateTime regDt = rs.getTimestamp("REG_DT") == null ? null : rs.getTimestamp("REG_DT").toLocalDateTime();
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("commentSeq", seq);
+                        item.put("parentSeq", rs.getLong("PARENT_COMMENT_SEQ"));
+                        item.put("announcementId", type[0] + "/" + rs.getString("HOUSE_MANAGE_NO") + "/" + rs.getString("PBLANC_NO"));
+                        item.put("nickname", rs.getString("USER_NIC_NAME"));
+                        item.put("content", clip(rs.getString("CONTENT"), 120));
+                        item.put("parentContent", clip(rs.getString("PARENT_CONTENT"), 60));
+                        item.put("regDt", regDt);
+                        item.put("isNew", afterSeq != null ? seq > afterSeq : regDt != null && !regDt.isBefore(weekAgo));
+                        item.put("detailTable", type[1]);
+                        authors.add(rs.getLong("CREATE_USER_SEQ"));
+                        items.add(item);
+                    }, userSeq, userSeq, REPLY_LIMIT);
+        } catch (DataAccessException missing) {
+            log.warn("받은 답글을 읽지 못함: {}", missing.getMostSpecificCause().getMessage());
+        }
+        Map<Long, String> icons = profileIcons.of(authors);
+        for (int i = 0; i < items.size(); i++) {
+            Map<String, Object> item = items.get(i);
+            item.put("profileIcon", icons.get(authors.get(i)));
+            String table = (String) item.remove("detailTable");
+            String[] id = ((String) item.get("announcementId")).split("/");
+            try {
+                item.put("houseNm", jdbc.query("SELECT HOUSE_NM FROM " + table + " WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? LIMIT 1",
+                        rs -> rs.next() ? rs.getString(1) : null, id[1], id[2]));
+            } catch (DataAccessException missing) { item.put("houseNm", null); }
+        }
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("unread", unread);
+        view.put("latestSeq", items.isEmpty() ? null : items.get(0).get("commentSeq"));
+        view.put("items", items);
+        return view;
+    }
+
+    private static String clip(String text, int max) {
+        if (text == null) return "";
+        String flat = text.replaceAll("\\s+", " ").trim();
+        return flat.length() > max ? flat.substring(0, max) + "…" : flat;
     }
 
     /** 내 정보 화면의 요약. 관심 공고·이야기·알림 구독 수는 테이블이 없으면 null(화면은 '—'). */

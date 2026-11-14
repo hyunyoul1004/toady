@@ -156,4 +156,34 @@ class NeighborhoodResearchServiceTest {
         assertEquals(1,calls.get(),"429는 다시 시도하지 않고, 차단기가 열려 남은 달도 부르지 않는다");
         assertTrue(new ResearchTransport.ProviderStatus(503).retryable());
     }
+
+    /** 지도를 옮겨 여러 시·군·구를 한꺼번에 불러도 국토부 호출은 동시에 3개까지만, 간격을 두고 나간다(429 초당 한도 예방). */
+    @Test void providerCallsArePacedWhenManyDistrictsLoadAtOnce() throws Exception {
+        AtomicInteger running=new AtomicInteger(),peak=new AtomicInteger(),calls=new AtomicInteger();
+        var service=new NeighborhoodResearchService((uri,headers)->{
+            int now=running.incrementAndGet();peak.accumulateAndGet(now,Math::max);calls.incrementAndGet();
+            try { Thread.sleep(40); } finally { running.decrementAndGet(); }
+            return response(uri.getQuery().split("DEAL_YMD=")[1].substring(0,6),"동패동","");
+        },"key");
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+        var pool=java.util.concurrent.Executors.newFixedThreadPool(5);
+        var districts=java.util.List.of("4148012800","2824511000","2823710100","4128510100","1168010100");
+        var futures=districts.stream().map(code -> pool.submit(() -> service.districtTrades(code,2,deadline))).toList();
+        for(var future:futures) assertEquals("READY",future.get().status());
+        pool.shutdown();
+        assertEquals(10,calls.get());
+        assertTrue(peak.get()<=NeighborhoodResearchService.MOLIT_SLOTS,"동시 호출 "+peak.get()+"개");
+    }
+    /** 차례를 기다리다 응답 시간 한도를 넘기면 그 달은 실패로 남기지 않고 받은 달까지만 돌려준다(화면이 이어 부른다). */
+    @Test void waitingForATurnPastTheDeadlineReturnsAPartialResult() {
+        var service=new NeighborhoodResearchService((uri,headers)->response(uri.getQuery().split("DEAL_YMD=")[1].substring(0,6),"동패동",""),"key");
+        long before=NeighborhoodResearchService.MOLIT_SPACING_MS;
+        NeighborhoodResearchService.MOLIT_SPACING_MS=400;
+        try {
+            var district=service.districtTrades("4148012800",12,System.nanoTime()+java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(900));
+            assertTrue(district.partial(),"한도 안에 다 받지 못했으면 partial");
+            assertTrue(district.months()>=1 && district.months()<12,"받은 달 "+district.months());
+            assertFalse(service.molitPaused(),"속도 조절 대기는 제공처 거절이 아니다");
+        } finally { NeighborhoodResearchService.MOLIT_SPACING_MS=before; }
+    }
 }

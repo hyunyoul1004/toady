@@ -79,8 +79,10 @@ test('address suggestions mark exact addresses and drop duplicate place names',a
  const {suggestAddresses}=await import('../src/features/announcement/location/resolveLocation.js');
  const exact={address_type:'ROAD_ADDR',x:'127.03',y:'37.5',address_name:'서울 강남구 테헤란로 152',address:{address_name:'서울 강남구 역삼동 737'}};
  const area={address_type:'REGION',x:'126.65',y:'37.38',address_name:'인천 연수구 송도동'};
- const places=[{id:'1',place_name:'인천 연수구 송도동',address_name:'x',x:'126.6',y:'37.3'},{id:'2',place_name:'송도한옥마을',road_address_name:'인천 연수구 테크노파크로 180',x:'126.64',y:'37.39'}];
+ const places=[{id:'1',place_name:'인천 연수구 송도동',category_group_code:'PO3',address_name:'x',x:'126.6',y:'37.3'},{id:'2',place_name:'송도한옥마을',category_group_code:'AT4',road_address_name:'인천 연수구 테크노파크로 180',x:'126.64',y:'37.39'},{id:'3',place_name:'이씨조상묘',category_group_code:'',category_name:'',address_name:'y',x:'126.6',y:'37.3'}];
  const items=await suggestAddresses(maps([exact,area],places),'송도');
+ // 분류가 없는 장소(묘 등)는 후보에서 뺀다.
+ assert.ok(!items.some(item=>item.label==='이씨조상묘'));
  assert.deepEqual(items.map(item=>[item.kind,item.label,item.exact]),[['address','서울 강남구 테헤란로 152',true],['address','인천 연수구 송도동',false],['place','송도한옥마을',false]]);
  assert.equal(items[0].detail,'서울 강남구 역삼동 737');
  assert.deepEqual(await suggestAddresses(maps([exact]),'송'),[],'한 글자는 묻지 않는다');

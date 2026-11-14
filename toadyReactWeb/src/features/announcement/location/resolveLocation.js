@@ -125,15 +125,31 @@ export async function searchArea(maps,text,regionPrefix='',{timeoutMs=2500}={}) 
  * 지도 검색창 자동완성의 주소·장소 후보(카카오 주소 검색과 장소 검색). center가 있으면 가까운 장소가 먼저 오도록 한다.
  * 돌려주는 항목: { kind: 'address'|'place', key, label, detail, lat, lng, exact } — exact는 번지·건물번호까지 있는 주소.
  */
+// 청약 지역을 살필 때 쓸모 있는 장소만 후보로 둔다(묘·상점 같은 잡음 제외).
+// 카카오 분류: 지하철역·학교·어린이집·대형마트·공공기관·병원·관광명소·문화시설. 아파트·주거·교통(기차역·터미널)은 분류 이름으로 고른다.
+const PLACE_GROUPS=new Set(['SW8','SC4','PS3','MT1','PO3','HP8','AT4','CT1']);
+const PLACE_NAMES=/아파트|주거시설|교통,수송|기차역|터미널|공원|산업단지|대학교/;
+const PLACE_NOISE=/주차장|주유소|충전소|중개/;
+export const usefulPlace=row=>!PLACE_NOISE.test(row.category_name || '') && (PLACE_GROUPS.has(row.category_group_code) || PLACE_NAMES.test(row.category_name || ''));
+// 같은 검색어를 다시 입력하면(지우고 다시 쓰기 등) 카카오에 다시 묻지 않는다. 최근 50개만 기억한다.
+const suggestCache=new Map();
 export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=2500}={}) {
   const value=normalize(text);
   if(value.length<2) return [];
+  if(suggestCache.has(value)) return suggestCache.get(value);
+  const result=await askSuggestions(maps,value,{center,limit,timeoutMs});
+  suggestCache.set(value,result);
+  if(suggestCache.size>50) suggestCache.delete(suggestCache.keys().next().value);
+  return result;
+}
+async function askSuggestions(maps,value,{center,limit,timeoutMs}) {
   const geocoder=new maps.services.Geocoder(),places=new maps.services.Places(),ok=maps.services.Status.OK;
   const ask=(service,method,options)=>new Promise(resolve=>{
     const timer=setTimeout(()=>resolve([]),timeoutMs);
     service[method](value,(rows,status)=>{clearTimeout(timer);resolve(status===ok?rows:[]);},options);
   });
-  const placeOptions=center?{location:center,size:limit}:{size:limit};
+  // 걸러 낼 몫까지 넉넉히(15개) 받아 쓸모 있는 장소만 남긴다.
+  const placeOptions=center?{location:center,size:15}:{size:15};
   const [addressRows,placeRows]=await Promise.all([ask(geocoder,'addressSearch',{size:3}),ask(places,'keywordSearch',placeOptions)]);
   const seen=new Set(),items=[];
   addressRows.filter(coordinates).forEach(row=>{
@@ -143,7 +159,7 @@ export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=
     items.push({kind:'address',key:`address:${label}`,label,detail:road && road!==label?road:parcel && parcel!==label?parcel:'주소',
       lat:Number(row.y),lng:Number(row.x),exact:row.address_type==='REGION_ADDR' || row.address_type==='ROAD_ADDR'});
   });
-  placeRows.filter(coordinates).forEach(row=>{
+  placeRows.filter(row=>coordinates(row) && usefulPlace(row)).forEach(row=>{
     const label=row.place_name;
     if(!label || seen.has(label)) return;seen.add(label);
     items.push({kind:'place',key:`place:${row.id || label}`,label,detail:row.road_address_name || row.address_name || '',lat:Number(row.y),lng:Number(row.x),exact:false});

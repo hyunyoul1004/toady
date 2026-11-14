@@ -16,6 +16,8 @@ import Toolbar from '@mui/material/Toolbar';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import MenuIcon from '@mui/icons-material/Menu';
+import Badge from '@mui/material/Badge';
+import { useMyReplies } from '@/features/account/useMyAccount';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -38,6 +40,10 @@ export function MainLayout() {
   const setLoginModalOpen = toggleLayer('login');
   const setSignUpModalOpen = toggleLayer('signup');
   const setFindPwModalOpen = toggleLayer('password');
+
+  // 내 이야기의 새 답글(로그인했을 때만). 모바일 메뉴 단추에 점으로 알린다.
+
+  const { unread: replyUnread } = useMyReplies();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -63,12 +69,12 @@ export function MainLayout() {
         <Toolbar sx={{ minHeight: '56px !important', px: 2, pl: 'max(16px, env(safe-area-inset-left))', pr: 'max(16px, env(safe-area-inset-right))' }}>
           <IconButton
             color="inherit"
-            aria-label="메뉴 열기"
+            aria-label={replyUnread > 0 ? `메뉴 열기 (새 답글 ${replyUnread}개)` : '메뉴 열기'}
             edge="start"
             onClick={handleDrawerToggle}
             sx={{ mr: 1.5 }}
           >
-            <MenuIcon />
+            <Badge color="error" variant="dot" invisible={!replyUnread}><MenuIcon /></Badge>
           </IconButton>
           <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
             <img
