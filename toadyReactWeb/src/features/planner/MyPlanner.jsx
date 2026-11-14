@@ -121,6 +121,7 @@ export default function MyPlanner() {
       {planner.loggedIn && planner.guestCount>0 && <MenuItem disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={()=>importGuest()}>기기 관심 공고 가져오기 ({planner.guestCount})</MenuItem>}
       {planner.loggedIn && <MenuItem disabled={busy} onClick={()=>action(planner.disableEmails,'모든 이메일 알림을 해제했습니다.')}>이메일 알림 전체 해제</MenuItem>}
       <MenuItem onClick={()=>{const layers=(location.state?.overlayLayers || []).filter(layer=>layer.id!=='planner-settings');navigate(location.pathname+location.search+location.hash,{replace:true,state:{...location.state,overlayLayers:[...layers,{id:'push-settings',value:true}]}});}}>알림 설정</MenuItem>
+      {planner.loggedIn && <MenuItem component={Link} to="/account" replace>내 정보·계정 설정</MenuItem>}
       <MenuItem component={Link} to="/" replace state={{browseView:'calendar'}}>청약캘린더로 이동</MenuItem>
     </Menu>
     {selected.length>0 && <div className="planner-compare-hint"><CompareArrowsRounded /><span>{selected.length===1?'비교할 공고를 하나 더 선택해 주세요.':`${selected.length}개 공고를 선택했어요.`}</span>{selected.length>=2 && <Button size="small" color="inherit" onClick={()=>comparisonRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}>선택한 공고 비교</Button>}<IconButton size="small" aria-label="비교 선택 해제" onClick={()=>setSelected([])}><CloseRounded fontSize="small" /></IconButton></div>}

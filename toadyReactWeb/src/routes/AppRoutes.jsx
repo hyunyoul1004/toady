@@ -5,6 +5,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import MyPlanner from '@/features/planner/MyPlanner';
+import AccountPage from '@/features/account/AccountPage';
 import ScoreCalculator from '@/features/score/ScoreCalculator';
 import MatchPage from '@/features/match/MatchPage';
 import FaqPage from '@/features/faq/FaqPage';
@@ -40,6 +41,7 @@ export const AppRoutes = () => {
         <Route path="showSubscriptDetail" element={<Main />} />
         <Route path="announcements/:type/:house/:notice" element={<Main />} />
         <Route path="my" element={<MyPlanner />} />
+        <Route path="account" element={<AccountPage />} />
         <Route path="score" element={<ScoreCalculator />} />
         <Route path="match" element={<MatchPage key="match" tab="match" />} />
         <Route path="match/zupzup" element={<MatchPage key="zupzup" tab="zupzup" />} />

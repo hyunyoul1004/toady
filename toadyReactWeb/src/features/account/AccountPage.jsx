@@ -1,0 +1,219 @@
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Skeleton, TextField } from '@mui/material';
+import PersonOutlineRounded from '@mui/icons-material/PersonOutlineRounded';
+import LockOutlined from '@mui/icons-material/LockOutlined';
+import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
+import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
+import ChatBubbleOutlineRounded from '@mui/icons-material/ChatBubbleOutlineRounded';
+import MailOutlineRounded from '@mui/icons-material/MailOutlineRounded';
+import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
+import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@/features/auth/store/useAuthStore';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import PushSettingsDialog from '@/features/push/PushSettingsDialog';
+import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
+import { ACCOUNT_KEY, NICKNAME_RULE, PASSWORD_RULE, accountApi } from './accountApi';
+import './account.css';
+
+const count = value => (value == null ? '—' : Number(value).toLocaleString('ko-KR'));
+const joined = value => {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 가입`;
+};
+
+/** 서버 결과(성공·실패 문구)와 요청 제한·통신 오류를 화면 안내로 바꾼다. */
+async function run(request) {
+  try {
+    const res = await request();
+    return { ok: res?.resultCode === 'SUCCESS', message: res?.resultMessage || '', data: res?.data };
+  } catch (error) {
+    return { ok: false, message: error.status === 429 ? '잠시 뒤에 다시 시도해 주세요. 짧은 시간에 너무 많이 시도했어요.' : (error.message || '처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.') };
+  }
+}
+
+function PasswordField({ label, value, onChange, autoComplete, helperText, error }) {
+  const [show, setShow] = useState(false);
+  return <TextField label={label} type={show ? 'text' : 'password'} value={value} onChange={e => onChange(e.target.value)} autoComplete={autoComplete}
+    fullWidth size="small" helperText={helperText} error={error} inputProps={{ maxLength: 72 }}
+    InputProps={{ endAdornment: <InputAdornment position="end"><IconButton size="small" edge="end" aria-label={show ? '비밀번호 숨기기' : '비밀번호 보기'} onClick={() => setShow(on => !on)}>{show ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> }} />;
+}
+
+function NicknameForm({ current, onDone, onCancel }) {
+  const login = useAuthStore(state => state.login);
+  const [value, setValue] = useState(current || ''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const invalid = value.length > 0 && !NICKNAME_RULE.test(value);
+  const submit = async e => {
+    e.preventDefault();
+    if (!NICKNAME_RULE.test(value)) { setError('한글·영문·숫자로 2~15자까지 쓸 수 있어요.'); return; }
+    setBusy(true); setError('');
+    const result = await run(() => accountApi.changeNickname(value));
+    setBusy(false);
+    if (!result.ok) { setError(result.message); return; }
+    // 화면 곳곳의 닉네임(메뉴 등)이 토큰에서 오므로 새 토큰으로 바꾼다.
+    if (result.data?.accessToken) login(result.data.accessToken);
+    onDone(result.message);
+  };
+  return <form className="account-form" onSubmit={submit}>
+    <TextField label="새 닉네임" value={value} onChange={e => setValue(e.target.value.trim())} size="small" fullWidth autoFocus inputProps={{ maxLength: 15 }}
+      error={invalid || Boolean(error)} helperText={error || (invalid ? '한글·영문·숫자만, 2~15자' : '이야기(댓글)에 보이는 이름이에요. 한글·영문·숫자 2~15자')} />
+    <div className="account-form-actions">
+      <Button onClick={onCancel} disabled={busy}>취소</Button>
+      <Button type="submit" variant="contained" disableElevation disabled={busy || value === current}>{busy ? <CircularProgress size={18} color="inherit" /> : '저장'}</Button>
+    </div>
+  </form>;
+}
+
+function PasswordForm({ onDone, onCancel }) {
+  const login = useAuthStore(state => state.login);
+  const [current, setCurrent] = useState(''), [next, setNext] = useState(''), [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const weak = next.length > 0 && !PASSWORD_RULE.test(next), mismatch = confirm.length > 0 && confirm !== next;
+  const submit = async e => {
+    e.preventDefault();
+    if (!current) { setError('현재 비밀번호를 입력해 주세요.'); return; }
+    if (!PASSWORD_RULE.test(next)) { setError('새 비밀번호는 6~20자로, 영문과 숫자 또는 특수문자를 함께 써 주세요.'); return; }
+    if (next !== confirm) { setError('새 비밀번호와 확인이 서로 달라요.'); return; }
+    setBusy(true); setError('');
+    const result = await run(() => accountApi.changePassword(current, next, confirm));
+    setBusy(false);
+    if (!result.ok) { setError(result.message); return; }
+    // 비밀번호가 바뀌면 이전 토큰은 모두 무효가 되므로, 이 기기는 새 토큰으로 로그인을 이어 간다.
+    if (result.data?.accessToken) login(result.data.accessToken);
+    onDone(result.message);
+  };
+  return <form className="account-form" onSubmit={submit}>
+    <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
+    <PasswordField label="현재 비밀번호" value={current} onChange={setCurrent} autoComplete="current-password" />
+    <PasswordField label="새 비밀번호" value={next} onChange={setNext} autoComplete="new-password" error={weak} helperText="6~20자, 영문과 숫자 또는 특수문자를 함께" />
+    <PasswordField label="새 비밀번호 확인" value={confirm} onChange={setConfirm} autoComplete="new-password" error={mismatch} helperText={mismatch ? '위의 새 비밀번호와 달라요' : ' '} />
+    {error && <Alert severity="error">{error}</Alert>}
+    <p className="account-note">바꾸면 이 기기는 로그인이 유지되고, 다른 기기와 브라우저는 다시 로그인해야 해요.</p>
+    <div className="account-form-actions">
+      <Button onClick={onCancel} disabled={busy}>취소</Button>
+      <Button type="submit" variant="contained" disableElevation disabled={busy}>{busy ? <CircularProgress size={18} color="inherit" /> : '비밀번호 바꾸기'}</Button>
+    </div>
+  </form>;
+}
+
+function WithdrawForm({ phrase, onDone, onCancel }) {
+  const [password, setPassword] = useState(''), [typed, setTyped] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const ready = password.length > 0 && typed.trim() === phrase;
+  const submit = async e => {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true); setError('');
+    const result = await run(() => accountApi.withdraw(password, typed.trim()));
+    setBusy(false);
+    if (!result.ok) { setError(result.message); return; }
+    onDone(result.message);
+  };
+  return <form className="account-form" onSubmit={submit}>
+    <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
+    <PasswordField label="비밀번호" value={password} onChange={setPassword} autoComplete="current-password" />
+    <TextField label={`확인 문구: ${phrase}`} value={typed} onChange={e => setTyped(e.target.value)} size="small" fullWidth placeholder={phrase} helperText={`탈퇴하려면 '${phrase}'를 그대로 입력하세요.`} />
+    {error && <Alert severity="error">{error}</Alert>}
+    <div className="account-form-actions">
+      <Button onClick={onCancel} disabled={busy}>취소</Button>
+      <Button type="submit" variant="contained" color="error" disableElevation disabled={!ready || busy}>{busy ? <CircularProgress size={18} color="inherit" /> : '탈퇴하기'}</Button>
+    </div>
+  </form>;
+}
+
+/** 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다. */
+export default function AccountPage() {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const logout = useAuthStore(state => state.logout);
+  const location = useLocation(), navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(null), [notice, setNotice] = useState(''), [farewell, setFarewell] = useState('');
+  const [emailConfirm, setEmailConfirm] = useState(false);
+  const [pushOpen, setPushOpen] = useHistoryOverlay('push-settings');
+  const summary = useQuery({ queryKey: ACCOUNT_KEY, queryFn: accountApi.summary, enabled: isAuthenticated, staleTime: 30000 });
+  const data = summary.data;
+
+  useEffect(() => {
+    updatePageSeo({ title: '내 정보 | TOADY', description: '닉네임·비밀번호와 알림 설정을 관리합니다.', path: '/account' });
+    return () => resetDefaultSeo();
+  }, []);
+
+  const openLogin = () => navigate(location.pathname + location.search, { state: { ...location.state, overlayLayers: [...(location.state?.overlayLayers || []), { id: 'layout', value: 'login' }] } });
+  // 완료 안내는 화면 위쪽에 뜨므로, 아래쪽 칸에서 저장해도 보이게 맨 위로 올린다.
+  const finished = message => { setEditing(null); setNotice(message); queryClient.invalidateQueries({ queryKey: ACCOUNT_KEY }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const disableEmails = async () => {
+    const result = await run(() => accountApi.disableFavoriteEmails());
+    setEmailConfirm(false);
+    setNotice(result.ok ? result.message : result.message || '이메일 알림을 끄지 못했어요.');
+    queryClient.invalidateQueries({ queryKey: ACCOUNT_KEY });
+    queryClient.invalidateQueries({ queryKey: ['planner'] });
+  };
+
+  if (farewell) return <Box className="account-page"><section className="account-card account-farewell" role="status">
+    <h1>탈퇴가 끝났어요</h1><p>{farewell}</p><p className="account-note">같은 이메일로 언제든 다시 가입할 수 있어요.</p>
+    <Button variant="contained" disableElevation component={Link} to="/" replace>청약 캘린더로</Button>
+  </section></Box>;
+
+  if (!isAuthenticated) return <Box className="account-page">
+    <header className="account-hero"><span className="account-eyebrow">MY ACCOUNT</span><h1>내 정보</h1><p>닉네임·비밀번호와 알림을 한곳에서 관리해요.</p></header>
+    <section className="account-card account-empty"><PersonOutlineRounded /><h2>로그인이 필요해요</h2><p>로그인하면 닉네임과 비밀번호를 바꾸고, 관심 공고 알림을 관리할 수 있어요.</p>
+      <Button variant="contained" disableElevation onClick={openLogin}>로그인</Button></section>
+  </Box>;
+
+  return <Box className="account-page">
+    <header className="account-hero"><span className="account-eyebrow">MY ACCOUNT</span><h1>내 정보</h1><p>닉네임·비밀번호와 알림을 한곳에서 관리해요.</p></header>
+    {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
+    {summary.isError && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={() => summary.refetch()}>다시 시도</Button>}>내 정보를 불러오지 못했어요.</Alert>}
+
+    <section className="account-card account-profile" aria-label="프로필">
+      <div className="account-avatar" aria-hidden="true">{(data?.nickname || '?').slice(0, 1)}</div>
+      <div className="account-profile-text">
+        {summary.isLoading ? <><Skeleton width={120} height={28} /><Skeleton width={200} /></> : <>
+          <strong>{data?.nickname}</strong><span>{data?.email}</span><small>{joined(data?.createdAt)}</small></>}
+      </div>
+    </section>
+
+    <nav className="account-stats" aria-label="내 활동">
+      <Link to="/my" className="account-stat"><BookmarkBorderRounded /><span>관심 공고</span><b>{count(data?.favorites)}</b><ChevronRightRounded className="account-chevron" /></Link>
+      <div className="account-stat"><ChatBubbleOutlineRounded /><span>작성한 이야기</span><b>{count(data?.comments)}</b></div>
+      <div className="account-stat"><MailOutlineRounded /><span>이메일 알림 공고</span><b>{count(data?.emailAlerts)}</b></div>
+      <div className="account-stat"><NotificationsNoneRounded /><span>알림 받는 기기</span><b>{count(data?.pushDevices)}</b></div>
+    </nav>
+
+    <section className="account-card" aria-labelledby="account-login-title">
+      <h2 id="account-login-title"><LockOutlined fontSize="small" />로그인 정보</h2>
+      <div className="account-row"><div><span className="account-label">이메일</span><span className="account-value">{data?.email || '—'}</span><small>로그인에 쓰는 주소는 바꿀 수 없어요.</small></div></div>
+      <div className="account-row"><div><span className="account-label">닉네임</span><span className="account-value">{data?.nickname || '—'}</span></div>
+        {editing !== 'nickname' && <Button size="small" variant="outlined" onClick={() => { setEditing('nickname'); setNotice(''); }}>변경</Button>}</div>
+      {editing === 'nickname' && <NicknameForm current={data?.nickname} onDone={finished} onCancel={() => setEditing(null)} />}
+      <div className="account-row"><div><span className="account-label">비밀번호</span><span className="account-value">••••••••</span></div>
+        {editing !== 'password' && <Button size="small" variant="outlined" onClick={() => { setEditing('password'); setNotice(''); }}>변경</Button>}</div>
+      {editing === 'password' && <PasswordForm onDone={finished} onCancel={() => setEditing(null)} />}
+    </section>
+
+    <section className="account-card" aria-labelledby="account-alert-title">
+      <h2 id="account-alert-title"><NotificationsNoneRounded fontSize="small" />알림</h2>
+      <button type="button" className="account-link-row" onClick={() => setPushOpen(true)}><div><span className="account-value">웹 푸시 알림</span><small>관심 공고 일정과 관심 지역의 새 공고를 이 기기로 알려 드려요.</small></div><ChevronRightRounded /></button>
+      <div className="account-row"><div><span className="account-value">관심 공고 이메일 알림</span><small>{data?.emailAlerts ? `공고 ${count(data.emailAlerts)}곳의 접수 일정을 메일로 받고 있어요.` : '메일로 받는 공고가 없어요. 나의 청약에서 공고마다 켤 수 있어요.'}</small></div>
+        {data?.emailAlerts > 0 && !emailConfirm && <Button size="small" variant="outlined" onClick={() => setEmailConfirm(true)}>모두 끄기</Button>}</div>
+      {emailConfirm && <Alert severity="warning" action={<><Button color="inherit" size="small" onClick={() => setEmailConfirm(false)}>취소</Button><Button color="inherit" size="small" onClick={disableEmails}>끄기</Button></>}>모든 관심 공고의 이메일 알림을 끌까요? 관심 공고 목록은 그대로 남아요.</Alert>}
+      <Link to="/my" className="account-link-row"><div><span className="account-value"><CalendarMonthOutlined fontSize="inherit" /> 캘린더 연결</span><small>{data?.calendarFeed ? '휴대폰 캘린더에 관심 공고 일정을 연결해 두었어요.' : '관심 공고 일정을 휴대폰 캘린더에서 볼 수 있어요. 나의 청약에서 연결해요.'}</small></div><ChevronRightRounded /></Link>
+    </section>
+
+    <section className="account-card" aria-labelledby="account-session-title">
+      <h2 id="account-session-title"><PersonOutlineRounded fontSize="small" />계정</h2>
+      <div className="account-row"><div><span className="account-value">로그아웃</span><small>이 기기에서만 로그아웃해요.</small></div>
+        <Button size="small" variant="outlined" onClick={() => { logout(); navigate('/', { replace: true }); }}>로그아웃</Button></div>
+      <div className="account-row account-danger"><div><span className="account-value">회원 탈퇴</span>
+        <small>관심 공고·알림·캘린더 연결과 이메일·닉네임이 지워져요. 작성한 이야기는 '탈퇴회원'으로 남아요. 되돌릴 수 없어요.</small></div>
+        {editing !== 'withdraw' && <Button size="small" color="error" onClick={() => { setEditing('withdraw'); setNotice(''); }}>탈퇴</Button>}</div>
+      {editing === 'withdraw' && <WithdrawForm phrase={data?.withdrawPhrase || '탈퇴합니다'} onCancel={() => setEditing(null)}
+        onDone={message => { queryClient.clear(); logout(); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
+    </section>
+
+    <PushSettingsDialog open={Boolean(pushOpen)} onClose={() => setPushOpen(false)} loggedIn />
+  </Box>;
+}

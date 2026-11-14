@@ -28,6 +28,7 @@ import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNone
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
+import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
@@ -239,6 +240,18 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
                 {nickname}님
               </Typography>
             </Box>
+            <Button
+              fullWidth
+              variant={location.pathname === '/account' ? 'contained' : 'outlined'}
+              disableElevation
+              size="small"
+              startIcon={<ManageAccountsOutlinedIcon />}
+              onClick={() => go('/account')}
+              aria-current={location.pathname === '/account' ? 'page' : undefined}
+              sx={{ fontWeight: 700, borderRadius: 1.5, mt: 0.5 }}
+            >
+              내 정보
+            </Button>
             <Button
               fullWidth
               variant="outlined"

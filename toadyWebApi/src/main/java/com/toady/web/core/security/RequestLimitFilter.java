@@ -77,7 +77,9 @@ public class RequestLimitFilter extends OncePerRequestFilter {
             new Rule("type-list", Set.of("GET"), List.of(), Set.of(),
                 Pattern.compile("^/api/v1/(apt|urban|remaining|public-rental|optional)/announcements$"), 300, 5000),
             new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
-            new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100));
+            new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100),
+            // 내 정보 변경(닉네임·비밀번호·탈퇴): 현재 비밀번호를 대입해 보는 시도를 막는다.
+            new Rule("account", Set.of("POST", "PATCH"), List.of("/api/v1/me/account/"), Set.of(), 10, 60));
     }
 
     private static final Pattern IP_LITERAL = Pattern.compile("[0-9A-Fa-f:.]{2,45}");

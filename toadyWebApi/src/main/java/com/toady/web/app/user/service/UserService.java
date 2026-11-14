@@ -194,7 +194,8 @@ public class UserService {
     static final class EmailTakenException extends RuntimeException { }
 
     /** 닉네임을 가진 계정이 오래 인증하지 않은 계정이면 닉네임을 비워 주고 true를 돌려준다. */
-    private boolean releaseStaleNickname(UserEntity owner) {
+    /** 오래된 미인증 계정이 쥔 닉네임을 풀어 준다(가입·닉네임 변경이 함께 쓴다). 호출하는 쪽 트랜잭션 안에서 실행한다. */
+    boolean releaseStaleNickname(UserEntity owner) {
         if ("Y".equals(owner.getEmailCertifyYn())) return false;
         LocalDateTime last = owner.getUpdateDt() != null ? owner.getUpdateDt() : owner.getCreateDt();
         if (last == null || last.plusDays(STALE_UNVERIFIED_DAYS).isAfter(LocalDateTime.now())) return false;
