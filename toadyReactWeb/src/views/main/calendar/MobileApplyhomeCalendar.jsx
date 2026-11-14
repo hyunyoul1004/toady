@@ -272,7 +272,9 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                     sx={{
                       // 날짜 칸과 같은 가로 범위에 둬야 양 끝 날짜의 세로 테두리가 목록 상자 테두리와 이어진다.
                       mx: 0,
-                      mt: '-1.5px',
+                      // 날짜 칸 테두리(1.5px)를 목록 상자 윗선 두께보다 0.5px 덜 겹치게 둔다. 다 겹치면 3배율 화면 등에서 반올림 차이로
+                      // 날짜 칸 세로선이 윗선 아래로 1픽셀 삐져나온다. 덜 겹치면 세로선 끝이 항상 윗선 안에 묻힌다.
+                      mt: '-1px',
                       mb: 1.5,
                       p: 1.5,
                       borderRadius: `${selectedCol === 0 ? 0 : 8}px ${selectedCol === week.length - 1 ? 0 : 8}px 8px 8px`,
