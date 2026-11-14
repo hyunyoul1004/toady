@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -44,9 +46,70 @@ public class AccountService {
     private final SimpleUserDetailsService details;
     private final PasswordEncoder encoder;
     private final JdbcTemplate jdbc;
+    private final ProfileIcons profileIcons;
 
-    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc) {
-        this.users = users; this.userService = userService; this.details = details; this.encoder = encoder; this.jdbc = jdbc;
+    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc, ProfileIcons profileIcons) {
+        this.users = users; this.userService = userService; this.details = details; this.encoder = encoder; this.jdbc = jdbc; this.profileIcons = profileIcons;
+    }
+
+    /** 공고 유형(댓글 테이블의 enum 이름) → 화면 주소의 유형과 상세 테이블 */
+    private static final Map<String, String[]> TYPES = Map.of(
+            "APT", new String[]{"apt", "TB_APT_LTTOT_PBLANC_DETAIL"},
+            "URBAN", new String[]{"urban", "TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL"},
+            "REMAINING", new String[]{"remaining", "TB_REMNDR_LTTOT_PBLANC_DETAIL"},
+            "PUBLIC_RENTAL", new String[]{"public-rental", "TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL"},
+            "OPTIONAL", new String[]{"optional", "TB_OPT_LTTOT_PBLANC_DETAIL"});
+    static final int MY_COMMENTS_PAGE = 10;
+
+    /** 프로필 캐릭터를 바꾼다(null이면 닉네임 첫 글자로 되돌림). */
+    public Outcome changeProfileIcon(long userSeq, String icon) {
+        String key = icon == null || icon.isBlank() ? null : icon.trim();
+        if (key != null && !ProfileIcons.KEYS.contains(key)) return Outcome.fail(ResultCode.VALID_ERROR, "고를 수 없는 캐릭터예요.");
+        if (!profileIcons.set(userSeq, key)) return Outcome.fail(ResultCode.SYSTEM_ERROR, "프로필 캐릭터 기능을 준비하고 있어요. 잠시 뒤에 다시 시도해 주세요.");
+        return Outcome.done(key == null ? "프로필을 닉네임 첫 글자로 되돌렸어요." : "프로필 캐릭터를 바꿨어요. 내가 쓴 이야기에도 함께 보여요.", null);
+    }
+
+    /**
+     * 내가 쓴 이야기(삭제하지 않은 것) 최신순 10개씩. 공고 이름과, 화면에서 그 공고의 이야기 탭으로 갈 수 있는 정보를 함께 준다.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> myComments(long userSeq, int page) {
+        int safePage = Math.max(0, Math.min(page, 1000));
+        Long total = count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq);
+        List<Map<String, Object>> items = new ArrayList<>();
+        if (total != null && total > 0) {
+            jdbc.query("SELECT COMMENT_SEQ, ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, PARENT_COMMENT_SEQ, CONTENT, REG_DT, UPDATE_DT"
+                            + " FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N' ORDER BY COMMENT_SEQ DESC LIMIT ? OFFSET ?",
+                    rs -> {
+                        String[] type = TYPES.get(rs.getString("ANNOUNCEMENT_TYPE"));
+                        if (type == null) return;
+                        String content = rs.getString("CONTENT");
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("commentSeq", rs.getLong("COMMENT_SEQ"));
+                        item.put("announcementId", type[0] + "/" + rs.getString("HOUSE_MANAGE_NO") + "/" + rs.getString("PBLANC_NO"));
+                        item.put("reply", rs.getObject("PARENT_COMMENT_SEQ") != null);
+                        item.put("content", content == null ? "" : content.length() > 300 ? content.substring(0, 300) + "…" : content);
+                        item.put("regDt", rs.getTimestamp("REG_DT") == null ? null : rs.getTimestamp("REG_DT").toLocalDateTime());
+                        item.put("edited", rs.getTimestamp("UPDATE_DT") != null);
+                        item.put("detailTable", type[1]);
+                        items.add(item);
+                    }, userSeq, MY_COMMENTS_PAGE, safePage * MY_COMMENTS_PAGE);
+            // 공고 이름은 유형별 상세 테이블에서 한 번씩 읽는다(공고가 지워졌으면 이름 없이 둔다).
+            for (Map<String, Object> item : items) {
+                String table = (String) item.remove("detailTable");
+                String[] id = ((String) item.get("announcementId")).split("/");
+                try {
+                    item.put("houseNm", jdbc.query("SELECT HOUSE_NM FROM " + table + " WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? LIMIT 1",
+                            rs -> rs.next() ? rs.getString(1) : null, id[1], id[2]));
+                } catch (DataAccessException missing) { item.put("houseNm", null); }
+            }
+        }
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("items", items);
+        view.put("total", total == null ? 0 : total);
+        view.put("page", safePage);
+        view.put("hasMore", total != null && (long) (safePage + 1) * MY_COMMENTS_PAGE < total);
+        return view;
     }
 
     /** 내 정보 화면의 요약. 관심 공고·이야기·알림 구독 수는 테이블이 없으면 null(화면은 '—'). */
@@ -62,6 +125,7 @@ public class AccountService {
         view.put("comments", count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq));
         view.put("pushDevices", count("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=?", userSeq));
         view.put("calendarFeed", count("SELECT COUNT(*) FROM TB_CALENDAR_FEED WHERE USER_SEQ=?", userSeq));
+        view.put("profileIcon", profileIcons.of(userSeq));
         view.put("withdrawPhrase", WITHDRAW_PHRASE);
         return view;
     }
@@ -112,7 +176,7 @@ public class AccountService {
 
     /**
      * 탈퇴: 비밀번호와 확인 문구가 맞으면 계정을 탈퇴 처리하고 개인 정보를 지운다.
-     * 이메일·닉네임은 다시 가입할 수 있게 익명 값으로 바꾸고, 관심 공고·알림 구독·캘린더 구독은 삭제한다.
+     * 이메일·닉네임은 다시 가입할 수 있게 익명 값으로 바꾸고, 관심 공고·알림 구독·캘린더 구독·프로필 캐릭터는 삭제한다.
      * 작성한 이야기는 다른 사람의 답글 흐름이 끊기지 않게 남기되 '탈퇴회원'으로 보인다.
      */
     @Transactional
@@ -136,6 +200,7 @@ public class AccountService {
         tryUpdate("DELETE FROM TB_FAVORITE WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_CALENDAR_FEED WHERE USER_SEQ=?", userSeq);
+        tryUpdate("DELETE FROM TB_USER_PROFILE WHERE USER_SEQ=?", userSeq);
         tryUpdate("UPDATE TB_CERTIFY SET CERTIFY_YN='Y', UPDATE_DT=? WHERE CREATE_USER_SEQ=? AND CERTIFY_YN='N'", now, userSeq);
         log.info("회원 탈퇴: userSeq={}", userSeq);
         return Outcome.done("탈퇴했어요. 그동안 TOADY를 이용해 주셔서 고마워요.", null);

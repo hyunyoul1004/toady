@@ -11,6 +11,10 @@ export const accountApi = {
   /** 성공하면 data.accessToken(이 기기만 로그인 유지, 다른 기기는 로그아웃) */
   changePassword: (currentPassword, newPassword, newPasswordConfirm) =>
     apiClient.post('/api/v1/me/account/password', { currentPassword, newPassword, newPasswordConfirm }),
+  /** 준비된 캐릭터 키(ProfileAvatar.PROFILE_ICONS) 또는 null(닉네임 첫 글자) */
+  setProfileIcon: icon => apiClient.patch('/api/v1/me/account/profile-icon', { icon }),
+  /** 내가 쓴 이야기 최신순 10개씩 */
+  myComments: page => apiClient.get('/api/v1/me/account/comments', { page }).then(res => res?.data || { items: [], total: 0, hasMore: false }),
   withdraw: (password, phrase) => apiClient.post('/api/v1/me/account/withdraw', { password, phrase }),
   disableFavoriteEmails: () => apiClient.post('/api/v1/me/favorites/disable-emails', {})
 };

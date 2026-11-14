@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Skeleton, TextField } from '@mui/material';
 import PersonOutlineRounded from '@mui/icons-material/PersonOutlineRounded';
 import LockOutlined from '@mui/icons-material/LockOutlined';
@@ -11,7 +11,11 @@ import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import EditRounded from '@mui/icons-material/EditRounded';
+import SubdirectoryArrowRightRounded from '@mui/icons-material/SubdirectoryArrowRightRounded';
+import ProfileAvatar, { PROFILE_ICONS } from './ProfileAvatar';
+import { useMyAccount } from './useMyAccount';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import PushSettingsDialog from '@/features/push/PushSettingsDialog';
@@ -124,6 +128,74 @@ function WithdrawForm({ phrase, onDone, onCancel }) {
   </form>;
 }
 
+/** 준비된 캐릭터 중에서 고른다. 눌러서 미리 보고 '저장'으로 확정한다(요청 제한을 아끼고 실수로 바뀌지 않게). */
+function IconPicker({ current, nickname, onDone, onCancel }) {
+  const [picked, setPicked] = useState(current), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const save = async () => {
+    setBusy(true); setError('');
+    const result = await run(() => accountApi.setProfileIcon(picked));
+    setBusy(false);
+    if (!result.ok) { setError(result.message); return; }
+    onDone(result.message);
+  };
+  const options = [{ key: null, label: '첫 글자' }, ...PROFILE_ICONS];
+  return <div className="account-form">
+    <h2>프로필 캐릭터</h2>
+    <p className="account-note">이야기(댓글)를 쓸 때 닉네임 옆에 함께 보여요.</p>
+    <div className="account-icon-grid" role="radiogroup" aria-label="프로필 캐릭터">
+      {options.map(option => <button key={option.key || 'none'} type="button" role="radio" aria-checked={picked === option.key}
+        className={`account-icon-option${option.key ? '' : ' is-none'}`} onClick={() => setPicked(option.key)}>
+        <ProfileAvatar icon={option.key} name={nickname} size={48} decorative /><span>{option.label}</span>
+      </button>)}
+    </div>
+    {error && <Alert severity="error">{error}</Alert>}
+    <div className="account-form-actions">
+      <Button onClick={onCancel} disabled={busy}>취소</Button>
+      <Button variant="contained" disableElevation onClick={save} disabled={busy || picked === current}>{busy ? <CircularProgress size={18} color="inherit" /> : '저장'}</Button>
+    </div>
+  </div>;
+}
+
+const storyDate = value => {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+};
+
+/** 내가 쓴 이야기. 누르면 그 공고의 이야기 탭을 열고 해당 이야기로 이동한다(뒤로가기로 이 목록에 돌아온다). */
+function MyStories({ onClose }) {
+  const navigate = useNavigate();
+  const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
+  const stories = useInfiniteQuery({
+    queryKey: ['account', 'stories', userSeq],
+    queryFn: ({ pageParam }) => accountApi.myComments(pageParam),
+    initialPageParam: 0,
+    getNextPageParam: last => (last?.hasMore ? last.page + 1 : undefined),
+    enabled: userSeq != null,
+    staleTime: 30000
+  });
+  const items = (stories.data?.pages || []).flatMap(page => page?.items || []);
+  const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  return <section className="account-card account-stories" id="account-stories" aria-labelledby="account-stories-title">
+    <div className="account-stories-head"><h2 id="account-stories-title"><ChatBubbleOutlineRounded fontSize="small" />내가 쓴 이야기</h2>
+      <Button size="small" onClick={onClose}>접기</Button></div>
+    {stories.isLoading && <><Skeleton height={56} /><Skeleton height={56} /></>}
+    {stories.isError && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => stories.refetch()}>다시 시도</Button>}>이야기를 불러오지 못했어요.</Alert>}
+    {!stories.isLoading && !stories.isError && items.length === 0 && <p className="account-note account-stories-empty">아직 쓴 이야기가 없어요. 공고 상세의 ‘이야기’ 탭에서 경험이나 질문을 남겨 보세요.</p>}
+    <ul className="account-story-list">
+      {items.map(item => <li key={item.commentSeq}>
+        <button type="button" className="account-story" onClick={() => open(item)}>
+          <span className="account-story-house">{item.reply && <SubdirectoryArrowRightRounded fontSize="inherit" aria-label="답글" />}{item.houseNm || '공고 정보 없음'}</span>
+          <span className="account-story-content">{item.content}</span>
+          <small>{storyDate(item.regDt)}{item.edited ? ' · 수정됨' : ''}</small>
+          <ChevronRightRounded className="account-story-go" />
+        </button>
+      </li>)}
+    </ul>
+    {stories.hasNextPage && <Button fullWidth onClick={() => stories.fetchNextPage()} disabled={stories.isFetchingNextPage}>{stories.isFetchingNextPage ? '불러오는 중…' : '더 보기'}</Button>}
+  </section>;
+}
+
 /** 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다. */
 export default function AccountPage() {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
@@ -133,7 +205,11 @@ export default function AccountPage() {
   const [editing, setEditing] = useState(null), [notice, setNotice] = useState(''), [farewell, setFarewell] = useState('');
   const [emailConfirm, setEmailConfirm] = useState(false);
   const [pushOpen, setPushOpen] = useHistoryOverlay('push-settings');
-  const summary = useQuery({ queryKey: ACCOUNT_KEY, queryFn: accountApi.summary, enabled: isAuthenticated, staleTime: 30000 });
+  const summary = useMyAccount();
+  // '내가 쓴 이야기' 펼침은 주소에 남겨, 이야기를 눌러 공고로 갔다가 뒤로 와도 그대로 열려 있게 한다.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const storiesOpen = searchParams.get('stories') === '1';
+  const toggleStories = () => { const next = new URLSearchParams(searchParams); if (storiesOpen) next.delete('stories'); else next.set('stories', '1'); setSearchParams(next, { replace: true, state: location.state }); };
   const data = summary.data;
 
   useEffect(() => {
@@ -169,19 +245,30 @@ export default function AccountPage() {
     {summary.isError && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={() => summary.refetch()}>다시 시도</Button>}>내 정보를 불러오지 못했어요.</Alert>}
 
     <section className="account-card account-profile" aria-label="프로필">
-      <div className="account-avatar" aria-hidden="true">{(data?.nickname || '?').slice(0, 1)}</div>
+      <button type="button" className="account-avatar-button" aria-label="프로필 캐릭터 바꾸기" aria-expanded={editing === 'icon'}
+        onClick={() => { setEditing(editing === 'icon' ? null : 'icon'); setNotice(''); }}>
+        <ProfileAvatar icon={data?.profileIcon} name={data?.nickname} size={60} decorative />
+        <span className="account-avatar-edit" aria-hidden="true"><EditRounded /></span>
+      </button>
       <div className="account-profile-text">
         {summary.isLoading ? <><Skeleton width={120} height={28} /><Skeleton width={200} /></> : <>
           <strong>{data?.nickname}</strong><span>{data?.email}</span><small>{joined(data?.createdAt)}</small></>}
       </div>
     </section>
 
+    {editing === 'icon' && <section className="account-card" aria-label="프로필 캐릭터 고르기">
+      <IconPicker current={data?.profileIcon || null} nickname={data?.nickname} onDone={finished} onCancel={() => setEditing(null)} />
+    </section>}
+
     <nav className="account-stats" aria-label="내 활동">
       <Link to="/my" className="account-stat"><BookmarkBorderRounded /><span>관심 공고</span><b>{count(data?.favorites)}</b><ChevronRightRounded className="account-chevron" /></Link>
-      <div className="account-stat"><ChatBubbleOutlineRounded /><span>작성한 이야기</span><b>{count(data?.comments)}</b></div>
+      <button type="button" className={`account-stat${storiesOpen ? ' is-open' : ''}`} aria-expanded={storiesOpen} aria-controls="account-stories" onClick={toggleStories}>
+        <ChatBubbleOutlineRounded /><span>작성한 이야기</span><b>{count(data?.comments)}</b><ChevronRightRounded className="account-chevron" /></button>
       <div className="account-stat"><MailOutlineRounded /><span>이메일 알림 공고</span><b>{count(data?.emailAlerts)}</b></div>
       <div className="account-stat"><NotificationsNoneRounded /><span>알림 받는 기기</span><b>{count(data?.pushDevices)}</b></div>
     </nav>
+
+    {storiesOpen && <MyStories onClose={toggleStories} />}
 
     <section className="account-card" aria-labelledby="account-login-title">
       <h2 id="account-login-title"><LockOutlined fontSize="small" />로그인 정보</h2>

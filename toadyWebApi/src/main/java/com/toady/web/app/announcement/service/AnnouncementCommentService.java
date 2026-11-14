@@ -8,6 +8,7 @@ import com.toady.web.app.announcement.entity.AnnouncementCommentEntity;
 import com.toady.web.app.announcement.repository.AnnouncementCommentRepository;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
+import com.toady.web.app.user.service.ProfileIcons;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,7 @@ public class AnnouncementCommentService {
     private final AnnouncementCommentRepository commentRepository;
     private final AnnouncementService announcementService;
     private final UserRepository userRepository;
+    private final ProfileIcons profileIcons;
 
     public Page<AnnouncementCommentResponse> list(
             AnnouncementType type,
@@ -39,9 +41,12 @@ public class AnnouncementCommentService {
             throw new IllegalArgumentException("댓글 커서 조회는 양수 댓글 번호와 page=0을 사용하세요.");
         }
         requireAnnouncement(type, houseManageNo, pblancNo);
-        return commentRepository.findVisibleComments(
+        Page<AnnouncementCommentResponse> comments = commentRepository.findVisibleComments(
                 type.name(), houseManageNo, pblancNo, beforeCommentSeq, PageRequest.of(page, size)
         );
+        // 작성자 프로필 캐릭터를 한 번에 읽어 붙인다(테이블이 없으면 모두 null → 닉네임 첫 글자).
+        var icons = profileIcons.of(comments.getContent().stream().map(AnnouncementCommentResponse::createUserSeq).toList());
+        return comments.map(comment -> comment.withProfileIcon(icons.get(comment.createUserSeq())));
     }
 
     public long count(AnnouncementType type, String houseManageNo, String pblancNo) {
@@ -160,7 +165,8 @@ public class AnnouncementCommentService {
                 user.getUserNicName(),
                 comment.getRegDt(),
                 comment.getUpdateUserSeq(),
-                comment.getUpdateDt()
+                comment.getUpdateDt(),
+                profileIcons.of(comment.getCreateUserSeq())
         );
     }
 }

@@ -34,6 +34,20 @@ public record AnnouncementCommentResponse(
         @Schema(description = "수정자 사용자 번호", example = "100")
         Long updateUserSeq,
         @Schema(description = "수정 일시", example = "2026-10-30T12:30:00")
-        LocalDateTime updateDt
+        LocalDateTime updateDt,
+        @Schema(description = "작성자 프로필 캐릭터 키. 고르지 않았으면 null(닉네임 첫 글자로 표시)", example = "toad")
+        String profileIcon
 ) {
+    /** JPQL 생성자 표현식용(프로필 캐릭터는 TB_USER_PROFILE에서 따로 채운다). */
+    public AnnouncementCommentResponse(Long commentSeq, String announcementType, String houseManageNo, String pblancNo, Long parentCommentSeq,
+            String content, Integer recommend, Integer oppose, String deleteYn, Long createUserSeq, String userNicName,
+            LocalDateTime regDt, Long updateUserSeq, LocalDateTime updateDt) {
+        this(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend, oppose, deleteYn,
+                createUserSeq, userNicName, regDt, updateUserSeq, updateDt, null);
+    }
+
+    public AnnouncementCommentResponse withProfileIcon(String icon) {
+        return new AnnouncementCommentResponse(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend,
+                oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, icon);
+    }
 }

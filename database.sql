@@ -517,3 +517,14 @@ CREATE TABLE IF NOT EXISTS TB_APT_COMPLEX_LOCATION (
     STATUS VARCHAR(12) NOT NULL COMMENT 'FOUND 또는 NOT_FOUND',
     CHECKED_DT DATETIME(6) NOT NULL COMMENT '한국시간 확인 시각'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 단지 좌표(카카오 주소 검색 결과)';
+
+-- ============================================================================
+-- 23. 회원 프로필 캐릭터 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 이미지를 올리지 않고 화면이 준비한 캐릭터(toad·cat 등) 중 하나의 키만 저장한다. 내 정보에서 고르고, 이야기(댓글) 작성자 옆에 보인다.
+-- 미적용이면 모든 회원이 닉네임 첫 글자 동그라미로 보이고, 캐릭터 고르기는 '준비 중' 안내로 막힌다. 탈퇴하면 행을 지운다.
+CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (
+    USER_SEQ BIGINT NOT NULL PRIMARY KEY,
+    PROFILE_ICON VARCHAR(30) NOT NULL COMMENT '캐릭터 키(화면 ProfileAvatar.jsx와 같은 목록)',
+    UPDATE_DT DATETIME(6) NOT NULL COMMENT '한국시간 변경 시각'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 프로필 캐릭터';

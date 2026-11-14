@@ -46,6 +46,8 @@ class AccountSettingsTest {
         ip = "198.51.100." + (++testIndex);
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT, ANNOUNCEMENT_TYPE VARCHAR(20), HOUSE_MANAGE_NO VARCHAR(40), PBLANC_NO VARCHAR(40), EMAIL_ENABLED BOOLEAN)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (USER_SEQ BIGINT, FEED_TOKEN VARCHAR(64))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (USER_SEQ BIGINT PRIMARY KEY, PROFILE_ICON VARCHAR(30) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL)");
+        jdbc.update("DELETE FROM TB_USER_PROFILE"); jdbc.update("DELETE FROM TB_LTTOT_PBLANC_COMMENT");
         jdbc.update("DELETE FROM TB_FAVORITE"); jdbc.update("DELETE FROM TB_CALENDAR_FEED");
         jdbc.update("DELETE FROM TB_CERTIFY"); jdbc.update("DELETE FROM TB_USER");
         jdbc.update("INSERT INTO TB_USER (USER_EMAIL, USER_PASSWORD, USER_NIC_NAME, EMAIL_CERTIFY_YN, LOCK_YN, WITHDRAWAL_YN) VALUES ('me@example.test',?,'두껍이','Y','N','N')", encoder.encode("Original1!"));
@@ -130,5 +132,38 @@ class AccountSettingsTest {
         for (int i = 0; i < 11; i++) last = call(post("/api/v1/me/account/password"), token,
                 Map.of("currentPassword", "guess" + i, "newPassword", "Changed2!", "newPasswordConfirm", "Changed2!")).get("resultCode").asText();
         assertEquals("ERR-429", last, "현재 비밀번호를 계속 대입해 볼 수 없다");
+    }
+
+    @Test void profileIconIsChosenFromThePresetListAndShownOnComments() throws Exception {
+        String token = login("me@example.test");
+        assertNotEquals("SUCCESS", call(patch("/api/v1/me/account/profile-icon"), token, Map.of("icon", "https://evil.example/x.png")).get("resultCode").asText(), "준비된 캐릭터만 고를 수 있다");
+        assertEquals("SUCCESS", call(patch("/api/v1/me/account/profile-icon"), token, Map.of("icon", "toad")).get("resultCode").asText());
+        assertEquals("toad", call(get("/api/v1/me/account"), token, null).get("data").get("profileIcon").asText());
+        assertEquals("SUCCESS", call(patch("/api/v1/me/account/profile-icon"), token, Map.of("icon", "cat")).get("resultCode").asText(), "다시 고르면 바뀐다");
+        assertEquals("cat", jdbc.queryForObject("SELECT PROFILE_ICON FROM TB_USER_PROFILE WHERE USER_SEQ=?", String.class, seq));
+        // 댓글 목록 응답에 작성자 캐릭터가 실린다.
+        jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('APT','H1','P1','안녕',0,0,'N',?,CURRENT_TIMESTAMP)", seq);
+        var page = new com.toady.web.app.announcement.dto.AnnouncementCommentResponse(1L, "APT", "H1", "P1", null, "x", 0, 0, "N", seq, "두껍이", null, null, null);
+        assertNull(page.profileIcon(), "JPQL용 생성자는 캐릭터 없이 만든다");
+        assertEquals("cat", page.withProfileIcon("cat").profileIcon());
+        assertEquals("SUCCESS", call(patch("/api/v1/me/account/profile-icon"), token, java.util.Collections.singletonMap("icon", null)).get("resultCode").asText(), "고르지 않음으로 되돌릴 수 있다");
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER_PROFILE WHERE USER_SEQ=?", Integer.class, seq));
+    }
+
+    @Test void myCommentsListsWhatIWroteNewestFirstWithAWayBackToTheAnnouncement() throws Exception {
+        String token = login("me@example.test");
+        for (int i = 1; i <= 12; i++) jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,PARENT_COMMENT_SEQ,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('APT','H1','P1',NULL,?,0,0,?,?,CURRENT_TIMESTAMP)",
+                "이야기" + i, i == 3 ? "Y" : "N", seq);
+        jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES ('REMAINING','R1','R2','남의 글',0,0,'N',(SELECT USER_SEQ FROM TB_USER WHERE USER_EMAIL='other@example.test'),CURRENT_TIMESTAMP)");
+        JsonNode first = call(get("/api/v1/me/account/comments"), token, null).get("data");
+        assertEquals(11, first.get("total").asInt(), "지운 이야기와 남의 이야기는 빠진다");
+        assertEquals(10, first.get("items").size());
+        assertTrue(first.get("hasMore").asBoolean());
+        assertEquals("이야기12", first.get("items").get(0).get("content").asText(), "최신순");
+        assertEquals("apt/H1/P1", first.get("items").get(0).get("announcementId").asText(), "화면이 그 공고로 이동할 수 있는 주소");
+        JsonNode second = call(get("/api/v1/me/account/comments").param("page", "1"), token, null).get("data");
+        assertEquals(1, second.get("items").size());
+        assertFalse(second.get("hasMore").asBoolean());
+        assertEquals(401, status(get("/api/v1/me/account/comments"), null));
     }
 }

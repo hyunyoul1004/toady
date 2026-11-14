@@ -29,6 +29,8 @@ import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
+import ProfileAvatar from '@/features/account/ProfileAvatar';
+import { useMyProfileIcon } from '@/features/account/useMyAccount';
 import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
@@ -48,6 +50,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   const logout = useAuthStore(state => state.logout);
 
   const nickname = user?.userNicName || user?.sub || '회원';
+  const myProfileIcon = useMyProfileIcon();
 
   const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
   /**
@@ -232,13 +235,16 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Box sx={{ px: 0.5 }}>
-              <Typography variant="caption" sx={{ color: '#64748b' }}>
-                접속 중인 계정
-              </Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b' }}>
-                {nickname}님
-              </Typography>
+            <Box sx={{ px: 0.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+              <ProfileAvatar icon={myProfileIcon} name={nickname} size={36} decorative />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" sx={{ color: '#64748b' }}>
+                  접속 중인 계정
+                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b', overflowWrap: 'anywhere' }}>
+                  {nickname}님
+                </Typography>
+              </Box>
             </Box>
             <Button
               fullWidth

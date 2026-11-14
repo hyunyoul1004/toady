@@ -3,6 +3,7 @@
  * @description 청약 공고 상세 댓글 및 답글(대댓글) 컴포넌트
  */
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { summaryOf, koreaToday } from '@/features/planner/plannerUtils';
 import StoryPrompts from '@/features/story/StoryPrompts';
@@ -30,6 +31,8 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
+import ProfileAvatar from '@/features/account/ProfileAvatar';
+import { useMyProfileIcon } from '@/features/account/useMyAccount';
 import {
   useCommentsQuery,
   useAddCommentMutation,
@@ -62,10 +65,28 @@ const getAvatarColor = (name = '') => {
 const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const myProfileIcon = useMyProfileIcon();
   const currentSubscriptSeq = subscriptSeq || subscriptDetail?.subscriptSeq;
 
   // 댓글 목록 조회 (TanStack Query)
   const { data: commentsRes, isLoading, isError, error, refetch } = useCommentsQuery(currentSubscriptSeq, Boolean(currentSubscriptSeq));
+
+  // '내 정보 > 내가 쓴 이야기'에서 눌러 들어오면(?comment=번호) 그 이야기로 스크롤하고 잠깐 강조한다.
+  const [searchParams] = useSearchParams();
+  const focusComment = Number(searchParams.get('comment')) || null;
+  const [highlighted, setHighlighted] = useState(null);
+  const focusedOnce = useRef(null), highlightTimer = useRef(null);
+  useEffect(() => {
+    if (!focusComment || focusedOnce.current === focusComment || !commentsRes) return;
+    const element = document.getElementById(`story-${focusComment}`);
+    if (!element) return; // 지워졌거나 목록에 없는 이야기면 이야기 탭만 연 상태로 둔다.
+    focusedOnce.current = focusComment;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlighted(focusComment);
+    clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlighted(null), 2800);
+  }, [focusComment, commentsRes]);
+  useEffect(() => () => clearTimeout(highlightTimer.current), []);
 
   // Mutations
   const addMutation = useAddCommentMutation();
@@ -297,13 +318,15 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
     return (
       <Box
         key={row.subscriptCommentSeq}
+        id={`story-${row.subscriptCommentSeq}`}
         sx={{
           position: 'relative',
           py: 1.8,
           px: isChild ? 2 : 1.5,
           borderRadius: 2.5,
-          bgcolor: isChild ? '#f8fafc' : 'transparent',
-          border: isChild ? '1px solid #f1f5f9' : 'none',
+          bgcolor: highlighted === row.subscriptCommentSeq ? '#eff6ff' : isChild ? '#f8fafc' : 'transparent',
+          border: highlighted === row.subscriptCommentSeq ? '1px solid #93c5fd' : isChild ? '1px solid #f1f5f9' : 'none',
+          scrollMarginTop: 96,
           transition: 'all 0.15s ease',
           '&:hover': {
             bgcolor: isChild ? '#f1f5f9' : '#fafafa'
@@ -313,19 +336,22 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         {/* 헤더: 아바타, 닉네임, 뱃지, 작성일시, 액션 버튼 */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, mb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-            <Avatar
-              sx={{
-                width: isChild ? 32 : 36,
-                height: isChild ? 32 : 36,
-                fontSize: isChild ? '0.8rem' : '0.9rem',
-                fontWeight: 800,
-                bgcolor: avatarColor.bg,
-                color: avatarColor.text,
-                border: `1.5px solid ${avatarColor.text}20`
-              }}
-            >
-              {row.userNicName?.charAt(0) || 'U'}
-            </Avatar>
+            {/* 작성자가 고른 프로필 캐릭터. 고르지 않았으면 닉네임 첫 글자 */}
+            {row.profileIcon
+              ? <ProfileAvatar icon={row.profileIcon} name={row.userNicName} size={isChild ? 32 : 36} decorative />
+              : <Avatar
+                  sx={{
+                    width: isChild ? 32 : 36,
+                    height: isChild ? 32 : 36,
+                    fontSize: isChild ? '0.8rem' : '0.9rem',
+                    fontWeight: 800,
+                    bgcolor: avatarColor.bg,
+                    color: avatarColor.text,
+                    border: `1.5px solid ${avatarColor.text}20`
+                  }}
+                >
+                  {row.userNicName?.charAt(0) || 'U'}
+                </Avatar>}
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
                 <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', lineHeight: 1.2 }}>
@@ -605,18 +631,20 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         >
           {/* 에디터 상단 프로필 바 */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.2 }}>
-            <Avatar
-              sx={{
-                width: 28,
-                height: 28,
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                bgcolor: '#eff6ff',
-                color: '#2563eb'
-              }}
-            >
-              {user?.userNicName?.charAt(0) || 'U'}
-            </Avatar>
+            {myProfileIcon
+              ? <ProfileAvatar icon={myProfileIcon} name={user?.userNicName} size={28} decorative />
+              : <Avatar
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    fontSize: '0.75rem',
+                    fontWeight: 800,
+                    bgcolor: '#eff6ff',
+                    color: '#2563eb'
+                  }}
+                >
+                  {user?.userNicName?.charAt(0) || 'U'}
+                </Avatar>}
             <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>
               {user?.userNicName || '회원'}
             </Typography>

@@ -23,6 +23,7 @@ import java.util.Map;
 public class AccountController {
     public record NicknameChange(@Size(max = 50) String nickname) { }
     public record PasswordChange(@Size(max = 100) String currentPassword, @Size(max = 100) String newPassword, @Size(max = 100) String newPasswordConfirm) { }
+    public record ProfileIconChange(@Size(max = 30) String icon) { }
     public record Withdraw(@Size(max = 100) String password, @Size(max = 50) String phrase) { }
 
     private final AccountService service;
@@ -37,6 +38,18 @@ public class AccountController {
     @PatchMapping("/nickname")
     public ResponseEntity<ResData<?>> nickname(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody NicknameChange request) {
         return respond(service.changeNickname(user.getUserSeq(), request.nickname()));
+    }
+
+    @PatchMapping("/profile-icon")
+    public ResponseEntity<ResData<?>> profileIcon(@AuthenticationPrincipal CustomUserDetails user, @Valid @RequestBody ProfileIconChange request) {
+        return respond(service.changeProfileIcon(user.getUserSeq(), request.icon()));
+    }
+
+    /** 내가 쓴 이야기(최신순 10개씩) */
+    @GetMapping("/comments")
+    public ResponseEntity<ResData<?>> comments(@AuthenticationPrincipal CustomUserDetails user, @RequestParam(defaultValue = "0") int page) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ResData.of(service.myComments(user.getUserSeq(), page), "SUCCESS", "성공"));
     }
 
     @PostMapping("/password")
