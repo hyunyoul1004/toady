@@ -97,22 +97,29 @@ public class ApplyhomeApiClient {
 	}
 
 	private JsonNode fetch(URI uri, String endpoint) {
+		return fetchWithRetry(restClient, uri, endpoint, retryDelaysMs, "Applyhome API");
+	}
+
+	/**
+	 * 통신 오류·5xx는 정해진 간격으로 다시 부르고, 401·403·429는 바로 ProviderRejectedException, 그 밖의 4xx는 바로 실패로 돌린다.
+	 * 공고 API와 경쟁률 API가 함께 쓴다. 예외 메시지에는 서비스 키가 담긴 URI를 남기지 않는다.
+	 */
+	static JsonNode fetchWithRetry(RestClient client, URI uri, String endpoint, long[] delaysMs, String label) {
 		IllegalStateException last = null;
-		for (int attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+		for (int attempt = 0; attempt <= delaysMs.length; attempt++) {
 			if (attempt > 0) {
-				try { Thread.sleep(retryDelaysMs[attempt - 1]); }
+				try { Thread.sleep(delaysMs[attempt - 1]); }
 				catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw last; }
 			}
 			try {
-				return restClient.get().uri(uri).retrieve().body(JsonNode.class);
+				return client.get().uri(uri).retrieve().body(JsonNode.class);
 			} catch (RestClientResponseException exception) {
 				int status = exception.getStatusCode().value();
 				if (status == 401 || status == 403 || status == 429) throw new ProviderRejectedException(status, endpoint);
-				// 예외 메시지에 서비스 키가 담긴 URI를 남기지 않는다.
-				last = new IllegalStateException("Applyhome API returned HTTP " + status + " for endpoint=" + endpoint);
+				last = new IllegalStateException(label + " returned HTTP " + status + " for endpoint=" + endpoint);
 				if (status < 500) throw last;
 			} catch (RestClientException exception) {
-				last = new IllegalStateException("Applyhome API request failed for endpoint=" + endpoint);
+				last = new IllegalStateException(label + " request failed for endpoint=" + endpoint);
 			}
 		}
 		throw last;

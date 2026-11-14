@@ -252,7 +252,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   useEffect(()=>{
     const map=mapRef.current,kakao=kakaoRef.current;
     if(!map || !kakao || !showPrices || !kakao.maps.services)return;
-    const geocoder=new kakao.maps.services.Geocoder(),seen=new Set();let timer;
+    // 물어본 격자(약 1km) → 시·군·구. 오래돼 목록에서 빠진 지역으로 다시 오면 기억한 값으로 다시 더한다(addDistrict가 중복을 거른다).
+    const geocoder=new kakao.maps.services.Geocoder(),known=new Map();let timer,active=true;
     const look=()=>{
       clearTimeout(timer);
       timer=setTimeout(()=>{
@@ -263,17 +264,22 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
         spots.forEach(spot=>{
           // 같은 곳(약 1km 격자)은 다시 묻지 않는다.
           const cell=`${spot.getLat().toFixed(2)},${spot.getLng().toFixed(2)}`;
-          if(seen.has(cell))return;seen.add(cell);
+          if(known.has(cell)){const remembered=known.get(cell);if(remembered)addDistrictRef.current(remembered);return;}
+          known.set(cell,null);
           geocoder.coord2RegionCode(spot.getLng(),spot.getLat(),(rows,status)=>{
-            if(status!==kakao.maps.services.Status.OK)return;
+            // 지도를 닫았거나 다른 공고로 바뀐 뒤 늦게 온 응답은 쓰지 않는다.
+            if(!active)return;
+            if(status!==kakao.maps.services.Status.OK){known.delete(cell);return;}
             const legal=rows.find(row=>row.region_type==='B');
-            if(legal)addDistrictRef.current({bcode:legal.code,region:[legal.region_1depth_name,legal.region_2depth_name].filter(Boolean).join(' ')});
+            if(!legal)return;
+            const found={bcode:legal.code,region:[legal.region_1depth_name,legal.region_2depth_name].filter(Boolean).join(' ')};
+            known.set(cell,found);addDistrictRef.current(found);
           });
         });
       },500);
     };
     kakao.maps.event.addListener(map,'idle',look);look();
-    return()=>{clearTimeout(timer);kakao.maps.event.removeListener(map,'idle',look);};
+    return()=>{active=false;clearTimeout(timer);kakao.maps.event.removeListener(map,'idle',look);};
   },[mapReady,showPrices]);
 
   // 선택한 단지는 색만 바꾼다(말풍선 수백 개를 다시 만들지 않게).

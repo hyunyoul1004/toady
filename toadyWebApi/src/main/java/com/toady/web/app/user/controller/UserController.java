@@ -45,6 +45,9 @@ public class UserController {
     private UserService userService;
 
     @Autowired
+    private com.toady.web.core.util.email.MailGate mailGate;
+
+    @Autowired
     private com.toady.web.core.security.LoginAttemptLimiter loginAttempts;
 
     /**
@@ -105,7 +108,7 @@ public class UserController {
         }
 
         try {
-            return userService.regUser(param);
+            return mailGate.run(() -> userService.regUser(param));
         } catch (EmailDeliveryException e) {
             log.error("회원가입 인증 이메일 발송 실패", e);
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(

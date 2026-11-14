@@ -308,14 +308,14 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
   const handleTabChange = (event, newValue) => {
     setDetailTabValue(newValue);
-    if(detailOnly) return;
     const tabNames = ['detail', 'rate', 'map', 'comment'];
-    if (selectedSubscriptSeq) {
-      setSearchParams(
-        { subscriptSeq: selectedSubscriptSeq, tabType: tabNames[newValue] },
-        { replace: true, state: location.state }
-      );
-    }
+    if (!selectedSubscriptSeq) return;
+    // 다른 메뉴(맞춤 청약·가점 계산 등) 위에 연 상세도 보던 탭을 주소에 남긴다. 그래야 탭 안 팝업(이미지 저장 등)이 쌓은 히스토리와
+    // 앞으로가기·새로고침 뒤 화면이 맞는다. 주소의 다른 값(src 등)은 그대로 두고 탭만 바꾼다.
+    const next = new URLSearchParams(searchParams);
+    if (!route.type) next.set('subscriptSeq', selectedSubscriptSeq);
+    next.set('tabType', tabNames[newValue]);
+    setSearchParams(next, { replace: true, state: location.state });
   };
 
   // 공고 공유하기 (Web Share API 및 클립보드 복사 폴백)

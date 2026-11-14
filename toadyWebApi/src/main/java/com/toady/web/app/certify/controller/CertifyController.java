@@ -37,6 +37,9 @@ public class CertifyController {
     @Autowired
     private CertifyService certifyService;
 
+    @Autowired
+    private com.toady.web.core.util.email.MailGate mailGate;
+
     @org.springframework.beans.factory.annotation.Value("${toady.security.mail-response-min-ms:1500}")
     private long mailResponseMinMillis;
 
@@ -57,7 +60,7 @@ public class CertifyController {
     public ResponseEntity<ResData> resendAccountVerification(@Valid @RequestBody CertifyDTO.UserInfo param) {
         long started = System.nanoTime();
         try {
-            return certifyService.resendAccountVerification(param);
+            return mailGate.run(() -> certifyService.resendAccountVerification(param));
         } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
             // 발송 실패도 같은 응답으로 돌려 가입 여부를 숨긴다. 코드 기록은 롤백되어 바로 다시 요청할 수 있다.
             log.error("가입 인증 이메일 재발송 실패", exception);
@@ -76,7 +79,7 @@ public class CertifyController {
     public ResponseEntity<ResData> findPasswordRequestCertify(@Valid @RequestBody CertifyDTO.UserInfo userInfo){
         long started = System.nanoTime();
         try {
-            return certifyService.findPasswordRequestCertify(userInfo);
+            return mailGate.run(() -> certifyService.findPasswordRequestCertify(userInfo));
         } catch (com.toady.web.core.util.email.EmailDeliveryException exception) {
             // 메일 한도 소진 등으로 발송에 실패해도 같은 응답을 돌려, 가입된 이메일에만 오류가 나는 차이로 가입 여부가 드러나지 않게 한다.
             log.error("비밀번호 재설정 이메일 발송 실패", exception);

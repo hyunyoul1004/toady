@@ -125,6 +125,8 @@ public class ComplexPriceService {
             java.time.YearMonth end = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Seoul"));
             while (!state.done() && System.nanoTime() < deadline) {
                 java.time.YearMonth month = end.minusMonths(state.nextOffset);
+                // 최근 실패해 쉬는 달이나 제공처 호출을 멈춘 동안에는 실제 요청이 없으므로 실패로 세지 않고 다음 요청에서 이어 받는다.
+                if (research.monthWaiting(lawd5, month)) break;
                 Optional<List<NeighborhoodResearchService.Trade>> trades = research.monthTrades(lawd5, month, deadline);
                 if (trades.isEmpty() && System.nanoTime() >= deadline) break;   // 시간 초과: 다음 요청에서 이 달부터 다시
                 // 제공처 오류로 못 받은 달은 바로 건너뛰지 않는다(그 달에만 거래가 있던 단지가 6시간 빠지지 않게). 연속 3번이면 건너뛴다.

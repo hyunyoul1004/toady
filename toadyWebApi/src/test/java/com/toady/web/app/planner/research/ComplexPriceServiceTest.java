@@ -120,6 +120,27 @@ class ComplexPriceServiceTest {
         assertEquals(36, molitCalls.get(), "완성된 결과는 캐시에서 준다");
     }
 
+    @Test void aFailedOlderMonthIsNotSkippedWhileItIsOnlyWaitingToRetry() {
+        java.time.YearMonth now = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Seoul"));
+        String broken = now.minusMonths(20).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
+        java.util.concurrent.atomic.AtomicInteger brokenCalls = new java.util.concurrent.atomic.AtomicInteger();
+        ResearchTransport transport = (uri, headers) -> {
+            if (uri.getHost().equals("dapi.kakao.com")) return "{\"documents\":[]}".getBytes(StandardCharsets.UTF_8);
+            String month = uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6);
+            if (month.equals(broken)) { brokenCalls.incrementAndGet(); throw new java.io.IOException("temporary"); }
+            String items = item("요즘단지", "동패동", "1", "70,000", "84.00", 5, "2019", month, 2);
+            return ("<response><header><resultCode>000</resultCode></header><body><totalCount>1</totalCount><items>" + items + "</items></body></response>").getBytes(StandardCharsets.UTF_8);
+        };
+        var service = new ComplexPriceService(new NeighborhoodResearchService(transport, "key"), new ComplexLocator(transport, jdbc, "kakao"));
+        ComplexPriceService.Result result = service.complexes("4148012800", null, 12);
+        int firstAttempt = brokenCalls.get();
+        assertTrue(firstAttempt > 0);
+        // 화면은 partial이면 몇 초마다 다시 부른다. 실패한 달이 잠시 쉬는 동안의 호출은 실패로 세지 않아 그 달을 건너뛰지 않는다.
+        for (int i = 0; i < 5; i++) result = service.complexes("4148012800", null, 12);
+        assertTrue(result.partial(), "실패한 달을 다시 받기 전까지는 아직 다 받지 않은 상태");
+        assertEquals(firstAttempt, brokenCalls.get(), "쉬는 동안에는 제공처를 다시 부르지 않는다");
+    }
+
     @Test void worksWithoutTheLocationTableAndWithoutKakaoKey() {
         jdbc.execute("DROP TABLE TB_APT_COMPLEX_LOCATION");
         ResearchTransport transport = (uri, headers) -> uri.getHost().equals("dapi.kakao.com") ? kakao("1673") : molit(uri.getQuery().split("DEAL_YMD=")[1].substring(0, 6));

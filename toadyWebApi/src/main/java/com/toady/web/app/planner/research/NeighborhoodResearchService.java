@@ -178,7 +178,17 @@ public class NeighborhoodResearchService {
         if(cached!=null) return Optional.of(cached.trades());
         if(failedMonths.getIfPresent(key)!=null) return Optional.empty();
         try { return Optional.of(loadMonth(lawd5,ymd,deadline).trades()); }
-        catch(Exception failure) { if(!deadlineExceeded(failure)) failedMonths.put(key,Boolean.TRUE); return Optional.empty(); }
+        catch(Exception failure) { if(!deadlineExceeded(failure) && !(failure instanceof ProviderPaused)) failedMonths.put(key,Boolean.TRUE); return Optional.empty(); }
+    }
+    /**
+     * 이 달을 지금 부르면 제공처에 실제로 요청하지 않고 바로 실패하는지(최근 실패해 잠시 쉬는 달이거나 제공처 호출을 멈춘 상태).
+     * 이때 받은 빈 결과는 그 달의 실패로 세지 않고 다음 요청에서 다시 받는다.
+     */
+    public boolean monthWaiting(String lawd5,YearMonth month) {
+        if(lawd5==null) return false;
+        String key=lawd5+"/"+month.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        if(tradeCache.getIfPresent(key)!=null) return false;
+        return molitPaused() || failedMonths.getIfPresent(key)!=null;
     }
     /** 정렬된 값의 p 분위(선형 보간, 만원 반올림). */
     static long quantile(List<Long> sorted,double p) {

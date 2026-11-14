@@ -5,8 +5,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.util.UriUtils;
 
@@ -46,6 +44,9 @@ public class ApplyhomeCompetitionApiClient {
 				.build();
 	}
 
+	/** 재시도 간격(테스트에서 줄인다). 통신 오류·5xx만 다시 시도한다. */
+	long[] retryDelaysMs = {1000, 3000};
+
 	public ApplyhomeApiPage getPage(String endpoint, int page, Map<String, String> filters) {
 		if (serviceKey.isBlank()) {
 			throw new IllegalStateException("APPLYHOME_API_KEY is required to call the Applyhome competition API");
@@ -54,20 +55,9 @@ public class ApplyhomeCompetitionApiClient {
 			throw new IllegalArgumentException("Competition API page and per-page values must be greater than zero");
 		}
 
-		JsonNode response;
-		try {
-			response = restClient.get()
-					.uri(buildUri(baseUrl, endpoint, serviceKey, perPage, page, filters))
-					.retrieve()
-					.body(JsonNode.class);
-		} catch (RestClientResponseException exception) {
-			int status = exception.getStatusCode().value();
-			// 인증·한도 오류는 공고마다 다시 불러도 같으므로 작업 전체를 멈추게 한다.
-			if (status == 401 || status == 403 || status == 429) throw new ApplyhomeApiClient.ProviderRejectedException(status, endpoint);
-			throw new IllegalStateException("Applyhome competition API returned HTTP " + status + " for endpoint=" + endpoint);
-		} catch (RestClientException exception) {
-			throw new IllegalStateException("Applyhome competition API request failed for endpoint=" + endpoint);
-		}
+		// 일시 오류(통신·5xx)는 공고 API와 같은 간격으로 다시 시도해, 잠깐의 장애로 실패 건수가 쌓여 작업 전체가 멈추지 않게 한다.
+		JsonNode response = ApplyhomeApiClient.fetchWithRetry(restClient,
+				buildUri(baseUrl, endpoint, serviceKey, perPage, page, filters), endpoint, retryDelaysMs, "Applyhome competition API");
 
 		if (response == null || !response.path("data").isArray()) {
 			throw new IllegalStateException("Applyhome competition API returned an invalid response for " + endpoint);

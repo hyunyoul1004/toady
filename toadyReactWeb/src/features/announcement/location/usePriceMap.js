@@ -45,6 +45,8 @@ export function usePriceMap(location, enabled, currentId = '', units = []) {
   // 가격·연식·표시 방식은 이 기기에 하나로 기억하고, 면적 범위는 공고마다 따로 둔다.
   // 처음 여는 공고는 그 공고 주택형 범위(areaDefault)로 시작한다(다른 공고에서 고른 면적이 따라오지 않게).
   const [base, setBase] = useState(readFilters);
+  // 검색어는 공고마다 동네가 달라 다른 공고로 바뀌면 비운다(지도가 다시 마운트되지 않고 공고만 바뀌는 경우에도 이전 검색어로 걸러지지 않게).
+  useEffect(() => { setBase(current => (current.query ? { ...current, query: '' } : current)); }, [currentId]);
   const areaDefault = useMemo(() => defaultAreaRange(units), [(units || []).map(unit => unit.area).join(',')]);
   // 공고 id와 함께 둬, 다른 공고로 바뀐 첫 렌더에서 이전 공고의 면적이 잠깐 쓰이지 않게 한다.
   const [areaState, setAreaState] = useState(() => ({ id: currentId, area: readArea(currentId) }));

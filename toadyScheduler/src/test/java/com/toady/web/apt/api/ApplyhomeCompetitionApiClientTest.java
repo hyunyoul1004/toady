@@ -31,4 +31,26 @@ class ApplyhomeCompetitionApiClientTest {
 				.contains("cond[HOUSE_MANAGE_NO::EQ]=2026000528")
 				.contains("cond[PBLANC_NO::EQ]=2026000528");
 	}
+
+	@Test
+	void retriesTemporaryServerErrorsInsteadOfFailingTheAnnouncement() throws Exception {
+		var calls = new java.util.concurrent.atomic.AtomicInteger();
+		var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+		int[] statuses = {502, 503, 200};
+		server.createContext("/", exchange -> {
+			int status = statuses[Math.min(calls.getAndIncrement(), statuses.length - 1)];
+			byte[] body = status == 200 ? "{\"data\":[],\"currentCount\":0,\"matchCount\":0}".getBytes(StandardCharsets.UTF_8) : new byte[0];
+			exchange.getResponseHeaders().add("Content-Type", "application/json");
+			exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
+			if (body.length > 0) exchange.getResponseBody().write(body);
+			exchange.close();
+		});
+		server.start();
+		try {
+			var client = new ApplyhomeCompetitionApiClient("http://127.0.0.1:" + server.getAddress().getPort(), "key", 10);
+			client.retryDelaysMs = new long[]{1, 1};
+			assertThat(client.getPage("getAPTLttotPblancCmpet", 1, Map.of()).matchCount()).isZero();
+			assertThat(calls.get()).isEqualTo(3);
+		} finally { server.stop(0); }
+	}
 }

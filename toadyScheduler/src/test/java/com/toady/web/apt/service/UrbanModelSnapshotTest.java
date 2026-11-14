@@ -42,12 +42,13 @@ class UrbanModelSnapshotTest {
         assertEquals(2, count());
     }
 
-    @Test void removesMissingModelsAndAnEmptySuccessfulSnapshot() {
+    @Test void removesMissingModelsButKeepsThemOnAnEmptySnapshot() {
         persistence.upsertUrbanModels(List.of(key), List.of(model("A", "100"), model("B", "150")));
         persistence.upsertUrbanModels(List.of(key), List.of(model("B", "150")));
         assertEquals(1, count());
+        // 청약홈이 일시적으로 빈 응답을 주어도 기존 주택형을 지우지 않는다.
         persistence.upsertUrbanModels(List.of(key), List.of());
-        assertEquals(0, count());
+        assertEquals(1, count());
     }
 
     @Test

@@ -57,6 +57,12 @@ public class ApplyhomeDataPersistenceService {
 		}
 		for (var entry : modelsByAnnouncement.entrySet()) {
 			AnnouncementKey key = entry.getKey();
+			if (entry.getValue().isEmpty()) {
+				// 응답에 주택형이 하나도 없으면 일시적인 빈 응답일 수 있어 기존 주택형을 지우지 않는다(일반 주택형과 같은 규칙).
+				org.slf4j.LoggerFactory.getLogger(ApplyhomeDataPersistenceService.class)
+						.warn("주택형 응답이 비어 기존 주택형을 유지: type=UrbtyOfctlLttotPblancMdl, house={}, notice={}", key.houseManageNo(), key.pblancNo());
+				continue;
+			}
 			List<UrbtyOfctlLttotPblancMdl> existing = entityManager.createQuery("""
 					select model from UrbtyOfctlLttotPblancMdl model
 					where model.houseManageNo = :houseManageNo and model.pblancNo = :pblancNo
