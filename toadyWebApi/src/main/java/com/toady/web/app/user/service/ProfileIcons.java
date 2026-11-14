@@ -54,7 +54,11 @@ public class ProfileIcons {
             if (key == null) { jdbc.update("DELETE FROM TB_USER_PROFILE WHERE USER_SEQ=?", userSeq); return true; }
             Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
             if (jdbc.update("UPDATE TB_USER_PROFILE SET PROFILE_ICON=?, UPDATE_DT=? WHERE USER_SEQ=?", key, now, userSeq) == 0) {
-                jdbc.update("INSERT INTO TB_USER_PROFILE (USER_SEQ, PROFILE_ICON, UPDATE_DT) VALUES (?,?,?)", userSeq, key, now);
+                try { jdbc.update("INSERT INTO TB_USER_PROFILE (USER_SEQ, PROFILE_ICON, UPDATE_DT) VALUES (?,?,?)", userSeq, key, now); }
+                catch (org.springframework.dao.DuplicateKeyException raced) {
+                    // 처음 고를 때 두 번 빨리 누르면 다른 요청이 먼저 넣는다. 그 행을 이번 값으로 바꾼다.
+                    jdbc.update("UPDATE TB_USER_PROFILE SET PROFILE_ICON=?, UPDATE_DT=? WHERE USER_SEQ=?", key, now, userSeq);
+                }
             }
             return true;
         } catch (DataAccessException missing) {

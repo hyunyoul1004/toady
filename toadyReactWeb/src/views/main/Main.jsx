@@ -321,11 +321,27 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     next.set('tabType', tabType);
     setSearchParams(next, { replace: true, state: location.state });
   };
+  // 위치 탭 지도에서 고른 단지·전체 화면 레이어(히스토리 칸)가 위에 있는 채로 다른 탭으로 가면, 그 칸들이 숨은 채 남아
+  // 뒤로가기가 상세를 닫지 않고 위치 탭으로 돌아간다. 먼저 그 칸들을 뒤로가기로 걷어 낸 뒤 탭을 바꾼다.
+  const MAP_LAYERS = ['price-map-complex', 'map-fullscreen'];
+  const pendingTab = useRef(null);
   const handleTabChange = (event, newValue) => {
     setDetailTabValue(newValue);
     const tabNames = [researchTab === 'trades' ? 'trades' : 'detail', 'rate', 'map', 'comment'];
+    const layers = location.state?.overlayLayers || [];
+    let mapLayers = 0;
+    for (let i = layers.length - 1; i >= 0 && MAP_LAYERS.includes(layers[i].id); i--) mapLayers++;
+    if (newValue !== 2 && mapLayers > 0) { pendingTab.current = tabNames[newValue]; navigate(-mapLayers); return; }
     writeTabType(tabNames[newValue]);
   };
+  // 걷어 낸 뒤(뒤로가기 완료) 고른 탭을 주소에 남긴다.
+  useEffect(() => {
+    if (!pendingTab.current) return;
+    if ((location.state?.overlayLayers || []).some(layer => MAP_LAYERS.includes(layer.id))) return;
+    const tab = pendingTab.current;
+    pendingTab.current = null;
+    writeTabType(tab);
+  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const handleResearchTabChange = value => {
     setResearchTab(value);
     writeTabType(value === 'trades' ? 'trades' : 'detail');

@@ -131,7 +131,7 @@ public class AdminJobService {
                     // 진행 중인 수집 트랜잭션을 강제로 끊지 않는다. 중지는 다음 구간 시작 전에 반영한다.
                     if (closing || Thread.currentThread().isInterrupted() || current.cancelRequested()) {
                         repository.finish(id, closing ? "INTERRUPTED" : "CANCELLED",
-                                "작업을 중지했습니다. 완료된 기간의 데이터는 유지됩니다.", now());
+                                withNotes("작업을 중지했습니다. 완료된 기간의 데이터는 유지됩니다.", partialFailures, chunkPartial), now());
                         return;
                     }
                     if (!repository.update(id, "RUNNING", completed,
@@ -197,7 +197,7 @@ public class AdminJobService {
             // 배포·종료로 실행기를 멈추면 HTTP 호출 중의 인터럽트가 일반 예외로 바뀌어 온다. 실제 장애와 구분해 중단으로 기록한다.
             if (closing || Thread.currentThread().isInterrupted()) {
                 log.warn("Manual scheduler job interrupted by shutdown: id={}", id);
-                repository.finish(id, "INTERRUPTED", "실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", now());
+                repository.finish(id, "INTERRUPTED", withNotes("실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", partialFailures, chunkPartial), now());
                 return;
             }
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
@@ -206,18 +206,25 @@ public class AdminJobService {
             while (cause != null && !(cause instanceof ProviderRejectedException)) cause = cause.getCause();
             if (cause instanceof ProviderRejectedException rejected) {
                 // 인증키 오류·일일 한도 초과는 원인을 그대로 알려 운영자가 다시 실행할 시점을 판단하게 한다.
-                repository.finish(id, "FAILED", "청약홈 API가 요청을 거절해 중단했습니다(HTTP " + rejected.status()
-                        + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", now());
+                repository.finish(id, "FAILED", withNotes("청약홈 API가 요청을 거절해 중단했습니다(HTTP " + rejected.status()
+                        + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", partialFailures, chunkPartial), now());
                 return;
             }
-            List<String> notes = new ArrayList<>(partialFailures);
-            if (chunkPartial != null) notes.add(chunkPartial);
-            String earlier = notes.isEmpty() ? "" : " 일부 실패: " + String.join(" / ", notes);
-            String message = "수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요." + earlier;
-            repository.finish(id, "FAILED", message.length() > 900 ? message.substring(0, 900) + "…" : message, now());
+            repository.finish(id, "FAILED", withNotes("수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요.", partialFailures, chunkPartial), now());
         } finally {
             localJob.compareAndSet(id, null);
         }
+    }
+
+    /**
+     * 끝난 작업 문구에 앞 구간·이번 구간의 일부 실패를 덧붙인다(중지·거절로 끝나도 빠진 공고가 있었다는 사실을 남긴다). 900자 제한.
+     * 운영자가 '완료된 기간은 유지'만 보고 그 기간을 온전하다고 여겨 다시 실행하지 않는 일을 막는다.
+     */
+    static String withNotes(String message, List<String> partialFailures, String chunkPartial) {
+        List<String> notes = new ArrayList<>(partialFailures);
+        if (chunkPartial != null) notes.add(chunkPartial);
+        String full = notes.isEmpty() ? message : message + " 일부 실패: " + String.join(" / ", notes);
+        return full.length() > 900 ? full.substring(0, 900) + "…" : full;
     }
 
     /**

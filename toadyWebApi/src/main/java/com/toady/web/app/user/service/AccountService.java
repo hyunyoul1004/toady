@@ -246,6 +246,7 @@ public class AccountService {
             return Outcome.fail(ResultCode.VALID_ERROR, "닉네임은 한글·영문·숫자로 2~15자까지 쓸 수 있어요(공백·특수문자 제외).");
         }
         UserEntity user = lockedUser(userSeq);
+        if (user == null) return gone();
         if (nickname.equals(user.getUserNicName())) return Outcome.fail(ResultCode.VALID_ERROR, "지금 쓰고 있는 닉네임이에요.");
         UserEntity owner = users.findByUserNicName(nickname);
         if (owner != null && !owner.getUserSeq().equals(userSeq) && !userService.releaseStaleNickname(owner)) {
@@ -256,7 +257,9 @@ public class AccountService {
         try {
             users.saveAndFlush(user);
         } catch (DataIntegrityViolationException raced) {
-            // 같은 닉네임을 동시에 고른 경우 유니크 제약이 먼저 막는다.
+            // 같은 닉네임을 동시에 고른 경우 유니크 제약이 먼저 막는다. 트랜잭션은 이미 롤백 표시가 됐으므로
+            // 정상 응답으로 끝내도 커밋 단계에서 오류(500)가 나지 않게 롤백만 하도록 알린다.
+            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return Outcome.fail(ResultCode.ALREADY_NIC_NAME, ResultCode.ALREADY_NIC_NAME.getMessage());
         }
         log.info("닉네임 변경: userSeq={}", userSeq);
@@ -267,6 +270,9 @@ public class AccountService {
     public Outcome changePassword(long userSeq, String current, String next, String confirm) {
         if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         UserEntity user = lockedUser(userSeq);
+        if (user == null) return gone();
+        // 잠금을 기다리는 동안 다른 요청이 틀린 횟수를 채웠을 수 있으므로 잠금 뒤에 한 번 더 본다(동시 요청으로 제한을 넘기지 못하게).
+        if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         if (current == null || current.length() > 72 || !encoder.matches(current, user.getUserPassword())) {
             return wrongPassword(userSeq, "현재 비밀번호가 맞지 않아요.");
         }
@@ -294,6 +300,8 @@ public class AccountService {
     public Outcome withdraw(long userSeq, String password, String phrase) {
         if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         UserEntity user = lockedUser(userSeq);
+        if (user == null) return gone();
+        if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
         if (password == null || password.length() > 72 || !encoder.matches(password, user.getUserPassword())) {
             return wrongPassword(userSeq, "비밀번호가 맞지 않아요.");
         }
@@ -325,10 +333,14 @@ public class AccountService {
      * 그래서 이메일만 JDBC로 읽고, 엔티티는 잠금 조회로 처음 읽는다.
      */
     private UserEntity lockedUser(long userSeq) {
-        String email = jdbc.queryForObject("SELECT USER_EMAIL FROM TB_USER WHERE USER_SEQ=?", String.class, userSeq);
-        UserEntity user = users.findByEmailForUpdate(email);
-        if (user == null) throw new java.util.NoSuchElementException("user " + userSeq);
-        return user;
+        String email = jdbc.query("SELECT USER_EMAIL FROM TB_USER WHERE USER_SEQ=?", rs -> rs.next() ? rs.getString(1) : null, userSeq);
+        // 잠금을 기다리는 동안 다른 요청이 탈퇴시켜 이메일이 바뀌었으면 찾지 못한다(null). 호출하는 쪽이 안내로 돌려준다.
+        return email == null ? null : users.findByEmailForUpdate(email);
+    }
+
+    /** 이미 탈퇴했거나(동시에 두 번 누름 등) 계정을 찾을 수 없을 때. 시스템 오류 대신 다시 로그인하라고 안내한다. */
+    private static Outcome gone() {
+        return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, "이미 탈퇴했거나 로그인 정보가 바뀌었어요. 다시 로그인해 주세요.");
     }
 
     private String renewedToken(UserEntity user, jakarta.servlet.http.HttpServletRequest request) {

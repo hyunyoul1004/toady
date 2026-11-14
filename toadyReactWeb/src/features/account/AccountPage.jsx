@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Skeleton, TextField } from '@mui/material';
 import PersonOutlineRounded from '@mui/icons-material/PersonOutlineRounded';
@@ -82,6 +82,7 @@ function NicknameForm({ current, onDone, onCancel }) {
 
 function PasswordForm({ onDone, onCancel }) {
   const login = useAuthStore(state => state.login);
+  const logout = useAuthStore(state => state.logout);
   const [current, setCurrent] = useState(''), [next, setNext] = useState(''), [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const weak = next.length > 0 && !PASSWORD_RULE.test(next), mismatch = confirm.length > 0 && confirm !== next;
@@ -95,7 +96,8 @@ function PasswordForm({ onDone, onCancel }) {
     setBusy(false);
     if (!result.ok) { setError(result.message); return; }
     // 비밀번호가 바뀌면 이전 토큰은 모두 무효가 되므로, 이 기기는 새 토큰으로 로그인을 이어 간다.
-    if (!adoptToken(login, result.data?.accessToken)) { setError(RELOGIN); return; }
+    // 새 토큰을 쓰지 못하면 이전 토큰은 이미 무효라 로그인 상태로 두지 않는다(같은 비밀번호로 다시 제출해 틀린 횟수만 쌓이지 않게).
+    if (!adoptToken(login, result.data?.accessToken)) { logout(); onDone(RELOGIN); return; }
     onDone(result.message);
   };
   return <form className="account-form" onSubmit={submit}>
@@ -235,12 +237,23 @@ function MyStories({ onClose, seen }) {
 
 /** 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다. */
 export default function AccountPage() {
-  // 이 화면에 들어온 순간의 '본 답글' 번호. 받은 답글이 보이면 곧 최신으로 바뀌므로, 내가 쓴 이야기의 '새 답글' 표시는 이 값으로 정한다.
-  const enteredUser = useAuthStore(state => state.user?.userSeq ?? null);
-  const [seenOnEnter] = useState(() => (enteredUser == null ? null : readSeen(enteredUser)));
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const logout = useAuthStore(state => state.logout);
   const location = useLocation(), navigate = useNavigate();
+  // 이 화면에 들어온 순간의 '본 답글' 번호. 받은 답글이 보이면 곧 최신으로 바뀌므로, 내가 쓴 이야기의 '새 답글' 표시는 이 값으로 정한다.
+  // 히스토리 칸(state)에 남겨, 이야기를 눌러 공고로 갔다가 뒤로 돌아와도 같은 값으로 표시한다(새로 메뉴로 들어오면 새로 읽는다).
+  // 이 화면에서 로그인한 경우에도 로그인한 순간의 값을 잡는다.
+  const enteredUser = useAuthStore(state => state.user?.userSeq ?? null);
+  const seenRef = useRef(undefined);
+  if (seenRef.current === undefined && enteredUser != null) {
+    const kept = location.state?.repliesSeen;
+    seenRef.current = typeof kept === 'number' ? kept : (readSeen(enteredUser) ?? 0);
+  }
+  const seenOnEnter = seenRef.current || null;
+  useEffect(() => {
+    if (seenRef.current === undefined || location.state?.repliesSeen === seenRef.current) return;
+    navigate(location.pathname + location.search, { replace: true, state: { ...location.state, repliesSeen: seenRef.current } });
+  }, [enteredUser, location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null), [notice, setNotice] = useState(''), [farewell, setFarewell] = useState('');
   const [emailConfirm, setEmailConfirm] = useState(false);
@@ -275,6 +288,7 @@ export default function AccountPage() {
 
   if (!isAuthenticated) return <Box className="account-page">
     <header className="account-hero"><span className="account-eyebrow">MY ACCOUNT</span><h1>내 정보</h1><p>닉네임·비밀번호와 알림을 한곳에서 관리해요.</p></header>
+    {notice && <Alert severity="info" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
     <section className="account-card account-empty"><PersonOutlineRounded /><h2>로그인이 필요해요</h2><p>로그인하면 닉네임과 비밀번호를 바꾸고, 관심 공고 알림을 관리할 수 있어요.</p>
       <Button variant="contained" disableElevation onClick={openLogin}>로그인</Button></section>
   </Box>;

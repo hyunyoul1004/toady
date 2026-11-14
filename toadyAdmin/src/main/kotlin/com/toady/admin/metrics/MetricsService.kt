@@ -83,38 +83,46 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 	/** 전환 흐름 한 단계: 이름, 방문자 수, 첫 단계 대비 %. */
 	data class Step(val label: String, val visitors: Long, val percent: Long)
 	/**
-	 * 최근 days일 방문자의 흐름과 재방문.
+	 * 최근 days일 방문자의 흐름과 신규 방문자의 재방문.
 	 * steps: 방문 → 공고 상세 → 관심 저장 → 알림 켬(이메일·푸시). 같은 방문자를 한 번만 센다.
-	 * returnRate: 첫 방문이 7일 이상 지난 방문자 중 7일 뒤에 다시 온 비율. alertReturnRate: 그중 알림을 켠 방문자만.
+	 * 재방문: 첫 방문(그 전 28일 동안 방문 없음)이 7~27일 전인 신규 방문자 중, 첫 방문 7~13일 뒤에 다시 온 비율.
+	 * 알림 비교: 첫 방문 7일 안에 알림을 켠 신규 방문자와 켜지 않은 신규 방문자의 재방문율.
+	 *   (재방문하면서 켠 경우를 빼야 알림 쪽이 부풀지 않는다. 관심이 많은 사람이 알림을 켤 수도 있어 인과는 아니다.)
 	 */
-	data class Funnel(val days: Int, val steps: List<Step>, val returnBase: Long, val returnRate: Long?, val alertBase: Long, val alertReturnRate: Long?, val error: String?)
+	data class Funnel(val days: Int, val steps: List<Step>, val returnBase: Long, val returnRate: Long?,
+	                  val alertBase: Long, val alertReturnRate: Long?, val otherBase: Long, val otherReturnRate: Long?, val error: String?)
 	fun funnel(days: Int = 28, today: LocalDate = Kst.today()): Funnel = try {
 		val start = today.minusDays((days - 1).toLong())
+		// 신규 판단용으로 28일을 더 읽는다(첫 방문 전 28일 동안 방문이 없어야 신규).
+		val loadFrom = start.minusDays(28)
 		val ex = exclusions.clause()
 		val visits = HashMap<String, NavigableSet<LocalDate>>()
 		jdbc.query("SELECT DISTINCT VISITOR_ID,VISIT_DATE FROM TB_PAGE_VIEW WHERE VISIT_DATE BETWEEN ? AND ?$ex", RowCallbackHandler { r ->
 			visits.getOrPut(r.getString(1)) { TreeSet() }.add(r.getDate(2).toLocalDate())
-		}, start, today)
+		}, loadFrom, today)
+		val recent = visits.filterValues { it.ceiling(start) != null }.keys
 		val acted = HashMap<String, HashSet<String>>()
 		jdbc.query("SELECT DISTINCT VISITOR_ID,ACTION_NAME FROM TB_USAGE_EVENT WHERE VISIT_DATE BETWEEN ? AND ? AND ACTION_NAME IN ('detail_view','favorite_add','alert_enable','push_enable')$ex",
 			RowCallbackHandler { r -> acted.getOrPut(r.getString(2)) { HashSet() }.add(r.getString(1)) }, start, today)
-		val viewed = (acted["detail_view"] ?: emptySet<String>()).filter { it in visits }.toSet()
-		val saved = (acted["favorite_add"] ?: emptySet<String>()).filter { it in visits }.toSet()
-		val alerted = ((acted["alert_enable"] ?: emptySet()) + (acted["push_enable"] ?: emptySet())).filter { it in visits }.toSet()
-		val total = visits.size.toLong()
+		val viewed = (acted["detail_view"] ?: emptySet<String>()).filter { it in recent }.toSet()
+		val saved = (acted["favorite_add"] ?: emptySet<String>()).filter { it in recent }.toSet()
+		val alerted = ((acted["alert_enable"] ?: emptySet()) + (acted["push_enable"] ?: emptySet())).filter { it in recent }.toSet()
+		val total = recent.size.toLong()
 		fun pct(n: Int) = if (total == 0L) 0L else n * 100L / total
 		val steps = listOf(Step("방문", total, if (total == 0L) 0 else 100), Step("공고 상세", viewed.size.toLong(), pct(viewed.size)),
 			Step("관심 저장", saved.size.toLong(), pct(saved.size)), Step("알림 켬", alerted.size.toLong(), pct(alerted.size)))
-		// 첫 방문 뒤 7일 이상 지난 방문자만 재방문을 판단할 수 있다.
-		val eligible = visits.filter { (_, dates) -> !dates.first().plusDays(7).isAfter(today) }
-		fun returned(dates: NavigableSet<LocalDate>) = dates.ceiling(dates.first().plusDays(7)) != null
-		val back = eligible.count { returned(it.value) }
-		val alertEligible = eligible.filterKeys { it in alerted }
-		val alertBack = alertEligible.count { returned(it.value) }
-		Funnel(days, steps, eligible.size.toLong(), if (eligible.isEmpty()) null else back * 100L / eligible.size,
-			alertEligible.size.toLong(), if (alertEligible.isEmpty()) null else alertBack * 100L / alertEligible.size, null)
+		// 신규 방문자: 읽은 범위의 첫 방문이 [start, today-7] 안. 그 전 28일은 읽은 범위 안이라 방문이 없었다는 뜻이다.
+		val cohort = visits.filterValues { val first = it.first(); !first.isBefore(start) && !first.isAfter(today.minusDays(7)) }
+		fun returned(dates: NavigableSet<LocalDate>): Boolean { val first = dates.first(); val again = dates.ceiling(first.plusDays(7)); return again != null && !again.isAfter(first.plusDays(13)) }
+		val alertOn = HashMap<String, LocalDate>()
+		jdbc.query("SELECT VISITOR_ID,MIN(VISIT_DATE) FROM TB_USAGE_EVENT WHERE VISIT_DATE BETWEEN ? AND ? AND ACTION_NAME IN ('alert_enable','push_enable')$ex GROUP BY VISITOR_ID",
+			RowCallbackHandler { r -> alertOn[r.getString(1)] = r.getDate(2).toLocalDate() }, start, today)
+		val early = cohort.filter { (visitor, dates) -> alertOn[visitor]?.let { !it.isAfter(dates.first().plusDays(6)) } == true }
+		val others = cohort.filterKeys { it !in early }
+		fun rate(group: Map<String, NavigableSet<LocalDate>>) = if (group.isEmpty()) null else group.count { returned(it.value) } * 100L / group.size
+		Funnel(days, steps, cohort.size.toLong(), rate(cohort), early.size.toLong(), rate(early), others.size.toLong(), rate(others), null)
 	} catch (missing: DataAccessException) {
-		Funnel(days, emptyList(), 0, null, 0, null, "흐름 지표를 읽지 못했습니다. TB_PAGE_VIEW·TB_USAGE_EVENT와 관리자 DB 계정의 SELECT 권한을 확인하세요.")
+		Funnel(days, emptyList(), 0, null, 0, null, 0, null, "흐름 지표를 읽지 못했습니다. TB_PAGE_VIEW·TB_USAGE_EVENT와 관리자 DB 계정의 SELECT 권한을 확인하세요.")
 	}
 
 	/** 최근 days일 지도 기능 사용(위치 탭): 기능별 횟수와 사람 수. 측정 이름은 웹 trackAction('map_tool', 'tool/…')과 같다. */

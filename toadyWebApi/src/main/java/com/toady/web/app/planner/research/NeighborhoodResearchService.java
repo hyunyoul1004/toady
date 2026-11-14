@@ -219,6 +219,7 @@ public class NeighborhoodResearchService {
             pauseOnRefusal(first);
             if(refused || first instanceof InterruptedException || System.nanoTime()+TimeUnit.SECONDS.toNanos(RETRY_NEEDS_SECONDS)>deadline) throw first;
             Thread.sleep(400);
+            if(molitPaused()) throw new ProviderPaused();
             // 다시 시도에서 받은 거절(429 등)도 똑같이 차단기를 켠다.
             try { body=molitGet(uri,deadline); }
             catch(Exception second) { pauseOnRefusal(second); throw second; }
@@ -262,6 +263,8 @@ public class NeighborhoodResearchService {
                 if(System.nanoTime()+sleep>deadline) throw new DeadlineExceeded();
                 TimeUnit.NANOSECONDS.sleep(sleep);
             }
+            // 차례를 기다리는 동안 다른 호출이 거절을 받아 차단기가 켜졌으면 부르지 않는다(429·한도 소모를 반복하지 않게).
+            if(molitPaused()) throw new ProviderPaused();
             return transport.get(uri,Map.of());
         } finally { molitSlots.release(); }
     }

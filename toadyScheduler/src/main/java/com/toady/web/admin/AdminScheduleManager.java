@@ -35,6 +35,8 @@ public class AdminScheduleManager {
     private final Map<JobKind, ScheduledFuture<?>> futures = new EnumMap<>(JobKind.class);
     /** 다른 작업과 겹쳐 미뤄 둔 재시도(설정이 바뀌면 함께 취소). 타이머 스레드와 refresh가 함께 쓰므로 동시 맵. */
     private final Map<JobKind, ScheduledFuture<?>> retries = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 종류별 cron 타이머 세대. refresh로 타이머를 바꿀 때마다 올라간다(동기화된 refresh·registerRetry에서만 쓴다). */
+    private final Map<JobKind, Integer> generations = new EnumMap<>(JobKind.class);
     // 설정 내용이 같으면 기존 타이머를 유지한다. 조회 때마다 다음 실행 시각이 재설정되는 것을 방지한다.
     private final Map<JobKind, String> versions = new EnumMap<>(JobKind.class);
     private final String defaultDaily;
@@ -144,18 +146,35 @@ public class AdminScheduleManager {
             // 겹쳐서 미뤄 둔 재시도도 이전 설정으로 실행되지 않게 함께 취소한다(자동 실행을 끈 뒤에 한 번 더 도는 일 방지).
             var pendingRetry = retries.remove(schedule.kind());
             if (pendingRetry != null) pendingRetry.cancel(false);
+            // 타이머를 바꿀 때마다 세대 번호를 올린다. 이전 타이머가 이미 실행 중이었다면 그 실행은 재시도를 등록하지 않는다.
+            int generation = generations.merge(schedule.kind(), 1, Integer::sum);
             if (schedule.enabled()) {
-                futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule, false),
+                futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule, false, generation),
                         new CronTrigger(schedule.cronExpression(), ZONE)));
             }
             versions.put(schedule.kind(), signature);
         }
     }
     /**
+     * 재시도 등록은 설정 반영(refresh)과 같은 잠금 안에서 한다. 그 사이 자동 실행이 꺼지거나 설정이 바뀌었으면 등록하지 않는다
+     * (refresh가 미뤄 둔 재시도를 지운 직후에 새 재시도가 등록돼 이전 설정으로 한 번 더 도는 일을 막는다).
+     */
+    private synchronized void registerRetry(AdminSchedule schedule, Integer generation) {
+        // 이 실행을 시작한 타이머가 그 사이 바뀌었으면(자동 실행 끔·설정 변경) 이전 설정의 재시도이므로 등록하지 않는다.
+        if (generation != null && !generation.equals(generations.get(schedule.kind()))) return;
+        var holder = new java.util.concurrent.atomic.AtomicReference<ScheduledFuture<?>>();
+        ScheduledFuture<?> future = timer.schedule(() -> { retries.remove(schedule.kind(), holder.get()); trigger(schedule, true); }, Instant.now().plus(busyRetryDelay));
+        holder.set(future);
+        var previous = retries.put(schedule.kind(), future);
+        if (previous != null) previous.cancel(false);
+    }
+    /**
      * 실행 중인 다른 작업과 겹치면 요청을 쌓지 않고, 정해진 시간 뒤에 한 번만 다시 시도한다.
      * 재시도도 겹치면 건너뛴 사실만 로그에 남긴다(예: 긴 전체 수집과 같은 시각에 걸린 경쟁률 수집).
      */
-    void trigger(AdminSchedule schedule, boolean retry) {
+    void trigger(AdminSchedule schedule, boolean retry) { trigger(schedule, retry, null); }
+    /** generation: 이 실행을 시작한 cron 타이머의 세대(직접 호출이면 null). */
+    void trigger(AdminSchedule schedule, boolean retry, Integer generation) {
         try {
             LocalDate today = AdminJobService.today();
             jobs.submit(schedule.kind(), scheduleStart(today, schedule.lookbackDays()), today, "자동 스케줄", "SCHEDULE");
@@ -166,7 +185,7 @@ public class AdminScheduleManager {
             }
             log.info("Scheduled submission for {} is busy; retrying once in {}", schedule.kind(), busyRetryDelay);
             try {
-                retries.put(schedule.kind(), timer.schedule(() -> { retries.remove(schedule.kind()); trigger(schedule, true); }, Instant.now().plus(busyRetryDelay)));
+                registerRetry(schedule, generation);
             } catch (RuntimeException rejected) {
                 log.warn("Scheduled retry could not be registered for {}: {}", schedule.kind(), rejected.getMessage());
             }

@@ -89,6 +89,11 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   useEffect(()=>()=>clearTimeout(holdTimer.current),[]);
   useEffect(()=>{if(!fullscreen)setFsPanel(null);},[fullscreen]);
   // 고른 단지가 있으면 전체 화면 위로 옮겨 쌓는다([단지, 전체 화면]이 되면 단지만 닫을 때 히스토리가 어긋난다).
+  // 전체 화면 표시(히스토리)는 남았는데 지도를 띄울 수 없으면(지도 오류·확정 위치 없음) 그 표시를 걷어 낸다.
+  // 남겨 두면 상세가 Esc로 닫히지 않고(전체 화면이 Esc를 맡는다고 보므로) 화면에는 전체 화면이 없다.
+  useEffect(()=>{
+    if(fullscreenLayer && (mapError || (location.isSuccess && !visible)))setFullscreenLayer(false);
+  },[fullscreenLayer,mapError,location.isSuccess,visible]); // eslint-disable-line react-hooks/exhaustive-deps
   const openFullscreen=()=>{
     holdCenter();trackAction('map_tool','tool/map-fullscreen');
     const states=liftedOverlayStates(routeLocation.state,'map-fullscreen',true,['price-map-complex']);
@@ -399,7 +404,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     },350);
     return()=>{active=false;clearTimeout(timer);};
   },[text]);
-  const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel}):[],[showPrices,priceMap.complexes,priceMap.sales,text]);
+  const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel,districtNames:priceMap.districtNames}):[],[showPrices,priceMap.complexes,priceMap.sales,text]);
   const suggestions=React.useMemo(()=>{
     const names=new Set(localSuggestions.map(item=>item.label));
     const fresh=remote.text===text.trim()?remote.items.filter(item=>!names.has(item.label)):[];

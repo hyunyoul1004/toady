@@ -65,10 +65,10 @@
             <li th:each="step : ${funnel.steps}"><div><strong th:text="${step.label}"></strong></div><span class="bar"><i th:style="${'width:' + (step.percent < 1 and step.visitors > 0 ? 1 : step.percent) + '%'}"></i></span><em th:text="${#numbers.formatInteger(step.visitors,1,'COMMA') + '명 · ' + step.percent + '%'}"></em></li>
         </ul>
         <p class="hint lead">
-            <span th:text="${'7일 뒤 다시 온 비율: 전체 ' + (funnel.returnRate != null ? funnel.returnRate + '%' : '—') + ' (' + funnel.returnBase + '명 중)'}"></span>
-            <span th:text="${' · 알림 켠 방문자 ' + (funnel.alertReturnRate != null ? funnel.alertReturnRate + '%' : '—') + ' (' + funnel.alertBase + '명 중)'}"></span>
+            <span th:text="${'신규 방문자의 재방문(첫 방문 7~13일 뒤): ' + (funnel.returnRate != null ? funnel.returnRate + '%' : '—') + ' (' + funnel.returnBase + '명 중)'}"></span><br>
+            <span th:text="${'첫 주에 알림 켠 사람 ' + (funnel.alertReturnRate != null ? funnel.alertReturnRate + '%' : '—') + ' (' + funnel.alertBase + '명) · 켜지 않은 사람 ' + (funnel.otherReturnRate != null ? funnel.otherReturnRate + '%' : '—') + ' (' + funnel.otherBase + '명)'}"></span>
         </p>
-        <p class="hint">첫 방문이 7일 이상 지난 방문자만 재방문을 셉니다. 알림을 켠 방문자의 재방문율이 전체보다 높으면 알림이 재방문을 만든다는 뜻입니다.</p>
+        <p class="hint">신규 방문자: 첫 방문 전 28일 동안 방문이 없고 첫 방문이 7~27일 전인 방문자. 알림은 첫 방문 7일 안에 켠 경우만 셉니다. 관심이 많은 사람이 알림을 켜기도 하므로, 두 비율의 차이는 알림 효과를 가늠하는 참고값입니다.</p>
         </th:block>
     </section>
     <section class="panel spaced"><div class="panel-head"><h2>유입 경로 · 최근 28일</h2><span class="panel-note" th:text="${'세션 ' + report.sourceSessions + '개 · 검색 ' + report.searchPercent + '%'}"></span></div>

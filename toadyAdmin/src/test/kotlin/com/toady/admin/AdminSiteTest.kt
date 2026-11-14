@@ -96,6 +96,15 @@ class AdminSiteTest {
 		// 원댓글을 되살리면 함께 숨겼던 답글도 같이 돌아온다(답글을 하나씩 찾아 되살리지 않아도 된다).
 		assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
 	}
+	@Test fun aReplyHiddenOnItsOwnStaysHiddenWhenTheRootIsRestored() {
+		// 답글(욕설 등)을 먼저 따로 숨기고, 나중에 원댓글을 숨긴 뒤 원댓글만 되살리면 따로 숨긴 답글은 그대로 숨겨져 있어야 한다.
+		mvc.perform(post("/admin/comments/11/hide").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		Thread.sleep(5)
+		mvc.perform(post("/admin/comments/10/hide").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		mvc.perform(post("/admin/comments/10/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals("N", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=10", String::class.java))
+		assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=11", String::class.java))
+	}
 	@Test fun commentsTheAuthorDeletedAreNeverRestoredByTheAdmin() {
 		// 작성자가 직접 지운 댓글(서비스 API가 DELETE_YN='Y'로 바꿈)
 		jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='Y' WHERE COMMENT_SEQ=10")
@@ -166,18 +175,27 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/exclusions/remove").param("visitorId", me).with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(2L, metrics.today().visitors)
 	}
-	@Test fun funnelCountsEachVisitorOnceAndComparesReturnsOfAlertUsers() {
+	@Test fun funnelCountsEachVisitorOnceAndComparesNewVisitorsWhoTurnedOnAlertsEarly() {
 		val today = Kst.today()
-		// v1: 10일 전 첫 방문 → 오늘 다시 옴, 상세·저장·알림까지. v2: 10일 전 한 번만(재방문 없음). v3: 오늘 처음(아직 판단 못 함).
-		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('f1','v1','s1','/',NULL,?,CURRENT_TIMESTAMP),('f2','v1','s2','/',NULL,?,CURRENT_TIMESTAMP),('f3','v2','s3','/',NULL,?,CURRENT_TIMESTAMP),('f4','v3','s4','/',NULL,?,CURRENT_TIMESTAMP)",
-			today.minusDays(10), today, today.minusDays(10), today)
-		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('g1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('g2','v1','detail_view','apt/H1/P2',?,CURRENT_TIMESTAMP),('g3','v1','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP),('g4','v1','push_enable','tool/push',?,CURRENT_TIMESTAMP),('g5','v3','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)",
-			today, today, today, today, today)
+		val d = { n: Long -> today.minusDays(n) }
+		// v1: 20일 전 첫 방문, 첫날 알림 켬, 10일 뒤(10일 전) 다시 옴 → 알림 그룹·재방문
+		// v2: 20일 전 첫 방문, 다시 오지 않음 → 비교 그룹·재방문 아님
+		// v3: 20일 전 첫 방문, 12일 뒤(8일 전) 다시 와서 그때 알림 켬 → 알림 그룹이 아님(재방문하면서 켬)
+		// v4: 50일 전에도 왔던 기존 방문자 → 신규가 아님 / v5: 오늘 첫 방문 → 아직 판단 못 함
+		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('f1','v1','s1','/',NULL,?,CURRENT_TIMESTAMP),('f2','v1','s2','/',NULL,?,CURRENT_TIMESTAMP),('f3','v2','s3','/',NULL,?,CURRENT_TIMESTAMP)," +
+			"('f4','v3','s4','/',NULL,?,CURRENT_TIMESTAMP),('f5','v3','s5','/',NULL,?,CURRENT_TIMESTAMP),('f6','v4','s6','/',NULL,?,CURRENT_TIMESTAMP),('f7','v4','s7','/',NULL,?,CURRENT_TIMESTAMP),('f8','v5','s8','/',NULL,?,CURRENT_TIMESTAMP)",
+			d(20), d(10), d(20), d(20), d(8), d(50), d(20), today)
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('g1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('g2','v1','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP),('g3','v1','push_enable','tool/push',?,CURRENT_TIMESTAMP)," +
+			"('g4','v3','alert_enable','apt/H1/P1',?,CURRENT_TIMESTAMP),('g5','v5','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)",
+			d(20), d(20), d(20), d(8), today)
 		val funnel = metrics.funnel(28, today)
-		assertEquals(listOf(3L, 2L, 1L, 1L), funnel.steps.map { it.visitors }, "방문 3 → 상세 2 → 저장 1 → 알림 1 (같은 방문자는 한 번)")
-		assertEquals(2L, funnel.returnBase, "첫 방문이 7일 지난 v1·v2만 재방문을 판단")
-		assertEquals(50L, funnel.returnRate)
-		assertEquals(100L, funnel.alertReturnRate, "알림 켠 v1은 다시 왔다")
+		assertEquals(listOf(5L, 2L, 1L, 2L), funnel.steps.map { it.visitors }, "최근 28일 방문 5 → 상세 2 → 저장 1 → 알림 2")
+		assertEquals(3L, funnel.returnBase, "신규는 v1·v2·v3 (v4는 기존, v5는 아직)")
+		assertEquals(66L, funnel.returnRate, "v1(10일 뒤)·v3(12일 뒤)만 7~13일 안에 다시 왔다")
+		assertEquals(1L, funnel.alertBase, "첫 주에 알림 켠 신규는 v1뿐(v3는 재방문하면서 켬)")
+		assertEquals(100L, funnel.alertReturnRate)
+		assertEquals(2L, funnel.otherBase)
+		assertEquals(50L, funnel.otherReturnRate)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("방문 → 알림 흐름")))
 	}
 }

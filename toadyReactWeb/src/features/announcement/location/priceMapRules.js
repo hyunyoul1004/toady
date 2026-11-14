@@ -492,7 +492,7 @@ export function saleGroupText(group, areaUnit = 'm2') {
  * 이름이 검색어로 시작하면 앞에, 포함하면 그 뒤에 둔다. 지도에 놓을 수 없는(위치 미확인) 항목은 넣지 않는다.
  * 돌려주는 항목: { kind: 'complex'|'sale'|'dong', key, label, detail, lat?, lng?, id? }
  */
-export function suggestPlaces(complexes = [], sales = [], text = '', { limit = 6, statusLabel = () => '' } = {}) {
+export function suggestPlaces(complexes = [], sales = [], text = '', { limit = 6, statusLabel = () => '', districtNames = {} } = {}) {
   const query = compact(text);
   if (query.length < 1) return [];
   const located = item => Number.isFinite(item?.lat) && Number.isFinite(item?.lng);
@@ -506,15 +506,18 @@ export function suggestPlaces(complexes = [], sales = [], text = '', { limit = 6
     const rank = score(complex.name);
     if (rank >= 0) found.push({ kind: 'complex', key: complex.key, label: complex.name, detail: [complex.dong, complex.buildYear ? `${complex.buildYear}년` : ''].filter(Boolean).join(' · '), lat: complex.lat, lng: complex.lng, rank });
   });
-  // 법정동: 그 동 단지들의 가운데로 옮긴다.
+  // 법정동: 그 동 단지들의 가운데로 옮긴다. 시·군·구(단지 키 앞 5자리)까지 함께 묶어, 다른 지역의 같은 이름 동(중동·신흥동 등)을 합치지 않는다.
   const dongs = new Map();
   complexes.filter(located).forEach(complex => {
     if (!complex.dong || score(complex.dong) < 0) return;
-    const entry = dongs.get(complex.dong) || { lat: 0, lng: 0, count: 0 };
+    const district = /^\d{5}\|/.test(complex.key || '') ? complex.key.slice(0, 5) : '';
+    const id = `${district}|${complex.dong}`;
+    const entry = dongs.get(id) || { dong: complex.dong, district, lat: 0, lng: 0, count: 0 };
     entry.lat += complex.lat; entry.lng += complex.lng; entry.count += 1;
-    dongs.set(complex.dong, entry);
+    dongs.set(id, entry);
   });
-  const dongItems = [...dongs].map(([dong, entry]) => ({ kind: 'dong', key: `dong:${dong}`, label: dong, detail: `실거래 단지 ${entry.count}곳`, lat: entry.lat / entry.count, lng: entry.lng / entry.count, rank: score(dong) }));
+  const dongItems = [...dongs].map(([id, entry]) => ({ kind: 'dong', key: `dong:${id}`, label: entry.dong,
+    detail: [districtNames[entry.district], `실거래 단지 ${entry.count}곳`].filter(Boolean).join(' · '), lat: entry.lat / entry.count, lng: entry.lng / entry.count, rank: score(entry.dong) }));
   const order = { dong: 0, sale: 1, complex: 2 };
   return [...dongItems, ...found]
     .sort((a, b) => a.rank - b.rank || order[a.kind] - order[b.kind] || a.label.length - b.label.length || a.label.localeCompare(b.label, 'ko'))

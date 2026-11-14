@@ -108,12 +108,14 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 			if (parentHidden > 0) return RestoreResult.PARENT_HIDDEN
 		}
 		val now = Timestamp.valueOf(Kst.now())
+		// 원댓글을 숨긴 시각. hide()는 원댓글과 함께 숨긴 답글에 같은 시각을 남기므로, 그 시각의 답글만 함께 되살린다.
+		val hiddenAt = jdbc.query("SELECT REG_DT FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ=?", { r, _ -> r.getTimestamp(1) }, seq).firstOrNull()
 		val changed = jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ=? AND DELETE_YN='Y'", now, seq)
 		jdbc.update("DELETE FROM TB_COMMENT_ADMIN_HIDE WHERE COMMENT_SEQ=?", seq)
-		// 원댓글을 숨길 때 함께 숨긴 답글도 되살린다(관리자가 숨긴 기록이 있는 답글만, 작성자가 지운 답글은 그대로).
-		if (changed == 1 && parent.first() == null) {
-			val replies = jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ=? AND DELETE_YN='Y'", Long::class.java, seq)
-			val hiddenByAdmin = adminHidden(replies).toList()
+		// 원댓글을 숨길 때 함께 숨긴 답글만 되살린다. 그보다 먼저 따로 숨긴 답글(예: 욕설)과 작성자가 지운 답글은 그대로 둔다.
+		if (changed == 1 && parent.first() == null && hiddenAt != null) {
+			val hiddenByAdmin = jdbc.queryForList("""SELECT c.COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT c JOIN TB_COMMENT_ADMIN_HIDE h ON h.COMMENT_SEQ=c.COMMENT_SEQ
+				WHERE c.PARENT_COMMENT_SEQ=? AND c.DELETE_YN='Y' AND h.REG_DT=?""".trimIndent(), Long::class.java, seq, hiddenAt)
 			if (hiddenByAdmin.isNotEmpty()) {
 				val marks = hiddenByAdmin.joinToString(",") { "?" }
 				jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET DELETE_YN='N', UPDATE_DT=? WHERE COMMENT_SEQ IN ($marks) AND DELETE_YN='Y'", now, *hiddenByAdmin.toTypedArray())

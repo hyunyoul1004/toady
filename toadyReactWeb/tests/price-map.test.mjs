@@ -354,6 +354,11 @@ test('map search suggestions rank dongs, sales and complexes and skip unlocated 
   assert.equal(items[1].detail, '분양 · 접수 중');
   assert.equal(items[1].key, 'sale:apt/1');
   assert.deepEqual(suggestPlaces(complexes, sales, '  '), []);
+  // 다른 시·군·구의 같은 이름 동은 따로 보여 주고, 지역 이름을 붙인다(가운데 지점이 엉뚱한 곳이 되지 않게).
+  const twoCities = [{ key: '41190|중동|1', name: '부천 단지', dong: '중동', lat: 37.5, lng: 126.76 }, { key: '41281|중동|2', name: '일산 단지', dong: '중동', lat: 37.68, lng: 126.77 }];
+  const middle = suggestPlaces(twoCities, [], '중동', { districtNames: { 41190: '부천시', 41281: '고양시' } }).filter(item => item.kind === 'dong');
+  assert.equal(middle.length, 2);
+  assert.deepEqual(middle.map(item => item.detail).sort(), ['고양시 · 실거래 단지 1곳', '부천시 · 실거래 단지 1곳']);
   assert.equal(suggestPlaces(complexes, sales, '작전', { limit: 2 }).length, 2);
 });
 
