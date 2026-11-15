@@ -66,6 +66,8 @@ RFC 8291(aes128gcm)·RFC 8292(VAPID ES256)를 JDK 기본 암호 기능으로 직
 | `GET /api/v1/research/complexes`, `/sales`, `/price-gap`, `/transactions`, `/nearby` | 실거래 지도·분양가 비교·동네 실거래·주변 시설 | 공개 |
 | `/api/v1/me/favorites`, `/api/v1/me/calendar-feed`, `/api/v1/planner/*` | 관심 공고·캘린더 구독·요약·결과 | 회원(요약은 공개) |
 | `/api/v1/me/account/*` | 내 정보, 닉네임·비밀번호·캐릭터 변경, 내가 쓴 이야기, 받은 답글, 탈퇴 | 회원 |
+| `GET /api/v1/members/{userSeq}` | 프로필 카드(닉네임·캐릭터·가입한 달·이야기 수, 로그인 시 쪽지 가능 여부) | 공개 |
+| `/api/v1/me/messages*`, `/api/v1/me/blocks*`, `POST /api/v1/me/reports` | 쪽지함·대화·보내기·나가기·받는 범위, 차단, 신고 | 회원 |
 | `/webApi/user/*`, `/webApi/certify/*` | 가입·로그인·메일 인증·비밀번호 재설정 | 공개 |
 | `/api/v1/push/*` | 웹 푸시 설정·구독·해지 | 공개 |
 | `/api/v1/public/*` | 공개 HTML·사이트맵·OG 이미지·맞춤 청약·가점 비교 데이터 | 공개 |
@@ -92,6 +94,7 @@ cp .env.example .env        # DB_URL·DB_USERNAME·DB_PASSWORD, JWT_SECRET(opens
 | `MOLIT_TRADE_SERVICE_KEY` | 국토교통부 아파트 매매 실거래 인증키(서버 전용) |
 | `KAKAO_REST_API_KEY` | 카카오 로컬 API(주소 좌표·주변 시설, 서버 전용) |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`·`WEB_PUSH_VAPID_PRIVATE_KEY`·`WEB_PUSH_SUBJECT`, `PUSH_DIGEST_ENABLED` | 웹 푸시 키와 발송 사용 |
+| `DM_MIN_ACCOUNT_HOURS`, `DM_REQUIRE_STORY`, `DM_DAILY_NEW_THREADS`, `DM_DAILY_MESSAGES` | 쪽지 새 대화 시작 조건(가입 후 시간·이야기 작성, 기본 끔)과 하루 한도(새 대화 5명·쪽지 50통) |
 
 키가 없는 기능(실거래·좌표·푸시·메일 알림)은 꺼진 채로 나머지가 동작합니다. 필요한 테이블은 루트 [database.sql](../database.sql)의 구역 번호로 관리합니다.
 

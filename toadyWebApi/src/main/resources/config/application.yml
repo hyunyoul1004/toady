@@ -77,6 +77,14 @@ toady:
     subject: ${WEB_PUSH_SUBJECT:}
     # 하루 1회 묶음 발송(18~20시). database.sql 13번 적용 후 활성화한다.
     digest-enabled: ${PUSH_DIGEST_ENABLED:false}
+  dm:
+    # 쪽지 새 대화 시작 조건. 지금은 이용자를 늘리는 시기라 끄고(0·false) 시작한다.
+    # 악용이 보이면 서버 .env.prod에서 켜고 재시작한다(예: 24시간, 이야기 1개 이상).
+    min-account-hours: ${DM_MIN_ACCOUNT_HOURS:0}
+    require-story: ${DM_REQUIRE_STORY:false}
+    # 하루 한도: 새로 시작할 수 있는 대화 상대 수와 보낼 수 있는 쪽지 수
+    daily-new-threads: ${DM_DAILY_NEW_THREADS:5}
+    daily-messages: ${DM_DAILY_MESSAGES:50}
   analytics:
     enabled: ${ANALYTICS_ENABLED:true}
   security:

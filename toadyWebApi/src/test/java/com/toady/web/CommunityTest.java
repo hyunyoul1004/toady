@@ -23,12 +23,14 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
-/** 프로필 카드·쪽지(보내기 규칙·읽음·나가기)·차단·신고. 외부 연결(푸시)은 쓰지 않는다. */
+/** 프로필 카드·쪽지(보내기 규칙·읽음·나가기)·차단·신고. 새 대화 시작 조건을 켠 설정으로 돌린다. 외부 연결(푸시)은 쓰지 않는다. */
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:community;MODE=MariaDB;DB_CLOSE_DELAY=-1",
     "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
     "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect", "spring.jpa.hibernate.ddl-auto=create-drop",
-    "toady.security.secret-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    "toady.security.secret-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    // 새 대화 시작 조건을 켠 상태(운영에서 악용이 보여 켰을 때)를 확인한다. 기본(꺼짐)은 CommunityDefaultsTest.
+    "toady.dm.min-account-hours=24", "toady.dm.require-story=true"
 })
 @AutoConfigureMockMvc
 class CommunityTest {

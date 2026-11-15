@@ -29,19 +29,17 @@ import java.util.regex.Pattern;
  * 1:1 쪽지. 두 회원 쌍마다 대화방 하나를 두고, 읽은 위치·나간 위치를 각자 쪽지 번호로 기억한다.
  *
  * 보내기 규칙(홍보·불법 거래 통로가 되지 않게):
- * - 대화를 새로 시작하려면 가입 후 24시간이 지나고 이야기를 하나 이상 남긴 회원이어야 한다. 하루에 새 대화는 5명까지.
+ * - 새 대화 시작 조건(가입 후 경과 시간·이야기 작성)은 설정(toady.dm.*)으로 켜고 끈다. 이용자를 늘리는 지금은 기본으로 끈다.
+ * - 하루에 새 대화는 기본 5명까지.
  * - 상대가 답하기 전에는 한 통만 보낼 수 있고, 그 첫 쪽지에는 링크·전화번호·메신저 아이디·계좌번호를 넣을 수 없다.
  * - 받는 사람이 정한 범위(모두·이야기로 이어진 사람만·받지 않기)와 차단(어느 쪽이든)을 지킨다. 이미 서로 주고받던 대화는 이어진다.
- * - 한 사람이 하루에 보낼 수 있는 쪽지는 50통.
+ * - 한 사람이 하루에 보낼 수 있는 쪽지는 기본 50통.
  */
 @Slf4j
 @Service
 public class DmService {
-    static final int DAILY_NEW_THREADS = 5;
-    static final int DAILY_MESSAGES = 50;
     static final int PAGE = 30;
     static final int THREAD_PAGE = 20;
-    static final long MIN_ACCOUNT_HOURS = 24;
     static final String CLOSED = "새 쪽지를 받지 않는 회원이에요.";
     private static final Pattern CONTEXT = Pattern.compile("^(apt|urban|remaining|public-rental|optional)/[A-Za-z0-9-]{1,40}/[A-Za-z0-9-]{1,40}$");
     /** 공고 유형(화면 주소) → 공고 이름을 읽을 상세 테이블. AccountService의 목록과 같다. */
@@ -54,9 +52,21 @@ public class DmService {
     private final SafetyService safety;
     private final ProfileIcons icons;
     private final DmNotifier notifier;
+    /** 새 대화를 시작하려면 가입 후 지나야 하는 시간(0이면 조건 없음) */
+    private final long minAccountHours;
+    /** 새 대화를 시작하려면 이야기를 하나 이상 남겨야 하는가 */
+    private final boolean requireStory;
+    private final int dailyNewThreads;
+    private final int dailyMessages;
 
-    public DmService(JdbcTemplate jdbc, Community community, SafetyService safety, ProfileIcons icons, DmNotifier notifier) {
+    public DmService(JdbcTemplate jdbc, Community community, SafetyService safety, ProfileIcons icons, DmNotifier notifier,
+                     @org.springframework.beans.factory.annotation.Value("${toady.dm.min-account-hours:0}") long minAccountHours,
+                     @org.springframework.beans.factory.annotation.Value("${toady.dm.require-story:false}") boolean requireStory,
+                     @org.springframework.beans.factory.annotation.Value("${toady.dm.daily-new-threads:5}") int dailyNewThreads,
+                     @org.springframework.beans.factory.annotation.Value("${toady.dm.daily-messages:50}") int dailyMessages) {
         this.jdbc = jdbc; this.community = community; this.safety = safety; this.icons = icons; this.notifier = notifier;
+        this.minAccountHours = Math.max(0, minAccountHours); this.requireStory = requireStory;
+        this.dailyNewThreads = Math.max(1, dailyNewThreads); this.dailyMessages = Math.max(1, dailyMessages);
     }
 
     /** 대화방 한 줄. me 기준으로 내 읽은·나간 위치를 고른다. */
@@ -142,16 +152,17 @@ public class DmService {
         Member self = community.member(me);
         if (self == null || !self.active()) return Gate.no("UNAVAILABLE", "다시 로그인해 주세요.");
         if (!self.emailVerified()) return Gate.no("VERIFY", "이메일 인증을 마치면 쪽지를 보낼 수 있어요.");
-        if (self.joinedAt() != null && self.joinedAt().plusHours(MIN_ACCOUNT_HOURS).isAfter(now)) {
-            return Gate.no("TOO_NEW", "가입하고 하루가 지나면 쪽지를 보낼 수 있어요.");
+        if (minAccountHours > 0 && self.joinedAt() != null && self.joinedAt().plusHours(minAccountHours).isAfter(now)) {
+            String wait = minAccountHours == 24 ? "하루가" : minAccountHours % 24 == 0 ? minAccountHours / 24 + "일이" : minAccountHours + "시간이";
+            return Gate.no("TOO_NEW", "가입하고 " + wait + " 지나면 쪽지를 보낼 수 있어요.");
         }
-        if (community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", me) == 0) {
+        if (requireStory && community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", me) == 0) {
             return Gate.no("NO_STORY", "공고 ‘이야기’에 글을 하나 이상 남기면 쪽지를 보낼 수 있어요.");
         }
         // 보내기 중에는 방금 만든(아직 쪽지 없는) 이 대화방은 세지 않는다.
         if (community.count("SELECT COUNT(*) FROM TB_DM_THREAD WHERE STARTED_BY=? AND REG_DT>=? AND THREAD_SEQ<>?", me,
-                Community.ts(now.toLocalDate().atStartOfDay()), thread == null ? 0L : thread.seq()) >= DAILY_NEW_THREADS) {
-            return Gate.no("LIMIT", "새 대화는 하루에 " + DAILY_NEW_THREADS + "명까지 시작할 수 있어요. 내일 다시 시도해 주세요.");
+                Community.ts(now.toLocalDate().atStartOfDay()), thread == null ? 0L : thread.seq()) >= dailyNewThreads) {
+            return Gate.no("LIMIT", "새 대화는 하루에 " + dailyNewThreads + "명까지 시작할 수 있어요. 내일 다시 시도해 주세요.");
         }
         return Gate.yes();
     }
@@ -193,8 +204,8 @@ public class DmService {
         boolean firstUnanswered = !sentLocked(thread.seq(), other);
         DmRules.Problem problem = DmRules.check(content, firstUnanswered);
         if (problem != null) return rollback(Result.fail("ERR-401", DmRules.message(problem)));
-        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= DAILY_MESSAGES) {
-            return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + DAILY_MESSAGES + "통)."));
+        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= dailyMessages) {
+            return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + dailyMessages + "통)."));
         }
         String text = content.strip();
         long receiverUnreadBefore = unreadIn(thread, other);
