@@ -27,7 +27,7 @@ class PublicPagesUnitTest {
         assertNotNull(html);
         // 상단: 로고·워드마크·주요 메뉴, 지금 페이지 표시, 빵부스러기는 그 아래 본문에 남는다.
         assertTrue(html.indexOf("<header class='site'>") < html.indexOf("<main>"), "헤더는 본문보다 먼저");
-        assertTrue(html.contains("<a class='brand' data-app href='https://www.toady.co.kr/'><img src='https://www.toady.co.kr/icons/icon-192.png' width='28' height='28' alt=''><span>TOADY</span></a>"));
+        assertTrue(html.contains("<a class='brand' data-app href='https://www.toady.co.kr/'><img src='https://www.toady.co.kr/brand/toady-logo.png' width='103' height='28' alt='TOADY'></a>"));
         for (String link : List.of("/'>청약 캘린더", "/score'>가점 계산기", "/zupzup'>무순위", "/weekly'>이번 주"))
             assertTrue(html.contains("https://www.toady.co.kr" + link), link);
         assertTrue(html.contains("aria-current='page' href='https://www.toady.co.kr/weekly'"));

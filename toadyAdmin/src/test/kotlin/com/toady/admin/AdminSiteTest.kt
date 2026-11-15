@@ -36,7 +36,8 @@ class AdminSiteTest {
 
 	@BeforeEach fun setup() {
 		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_OPT_LTTOT_PBLANC_DETAIL",
-			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE").forEach { jdbc.update("DELETE FROM $it") }
+			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE",
+			"TB_USER_REPORT", "TB_DM_MESSAGE", "TB_DM_THREAD", "TB_DM_SETTING").forEach { jdbc.update("DELETE FROM $it") }
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
 			today.minusDays(1).toString(), today.plusDays(1).toString())
@@ -95,6 +96,34 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/comments/10/restore").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		// 원댓글을 되살리면 함께 숨겼던 답글도 같이 돌아온다(답글을 하나씩 찾아 되살리지 않아도 된다).
 		assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'", Int::class.java))
+	}
+	@Test fun reportsShowOnlyTheReportedMessageContextAndCanBeClosedWithASuspension() {
+		jdbc.update("INSERT INTO TB_DM_THREAD (THREAD_SEQ,USER_LOW,USER_HIGH,STARTED_BY,LAST_MESSAGE_SEQ,REG_DT) VALUES (5,1,2,2,105,CURRENT_TIMESTAMP)")
+		// 신고된 쪽지(103)의 앞 두 통·뒤 두 통만 보이고, 그보다 먼 쪽지(100·106)는 보이지 않는다.
+		listOf(100 to "아주 오래된 대화", 101 to "안녕하세요", 102 to "네", 103 to "통장 양도하실래요", 104 to "아니요", 105 to "다시 말씀드리면", 106 to "나중 대화").forEach { (seq, text) ->
+			jdbc.update("INSERT INTO TB_DM_MESSAGE (MESSAGE_SEQ,THREAD_SEQ,SENDER_SEQ,CONTENT,REG_DT) VALUES (?,5,?,?,CURRENT_TIMESTAMP)", seq, if (seq % 2 == 1) 2 else 1, text)
+		}
+		jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,REG_DT) VALUES (1,2,'MESSAGE',103,'TRADE','OPEN',CURRENT_TIMESTAMP)")
+		jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,DETAIL,STATUS,REG_DT) VALUES (2,1,'COMMENT',10,'SPAM','<b>광고</b>','OPEN',CURRENT_TIMESTAMP)")
+		val html = mvc.perform(get("/admin/reports").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(html.contains("통장 양도하실래요") && html.contains("안녕하세요") && html.contains("아니요"))
+		assertFalse(html.contains("아주 오래된 대화") || html.contains("나중 대화"), "신고와 먼 쪽지는 열람하지 않는다")
+		assertTrue(html.contains("&lt;b&gt;광고&lt;/b&gt;"), "신고 설명은 글자 그대로 표시한다")
+		assertTrue(html.contains("nav-count"), "메뉴에 대기 신고 수를 보여 준다")
+
+		mvc.perform(post("/admin/members/2/dm-suspend").param("days", "7").param("next", "/admin/reports?status=open&page=0").with(admin).with(csrf()))
+			.andExpect(redirectedUrl("/admin/reports?status=open&page=0")).andExpect(flash().attributeExists("notice"))
+		assertTrue(jdbc.queryForObject("SELECT SUSPENDED_UNTIL FROM TB_DM_SETTING WHERE USER_SEQ=2", java.sql.Timestamp::class.java)!!.toLocalDateTime().isAfter(Kst.now().plusDays(6)))
+		mvc.perform(post("/admin/members/2/dm-suspend").param("days", "3").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		val report = jdbc.queryForObject("SELECT REPORT_SEQ FROM TB_USER_REPORT WHERE TARGET_TYPE='MESSAGE'", Long::class.java)
+		mvc.perform(post("/admin/reports/$report/close").param("outcome", "done").param("note", "쪽지 7일 정지").param("sameTarget", "true").with(admin).with(csrf()))
+			.andExpect(flash().attributeExists("notice"))
+		assertEquals("DONE", jdbc.queryForObject("SELECT STATUS FROM TB_USER_REPORT WHERE REPORT_SEQ=?", String::class.java, report))
+		assertEquals("operator", jdbc.queryForObject("SELECT HANDLED_BY FROM TB_USER_REPORT WHERE REPORT_SEQ=?", String::class.java, report))
+		// 회원 화면에서 정지를 풀 수 있다.
+		mvc.perform(get("/admin/members/2").with(admin)).andExpect(content().string(org.hamcrest.Matchers.containsString("쪽지 정지 해제")))
+		mvc.perform(post("/admin/members/2/dm-suspend").param("days", "0").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(null, jdbc.queryForObject("SELECT SUSPENDED_UNTIL FROM TB_DM_SETTING WHERE USER_SEQ=2", java.sql.Timestamp::class.java))
 	}
 	@Test fun aReplyHiddenOnItsOwnStaysHiddenWhenTheRootIsRestored() {
 		// 답글(욕설 등)을 먼저 따로 숨기고, 나중에 원댓글을 숨긴 뒤 원댓글만 되살리면 따로 숨긴 답글은 그대로 숨겨져 있어야 한다.

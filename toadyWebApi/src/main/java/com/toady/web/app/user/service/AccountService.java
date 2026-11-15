@@ -322,6 +322,9 @@ public class AccountService {
         tryUpdate("DELETE FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_CALENDAR_FEED WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_USER_PROFILE WHERE USER_SEQ=?", userSeq);
+        // 쪽지 설정과 내가 한 차단은 지운다. 주고받은 쪽지는 상대 쪽지함에 '탈퇴한 회원'으로 남고 보관 기간(180일)이 지나면 지워진다.
+        tryUpdate("DELETE FROM TB_DM_SETTING WHERE USER_SEQ=?", userSeq);
+        tryUpdate("DELETE FROM TB_USER_BLOCK WHERE USER_SEQ=?", userSeq);
         tryUpdate("UPDATE TB_CERTIFY SET CERTIFY_YN='Y', UPDATE_DT=? WHERE CREATE_USER_SEQ=? AND CERTIFY_YN='N'", now, userSeq);
         log.info("회원 탈퇴: userSeq={}", userSeq);
         return Outcome.done("탈퇴했어요. 그동안 TOADY를 이용해 주셔서 고마워요.", null);

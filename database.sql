@@ -535,3 +535,93 @@ CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (
 -- 받은 답글(5분마다·창으로 돌아올 때), 내가 쓴 이야기, 내 정보 요약이 모두 작성자(CREATE_USER_SEQ) 기준으로 댓글을 찾는다.
 -- 인덱스가 없으면 로그인 회원 수 × 댓글 수만큼 전체 테이블을 읽는다.
 CREATE INDEX IF NOT EXISTS IX_LTTOT_COMMENT_USER ON TB_LTTOT_PBLANC_COMMENT (CREATE_USER_SEQ, DELETE_YN);
+
+-- ============================================================================
+-- 25. 회원 차단·신고·쪽지 (API·관리자·스케줄러 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 이야기(댓글)에서 닉네임을 누르면 프로필 카드가 뜨고, 거기서 쪽지·차단·신고를 한다.
+-- 미적용이면 프로필 카드는 보이지만 쪽지·차단·신고 버튼은 '준비 중' 안내로 막힌다.
+-- 차단: 서로 쪽지를 보낼 수 없고, 차단한 사람의 이야기는 접어서 보여 준다. 탈퇴하면 내가 한 차단을 지운다.
+CREATE TABLE IF NOT EXISTS TB_USER_BLOCK (
+    USER_SEQ BIGINT NOT NULL COMMENT '차단한 회원',
+    BLOCKED_USER_SEQ BIGINT NOT NULL COMMENT '차단된 회원',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 차단 시각',
+    PRIMARY KEY (USER_SEQ, BLOCKED_USER_SEQ),
+    INDEX IX_USER_BLOCK_TARGET (BLOCKED_USER_SEQ)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 차단';
+
+-- 신고: 같은 사람이 같은 대상을 두 번 신고하지 않게 (신고자, 종류, 대상 번호)를 유일하게 둔다.
+-- 회원 신고는 TARGET_SEQ에 회원 번호를 넣는다. 운영자는 관리자 사이트의 '신고'에서 처리한다.
+CREATE TABLE IF NOT EXISTS TB_USER_REPORT (
+    REPORT_SEQ BIGINT NOT NULL AUTO_INCREMENT,
+    REPORTER_SEQ BIGINT NOT NULL COMMENT '신고한 회원',
+    TARGET_USER_SEQ BIGINT NOT NULL COMMENT '신고된 회원(댓글·쪽지 작성자)',
+    TARGET_TYPE VARCHAR(10) NOT NULL COMMENT 'USER·COMMENT·MESSAGE',
+    TARGET_SEQ BIGINT NOT NULL COMMENT '회원·댓글·쪽지 번호',
+    REASON VARCHAR(20) NOT NULL COMMENT 'TRADE(통장·전매 거래)·SPAM(홍보)·ABUSE(욕설·괴롭힘)·PRIVACY(개인정보)·ETC',
+    DETAIL VARCHAR(500) NULL COMMENT '신고자가 적은 설명',
+    STATUS VARCHAR(10) NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN·DONE·DISMISSED',
+    ACTION_NOTE VARCHAR(200) NULL COMMENT '운영자 처리 내용',
+    HANDLED_BY VARCHAR(100) NULL,
+    HANDLED_DT DATETIME(6) NULL,
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 신고 시각',
+    PRIMARY KEY (REPORT_SEQ),
+    UNIQUE INDEX UX_USER_REPORT_ONCE (REPORTER_SEQ, TARGET_TYPE, TARGET_SEQ),
+    INDEX IX_USER_REPORT_STATUS (STATUS, REPORT_SEQ)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원·이야기·쪽지 신고';
+
+-- 쪽지 대화방: 두 회원 쌍마다 하나(작은 번호를 USER_LOW에). 읽은 위치와 '대화방 나가기' 위치를 각자 쪽지 번호로 둔다.
+-- 나간 쪽은 그 번호까지의 쪽지를 보지 않고, 상대가 새 쪽지를 보내면 그 뒤부터 다시 보인다.
+CREATE TABLE IF NOT EXISTS TB_DM_THREAD (
+    THREAD_SEQ BIGINT NOT NULL AUTO_INCREMENT,
+    USER_LOW BIGINT NOT NULL COMMENT '두 회원 중 작은 번호',
+    USER_HIGH BIGINT NOT NULL COMMENT '두 회원 중 큰 번호',
+    STARTED_BY BIGINT NOT NULL COMMENT '먼저 보낸 회원',
+    CONTEXT_ID VARCHAR(110) NULL COMMENT '대화를 시작한 공고(유형/주택관리번호/공고번호)',
+    LAST_MESSAGE_SEQ BIGINT NOT NULL DEFAULT 0,
+    LAST_MESSAGE_DT DATETIME(6) NULL,
+    LOW_READ_SEQ BIGINT NOT NULL DEFAULT 0,
+    HIGH_READ_SEQ BIGINT NOT NULL DEFAULT 0,
+    LOW_LEFT_SEQ BIGINT NOT NULL DEFAULT 0,
+    HIGH_LEFT_SEQ BIGINT NOT NULL DEFAULT 0,
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 첫 쪽지 시각',
+    PRIMARY KEY (THREAD_SEQ),
+    UNIQUE INDEX UX_DM_PAIR (USER_LOW, USER_HIGH),
+    INDEX IX_DM_HIGH (USER_HIGH, LAST_MESSAGE_DT),
+    INDEX IX_DM_LAST (LAST_MESSAGE_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='쪽지 대화방';
+
+-- 쪽지: 글자만(첨부 없음) 1,000자. 거래·연락처 유도 의심 문구는 FLAGGED로 표시해 받는 사람에게 경고를 띄운다.
+-- 스케줄러가 180일 지난 쪽지를 지운다(아래 권한).
+CREATE TABLE IF NOT EXISTS TB_DM_MESSAGE (
+    MESSAGE_SEQ BIGINT NOT NULL AUTO_INCREMENT,
+    THREAD_SEQ BIGINT NOT NULL,
+    SENDER_SEQ BIGINT NOT NULL,
+    CONTENT VARCHAR(1000) NOT NULL,
+    FLAGGED BOOLEAN NOT NULL DEFAULT FALSE COMMENT '거래·연락처 유도 의심 문구',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 보낸 시각',
+    PRIMARY KEY (MESSAGE_SEQ),
+    INDEX IX_DM_MESSAGE_THREAD (THREAD_SEQ, MESSAGE_SEQ),
+    INDEX IX_DM_MESSAGE_SENDER (SENDER_SEQ, REG_DT),
+    INDEX IX_DM_MESSAGE_REG (REG_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='쪽지';
+
+-- 쪽지 설정: 받는 범위(ALL 모두·KNOWN 이야기로 이어진 사람만·NONE 받지 않기)와 운영자가 정한 보내기 정지 기한.
+-- 행이 없으면 ALL이며 정지 없음. 탈퇴하면 지운다.
+CREATE TABLE IF NOT EXISTS TB_DM_SETTING (
+    USER_SEQ BIGINT NOT NULL PRIMARY KEY,
+    RECEIVE_POLICY VARCHAR(10) NOT NULL DEFAULT 'ALL' COMMENT 'ALL·KNOWN·NONE',
+    SUSPENDED_UNTIL DATETIME(6) NULL COMMENT '한국시간 쪽지 보내기 정지 기한(운영자)',
+    UPDATE_DT DATETIME(6) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원별 쪽지 설정';
+
+-- 앱 계정에는 위 네 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
+-- 관리자 계정: 신고 처리와 쪽지 정지. 쪽지 내용은 관리자 화면이 신고된 쪽지와 그 앞뒤 몇 통만 읽는다(평소에는 보지 않음).
+-- GRANT SELECT, UPDATE (STATUS, ACTION_NOTE, HANDLED_BY, HANDLED_DT) ON toady.TB_USER_REPORT TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_DM_MESSAGE TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_DM_THREAD TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE (SUSPENDED_UNTIL, UPDATE_DT) ON toady.TB_DM_SETTING TO 'toady_admin'@'%';
+-- 스케줄러 계정: 보관 기간(180일)이 지난 쪽지와, 마지막 쪽지가 180일 지난 대화방, 처리 후 1년 지난 신고 정리.
+-- GRANT SELECT, DELETE ON toady.TB_DM_MESSAGE TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_DM_THREAD TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_USER_REPORT TO 'toady_sources'@'%';

@@ -9,6 +9,7 @@ import com.toady.admin.members.MemberService
 import com.toady.admin.metrics.ExclusionService
 import com.toady.admin.metrics.MetricsService
 import com.toady.admin.operations.OperationsService
+import com.toady.admin.reports.ReportService
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -34,6 +35,7 @@ class AdminController(
 	private val announcements: AnnouncementService,
 	private val operations: OperationsService,
 	private val scheduler: SchedulerClient,
+	private val reports: ReportService,
 ) {
 	@GetMapping("/") fun root() = "redirect:/admin/"
 	@GetMapping("/admin/login") fun login() = "admin/login"
@@ -105,6 +107,8 @@ class AdminController(
 		val detail = members.detail(seq) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 		model.addAttribute("detail", detail)
 		model.addAttribute("comments", comments.search(null, "all", 0, 100, authorSeq = seq))
+		model.addAttribute("dmSuspendedUntil", reports.suspendedUntil(seq)?.takeIf { it.isAfter(Kst.now()) })
+		model.addAttribute("reportsReady", reports.available())
 		return page(model, user, "members", "admin/member")
 	}
 
@@ -140,6 +144,35 @@ class AdminController(
 			CommentService.RestoreResult.NOT_ADMIN_HIDDEN -> redirect.addFlashAttribute("error", "작성자가 직접 지운 댓글이거나 숨김 기록이 없어 되살릴 수 없습니다(database.sql 21번 적용 전 숨긴 댓글 포함).")
 		}
 		return "redirect:" + safeNext(next, "/admin/comments")
+	}
+
+	/** 신고 대기열. 오래 기다린 신고부터 보여 준다. */
+	@GetMapping("/admin/reports")
+	fun reports(@RequestParam(defaultValue = "open") status: String, @RequestParam(defaultValue = "0") page: Int, model: Model, user: Principal): String {
+		model.addAttribute("result", reports.search(status, page))
+		model.addAttribute("status", status)
+		model.addAttribute("ready", reports.available())
+		model.addAttribute("reasons", ReportService.REASONS)
+		return page(model, user, "reports", "admin/reports")
+	}
+
+	@PostMapping("/admin/reports/{seq}/close")
+	fun closeReport(@PathVariable seq: Long, @RequestParam outcome: String, @RequestParam(defaultValue = "") note: String,
+	                @RequestParam(defaultValue = "false") sameTarget: Boolean, @RequestParam(defaultValue = "") next: String,
+	                user: Principal, redirect: RedirectAttributes): String {
+		val changed = reports.close(seq, outcome, note, user.name, sameTarget)
+		flash(redirect, changed > 0, if (changed > 1) "같은 대상의 신고 ${changed}건을 닫았습니다." else "신고를 닫았습니다.", "이미 처리된 신고입니다.")
+		return "redirect:" + safeNext(next, "/admin/reports")
+	}
+
+	/** 쪽지 보내기 정지. days: 7·30·-1(무기한)·0(해제) */
+	@PostMapping("/admin/members/{seq}/dm-suspend")
+	fun suspendMessages(@PathVariable seq: Long, @RequestParam days: Int, @RequestParam(defaultValue = "") next: String,
+	                    user: Principal, redirect: RedirectAttributes): String {
+		val ok = days in setOf(-1, 0, 7, 30) && reports.suspend(seq, days, user.name)
+		flash(redirect, ok, when (days) { 0 -> "쪽지 정지를 풀었습니다."; -1 -> "쪽지 보내기를 무기한 정지했습니다."; else -> "쪽지 보내기를 ${days}일 정지했습니다." },
+			"쪽지 정지를 저장하지 못했습니다. database.sql 25번 적용과 관리자 계정 권한을 확인하세요.")
+		return "redirect:" + safeNext(next, "/admin/members/$seq")
 	}
 
 	@GetMapping("/admin/operations")
@@ -190,6 +223,7 @@ class AdminController(
 
 	private fun page(model: Model, user: Principal, menu: String, view: String): String {
 		model.addAttribute("username", user.name); model.addAttribute("menu", menu)
+		model.addAttribute("openReports", reports.openCount())
 		return view
 	}
 	private fun flash(redirect: RedirectAttributes, ok: Boolean, success: String, failure: String) {

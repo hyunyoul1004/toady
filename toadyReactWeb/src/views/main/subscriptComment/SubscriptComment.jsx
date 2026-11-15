@@ -33,6 +33,10 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
+import { useBlockedSet } from '@/features/community/useCommunity';
+import { cardValue, reportValue } from '@/features/community/communityApi';
+import '@/features/community/community.css';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
@@ -121,6 +125,13 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   // 삭제 확인 창은 히스토리 한 단계로 연다(뒤로가기로 닫힘). 값은 지울 댓글 번호다.
   const [deleteTarget, setDeleteTarget] = useHistoryOverlay('comment:delete');
   const [deleting, setDeleting] = useState(false);
+  // 작성자 이름·캐릭터를 누르면 프로필 카드(쪽지·차단·신고), 다른 회원 글의 깃발은 신고 창. 둘 다 히스토리 층이라 뒤로가기로 닫힌다.
+  const [, setMemberCard] = useHistoryOverlay('member-card');
+  const [, setReport] = useHistoryOverlay('report');
+  const blocked = useBlockedSet();
+  const [revealed, setRevealed] = useState(() => new Set());
+  const openCard = row => setMemberCard(cardValue(row.createUserSeq, currentSubscriptSeq));
+  const reportStory = row => { if (!isAuthenticated) { setLayoutOverlay('login'); return; } setReport(reportValue('COMMENT', row.subscriptCommentSeq, row.createUserSeq)); };
 
   // 계층형 댓글 트리 생성
   const treeCommentList = useMemo(() => {
@@ -327,6 +338,13 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
     const isAuthor = isAuthenticated && user?.userSeq === row.createUserSeq;
     const isEditing = modifyState.show && modifyState.commentSeq === row.subscriptCommentSeq;
     const avatarColor = getAvatarColor(row.userNicName);
+    // 차단한 회원의 이야기는 접어 두고, 원하면 그 자리에서 펼쳐 본다(답글 흐름은 그대로 둔다).
+    if (!isAuthor && blocked.has(Number(row.createUserSeq)) && !revealed.has(row.subscriptCommentSeq)) {
+      return <Box key={row.subscriptCommentSeq} id={`story-${row.subscriptCommentSeq}`} className="story-blocked">
+        <span>차단한 회원의 {isChild ? '답글' : '이야기'}예요.</span>
+        <Button size="small" color="inherit" onClick={() => setRevealed(previous => new Set(previous).add(row.subscriptCommentSeq))}>보기</Button>
+      </Box>;
+    }
 
     return (
       <Box
@@ -348,11 +366,12 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       >
         {/* 헤더: 아바타, 닉네임, 뱃지, 작성일시, 액션 버튼 */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, mb: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+          <Box component="button" type="button" className="story-author" onClick={() => openCard(row)} aria-label={`${row.userNicName || '작성자'} 프로필 보기`} sx={{ gap: 1.2 }}>
             {/* 작성자가 고른 프로필 캐릭터. 고르지 않았으면 닉네임 첫 글자 */}
             {row.profileIcon
               ? <ProfileAvatar icon={row.profileIcon} name={row.userNicName} size={isChild ? 32 : 36} decorative />
               : <Avatar
+                  component="span"
                   sx={{
                     width: isChild ? 32 : 36,
                     height: isChild ? 32 : 36,
@@ -365,13 +384,14 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                 >
                   {row.userNicName?.charAt(0) || 'U'}
                 </Avatar>}
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', lineHeight: 1.2 }}>
+            <Box component="span" sx={{ display: 'block' }}>
+              <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                <Typography component="span" className="story-author-name" sx={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', lineHeight: 1.2 }}>
                   {row.userNicName || '익명'}
                 </Typography>
                 {isAuthor && (
                   <Chip
+                    component="span"
                     label="내 댓글"
                     size="small"
                     sx={{
@@ -385,11 +405,19 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                   />
                 )}
               </Box>
-              <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 500 }}>
+              <Typography variant="caption" component="span" sx={{ display: 'block', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 500 }}>
                 {formatTimeAgo(row.regDt || row.createDt)}
               </Typography>
             </Box>
           </Box>
+
+          {/* 다른 회원의 글: 신고 */}
+          {!isAuthor && (
+            <IconButton size="small" onClick={() => reportStory(row)} title="신고" aria-label={`${row.userNicName || '이 회원'}의 ${isChild ? '답글' : '이야기'} 신고`}
+              sx={{ color: '#cbd5e1', p: 0.6, borderRadius: 1.5, '&:hover': { color: '#ef4444', bgcolor: '#fef2f2' } }}>
+              <FlagOutlinedIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          )}
 
           {/* 본인 작성 댓글 시 수정/삭제 메뉴 */}
           {isAuthor && !isEditing && (

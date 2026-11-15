@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * API가 쌓는 익명 로그·발송 이력 중 보관 기간이 지난 행을 매일 나눠 지운다.
+ * API가 쌓는 익명 로그·발송 이력·쪽지 중 보관 기간이 지난 행을 매일 나눠 지운다.
  * 한 번에 지우는 행 수를 제한해 긴 잠금과 대용량 undo 로그를 피한다(MariaDB·H2 모두 DELETE ... LIMIT 지원).
  * 테이블이 아직 없거나 스케줄러 계정에 DELETE 권한이 없으면 경고만 남기고 다음 테이블을 정리한다.
  * TB_MAIL_ATTEMPT는 API가 발송량 확인 시 직접 정리하므로 대상에서 제외한다.
@@ -64,7 +64,14 @@ public class DataRetentionJob {
                 // 시작할 때 이미 접수 중이던 공고라, 지우면 다음 묶음 알림에서 '새 공고'로 대량 발송된다.
                 new Target("TB_PUSH_AREA_SEEN", "ANNOUNCEMENT_ID <> '*' AND ((LAST_SEEN_DT IS NOT NULL AND LAST_SEEN_DT < ?)"
                         + " OR (LAST_SEEN_DT IS NULL AND FIRST_SEEN_DT > ? AND FIRST_SEEN_DT < ?))",
-                        List.of(Timestamp.valueOf(now.minusDays(365)), Timestamp.valueOf(PUSH_AREA_BASELINE), Timestamp.valueOf(now.minusDays(365)))));
+                        List.of(Timestamp.valueOf(now.minusDays(365)), Timestamp.valueOf(PUSH_AREA_BASELINE), Timestamp.valueOf(now.minusDays(365)))),
+                // 쪽지는 180일 보관한다(개인정보처리방침). 마지막 쪽지가 180일 지난 대화방도 함께 지운다.
+                // 쪽지를 저장하지 못하고 남은 빈 대화방(LAST_MESSAGE_DT 없음)은 하루 뒤에 지운다. 테이블은 database.sql 25번.
+                new Target("TB_DM_MESSAGE", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(180)))),
+                new Target("TB_DM_THREAD", "(LAST_MESSAGE_DT IS NOT NULL AND LAST_MESSAGE_DT < ?) OR (LAST_MESSAGE_DT IS NULL AND REG_DT < ?)",
+                        List.of(Timestamp.valueOf(now.minusDays(180)), Timestamp.valueOf(now.minusDays(1)))),
+                // 처리가 끝난 신고는 1년 보관한다(대기 중인 신고는 지우지 않는다).
+                new Target("TB_USER_REPORT", "STATUS <> 'OPEN' AND HANDLED_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))));
     }
 
     /** 테이블별 삭제 행 수를 돌려준다. 실패한 테이블은 -1이다. */

@@ -18,6 +18,7 @@
             <a th:classappend="${menu == 'announcements'} ? 'active'" th:attr="aria-current=${menu == 'announcements'} ? 'page' : null" th:href="@{/admin/announcements}"><span aria-hidden="true">▤</span>공고</a>
             <a th:classappend="${menu == 'members'} ? 'active'" th:attr="aria-current=${menu == 'members'} ? 'page' : null" th:href="@{/admin/members}"><span aria-hidden="true">◉</span>회원</a>
             <a th:classappend="${menu == 'comments'} ? 'active'" th:attr="aria-current=${menu == 'comments'} ? 'page' : null" th:href="@{/admin/comments}"><span aria-hidden="true">✎</span>댓글</a>
+            <a th:classappend="${menu == 'reports'} ? 'active'" th:attr="aria-current=${menu == 'reports'} ? 'page' : null" th:href="@{/admin/reports}"><span aria-hidden="true">⚑</span>신고<span class="nav-count" th:if="${openReports != null and openReports > 0}" th:text="${openReports}">0</span></a>
             <p class="side-group">운영</p>
             <a th:classappend="${menu == 'operations'} ? 'active'" th:attr="aria-current=${menu == 'operations'} ? 'page' : null" th:href="@{/admin/operations}"><span aria-hidden="true">◎</span>데이터·알림 상태</a>
             <a th:classappend="${menu == 'jobs'} ? 'active'" th:attr="aria-current=${menu == 'jobs'} ? 'page' : null" th:href="@{/admin/jobs}"><span aria-hidden="true">↻</span>수집 작업</a>

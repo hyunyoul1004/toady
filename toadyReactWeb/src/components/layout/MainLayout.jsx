@@ -14,10 +14,11 @@ import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import IconButton from '@mui/material/IconButton';
-import Typography from '@mui/material/Typography';
 import MenuIcon from '@mui/icons-material/Menu';
 import Badge from '@mui/material/Badge';
 import { useMyReplies } from '@/features/account/useMyAccount';
+import { useMessageUnread } from '@/features/community/useCommunity';
+import CommunityLayers from '@/features/community/CommunityLayers';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -44,6 +45,8 @@ export function MainLayout() {
   // 내 이야기의 새 답글(로그인했을 때만). 모바일 메뉴 단추에 점으로 알린다.
 
   const { unread: replyUnread } = useMyReplies();
+  const messageUnread = useMessageUnread();
+  const newCount = replyUnread + messageUnread;
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -69,22 +72,15 @@ export function MainLayout() {
         <Toolbar sx={{ minHeight: '56px !important', px: 2, pl: 'max(16px, env(safe-area-inset-left))', pr: 'max(16px, env(safe-area-inset-right))' }}>
           <IconButton
             color="inherit"
-            aria-label={replyUnread > 0 ? `메뉴 열기 (새 답글 ${replyUnread}개)` : '메뉴 열기'}
+            aria-label={newCount > 0 ? `메뉴 열기 (새 답글·쪽지 ${newCount}개)` : '메뉴 열기'}
             edge="start"
             onClick={handleDrawerToggle}
             sx={{ mr: 1.5 }}
           >
-            <Badge color="error" variant="dot" invisible={!replyUnread}><MenuIcon /></Badge>
+            <Badge color="error" variant="dot" invisible={!newCount}><MenuIcon /></Badge>
           </IconButton>
           <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
-            <img
-              alt=""
-              src="/icons/icon-192.png"
-              style={{ width: '30px', height: '30px', objectFit: 'contain', background: '#eef7f0', borderRadius: '10px', padding: '3px', boxSizing: 'border-box' }}
-            />
-            <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#1e293b' }}>
-              TOADY
-            </Typography>
+            <img alt="TOADY" src="/brand/toady-logo.png" width={103} height={28} style={{ display: 'block', height: '28px', width: 'auto' }} />
           </Box>
         </Toolbar>
       </AppBar>
@@ -123,6 +119,9 @@ export function MainLayout() {
         </Box>
       </Box>
       <MobileTabBar onOpenMenu={() => setMobileOpen(true)} menuOpen={mobileOpen} />
+
+      {/* 프로필 카드·신고 창(히스토리 층). 이야기·쪽지 어디서든 연다. */}
+      <CommunityLayers />
 
       {/* 로그인 다이얼로그 */}
       <Dialog

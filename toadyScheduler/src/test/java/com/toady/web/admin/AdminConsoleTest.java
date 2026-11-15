@@ -262,9 +262,17 @@ class AdminConsoleTest {
                 now.minusDays(400), now.minusDays(10));
         // 1년 넘게 열려 있지만 최근에도 보인 장기 공고는 마지막 확인 기준이라 남는다(database.sql 15번 LAST_SEEN_DT).
         jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT,LAST_SEEN_DT) VALUES ('a','apt/E/1',?,?)", now.minusDays(500), now.minusDays(5));
+        // 쪽지 180일: 오래된 쪽지와 마지막 쪽지가 오래된 대화방, 쪽지 없이 남은 빈 대화방(하루 경과)만 지운다(database.sql 25번).
+        jdbc.update("DELETE FROM TB_DM_MESSAGE"); jdbc.update("DELETE FROM TB_DM_THREAD");
+        jdbc.update("INSERT INTO TB_DM_THREAD (THREAD_SEQ,USER_LOW,USER_HIGH,STARTED_BY,LAST_MESSAGE_SEQ,LAST_MESSAGE_DT,REG_DT) VALUES (1,1,2,1,1,?,?),(2,1,3,1,3,?,?),(3,2,3,2,0,NULL,?)",
+                now.minusDays(200), now.minusDays(200), now.minusDays(10), now.minusDays(200), now.minusDays(2));
+        jdbc.update("INSERT INTO TB_DM_MESSAGE (MESSAGE_SEQ,THREAD_SEQ,SENDER_SEQ,CONTENT,REG_DT) VALUES (1,1,1,'오래된 쪽지',?),(2,2,1,'오래된 쪽지',?),(3,2,3,'최근 쪽지',?)",
+                now.minusDays(200), now.minusDays(181), now.minusDays(10));
         var job = new com.toady.web.retention.DataRetentionJob(jdbc);
         var result = job.run(now);
-        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L), result);
+        assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L,
+                "TB_DM_MESSAGE", 2L, "TB_DM_THREAD", 2L, "TB_USER_REPORT", 0L), result);
+        assertEquals(java.util.List.of(2L), jdbc.queryForList("SELECT THREAD_SEQ FROM TB_DM_THREAD", Long.class));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class));
         // 생활권 기록 시작 표시('*')와 마지막 확인 시각이 아직 없는 기준 시각 행(B)은 남기고, 1년 넘게 보이지 않은 공고(C)만 지운다.
         assertEquals(java.util.List.of("*", "apt/B/1", "apt/D/1", "apt/E/1"), jdbc.queryForList(

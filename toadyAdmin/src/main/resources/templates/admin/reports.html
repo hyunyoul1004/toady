@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('신고')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main" th:with="back=${'/admin/reports?status=' + status + '&page=' + result.page}, base=${'/admin/reports?status=' + status}">
+    <section class="page-heading"><div><p class="eyebrow">COMMUNITY</p><h1>신고</h1>
+        <p class="muted">회원이 남긴 이야기·쪽지·회원 신고입니다. 오래 기다린 신고부터 보여 줍니다. 쪽지는 신고된 쪽지와 앞뒤 몇 통만 보입니다.</p></div>
+        <span class="timezone" th:text="${#numbers.formatInteger(result.total,1,'COMMA') + '건'}"></span></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">신고 테이블이 아직 없습니다. database.sql 25번을 적용하고 관리자 계정 권한을 준 뒤 다시 확인하세요.</div>
+    <form class="filters" th:action="@{/admin/reports}" method="get">
+        <label>상태<select name="status"><option value="open" th:selected="${status == 'open'}">대기</option><option value="closed" th:selected="${status == 'closed'}">처리됨</option><option value="all" th:selected="${status == 'all'}">전체</option></select></label>
+        <button class="primary" type="submit">보기</button>
+    </form>
+    <section class="panel">
+        <div class="empty" th:if="${#lists.isEmpty(result.items)}"><span class="empty-icon">○</span><h3>조건에 맞는 신고가 없습니다</h3></div>
+        <ul class="report-list" th:unless="${#lists.isEmpty(result.items)}">
+            <li th:each="r : ${result.items}" th:classappend="${!r.open} ? 'is-closed'">
+                <div class="report-head">
+                    <span class="badge" th:text="${r.typeLabel}">이야기</span>
+                    <span class="badge WAITING" th:text="${r.reasonLabel}">사유</span>
+                    <span class="badge" th:classappend="${r.open} ? 'FAILED' : 'SUCCEEDED'" th:text="${r.statusLabel}">대기</span>
+                    <span>신고된 회원 <a th:href="@{/admin/members/{seq}(seq=${r.targetUserSeq})}"><strong th:text="${r.targetUser != null ? r.targetUser : '#' + r.targetUserSeq}"></strong></a></span>
+                    <span class="chip warn" th:if="${r.openAgainstTarget > 1}" th:text="${'이 회원 대기 신고 ' + r.openAgainstTarget + '건'}"></span>
+                    <span class="chip off" th:if="${r.suspended}" th:text="${'쪽지 정지 ~' + #temporals.format(r.suspendedUntil, 'yyyy.MM.dd')}"></span>
+                    <small th:text="${'신고 ' + (r.reporter != null ? r.reporter : '#' + r.reporterSeq) + ' · ' + (r.createdAt != null ? #temporals.format(r.createdAt, 'yyyy.MM.dd HH:mm') : '') + ' · #' + r.seq}"></small>
+                </div>
+                <p class="report-detail" th:if="${r.detail != null}" th:text="${r.detail}"></p>
+                <ul class="report-lines" th:unless="${#lists.isEmpty(r.lines)}">
+                    <li th:each="l : ${r.lines}" th:classappend="${l.reported} ? 'is-reported'"><b th:text="${l.author != null ? l.author : ''}"></b><span th:text="${l.content}"></span>
+                        <small class="muted" th:if="${l.at != null}" th:text="${' · ' + #temporals.format(l.at, 'MM.dd HH:mm')}"></small></li>
+                </ul>
+                <p class="muted" th:if="${r.commentDeleted}">이 이야기는 이미 숨겨졌거나 작성자가 지웠습니다.</p>
+                <p class="muted" th:if="${!r.open}" th:text="${'처리: ' + (r.handledBy != null ? r.handledBy : '') + (r.handledAt != null ? ' · ' + #temporals.format(r.handledAt, 'yyyy.MM.dd HH:mm') : '') + (r.actionNote != null ? ' · ' + r.actionNote : '')}"></p>
+                <div class="report-actions" th:if="${r.open}">
+                    <a class="secondary" th:if="${r.appPath != null}" th:href="${r.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
+                    <form th:if="${r.type == 'COMMENT' and !r.commentDeleted}" th:action="@{/admin/comments/{seq}/hide(seq=${r.targetSeq})}" method="post" class="confirm" data-confirm="이 이야기를 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${back}"><button class="danger" type="submit">이야기 숨기기</button></form>
+                    <form th:unless="${r.suspended}" th:action="@{/admin/members/{seq}/dm-suspend(seq=${r.targetUserSeq})}" method="post" class="confirm" data-confirm="이 회원의 쪽지 보내기를 7일 정지할까요?"><input type="hidden" name="days" value="7"><input type="hidden" name="next" th:value="${back}"><button class="secondary" type="submit">쪽지 7일 정지</button></form>
+                    <a class="quiet" th:href="@{/admin/members/{seq}(seq=${r.targetUserSeq})}">회원 잠금·무기한 정지는 회원 화면에서</a>
+                </div>
+                <form class="report-actions spaced-top" th:if="${r.open}" th:action="@{/admin/reports/{seq}/close(seq=${r.seq})}" method="post">
+                    <input type="hidden" name="next" th:value="${back}">
+                    <input type="text" name="note" maxlength="200" placeholder="처리 메모(선택) 예: 이야기 숨김, 쪽지 7일 정지" aria-label="처리 메모">
+                    <label class="muted"><input type="checkbox" name="sameTarget" value="true" checked> 같은 대상의 대기 신고도 함께 닫기</label>
+                    <button class="primary" type="submit" name="outcome" value="done">조치 완료</button>
+                    <button class="secondary" type="submit" name="outcome" value="dismiss">문제 없음</button>
+                </form>
+            </li>
+        </ul>
+        <nav th:replace="~{admin/fragments :: pager(${result}, ${base})}"></nav>
+    </section>
+    <footer>TOADY · 관리자 <span>신고 내용은 화면에 글자 그대로 표시합니다.</span></footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

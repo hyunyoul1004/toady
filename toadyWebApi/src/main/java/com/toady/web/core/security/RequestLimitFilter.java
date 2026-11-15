@@ -78,6 +78,12 @@ public class RequestLimitFilter extends OncePerRequestFilter {
                 Pattern.compile("^/api/v1/(apt|urban|remaining|public-rental|optional)/announcements$"), 300, 5000),
             new Rule("push", Set.of("POST", "PUT"), List.of("/api/v1/push/"), Set.of(), 30, 200),
             new Rule("poll", Set.of("POST"), List.of("/api/v1/polls/"), Set.of(), 20, 100),
+            // 쪽지 보내기: 서비스 규칙(하루 50통·새 대화 5명)과 별도로 짧은 시간 도배를 막는다.
+            new Rule("dm", Set.of("POST"), List.of(), Set.of("/api/v1/me/messages"), 30, 300),
+            // 차단·신고: 회원 목록을 훑으며 대량으로 누르는 것을 막는다.
+            new Rule("safety", Set.of("POST", "DELETE"), List.of("/api/v1/me/blocks", "/api/v1/me/reports"), Set.of(), 30, 200),
+            // 프로필 카드: 회원 번호를 차례로 넣어 닉네임을 긁어 가지 못하게 한다.
+            new Rule("member-card", Set.of("GET"), List.of("/api/v1/members/"), Set.of(), 120, 1000),
             // 내 정보 변경(닉네임·비밀번호·탈퇴): 현재 비밀번호를 대입해 보는 시도를 막는다.
             new Rule("account", Set.of("POST", "PATCH"), List.of("/api/v1/me/account/"), Set.of(), 10, 60));
     }

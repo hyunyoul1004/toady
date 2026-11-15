@@ -16,6 +16,8 @@ import EditRounded from '@mui/icons-material/EditRounded';
 import SubdirectoryArrowRightRounded from '@mui/icons-material/SubdirectoryArrowRightRounded';
 import ProfileAvatar, { PROFILE_ICONS } from './ProfileAvatar';
 import { readSeen, useMyAccount, useMyReplies } from './useMyAccount';
+import MessageSettings from '@/features/community/MessageSettings';
+import '@/features/community/community.css';
 import ForumOutlined from '@mui/icons-material/ForumOutlined';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
@@ -252,7 +254,7 @@ export default function AccountPage() {
   const seenOnEnter = seenRef.current || null;
   useEffect(() => {
     if (seenRef.current === undefined || location.state?.repliesSeen === seenRef.current) return;
-    navigate(location.pathname + location.search, { replace: true, state: { ...location.state, repliesSeen: seenRef.current } });
+    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, repliesSeen: seenRef.current } });
   }, [enteredUser, location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null), [notice, setNotice] = useState(''), [farewell, setFarewell] = useState('');
@@ -336,6 +338,8 @@ export default function AccountPage() {
         {editing !== 'password' && <Button size="small" variant="outlined" onClick={() => { setEditing('password'); setNotice(''); }}>변경</Button>}</div>
       {editing === 'password' && <PasswordForm onDone={finished} onCancel={() => setEditing(null)} />}
     </section>
+
+    <MessageSettings />
 
     <section className="account-card" aria-labelledby="account-alert-title">
       <h2 id="account-alert-title"><NotificationsNoneRounded fontSize="small" />알림</h2>

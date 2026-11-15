@@ -100,7 +100,7 @@ class PlannerIntegrationTest {
         assertTrue(detail.contains("/areas/unjeong") && detail.contains("운정 생활권"),detail);
         assertTrue(detail.contains("data-app"),"공개 페이지에서 앱으로 갈 때 유입처를 넘길 링크를 표시한다");
         for(String page:java.util.List.of(detail,area)){
-            assertTrue(page.contains("<header class='site'>") && page.contains("<footer class='site-foot'>") && page.contains("/icons/icon-192.png"),"공개 페이지는 앱과 같은 상단·하단을 쓴다");
+            assertTrue(page.contains("<header class='site'>") && page.contains("<footer class='site-foot'>") && page.contains("/brand/toady-logo.png"),"공개 페이지는 앱과 같은 상단·하단을 쓴다");
             assertTrue(page.indexOf("</header>")<page.indexOf("<nav aria-label='현재 위치'>"),"빵부스러기는 상단 메뉴 아래에 둔다");
             assertFalse(page.contains("#0b6e64"),"예전 청록색을 쓰지 않는다");
         }

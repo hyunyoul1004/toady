@@ -8,7 +8,13 @@
     <section class="page-heading"><div><h1 th:text="${m.nickname}"></h1><p class="muted" th:text="${m.email}"></p>
         <div class="chips spaced-top"><span class="chip" th:classappend="${m.locked or m.withdrawn} ? 'off' : (${m.certified} ? 'on' : 'warn')" th:text="${m.status}"></span>
             <span class="chip" th:text="${'가입 ' + (m.createdAt != null ? #temporals.format(m.createdAt, 'yyyy.MM.dd') : '—')}"></span>
-            <span class="chip" th:if="${m.lockedAt != null}" th:text="${'잠금 ' + #temporals.format(m.lockedAt, 'yyyy.MM.dd HH:mm')}"></span></div></div>
+            <span class="chip" th:if="${m.lockedAt != null}" th:text="${'잠금 ' + #temporals.format(m.lockedAt, 'yyyy.MM.dd HH:mm')}"></span>
+            <span class="chip off" th:if="${dmSuspendedUntil != null}" th:text="${'쪽지 정지 ~' + #temporals.format(dmSuspendedUntil, 'yyyy.MM.dd')}"></span></div>
+        <div class="comment-actions spaced-top" th:if="${reportsReady and !m.withdrawn}">
+            <form th:unless="${dmSuspendedUntil != null}" th:action="@{/admin/members/{seq}/dm-suspend(seq=${m.seq})}" method="post" class="confirm" data-confirm="이 회원의 쪽지 보내기를 7일 정지할까요?"><input type="hidden" name="days" value="7"><input type="hidden" name="next" th:value="${here}"><button class="secondary" type="submit">쪽지 7일 정지</button></form>
+            <form th:unless="${dmSuspendedUntil != null}" th:action="@{/admin/members/{seq}/dm-suspend(seq=${m.seq})}" method="post" class="confirm" data-confirm="이 회원의 쪽지 보내기를 무기한 정지할까요?"><input type="hidden" name="days" value="-1"><input type="hidden" name="next" th:value="${here}"><button class="danger" type="submit">쪽지 무기한 정지</button></form>
+            <form th:if="${dmSuspendedUntil != null}" th:action="@{/admin/members/{seq}/dm-suspend(seq=${m.seq})}" method="post"><input type="hidden" name="days" value="0"><input type="hidden" name="next" th:value="${here}"><button class="secondary" type="submit">쪽지 정지 해제</button></form>
+        </div></div>
         <form th:unless="${m.withdrawn}" th:action="@{/admin/members/{seq}/lock(seq=${m.seq})}" method="post" class="confirm" th:attr="data-confirm=${m.locked ? m.nickname + ' 회원의 잠금을 풀까요?' : m.nickname + ' 회원을 잠글까요? 다음 로그인부터 막힙니다.'}">
             <input type="hidden" name="locked" th:value="${!m.locked}"><input type="hidden" name="next" th:value="${here}">
             <button th:class="${m.locked ? 'secondary' : 'danger'}" type="submit" th:text="${m.locked ? '잠금 해제' : '이 회원 잠그기'}"></button></form></section>

@@ -106,7 +106,7 @@ export const LoginPage = (props) => {
         <Box
           component="img"
           alt="TOADY Logo"
-          src="/icons/icon-192.png"
+          src="/brand/toady-symbol.png"
           sx={{
             width: 56,
             height: 56,

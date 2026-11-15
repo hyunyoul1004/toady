@@ -29,6 +29,8 @@ import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
+import { useMessageUnread } from '@/features/community/useCommunity';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
 import { useMyProfileIcon, useMyReplies } from '@/features/account/useMyAccount';
 import CloseIcon from '@mui/icons-material/Close';
@@ -52,6 +54,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   const nickname = user?.userNicName || user?.sub || '회원';
   const myProfileIcon = useMyProfileIcon();
   const { unread: replyUnread } = useMyReplies();
+  const messageUnread = useMessageUnread();
 
   const menuItems = MAIN_NAV.map(item => ({ ...item, text: item.label, icon: MAIN_ICONS[item.key] }));
   /**
@@ -100,22 +103,8 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         <Box component={Link} to="/" replace={mobileOpen} state={{browseView:'calendar'}} aria-label="TOADY 홈으로"
           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
-          <img
-            alt=""
-            src="/icons/icon-192.png"
-            style={{ width: '34px', height: '34px', objectFit: 'contain', background: '#eef7f0', borderRadius: '10px', padding: '3px', boxSizing: 'border-box' }}
-          />
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 800,
-              fontSize: '1.25rem',
-              color: '#1e293b',
-              letterSpacing: '-0.5px'
-            }}
-          >
-            TOADY
-          </Typography>
+          {/* 가로 로고(두꺼비 심볼 + TOADY). 원본: public/brand/toady-logo.png(높이 3배 해상도) */}
+          <img alt="TOADY" src="/brand/toady-logo.png" width={118} height={32} style={{ display: 'block', height: '32px', width: 'auto' }} />
         </Box>
         {/* 모바일 화면에서만 닫기 버튼 노출 */}
         <IconButton
@@ -259,6 +248,19 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
             >
               내 정보
               {replyUnread > 0 && <Box component="span" sx={{ ml: 0.75, px: 0.75, minWidth: 20, borderRadius: 999, bgcolor: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: '18px' }} aria-label={`새 답글 ${replyUnread}개`}>{replyUnread > 99 ? '99+' : replyUnread}</Box>}
+            </Button>
+            <Button
+              fullWidth
+              variant={location.pathname === '/messages' ? 'contained' : 'outlined'}
+              disableElevation
+              size="small"
+              startIcon={<MailOutlineRoundedIcon />}
+              onClick={() => go('/messages')}
+              aria-current={location.pathname === '/messages' ? 'page' : undefined}
+              sx={{ fontWeight: 700, borderRadius: 1.5 }}
+            >
+              쪽지함
+              {messageUnread > 0 && <Box component="span" sx={{ ml: 0.75, px: 0.75, minWidth: 20, borderRadius: 999, bgcolor: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: '18px' }} aria-label={`안 읽은 쪽지 ${messageUnread}개`}>{messageUnread > 99 ? '99+' : messageUnread}</Box>}
             </Button>
             <Button
               fullWidth
