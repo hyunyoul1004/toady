@@ -38,6 +38,7 @@ import IconButton from '@mui/material/IconButton';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { MAIN_NAV, MORE_NAV, isNavActive, retapAction } from './navItems';
+import BrandLogo from './BrandLogo';
 
 const MAIN_ICONS = { calendar: <CalendarMonthIcon />, match: <FactCheckOutlinedIcon />, score: <CalculateOutlinedIcon />, my: <BookmarkBorderIcon /> };
 const MORE_ICONS = { weekly: <EventNoteOutlinedIcon />, areas: <PlaceOutlinedIcon />, faq: <HelpOutlineIcon />, push: <NotificationsNoneOutlinedIcon /> };
@@ -103,8 +104,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         <Box component={Link} to="/" replace={mobileOpen} state={{browseView:'calendar'}} aria-label="TOADY 홈으로"
           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
-          {/* 가로 로고(두꺼비 심볼 + TOADY). 원본: public/brand/toady-logo.png(높이 3배 해상도) */}
-          <img alt="TOADY" src="/brand/toady-logo.png" width={118} height={32} style={{ display: 'block', height: '32px', width: 'auto' }} />
+          <BrandLogo size={30} />
         </Box>
         {/* 모바일 화면에서만 닫기 버튼 노출 */}
         <IconButton

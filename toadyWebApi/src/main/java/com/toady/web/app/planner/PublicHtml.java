@@ -83,7 +83,7 @@ final class PublicHtml {
     static String header(String domain, String current) {
         String[][] links = { {"/", "청약 캘린더", "app"}, {"/match", "맞춤 청약", "app"}, {"/score", "가점 계산기", "app"}, {"/zupzup", "무순위", ""}, {"/weekly", "이번 주", ""} };
         StringBuilder out = new StringBuilder("<header class='site'><div class='site-in'><a class='brand' data-app href='").append(esc(domain + "/"))
-            .append("'><img src='").append(esc(domain + "/brand/toady-logo.png")).append("' width='103' height='28' alt='TOADY'></a><nav class='menu' aria-label='주요 메뉴'>");
+            .append("'><img src='").append(esc(domain + "/brand/toady-mark.png")).append("' width='29' height='26' alt=''><span>TOADY</span></a><nav class='menu' aria-label='주요 메뉴'>");
         for (String[] link : links) {
             out.append("<a").append(link[2].isEmpty() ? "" : " data-app").append(link[0].equals(current) ? " aria-current='page'" : "")
                 .append(" href='").append(esc(domain + link[0])).append("'>").append(esc(link[1])).append("</a>");
@@ -112,7 +112,7 @@ final class PublicHtml {
         a{color:#2563eb}a:focus-visible{outline:2px solid #2563eb;outline-offset:2px;border-radius:6px}
         .site{background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:10}.site-in{max-width:760px;margin:0 auto;padding:0 16px}
         .site .site-in{display:flex;align-items:center;gap:4px 16px;flex-wrap:wrap;min-height:56px}
-        .brand{display:inline-flex;align-items:center;gap:8px;min-height:44px;color:#0f172a;text-decoration:none;font-weight:800;font-size:18px;letter-spacing:-.01em}.brand img{display:block;height:28px;width:auto}
+        .brand{display:inline-flex;align-items:center;gap:9px;min-height:44px;color:#0f172a;text-decoration:none;font-weight:800;font-size:18px;letter-spacing:-.01em}.brand img{display:block;height:26px;width:auto}.brand span{font-weight:900;font-size:19px;letter-spacing:-.02em;color:#1e293b}
         .menu{display:flex;gap:2px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;margin-left:auto;-webkit-overflow-scrolling:touch}.menu::-webkit-scrollbar{display:none}
         .menu a{display:inline-flex;align-items:center;min-height:40px;padding:0 12px;border-radius:10px;color:#475569;text-decoration:none;font-size:14px;font-weight:650}
         .menu a:hover{background:#f1f5f9;color:#0f172a}.menu a[aria-current]{background:#eef4ff;color:#1d4ed8}

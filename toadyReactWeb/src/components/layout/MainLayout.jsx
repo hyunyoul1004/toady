@@ -25,6 +25,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Copyright from './Copyright';
 import MobileTabBar from './MobileTabBar';
+import BrandLogo from './BrandLogo';
 import { LoginPage } from '@/views/login/LoginPage';
 import { SignUp, FindPassword } from '@/views/signup';
 
@@ -80,7 +81,7 @@ export function MainLayout() {
             <Badge color="error" variant="dot" invisible={!newCount}><MenuIcon /></Badge>
           </IconButton>
           <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
-            <img alt="TOADY" src="/brand/toady-logo.png" width={103} height={28} style={{ display: 'block', height: '28px', width: 'auto' }} />
+            <BrandLogo size={26} />
           </Box>
         </Toolbar>
       </AppBar>
