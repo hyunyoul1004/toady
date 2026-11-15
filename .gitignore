@@ -80,3 +80,7 @@ LOG_FILE_NAME_IS_UNDEFINED/
 # Local notes consolidated into the root README
 /docs/REFACTORING.md
 /docs/REPOSITORY.md
+
+# 개발 DB 테스트 계정 생성 스크립트(로컬에서만 사용)
+scripts/CreateDevUsers.java
+scripts/create-dev-users.sh
