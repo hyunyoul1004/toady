@@ -67,7 +67,9 @@ public class DataRetentionJob {
                         List.of(Timestamp.valueOf(now.minusDays(365)), Timestamp.valueOf(PUSH_AREA_BASELINE), Timestamp.valueOf(now.minusDays(365)))),
                 // 쪽지는 180일 보관한다(개인정보처리방침). 마지막 쪽지가 180일 지난 대화방도 함께 지운다.
                 // 쪽지를 저장하지 못하고 남은 빈 대화방(LAST_MESSAGE_DT 없음)은 하루 뒤에 지운다. 테이블은 database.sql 25번.
-                new Target("TB_DM_MESSAGE", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(180)))),
+                // 처리를 기다리는 신고가 걸린 쪽지는 운영자가 확인할 때까지 남긴다(증거 보존).
+                new Target("TB_DM_MESSAGE", "REG_DT < ? AND NOT EXISTS (SELECT 1 FROM TB_USER_REPORT R WHERE R.TARGET_TYPE='MESSAGE'"
+                        + " AND R.TARGET_SEQ=TB_DM_MESSAGE.MESSAGE_SEQ AND R.STATUS='OPEN')", List.of(Timestamp.valueOf(now.minusDays(180)))),
                 new Target("TB_DM_THREAD", "(LAST_MESSAGE_DT IS NOT NULL AND LAST_MESSAGE_DT < ?) OR (LAST_MESSAGE_DT IS NULL AND REG_DT < ?)",
                         List.of(Timestamp.valueOf(now.minusDays(180)), Timestamp.valueOf(now.minusDays(1)))),
                 // 처리가 끝난 신고는 1년 보관한다(대기 중인 신고는 지우지 않는다).

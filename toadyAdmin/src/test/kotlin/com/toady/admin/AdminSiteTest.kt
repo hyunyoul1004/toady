@@ -115,7 +115,14 @@ class AdminSiteTest {
 			.andExpect(redirectedUrl("/admin/reports?status=open&page=0")).andExpect(flash().attributeExists("notice"))
 		assertTrue(jdbc.queryForObject("SELECT SUSPENDED_UNTIL FROM TB_DM_SETTING WHERE USER_SEQ=2", java.sql.Timestamp::class.java)!!.toLocalDateTime().isAfter(Kst.now().plusDays(6)))
 		mvc.perform(post("/admin/members/2/dm-suspend").param("days", "3").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		// 없는 회원·탈퇴 회원에게는 정지 설정을 만들지 않는다.
+		mvc.perform(post("/admin/members/999/dm-suspend").param("days", "7").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/members/3/dm-suspend").param("days", "7").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_DM_SETTING WHERE USER_SEQ IN (3, 999)", Int::class.java))
 		val report = jdbc.queryForObject("SELECT REPORT_SEQ FROM TB_USER_REPORT WHERE TARGET_TYPE='MESSAGE'", Long::class.java)
+		// 알 수 없는 처리 값은 받지 않는다.
+		mvc.perform(post("/admin/reports/$report/close").param("outcome", "weird").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		assertEquals("OPEN", jdbc.queryForObject("SELECT STATUS FROM TB_USER_REPORT WHERE REPORT_SEQ=?", String::class.java, report))
 		mvc.perform(post("/admin/reports/$report/close").param("outcome", "done").param("note", "쪽지 7일 정지").param("sameTarget", "true").with(admin).with(csrf()))
 			.andExpect(flash().attributeExists("notice"))
 		assertEquals("DONE", jdbc.queryForObject("SELECT STATUS FROM TB_USER_REPORT WHERE REPORT_SEQ=?", String::class.java, report))
@@ -124,6 +131,28 @@ class AdminSiteTest {
 		mvc.perform(get("/admin/members/2").with(admin)).andExpect(content().string(org.hamcrest.Matchers.containsString("쪽지 정지 해제")))
 		mvc.perform(post("/admin/members/2/dm-suspend").param("days", "0").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(null, jdbc.queryForObject("SELECT SUSPENDED_UNTIL FROM TB_DM_SETTING WHERE USER_SEQ=2", java.sql.Timestamp::class.java))
+	}
+	@Test fun reportListsSeparateWaitingFromHandledAndExplainDeletedTargets() {
+		// 대기 1건(보관 기간이 지나 지워진 쪽지), 처리된 2건(조치 완료·문제 없음)
+		jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,REG_DT) VALUES (1,2,'MESSAGE',777,'ABUSE','OPEN',CURRENT_TIMESTAMP)")
+		jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,ACTION_NOTE,HANDLED_BY,HANDLED_DT,REG_DT) VALUES (2,1,'COMMENT',10,'SPAM','DONE','확인 후 숨김 처리함','operator',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+		jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,HANDLED_BY,HANDLED_DT,REG_DT) VALUES (1,2,'USER',2,'ETC','DISMISSED','operator',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+
+		val waiting = mvc.perform(get("/admin/reports").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(waiting.contains("보관 기간이 지나 지워진 쪽지"), "지워진 쪽지는 그렇게 알린다")
+		assertFalse(waiting.contains("확인 후 숨김 처리함"), "대기 목록에는 처리된 신고가 없다")
+		assertTrue(waiting.contains("조치 완료") && waiting.contains("문제 없음"), "처리 단추는 대기 신고에만 보인다")
+
+		val handled = mvc.perform(get("/admin/reports").param("status", "closed").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(handled.contains("확인 후 숨김 처리함") && handled.contains("문제 없음"), "처리됨 목록에 처리 메모와 결과가 보인다")
+		assertFalse(handled.contains("보관 기간이 지나 지워진 쪽지"))
+		assertFalse(handled.contains("name=\"outcome\""), "처리된 신고에는 처리 단추가 없다")
+		// 숨긴 원댓글(10)의 신고에는 숨김 사실을 보여 준다.
+		mvc.perform(post("/admin/comments/10/hide").with(admin).with(csrf()))
+		assertTrue(mvc.perform(get("/admin/reports").param("status", "all").with(admin)).andReturn().response.contentAsString.contains("이미 숨겨졌거나"))
+
+		// 메뉴의 대기 수는 대기 신고만 센다.
+		assertTrue(Regex("nav-count[^>]*>1<").containsMatchIn(waiting))
 	}
 	@Test fun aReplyHiddenOnItsOwnStaysHiddenWhenTheRootIsRestored() {
 		// 답글(욕설 등)을 먼저 따로 숨기고, 나중에 원댓글을 숨긴 뒤 원댓글만 되살리면 따로 숨긴 답글은 그대로 숨겨져 있어야 한다.

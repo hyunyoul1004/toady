@@ -615,13 +615,16 @@ CREATE TABLE IF NOT EXISTS TB_DM_SETTING (
     UPDATE_DT DATETIME(6) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원별 쪽지 설정';
 
--- 앱 계정에는 위 네 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
+-- 회원별 '오늘 시작한 대화 수'(하루 5명 제한)를 프로필 카드를 열 때마다 확인하므로 인덱스를 둔다.
+CREATE INDEX IF NOT EXISTS IX_DM_STARTED ON TB_DM_THREAD (STARTED_BY, REG_DT);
+
+-- 앱 계정에는 위 다섯 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
 -- 관리자 계정: 신고 처리와 쪽지 정지. 쪽지 내용은 관리자 화면이 신고된 쪽지와 그 앞뒤 몇 통만 읽는다(평소에는 보지 않음).
 -- GRANT SELECT, UPDATE (STATUS, ACTION_NOTE, HANDLED_BY, HANDLED_DT) ON toady.TB_USER_REPORT TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_DM_MESSAGE TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_DM_THREAD TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, UPDATE (SUSPENDED_UNTIL, UPDATE_DT) ON toady.TB_DM_SETTING TO 'toady_admin'@'%';
--- 스케줄러 계정: 보관 기간(180일)이 지난 쪽지와, 마지막 쪽지가 180일 지난 대화방, 처리 후 1년 지난 신고 정리.
+-- 스케줄러 계정: 보관 기간(180일)이 지난 쪽지(처리 대기 신고가 걸린 쪽지는 제외)와, 마지막 쪽지가 180일 지난 대화방, 처리 후 1년 지난 신고 정리.
 -- GRANT SELECT, DELETE ON toady.TB_DM_MESSAGE TO 'toady_sources'@'%';
 -- GRANT SELECT, DELETE ON toady.TB_DM_THREAD TO 'toady_sources'@'%';
 -- GRANT SELECT, DELETE ON toady.TB_USER_REPORT TO 'toady_sources'@'%';

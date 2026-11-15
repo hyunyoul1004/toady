@@ -78,10 +78,12 @@
 .dm-intro h2 { margin: 0; font-size: 17px; font-weight: 800; }
 .dm-intro ul { margin: 0; padding: 0 0 0 18px; text-align: left; color: #475569; font-size: 13px; line-height: 1.7; max-width: 420px; }
 .dm-intro-icon { font-size: 40px !important; color: #2563eb; }
-.dm-composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px) * 0); border-top: 1px solid #eef2f6; background: #fff; }
+.dm-composer { padding: 10px 12px; border-top: 1px solid #eef2f6; background: #fff; }
 .dm-composer.is-closed { color: #64748b; font-size: 13px; line-height: 1.6; text-align: center; padding: 14px 16px; background: #f8fafc; }
 .dm-composer-row { display: flex; align-items: flex-end; gap: 6px; }
 .dm-input { flex: 1; padding: 9px 14px; border: 1px solid #dbe3ec; border-radius: 20px; font-size: 14px !important; background: #fff; }
+/* iOS Safari는 16px보다 작은 입력창에 포커스가 가면 화면을 확대한다(대화 화면 높이가 어긋남). */
+@media (max-width: 899.95px) { .dm-input, .dm-input textarea { font-size: 16px !important; } }
 .dm-input.Mui-focused { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
 .dm-send { flex: none; }
 .dm-count { display: block; margin-top: 4px; text-align: right; color: #94a3b8; font-size: 11px; }

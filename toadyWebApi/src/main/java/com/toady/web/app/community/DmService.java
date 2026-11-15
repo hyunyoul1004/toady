@@ -42,6 +42,7 @@ public class DmService {
     static final int PAGE = 30;
     static final int THREAD_PAGE = 20;
     static final long MIN_ACCOUNT_HOURS = 24;
+    static final String CLOSED = "새 쪽지를 받지 않는 회원이에요.";
     private static final Pattern CONTEXT = Pattern.compile("^(apt|urban|remaining|public-rental|optional)/[A-Za-z0-9-]{1,40}/[A-Za-z0-9-]{1,40}$");
     /** 공고 유형(화면 주소) → 공고 이름을 읽을 상세 테이블. AccountService의 목록과 같다. */
     private static final Map<String, String> DETAIL_TABLES = Map.of(
@@ -87,6 +88,15 @@ public class DmService {
         return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ=?", threadSeq, sender);
     }
 
+    /**
+     * 보내기 중(대화방 행을 잠근 뒤) 쓰는 '보낸 적 있는가'. 잠금 읽기라 일관 읽기 스냅샷이 아니라 최신 커밋을 본다.
+     * (MariaDB 기본 REPEATABLE READ에서 일반 SELECT는 먼저 잡힌 스냅샷을 읽어, 동시에 보낸 쪽지를 못 볼 수 있다.)
+     */
+    private boolean sentLocked(long threadSeq, long sender) {
+        return !jdbc.queryForList("SELECT MESSAGE_SEQ FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ=? ORDER BY MESSAGE_SEQ LIMIT 1 FOR UPDATE",
+                Long.class, threadSeq, sender).isEmpty();
+    }
+
     // ---------------------------------------------------------------- 보낼 수 있는가
 
     /** 보낼 수 있는지와 이유. reason은 화면이 버튼 모양을 고르는 데 쓴다. */
@@ -100,7 +110,10 @@ public class DmService {
         }
     }
 
-    Gate gate(long me, long other, Thread thread, LocalDateTime now) {
+    Gate gate(long me, long other, Thread thread, LocalDateTime now) { return gate(me, other, thread, now, false); }
+
+    /** locking: 보내기 중이면 true(대화방 행을 잠근 상태에서 최신 값으로 판단). */
+    Gate gate(long me, long other, Thread thread, LocalDateTime now, boolean locking) {
         if (!community.ready()) return Gate.no("NOT_READY", Community.NOT_READY);
         if (me == other) return Gate.no("SELF", "나에게는 쪽지를 보낼 수 없어요.");
         Member target = community.member(other);
@@ -110,18 +123,20 @@ public class DmService {
             return Gate.no("SUSPENDED", "운영 정책 위반으로 " + mine.suspendedUntil().toLocalDate() + "까지 쪽지를 보낼 수 없어요.");
         }
         if (community.blocked(me, other)) return Gate.no("BLOCKED", "차단한 회원이에요. 차단을 풀면 쪽지를 보낼 수 있어요.");
-        // 상대가 나를 차단한 사실은 알리지 않는다.
-        if (community.blocked(other, me)) return Gate.no("UNAVAILABLE", "이 회원에게는 쪽지를 보낼 수 없어요.");
+        // 상대가 나를 차단한 사실은 알리지 않는다: '새 쪽지를 받지 않는 회원'과 같은 이유·문구로 보인다.
+        if (community.blocked(other, me)) return Gate.no("CLOSED", CLOSED);
 
-        boolean otherReplied = thread != null && sentIn(thread.seq(), other) > 0;
+        boolean otherReplied = thread != null && (locking ? sentLocked(thread.seq(), other) : sentIn(thread.seq(), other) > 0);
         if (otherReplied) return Gate.yes();   // 서로 주고받은 대화는 받는 범위와 관계없이 이어진다.
 
         String policy = safety.setting(other).policy();
-        if ("NONE".equals(policy)) return Gate.no("CLOSED", "새 쪽지를 받지 않는 회원이에요.");
+        if ("NONE".equals(policy)) return Gate.no("CLOSED", CLOSED);
         if ("KNOWN".equals(policy) && !community.talkedInStories(me, other)) {
             return Gate.no("KNOWN_ONLY", "이야기로 이어진 회원에게만 쪽지를 받는 회원이에요. 이 회원의 이야기에 답글로 먼저 인사해 보세요.");
         }
-        if (thread != null && sentIn(thread.seq(), me) > 0) return Gate.no("WAITING", "상대가 답하기 전에는 쪽지를 한 통만 보낼 수 있어요.");
+        if (thread != null && (locking ? sentLocked(thread.seq(), me) : sentIn(thread.seq(), me) > 0)) {
+            return Gate.no("WAITING", "상대가 답하기 전에는 쪽지를 한 통만 보낼 수 있어요.");
+        }
 
         // 새 대화 시작 조건
         Member self = community.member(me);
@@ -133,7 +148,9 @@ public class DmService {
         if (community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", me) == 0) {
             return Gate.no("NO_STORY", "공고 ‘이야기’에 글을 하나 이상 남기면 쪽지를 보낼 수 있어요.");
         }
-        if (community.count("SELECT COUNT(*) FROM TB_DM_THREAD WHERE STARTED_BY=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= DAILY_NEW_THREADS) {
+        // 보내기 중에는 방금 만든(아직 쪽지 없는) 이 대화방은 세지 않는다.
+        if (community.count("SELECT COUNT(*) FROM TB_DM_THREAD WHERE STARTED_BY=? AND REG_DT>=? AND THREAD_SEQ<>?", me,
+                Community.ts(now.toLocalDate().atStartOfDay()), thread == null ? 0L : thread.seq()) >= DAILY_NEW_THREADS) {
             return Gate.no("LIMIT", "새 대화는 하루에 " + DAILY_NEW_THREADS + "명까지 시작할 수 있어요. 내일 다시 시도해 주세요.");
         }
         return Gate.yes();
@@ -150,30 +167,36 @@ public class DmService {
 
     // ---------------------------------------------------------------- 보내기
 
+    /**
+     * 보내기. 대화방이 없으면 먼저 만들고(INSERT, 동시에 만들면 유일키로 하나만 남음) 그 행을 잠근 뒤 규칙을 최신 값으로 확인한다.
+     * 먼저 잠금 조회를 하면 MariaDB가 빈 구간에 잠금을 걸어, 두 요청이 동시에 첫 쪽지를 보낼 때 교착(1213)이 난다.
+     * 규칙에 걸리면 이 트랜잭션을 되돌려(방금 만든 빈 대화방도 남기지 않는다) 안내만 돌려준다.
+     */
     @Transactional
     public Result send(long me, long other, String content, String contextId) {
         LocalDateTime now = Community.now();
         if (!community.ready()) return Result.fail("ERR-999", Community.NOT_READY);
-        Thread thread = pair(me, other, true);
-        Gate gate = gate(me, other, thread, now);
-        if (!gate.ok()) return Result.fail("ERR-403", gate.message());
-        boolean firstUnanswered = thread == null || sentIn(thread.seq(), other) == 0;
-        DmRules.Problem problem = DmRules.check(content, firstUnanswered);
-        if (problem != null) return Result.fail("ERR-401", DmRules.message(problem));
-        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= DAILY_MESSAGES) {
-            return Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + DAILY_MESSAGES + "통).");
-        }
-        String text = content.strip();
-        if (thread == null) {
+        if (me == other) return Result.fail("ERR-403", "나에게는 쪽지를 보낼 수 없어요.");
+        // 내용 문제(빈 글·길이)는 대화방을 만들기 전에 거른다. 연락처 규칙은 상대가 답했는지 본 뒤에 판단한다.
+        DmRules.Problem early = DmRules.check(content, false);
+        if (early != null) return Result.fail("ERR-401", DmRules.message(early));
+        if (pair(me, other, false) == null) {
             String context = contextId != null && CONTEXT.matcher(contextId).matches() ? contextId : null;
             try {
                 jdbc.update("INSERT INTO TB_DM_THREAD (USER_LOW, USER_HIGH, STARTED_BY, CONTEXT_ID, REG_DT) VALUES (?,?,?,?,?)",
                         Math.min(me, other), Math.max(me, other), me, context, Community.ts(now));
             } catch (DuplicateKeyException raced) { /* 두 사람이 동시에 첫 쪽지를 보냄: 이미 만들어진 방을 쓴다 */ }
-            thread = pair(me, other, true);
-            Gate again = gate(me, other, thread, now);
-            if (!again.ok()) return Result.fail("ERR-403", again.message());
         }
+        Thread thread = pair(me, other, true);
+        Gate gate = gate(me, other, thread, now, true);
+        if (!gate.ok()) return rollback(Result.fail("ERR-403", gate.message()));
+        boolean firstUnanswered = !sentLocked(thread.seq(), other);
+        DmRules.Problem problem = DmRules.check(content, firstUnanswered);
+        if (problem != null) return rollback(Result.fail("ERR-401", DmRules.message(problem)));
+        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= DAILY_MESSAGES) {
+            return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + DAILY_MESSAGES + "통)."));
+        }
+        String text = content.strip();
         long receiverUnreadBefore = unreadIn(thread, other);
         boolean flagged = DmRules.flagged(text);
         GeneratedKeyHolder key = new GeneratedKeyHolder();
@@ -209,6 +232,14 @@ public class DmService {
         return number.longValue();
     }
 
+    /** 규칙에 걸린 보내기는 되돌린다(방금 만든 빈 대화방이 남아 '오늘 시작한 대화'로 세지 않게). */
+    private static Result rollback(Result result) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+        }
+        return result;
+    }
+
     private static void afterCommit(Runnable task) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) { task.run(); return; }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -227,10 +258,12 @@ public class DmService {
     public long unread(long me) {
         if (!community.ready()) return 0;
         try {
+            // 내가 차단한 회원이 차단 전에 보낸 안 읽은 쪽지는 배지에 세지 않는다.
+            String notBlocked = " AND m.SENDER_SEQ NOT IN (SELECT BLOCKED_USER_SEQ FROM TB_USER_BLOCK WHERE USER_SEQ=?)";
             return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE m JOIN TB_DM_THREAD t ON t.THREAD_SEQ=m.THREAD_SEQ WHERE t.USER_LOW=? AND m.SENDER_SEQ<>?"
-                    + " AND m.MESSAGE_SEQ>t.LOW_READ_SEQ AND m.MESSAGE_SEQ>t.LOW_LEFT_SEQ", me, me)
+                    + " AND m.MESSAGE_SEQ>t.LOW_READ_SEQ AND m.MESSAGE_SEQ>t.LOW_LEFT_SEQ" + notBlocked, me, me, me)
                     + community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE m JOIN TB_DM_THREAD t ON t.THREAD_SEQ=m.THREAD_SEQ WHERE t.USER_HIGH=? AND m.SENDER_SEQ<>?"
-                    + " AND m.MESSAGE_SEQ>t.HIGH_READ_SEQ AND m.MESSAGE_SEQ>t.HIGH_LEFT_SEQ", me, me);
+                    + " AND m.MESSAGE_SEQ>t.HIGH_READ_SEQ AND m.MESSAGE_SEQ>t.HIGH_LEFT_SEQ" + notBlocked, me, me, me);
         } catch (DataAccessException failure) {
             log.warn("안 읽은 쪽지 수를 세지 못함: {}", failure.getMostSpecificCause().getMessage());
             return 0;

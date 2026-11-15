@@ -7,11 +7,12 @@ function identity(state) {
 /**
  * 로그인 계정에 따라 결과가 달라지는 조회의 첫 키.
  * planner(관심 공고)·plannerSettings(알림 설정)·calendarFeed(개인 캘린더 주소)·ratePoll(내 투표 여부)
+ * community(쪽지·차단·프로필 카드의 쪽지 상태): 다른 계정의 대화가 잠깐이라도 보이지 않게 함께 비운다.
  */
-const USER_QUERY_ROOTS = new Set(['planner', 'plannerSettings', 'calendarFeed', 'ratePoll']);
+const USER_QUERY_ROOTS = new Set(['planner', 'plannerSettings', 'calendarFeed', 'ratePoll', 'community']);
 
 /** 계정별 조회인지 판정한다. 공고 댓글은 작성자 표시·권한이 계정에 따라 달라 함께 비운다. */
-function isUserScopedQuery(queryKey = []) {
+export function isUserScopedQuery(queryKey = []) {
   const [root, kind] = queryKey;
   return USER_QUERY_ROOTS.has(root) || (root === 'announcements' && kind === 'comments');
 }

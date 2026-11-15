@@ -268,10 +268,17 @@ class AdminConsoleTest {
                 now.minusDays(200), now.minusDays(200), now.minusDays(10), now.minusDays(200), now.minusDays(2));
         jdbc.update("INSERT INTO TB_DM_MESSAGE (MESSAGE_SEQ,THREAD_SEQ,SENDER_SEQ,CONTENT,REG_DT) VALUES (1,1,1,'오래된 쪽지',?),(2,2,1,'오래된 쪽지',?),(3,2,3,'최근 쪽지',?)",
                 now.minusDays(200), now.minusDays(181), now.minusDays(10));
+        // 오래된 쪽지 중 처리 대기 신고가 걸린 것(4)은 남기고, 처리 후 1년 지난 신고만 지운다.
+        jdbc.update("DELETE FROM TB_USER_REPORT");
+        jdbc.update("INSERT INTO TB_DM_MESSAGE (MESSAGE_SEQ,THREAD_SEQ,SENDER_SEQ,CONTENT,REG_DT) VALUES (4,1,2,'신고된 쪽지',?)", now.minusDays(200));
+        jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,REG_DT) VALUES (1,2,'MESSAGE',4,'TRADE','OPEN',?)", now.minusDays(190));
+        jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ,TARGET_USER_SEQ,TARGET_TYPE,TARGET_SEQ,REASON,STATUS,HANDLED_DT,REG_DT) VALUES (1,2,'USER',2,'SPAM','DONE',?,?),(1,3,'USER',3,'SPAM','DONE',?,?)",
+                now.minusDays(400), now.minusDays(401), now.minusDays(30), now.minusDays(31));
         var job = new com.toady.web.retention.DataRetentionJob(jdbc);
         var result = job.run(now);
         assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L,
-                "TB_DM_MESSAGE", 2L, "TB_DM_THREAD", 2L, "TB_USER_REPORT", 0L), result);
+                "TB_DM_MESSAGE", 2L, "TB_DM_THREAD", 2L, "TB_USER_REPORT", 1L), result);
+        assertEquals(java.util.List.of(3L, 4L), jdbc.queryForList("SELECT MESSAGE_SEQ FROM TB_DM_MESSAGE ORDER BY MESSAGE_SEQ", Long.class));
         assertEquals(java.util.List.of(2L), jdbc.queryForList("SELECT THREAD_SEQ FROM TB_DM_THREAD", Long.class));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PAGE_VIEW", Integer.class));
         // 생활권 기록 시작 표시('*')와 마지막 확인 시각이 아직 없는 기준 시각 행(B)은 남기고, 1년 넘게 보이지 않은 공고(C)만 지운다.

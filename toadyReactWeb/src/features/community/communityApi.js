@@ -31,4 +31,4 @@ export async function run(request) {
   }
 }
 
-export { REPORT_REASONS, RECEIVE_POLICIES, cardValue, parseCardValue, reportValue, parseReportValue, messageTime } from './communityRules.js';
+export { REPORT_REASONS, RECEIVE_POLICIES, cardValue, parseCardValue, reportValue, parseReportValue, messageTime, mergeMessages, uniqueThreads, isCollapsedStory } from './communityRules.js';

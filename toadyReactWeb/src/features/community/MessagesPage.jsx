@@ -23,7 +23,7 @@ import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { COMMUNITY_KEY, cardValue, communityApi, messageTime, reportValue, run } from './communityApi';
+import { COMMUNITY_KEY, cardValue, communityApi, mergeMessages, messageTime, reportValue, run, uniqueThreads } from './communityApi';
 import '@/features/account/account.css';
 import './community.css';
 
@@ -74,31 +74,46 @@ function ThreadHeader({ other, contextId, houseNm, onBack, children }) {
 function ThreadView({ threadSeq, onBack }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const [, setReport] = useHistoryOverlay('report');
   const [leaveOpen, setLeaveOpen] = useHistoryOverlay('dm-leave');
   const [older, setOlder] = useState([]);
   const [hasOlder, setHasOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
+  const leaving = useRef(false);
   const listRef = useRef(null);
   const stick = useRef(true);
   const thread = useQuery({
     queryKey: [...COMMUNITY_KEY, 'thread', threadSeq],
     queryFn: () => communityApi.thread(threadSeq),
-    refetchInterval: () => (document.visibilityState === 'visible' ? 15000 : false),
+    // 열리지 않는 대화(404 등)는 다시 묻지 않는다.
+    refetchInterval: query => (query.state.data?.resultCode === 'SUCCESS' && document.visibilityState === 'visible' ? 15000 : false),
     refetchOnWindowFocus: true
   });
   const data = thread.data?.resultCode === 'SUCCESS' ? thread.data.data : null;
+  // 이전에 불러온 쪽지와 15초마다 받는 최신 30통을 번호로 합친다(새 쪽지가 와도 사이가 비지 않게).
+  const messages = useMemo(() => mergeMessages(older, data?.messages || []), [older, data?.messages]);
+  const lastSeq = messages[messages.length - 1]?.messageSeq;
   // 열면 서버가 읽음으로 바꾸므로 메뉴 배지·쪽지함 숫자를 새로 읽는다.
   useEffect(() => { if (data) { queryClient.invalidateQueries({ queryKey: [...COMMUNITY_KEY, 'unread'] }); queryClient.invalidateQueries({ queryKey: [...COMMUNITY_KEY, 'threads'] }); } },
-    [data?.messages?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    [lastSeq]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setOlder([]); setHasOlder(null); stick.current = true; }, [threadSeq]);
-  const messages = useMemo(() => [...older, ...(data?.messages || [])], [older, data?.messages]);
+  // 지금까지 받은 쪽지를 버리지 않고 쌓아 둔다(최신 30통 범위에서 밀려난 쪽지도 화면에 남게).
+  useEffect(() => { if (data?.messages?.length) setOlder(list => mergeMessages(list, data.messages)); }, [data?.messages]);
   const more = hasOlder ?? data?.hasMore;
   // 새 쪽지가 오면 맨 아래에 있을 때만 따라 내려간다(위로 읽는 중이면 그대로 둔다).
   useLayoutEffect(() => {
     const box = listRef.current;
     if (box && stick.current) box.scrollTop = box.scrollHeight;
-  }, [messages.length]);
+  }, [lastSeq]);
+  // 나가기: 확인 창 칸을 뒤로가기로 먼저 닫고, 대화 칸으로 돌아온 다음 그 칸을 쪽지함으로 바꾼다.
+  // (확인 창 칸만 바꾸면 대화 칸이 남아, 뒤로가기 때 나간 대화가 다시 열린다.)
+  useEffect(() => {
+    if (!leaving.current || leaveOpen) return;
+    leaving.current = false;
+    navigate('/messages', { replace: true });
+  }, [location.key, leaveOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const onScroll = () => { const box = listRef.current; if (box) stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80; };
 
   const loadOlder = async () => {
@@ -110,7 +125,7 @@ function ThreadView({ threadSeq, onBack }) {
     setLoadingOlder(false);
     if (!result.ok) return;
     stick.current = false;
-    setOlder(list => [...(result.data?.messages || []), ...list]);
+    setOlder(list => mergeMessages(result.data?.messages || [], list));
     setHasOlder(Boolean(result.data?.hasMore));
     requestAnimationFrame(() => { if (box) box.scrollTop = box.scrollHeight - before; });
   };
@@ -123,9 +138,12 @@ function ThreadView({ threadSeq, onBack }) {
     const result = await run(() => communityApi.leave(threadSeq));
     if (result.ok) {
       queryClient.invalidateQueries({ queryKey: COMMUNITY_KEY });
-      // 확인 창 칸과 대화 칸을 함께 쪽지함으로 바꾼다.
-      navigate('/messages', { replace: true });
-    } else setLeaveOpen(null);
+      leaving.current = true;
+      setLeaveOpen(null);
+    } else {
+      setLeaveError(result.message || '대화에서 나가지 못했어요. 잠시 뒤에 다시 시도해 주세요.');
+      setLeaveOpen(null);
+    }
   };
 
   if (thread.isLoading) return <Box className="dm-page"><Skeleton height={56} /><Skeleton height={80} /><Skeleton height={80} /></Box>;
@@ -137,9 +155,10 @@ function ThreadView({ threadSeq, onBack }) {
     <ThreadHeader other={data.other} contextId={data.contextId} houseNm={data.houseNm} onBack={onBack}>
       <Button size="small" color="inherit" className="dm-leave" onClick={() => setLeaveOpen(true)}>나가기</Button>
     </ThreadHeader>
+    {leaveError && <Alert severity="error" onClose={() => setLeaveError('')} sx={{ borderRadius: 0 }}>{leaveError}</Alert>}
     {data.contextId && <Link className="dm-context" to={detailPath(data.contextId)} state={{ detailOverlay: true }}>
       <ApartmentRounded fontSize="small" /><span>{data.houseNm || '공고'} 보기</span><ChevronRightRounded fontSize="small" /></Link>}
-    <Box className="dm-list" ref={listRef} onScroll={onScroll} role="log" aria-live="polite" aria-label={`${data.other.nickname}님과의 쪽지`}>
+    <Box className="dm-list" ref={listRef} onScroll={onScroll} role="log" aria-live="polite" aria-busy={loadingOlder} aria-label={`${data.other.nickname}님과의 쪽지`}>
       {more && <Button size="small" onClick={loadOlder} disabled={loadingOlder} className="dm-older">{loadingOlder ? '불러오는 중…' : '이전 쪽지 더 보기'}</Button>}
       {!data.otherReplied && messages.length > 0 && messages.every(message => message.mine) &&
         <p className="dm-system">상대가 답하면 이어서 보낼 수 있어요. 답이 오면 알림과 메뉴 숫자로 알려 드려요.</p>}
@@ -172,11 +191,12 @@ function ThreadView({ threadSeq, onBack }) {
 function ComposeView({ toUserSeq, contextId, onBack }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const card = useQuery({ queryKey: [...COMMUNITY_KEY, 'card', toUserSeq, true], queryFn: () => communityApi.card(toUserSeq) });
+  const card = useQuery({ queryKey: [...COMMUNITY_KEY, 'card', toUserSeq, true], queryFn: () => communityApi.card(toUserSeq), staleTime: 0 });
   const data = card.data?.resultCode === 'SUCCESS' ? card.data.data : null;
-  const threadSeq = data?.dm?.threadSeq;
+  // 이미 대화가 있으면 그 대화로. 캐시에 남은 예전 값(나가기 전 등)으로 잘못 가지 않게 새로 받아 온 값만 본다.
+  const threadSeq = card.isFetching ? null : data?.dm?.threadSeq;
   useEffect(() => { if (threadSeq) navigate(`/messages?thread=${threadSeq}`, { replace: true }); }, [threadSeq]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (card.isLoading || threadSeq) return <Box className="dm-page"><Skeleton height={56} /><Skeleton height={120} /></Box>;
+  if (card.isLoading || card.isFetching || threadSeq) return <Box className="dm-page"><Skeleton height={56} /><Skeleton height={120} /></Box>;
   if (!data || data.withdrawn || data.me) return <Box className="dm-page"><Alert severity="error" action={<Button color="inherit" size="small" onClick={onBack}>쪽지함</Button>}>
     {data?.me ? '나에게는 쪽지를 보낼 수 없어요.' : card.data?.resultMessage || '쪽지를 보낼 회원을 찾을 수 없어요.'}</Alert></Box>;
   const send = async content => {
@@ -215,7 +235,8 @@ function ThreadList() {
     refetchOnWindowFocus: true
   });
   const pages = threads.data?.pages || [];
-  const items = pages.flatMap(page => page?.items || []);
+  // 페이지 사이에 새 대화가 생겨 순서가 밀려도 같은 대화가 두 번 보이지 않게 한다.
+  const items = uniqueThreads(pages);
   const ready = pages[0]?.ready !== false;
   return <Box className="account-page dm-page">
     <header className="account-hero dm-hero"><span className="account-eyebrow">MESSAGES</span><h1>쪽지함</h1>

@@ -42,3 +42,29 @@ export function messageTime(value, now = new Date()) {
   if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}.${date.getDate()}`;
   return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
 }
+
+/**
+ * 대화 화면에 쌓아 둔 쪽지와 새로 받은 쪽지를 번호 기준으로 합친다(중복 없이 오래된 순).
+ * 15초마다 받는 응답은 항상 '최신 30통'이라, 이전 쪽지를 더 불러온 뒤 새 쪽지가 오면 그 사이가 비지 않게 버리지 않고 쌓는다.
+ */
+export function mergeMessages(current = [], incoming = []) {
+  const bySeq = new Map();
+  for (const message of [...current, ...incoming]) if (message && message.messageSeq != null) bySeq.set(message.messageSeq, message);
+  return [...bySeq.values()].sort((a, b) => a.messageSeq - b.messageSeq);
+}
+
+/** 쪽지함 목록을 페이지끼리 이어 붙일 때 같은 대화가 두 번 나오지 않게 한다(앞 페이지를 우선). */
+export function uniqueThreads(pages = []) {
+  const seen = new Set();
+  return pages.flatMap(page => page?.items || []).filter(item => !seen.has(item.threadSeq) && seen.add(item.threadSeq));
+}
+
+/**
+ * 이야기 목록에서 접어 보일 글인가: 내가 차단한 회원의 글이고, 내 글이 아니며, 펼치지 않았을 때.
+ * 접어도 그 글에 달린 답글은 그대로 보여 준다(화면에서 따로 그림).
+ */
+export function isCollapsedStory(row, { myUserSeq, blocked, revealed }) {
+  if (!row) return false;
+  const author = Number(row.createUserSeq);
+  return author !== Number(myUserSeq) && blocked.has(author) && !revealed.has(row.subscriptCommentSeq);
+}

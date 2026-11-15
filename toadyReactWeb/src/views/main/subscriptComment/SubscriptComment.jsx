@@ -35,7 +35,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import { useBlockedSet } from '@/features/community/useCommunity';
-import { cardValue, reportValue } from '@/features/community/communityApi';
+import { cardValue, isCollapsedStory, reportValue } from '@/features/community/communityApi';
 import '@/features/community/community.css';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
@@ -125,6 +125,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   // 삭제 확인 창은 히스토리 한 단계로 연다(뒤로가기로 닫힘). 값은 지울 댓글 번호다.
   const [deleteTarget, setDeleteTarget] = useHistoryOverlay('comment:delete');
   const [deleting, setDeleting] = useState(false);
+  const deleteOpen = Boolean(deleteTarget) && (commentsRes?.data?.subscriptCommentList || [])
+    .some(comment => comment.subscriptCommentSeq === deleteTarget && comment.createUserSeq === user?.userSeq);
   // 작성자 이름·캐릭터를 누르면 프로필 카드(쪽지·차단·신고), 다른 회원 글의 깃발은 신고 창. 둘 다 히스토리 층이라 뒤로가기로 닫힌다.
   const [, setMemberCard] = useHistoryOverlay('member-card');
   const [, setReport] = useHistoryOverlay('report');
@@ -338,11 +340,14 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
     const isAuthor = isAuthenticated && user?.userSeq === row.createUserSeq;
     const isEditing = modifyState.show && modifyState.commentSeq === row.subscriptCommentSeq;
     const avatarColor = getAvatarColor(row.userNicName);
-    // 차단한 회원의 이야기는 접어 두고, 원하면 그 자리에서 펼쳐 본다(답글 흐름은 그대로 둔다).
-    if (!isAuthor && blocked.has(Number(row.createUserSeq)) && !revealed.has(row.subscriptCommentSeq)) {
-      return <Box key={row.subscriptCommentSeq} id={`story-${row.subscriptCommentSeq}`} className="story-blocked">
-        <span>차단한 회원의 {isChild ? '답글' : '이야기'}예요.</span>
-        <Button size="small" color="inherit" onClick={() => setRevealed(previous => new Set(previous).add(row.subscriptCommentSeq))}>보기</Button>
+    // 차단한 회원의 이야기는 접어 두고, 원하면 그 자리에서 펼쳐 본다. 그 글에 달린 다른 회원의 답글은 그대로 보여 준다.
+    if (isCollapsedStory(row, { myUserSeq: isAuthenticated ? user?.userSeq : null, blocked, revealed })) {
+      return <Box key={row.subscriptCommentSeq}>
+        <Box id={`story-${row.subscriptCommentSeq}`} className="story-blocked">
+          <span>차단한 회원의 {isChild ? '답글' : '이야기'}예요.</span>
+          <Button size="small" color="inherit" onClick={() => setRevealed(previous => new Set(previous).add(row.subscriptCommentSeq))}>보기</Button>
+        </Box>
+        {!isChild && renderReplies(row)}
       </Box>;
     }
 
@@ -592,24 +597,30 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         )}
 
         {/* 자식 답글 스레드 렌더링 */}
-        {row.items?.length > 0 && (
-          <Box
-            sx={{
-              ml: { xs: 2.5, sm: 5.8 },
-              mt: 1.5,
-              pl: { xs: 1.5, sm: 2 },
-              borderLeft: '2px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1
-            }}
-          >
-            {row.items.map((childRow) => renderCommentCard(childRow, true))}
-          </Box>
-        )}
+        {renderReplies(row)}
       </Box>
     );
   };
+
+  // 원글에 달린 답글 묶음(원글이 접혀 있어도 따로 그린다).
+  function renderReplies(row) {
+    if (!(row.items?.length > 0)) return null;
+    return (
+      <Box
+        sx={{
+          ml: { xs: 2.5, sm: 5.8 },
+          mt: 1.5,
+          pl: { xs: 1.5, sm: 2 },
+          borderLeft: '2px solid #e2e8f0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1
+        }}
+      >
+        {row.items.map((childRow) => renderCommentCard(childRow, true))}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ width: '100%', py: 1 }}>
@@ -847,7 +858,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         </Box>
       )}
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => { if (!deleting) setDeleteTarget(null); }} maxWidth="xs" fullWidth>
+      <Dialog open={deleteOpen} onClose={() => { if (!deleting) setDeleteTarget(null); }} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>이 이야기를 삭제할까요?</DialogTitle>
         <DialogContent sx={{ color: '#475569', fontSize: '0.9rem' }}>삭제한 글은 되돌릴 수 없어요.</DialogContent>
         <DialogActions>

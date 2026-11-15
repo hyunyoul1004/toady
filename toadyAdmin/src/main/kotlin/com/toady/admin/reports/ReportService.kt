@@ -92,7 +92,7 @@ class ReportService(private val jdbc: JdbcTemplate, private val announcements: A
 
 	/** 신고를 닫는다. done: 조치함, dismiss: 문제 없음. 같은 대상의 다른 대기 신고도 함께 닫을 수 있다. */
 	fun close(seq: Long, outcome: String, note: String, admin: String, sameTarget: Boolean): Int {
-		val status = if (outcome == "done") "DONE" else "DISMISSED"
+		val status = when (outcome) { "done" -> "DONE"; "dismiss" -> "DISMISSED"; else -> return 0 }
 		val now = Timestamp.valueOf(Kst.now())
 		val memo = note.trim().take(200).ifEmpty { null }
 		val changed = if (sameTarget) {
@@ -111,6 +111,9 @@ class ReportService(private val jdbc: JdbcTemplate, private val announcements: A
 
 	/** 쪽지 보내기 정지. days가 0이면 해제, 음수면 무기한(2099년). */
 	fun suspend(userSeq: Long, days: Int, admin: String): Boolean {
+		// 없는 회원·탈퇴 회원에게는 설정 행을 만들지 않는다.
+		val active = jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER WHERE USER_SEQ=? AND WITHDRAWAL_YN='N'", Long::class.java, userSeq) ?: 0
+		if (active == 0L) return false
 		val now = Kst.now()
 		val until = when { days == 0 -> null; days < 0 -> LocalDateTime.of(2099, 12, 31, 23, 59); else -> now.plusDays(days.toLong()) }
 		val untilTs = until?.let(Timestamp::valueOf)

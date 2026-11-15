@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -46,6 +46,7 @@ const refreshCommunity = queryClient => queryClient.invalidateQueries({ queryKey
 function MemberCard({ value, onClose }) {
   const parsed = parseCardValue(value);
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const [, setLayout] = useHistoryOverlay('layout');
@@ -60,6 +61,7 @@ function MemberCard({ value, onClose }) {
     staleTime: 15000
   });
   useEffect(() => { setConfirmBlock(false); setNotice(null); }, [value]);
+  useEffect(() => { if (!parsed) onClose(); }, [parsed == null]); // eslint-disable-line react-hooks/exhaustive-deps
   const data = card.data?.resultCode === 'SUCCESS' ? card.data.data : null;
   const failed = card.isError || (card.data && card.data.resultCode !== 'SUCCESS');
   const dm = data?.dm;
@@ -68,6 +70,8 @@ function MemberCard({ value, onClose }) {
   const openMessages = () => {
     if (!isAuthenticated) { setLayout('login'); return; }
     const params = dm?.threadSeq ? `thread=${dm.threadSeq}` : `to=${parsed.userSeq}${parsed.contextId ? `&context=${encodeURIComponent(parsed.contextId)}` : ''}`;
+    // 이미 그 대화를 보고 있으면(대화 화면에서 상대 이름을 눌러 연 카드) 카드만 닫는다. 같은 주소가 두 칸 쌓이지 않게.
+    if (location.pathname === '/messages' && new URLSearchParams(location.search).get('thread') === String(dm?.threadSeq)) { onClose(); return; }
     navigate(`/messages?${params}`, { replace: true });
   };
   const toggleBlock = async () => {
@@ -136,12 +140,15 @@ function ReportDialog({ value, onClose }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [blocked, setBlocked] = useState(false);
-  useEffect(() => { setReason(''); setDetail(''); setResult(null); setBlocked(false); }, [value]);
+  const [blockError, setBlockError] = useState('');
+  useEffect(() => { setReason(''); setDetail(''); setResult(null); setBlocked(false); setBlockError(''); }, [value]);
+  useEffect(() => { if (!target) onClose(); }, [target == null]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!target) return null;
   const label = target.type === 'COMMENT' ? '이야기' : target.type === 'MESSAGE' ? '쪽지' : '회원';
   const submit = async event => {
     event.preventDefault();
     if (!reason) { setResult({ ok: false, message: '신고 이유를 골라 주세요.' }); return; }
+    if (reason === 'ETC' && !detail.trim()) { setResult({ ok: false, message: '\'기타\'를 고르면 어떤 문제인지 짧게 적어 주세요.' }); return; }
     setBusy(true);
     const outcome = await run(() => communityApi.report(target.type, target.seq, reason, detail.trim()));
     setBusy(false);
@@ -151,8 +158,8 @@ function ReportDialog({ value, onClose }) {
     setBusy(true);
     const outcome = await run(() => communityApi.block(target.author));
     setBusy(false);
-    if (outcome.ok) { setBlocked(true); queryClient.invalidateQueries({ queryKey: COMMUNITY_KEY }); }
-    else setResult({ ok: true, message: outcome.message });
+    if (outcome.ok) { setBlocked(true); setBlockError(''); queryClient.invalidateQueries({ queryKey: COMMUNITY_KEY }); }
+    else setBlockError(outcome.message || '차단하지 못했어요. 잠시 뒤에 다시 시도해 주세요.');
   };
   const done = result?.ok;
 
@@ -181,6 +188,7 @@ function ReportDialog({ value, onClose }) {
           <Button variant="outlined" color="inherit" startIcon={<BlockRounded />} onClick={blockAuthor} disabled={busy}>이 회원 차단하기</Button>
         </Box>}
         {blocked && <Alert severity="info" sx={{ mt: 1.5 }}>차단했어요. 내 정보에서 언제든 풀 수 있어요.</Alert>}
+        {blockError && <Alert severity="error" sx={{ mt: 1.5 }}>{blockError}</Alert>}
         <Box className="member-card-actions" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" disableElevation onClick={onClose}>확인</Button></Box>
       </>}
     </Box>

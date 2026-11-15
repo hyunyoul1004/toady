@@ -28,12 +28,17 @@ export default function MessageSettings() {
   // 쪽지함의 '받는 범위·차단 관리'(#account-messages)로 들어오면 이 칸으로 내려 준다.
   const location = useLocation();
   const sectionRef = useRef(null);
+  // 이 주소(#account-messages)로 들어온 처음 한 번만 옮긴다. 같은 화면에서 푸시 설정 창을 열고 닫거나(히스토리 칸이 바뀜)
+  // 읽은 답글 기록을 고쳐 써도 다시 튀지 않게 한다.
+  const scrolledFor = useRef(null);
   useEffect(() => {
-    if (location.hash !== '#account-messages' || settings.isLoading) return;
+    if (location.hash !== '#account-messages') { scrolledFor.current = null; return undefined; }
+    if (settings.isLoading || scrolledFor.current === location.hash) return undefined;
+    scrolledFor.current = location.hash;
     // 위쪽 칸(프로필·요약)이 그려진 뒤 바로 옮긴다. 부드러운 스크롤은 이어지는 다시 그리기에 끊길 수 있어 즉시 이동한다.
     const timer = setTimeout(() => sectionRef.current?.scrollIntoView({ block: 'start' }), 120);
     return () => clearTimeout(timer);
-  }, [location.hash, location.key, settings.isLoading]);
+  }, [location.hash, settings.isLoading]);
 
   const changePolicy = async value => {
     setBusy(true);
