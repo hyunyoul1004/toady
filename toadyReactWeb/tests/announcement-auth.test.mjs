@@ -319,3 +319,25 @@ test('map SDK success resolves after initialization', async () => {
   const kakao = { maps };
   assert.equal(await ensureKakaoLoaded({ kakao }, 100), kakao);
 });
+
+test('map SDK script that failed to download is attached again once', async () => {
+  const source = await fs.readFile(new URL('../src/config/ensureKakaoLoaded.js', import.meta.url), 'utf8');
+  const { ensureKakaoLoaded } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const appended = [];
+  let current = { id: 'kakao-maps-sdk', src: 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=k&autoload=false', dataset: { failed: 'true' }, removed: false, remove() { this.removed = true; } };
+  const failed = current;
+  const target = {
+    document: {
+      getElementById: id => (id === 'kakao-maps-sdk' ? current : null),
+      createElement: () => ({ dataset: {}, remove() {} }),
+      head: { appendChild: script => { appended.push(script); current = script; } }
+    }
+  };
+  const maps = { load: callback => { maps.Map = function Map() {}; callback(); } };
+  setTimeout(() => { target.kakao = { maps }; }, 30);
+  assert.equal((await ensureKakaoLoaded(target, 500)).maps, maps);
+  assert.equal(failed.removed, true);
+  assert.equal(appended.length, 1);
+  assert.match(appended[0].src, /appkey=k/);
+  assert.match(appended[0].src, /retry=\d+/);
+});

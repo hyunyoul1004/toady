@@ -546,7 +546,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
                     fontSize: '0.8rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 0.4
+                    gap: 0.4,
+                    // 긴 주소가 줄바꿈 없이 패널 밖으로 밀려 모바일에서 상세가 옆으로 밀리지 않게, 한 줄 폭 안에서 말줄임한다.
+                    minWidth: 0,
+                    maxWidth: '100%'
                   }}
                 >
                   <PlaceOutlined sx={{ fontSize: '1rem', color: '#94a3b8', flexShrink: 0 }} />

@@ -19,6 +19,10 @@ import Paper from '@mui/material/Paper';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import Collapse from '@mui/material/Collapse';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
 // Icons
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
@@ -112,6 +116,11 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const feedbackTimer = useRef(null);
   const hideFeedbackLater = () => { clearTimeout(feedbackTimer.current); feedbackTimer.current = setTimeout(() => setFeedback(null), 3500); };
   useEffect(() => () => clearTimeout(feedbackTimer.current), []);
+  // 오류·입력 안내는 브라우저 alert 대신 목록 위 안내 문구로 보여 준다.
+  const showError = text => { clearTimeout(feedbackTimer.current); setFeedback({ severity: 'error', text }); };
+  // 삭제 확인 창은 히스토리 한 단계로 연다(뒤로가기로 닫힘). 값은 지울 댓글 번호다.
+  const [deleteTarget, setDeleteTarget] = useHistoryOverlay('comment:delete');
+  const [deleting, setDeleting] = useState(false);
 
   // 계층형 댓글 트리 생성
   const treeCommentList = useMemo(() => {
@@ -142,11 +151,11 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const handleSaveRootComment = async (e) => {
     if (e) e.preventDefault();
     if (!isAuthenticated) {
-      alert('댓글은 로그인 후 작성 가능합니다.');
+      setLayoutOverlay('login');
       return;
     }
     if (!rootContent.trim()) {
-      alert('내용을 입력해 주세요.');
+      showError('내용을 입력해 주세요.');
       return;
     }
 
@@ -170,11 +179,11 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const handleSaveReply = async (e) => {
     if (e) e.preventDefault();
     if (!isAuthenticated) {
-      alert('댓글은 로그인 후 작성 가능합니다.');
+      setLayoutOverlay('login');
       return;
     }
     if (!replyState.content.trim()) {
-      alert('내용을 입력해 주세요.');
+      showError('내용을 입력해 주세요.');
       return;
     }
 
@@ -191,7 +200,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       setFeedback({ severity: 'success', text: '답글이 성공적으로 등록되었습니다.' });
       hideFeedbackLater();
     } catch (err) {
-      alert(err.message || '답글 등록에 실패했습니다.');
+      showError(err.message || '답글 등록에 실패했습니다.');
     }
   };
 
@@ -199,7 +208,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const handleUpdateComment = async (e) => {
     if (e) e.preventDefault();
     if (!modifyState.content.trim()) {
-      alert('수정할 내용을 입력해 주세요.');
+      showError('수정할 내용을 입력해 주세요.');
       return;
     }
 
@@ -216,14 +225,15 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       setFeedback({ severity: 'success', text: '댓글이 수정되었습니다.' });
       hideFeedbackLater();
     } catch (err) {
-      alert(err.message || '댓글 수정에 실패했습니다.');
+      showError(err.message || '댓글 수정에 실패했습니다.');
     }
   };
 
   // 댓글 삭제
-  const handleDeleteComment = async (commentSeq) => {
-    if (!window.confirm('정말로 이 댓글을 삭제하시겠습니까?')) return;
-
+  const handleDeleteComment = async () => {
+    const commentSeq = deleteTarget;
+    if (!commentSeq || deleting) return;
+    setDeleting(true);
     try {
       await deleteMutation.mutateAsync({
         subscriptSeq: currentSubscriptSeq,
@@ -235,7 +245,10 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       setFeedback({ severity: 'info', text: '댓글이 삭제되었습니다.' });
       hideFeedbackLater();
     } catch (err) {
-      alert(err.message || '댓글 삭제에 실패했습니다.');
+      showError(err.message || '댓글 삭제에 실패했습니다.');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -392,12 +405,13 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                   '&:hover': { color: '#2563eb', bgcolor: '#eff6ff' }
                 }}
                 title="수정"
+                aria-label="댓글 수정"
               >
                 <EditRoundedIcon sx={{ fontSize: '1rem' }} />
               </IconButton>
               <IconButton
                 size="small"
-                onClick={() => handleDeleteComment(row.subscriptCommentSeq)}
+                onClick={() => setDeleteTarget(row.subscriptCommentSeq)}
                 sx={{
                   color: '#64748b',
                   fontSize: '0.75rem',
@@ -406,6 +420,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                   '&:hover': { color: '#ef4444', bgcolor: '#fef2f2' }
                 }}
                 title="삭제"
+                aria-label="댓글 삭제"
               >
                 <DeleteOutlineRoundedIcon sx={{ fontSize: '1.05rem' }} />
               </IconButton>
@@ -484,6 +499,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                 size="small"
                 onClick={() => setReplyState({ parentCommentSeq: null, content: '', show: false })}
                 sx={{ p: 0.3 }}
+                aria-label="답글 작성 닫기"
               >
                 <CloseRoundedIcon sx={{ fontSize: '1rem' }} />
               </IconButton>
@@ -802,6 +818,15 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
           </Typography>
         </Box>
       )}
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => { if (!deleting) setDeleteTarget(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>이 이야기를 삭제할까요?</DialogTitle>
+        <DialogContent sx={{ color: '#475569', fontSize: '0.9rem' }}>삭제한 글은 되돌릴 수 없어요.</DialogContent>
+        <DialogActions>
+          <Button disabled={deleting} onClick={() => setDeleteTarget(null)}>취소</Button>
+          <Button disabled={deleting} color="error" onClick={handleDeleteComment}>삭제</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
