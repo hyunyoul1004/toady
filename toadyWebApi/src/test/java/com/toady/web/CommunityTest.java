@@ -257,8 +257,10 @@ class CommunityTest {
         long thread = send(tokenA, b, "안녕하세요").at("/data/threadSeq").asLong();
         send(tokenB, a, "네");
         // 오늘 이미 48통을 더 보낸 상태(합계 49)면 한 통은 되고, 50통이 차면 막힌다.
+        // 서비스는 한국시간 자정부터 세므로 시각도 한국시간으로 넣는다(CI 서버는 UTC라 CURRENT_TIMESTAMP를 쓰면 0~9시 사이에 '어제'가 된다).
+        Timestamp nowKst = Timestamp.valueOf(LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")));
         for (int i = 0; i < 48; i++) {
-            jdbc.update("INSERT INTO TB_DM_MESSAGE (THREAD_SEQ, SENDER_SEQ, CONTENT, FLAGGED, REG_DT) VALUES (?,?,'이전 쪽지',FALSE,CURRENT_TIMESTAMP)", thread, a);
+            jdbc.update("INSERT INTO TB_DM_MESSAGE (THREAD_SEQ, SENDER_SEQ, CONTENT, FLAGGED, REG_DT) VALUES (?,?,'이전 쪽지',FALSE,?)", thread, a, nowKst);
         }
         assertEquals("SUCCESS", send(tokenA, b, "50번째").get("resultCode").asText());
         JsonNode over = send(tokenA, b, "51번째");
@@ -267,7 +269,7 @@ class CommunityTest {
 
         // 신고는 하루 20건까지(대상마다 한 번).
         for (int i = 0; i < 20; i++) {
-            jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ, TARGET_USER_SEQ, TARGET_TYPE, TARGET_SEQ, REASON, STATUS, REG_DT) VALUES (?,?,'COMMENT',?,'SPAM','OPEN',CURRENT_TIMESTAMP)", a, b, 1000 + i);
+            jdbc.update("INSERT INTO TB_USER_REPORT (REPORTER_SEQ, TARGET_USER_SEQ, TARGET_TYPE, TARGET_SEQ, REASON, STATUS, REG_DT) VALUES (?,?,'COMMENT',?,'SPAM','OPEN',?)", a, b, 1000 + i, nowKst);
         }
         JsonNode report = call(post("/api/v1/me/reports"), tokenA, Map.of("targetType", "USER", "targetSeq", b, "reason", "SPAM"));
         assertEquals("ERR-429", report.get("resultCode").asText());
