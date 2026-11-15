@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# 개발 DB에 테스트 계정(devNNNN@example.test)을 만든다. 저장소 루트에서 실행한다.
-#   scripts/create-dev-users.sh          # 1000개
-#   scripts/create-dev-users.sh 200      # 200개
+# 개발 DB에 실제 회원처럼 보이는 테스트 계정을 만든다(닉네임·가입일·프로필 캐릭터, 메일이 가지 않는 .test 도메인). 저장소 루트에서 실행한다.
+#   scripts/create-dev-users.sh            # 1000개
+#   scripts/create-dev-users.sh 200        # 200개
+#   scripts/create-dev-users.sh 1000 list  # DB를 건드리지 않고 이메일·닉네임 목록(CSV)만 출력
+# 같은 번호는 항상 같은 회원으로 만들어지고, 예전 형식(devNNNN@example.test) 계정은 회원 번호를 유지한 채 바꾼다.
 # 접속 정보는 toadyWebApi/.env의 DB_URL·DB_USERNAME·DB_PASSWORD를 쓰고, 비밀번호는 입력받는다(화면에 보이지 않음).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 count="${1:-1000}"
+mode="${2:-}"
 env_file="toadyWebApi/.env"
 [[ -f "$env_file" ]] || { echo "$env_file 이 없습니다."; exit 1; }
 
-# 운영 DB에 넣지 않도록 접속할 호스트를 보여 주고 확인받는다.
-host="$(grep -E '^DB_URL=' "$env_file" | head -1 | sed -E 's#^DB_URL=["'"'"']?jdbc:[a-z]+://([^/?"'"'"']+).*#\1#')"
-echo "대상 DB 호스트: $host"
-read -r -p "개발 DB가 맞으면 yes를 입력하세요: " answer
-[[ "$answer" == "yes" ]] || { echo "취소했습니다."; exit 1; }
 
 # MariaDB 드라이버와 BCrypt는 API 빌드가 받아 둔 Gradle 캐시에서 찾는다(먼저 toadyWebApi에서 ./gradlew test 한 번).
 find_jar() { find "$HOME/.gradle/caches/modules-2/files-2.1" -name "$1-*.jar" ! -name '*sources*' 2>/dev/null | sort -V | tail -1; }
@@ -22,5 +20,14 @@ cp_list="$(find_jar mariadb-java-client):$(find_jar spring-security-crypto):$(fi
 [[ "$cp_list" != *"::"* && "$cp_list" != :* && "$cp_list" != *: ]] || { echo "라이브러리를 찾지 못했습니다. toadyWebApi에서 ./gradlew test 를 먼저 실행하세요."; exit 1; }
 
 java_cmd="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+if [[ "$mode" == "list" ]]; then
+  "$java_cmd" -cp "$cp_list" scripts/CreateDevUsers.java "$count" "$env_file" --list
+  exit 0
+fi
+# 운영 DB에 넣지 않도록 접속할 호스트를 보여 주고 확인받는다.
+host="$(grep -E '^DB_URL=' "$env_file" | head -1 | sed -E 's#^DB_URL=["'"'"']?jdbc:[a-z]+://([^/?"'"'"']+).*#\1#')"
+echo "대상 DB 호스트: $host"
+read -r -p "개발 DB가 맞으면 yes를 입력하세요: " answer
+[[ "$answer" == "yes" ]] || { echo "취소했습니다."; exit 1; }
 read -r -s -p "테스트 계정 비밀번호: " password; echo
 printf '%s\n' "$password" | "$java_cmd" -cp "$cp_list" scripts/CreateDevUsers.java "$count" "$env_file"
