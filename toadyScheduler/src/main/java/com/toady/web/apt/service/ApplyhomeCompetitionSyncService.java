@@ -105,6 +105,8 @@ public class ApplyhomeCompetitionSyncService {
 	 *   (순위별 접수가 이어지며 값이 바뀐다), 그 뒤에는 아직 한 건도 없을 때만 받는다.
 	 * - 당첨 가점: 당첨자 발표일이 범위 안이고 아직 한 건도 없는 공고. 한번 공개된 가점은 바뀌지 않는다.
 	 * 범위 밖이거나 이미 받은 공고는 호출하지 않으므로, 자주 실행해도 공공데이터 호출량이 작다.
+	 * 결과가 나올 날(접수일·접수 다음 날, 발표 당일)의 공고는 실행마다 받고, 그 뒤 비어 있는 공고(원래 결과가 없는
+	 * 국민주택 가점·특별공급 없는 공고 등)는 COLD_RETRY 간격으로만 다시 확인한다(10분마다 같은 빈 공고를 부르지 않게).
 	 * 저장은 기존 경쟁률 수집과 같은 공고 단위 교체라 여러 번 받아도 중복되지 않는다. 놓친 결과는 매일 도는
 	 * 기존 경쟁률 수집(모집공고일 기준 최근 90일 전체)이 다시 채운다.
 	 * 날짜 컬럼은 유형마다 'yyyy-MM-dd'와 'yyyyMMdd'가 섞여 있어 하이픈을 지우고 비교한다.
@@ -134,11 +136,18 @@ public class ApplyhomeCompetitionSyncService {
 		syncLock.execute(() -> {
 			int calls = 0;
 			Set<AnnouncementKey> announcements = new LinkedHashSet<>();
+			long now = System.currentTimeMillis();
+			coldChecked.values().removeIf(at -> now - at > COLD_RETRY.toMillis());
 			for (ResultPhase phase : RESULT_PHASES) {
-				List<AnnouncementKey> targets = scheduledTargets(phase, startDate, endDate);
-				announcements.addAll(targets);
-				calls += targets.size();
-				syncForAnnouncements(phase.table(), targets, failures);
+				List<AnnouncementKey> due = new ArrayList<>();
+				for (ScheduledTarget target : scheduledTargets(phase, startDate, endDate)) {
+					// 비어 있는 공고의 재확인은 최근에 확인했으면 건너뛴다(값 대신 '확인 시각'만 이 JVM에 기억).
+					if (!target.hot() && coldChecked.putIfAbsent(phase.table().table() + "|" + target.key(), now) != null) continue;
+					due.add(target.key());
+				}
+				announcements.addAll(due);
+				calls += due.size();
+				syncForAnnouncements(phase.table(), due, failures);
 			}
 			result.set(new ScheduledResult(announcements.size(), calls));
 		});
@@ -152,7 +161,15 @@ public class ApplyhomeCompetitionSyncService {
 	/** 일정 기반 수집 결과: 대상 공고 수와 공고×항목 조회 수(대상이 없으면 둘 다 0, 외부 호출 없음). */
 	public record ScheduledResult(int announcements, int calls) { }
 
-	List<AnnouncementKey> scheduledTargets(ResultPhase phase, LocalDate startDate, LocalDate endDate) {
+	/** 비어 있는 공고를 다시 확인하는 간격. */
+	static final java.time.Duration COLD_RETRY = java.time.Duration.ofHours(3);
+	/** 비어 있는 공고(항목|공고)를 마지막으로 확인한 시각. 재시작하면 비지만 하루 몇 번 더 부를 뿐이다. */
+	private final Map<String, Long> coldChecked = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** hot: 결과가 나올 날이라 실행마다 받는다. 아니면 비어 있어서 다시 확인하는 공고다. */
+	record ScheduledTarget(AnnouncementKey key, boolean hot) { }
+
+	List<ScheduledTarget> scheduledTargets(ResultPhase phase, LocalDate startDate, LocalDate endDate) {
 		String start = startDate.format(COMPACT_DATE);
 		String end = endDate.format(COMPACT_DATE);
 		String missing = "NOT EXISTS (SELECT 1 FROM " + phase.table().table()
@@ -164,6 +181,9 @@ public class ApplyhomeCompetitionSyncService {
 			args.add(phase.houseSecd());
 		}
 		if (phase.score()) {
+			// 발표 당일은 hot(10분마다), 지난 발표일은 비어 있을 때만 간격을 두고 다시 확인한다.
+			sql.insert(sql.indexOf(" FROM "), ", CASE WHEN REPLACE(d.PRZWNER_PRESNATN_DE, '-', '') = ? THEN 1 ELSE 0 END");
+			args.add(0, end);
 			sql.append("REPLACE(d.PRZWNER_PRESNATN_DE, '-', '') BETWEEN ? AND ? AND ").append(missing);
 			args.add(start);
 			args.add(end);
@@ -171,6 +191,9 @@ public class ApplyhomeCompetitionSyncService {
 			// 접수 기간이 범위와 겹치고, 접수가 끝난 다음 날까지는 매번 다시 받는다. 그 뒤로는 비어 있을 때만 받는다.
 			String begin = "REPLACE(" + phase.beginColumn() + ", '-', '')";
 			String finish = "REPLACE(" + phase.endColumn() + ", '-', '')";
+			// 접수 중이거나 접수 다음 날이면 hot.
+			sql.insert(sql.indexOf(" FROM "), ", CASE WHEN " + finish + " >= ? THEN 1 ELSE 0 END");
+			args.add(0, endDate.minusDays(1).format(COMPACT_DATE));
 			sql.append(begin).append(" <= ? AND ").append(finish).append(" >= ? AND (")
 					.append(finish).append(" >= ? OR ").append(missing).append(")");
 			args.add(end);
@@ -178,7 +201,7 @@ public class ApplyhomeCompetitionSyncService {
 			args.add(endDate.minusDays(1).format(COMPACT_DATE));
 		}
 		sql.append(" ORDER BY d.HOUSE_MANAGE_NO, d.PBLANC_NO");
-		return jdbc.query(sql.toString(), (rs, n) -> new AnnouncementKey(rs.getString(1), rs.getString(2)), args.toArray());
+		return jdbc.query(sql.toString(), (rs, n) -> new ScheduledTarget(new AnnouncementKey(rs.getString(1), rs.getString(2)), rs.getInt(3) == 1), args.toArray());
 	}
 
 	record ResultPhase(TableSpec table, String detailTable, String houseSecd, String beginColumn, String endColumn, boolean score) {

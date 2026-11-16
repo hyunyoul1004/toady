@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * 요청 제한·로그인 실패에 쓰는 '최근 N분 안의 기록' 저장소.
  * Redis가 있으면 키마다 정렬 집합(점수=시각)에 기록해 재시작·배포 뒤에도 유지하고 API 여러 대가 함께 센다.
  * Redis가 없거나 응답하지 않으면 같은 동작을 메모리에서 한다(그동안의 기록은 Redis와 합치지 않는다).
+ * tryHit은 스크립트 하나로 원자적이지만, 여러 키를 차례로 다루는 호출(로그인 제한)은 키마다 따로 실행된다.
+ * 장애가 시작·끝나는 순간에는 기록 일부가 메모리에, 일부가 Redis에 남을 수 있다(제한이 잠깐 느슨하거나 엄격해질 수 있음).
  */
 @Component
 public class SlidingWindows {

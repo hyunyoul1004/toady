@@ -25,6 +25,7 @@ services:
 
   # API의 요청 제한·로그인 실패 기록·외부 API 결과 캐시(배포·재시작 뒤에도 유지). 외부 포트는 열지 않는다.
   # 비밀번호는 API와 같은 toadyWebApi/.env.prod의 REDIS_PASSWORD를 쓴다. 배포 스크립트가 없으면 띄우고, 떠 있으면 그대로 둔다.
+  # docker-entrypoint.sh를 거쳐 /data 권한을 맞추고 redis 계정으로 실행한다(root로 돌지 않게).
   # 메모리는 96MB까지만 쓰고 넘으면 오래 안 쓴 키부터 지운다. 5분마다(10건 이상 바뀌었을 때) 디스크에 스냅샷을 남긴다.
   redis:
     container_name: redis
@@ -34,7 +35,7 @@ services:
     command:
       - sh
       - -c
-      - '[ -n "$$REDIS_PASSWORD" ] || { echo "REDIS_PASSWORD is missing in toadyWebApi/.env.prod" >&2; exit 1; }; exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 96mb --maxmemory-policy allkeys-lru --save 300 10 --appendonly no'
+      - '[ -n "$$REDIS_PASSWORD" ] || { echo "REDIS_PASSWORD is missing in toadyWebApi/.env.prod" >&2; exit 1; }; exec docker-entrypoint.sh redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 96mb --maxmemory-policy allkeys-lru --save 300 10 --appendonly no'
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 30s

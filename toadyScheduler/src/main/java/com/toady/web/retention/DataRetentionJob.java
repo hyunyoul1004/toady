@@ -78,7 +78,10 @@ public class DataRetentionJob {
                 new Target("TB_USER_REPORT", "STATUS <> 'OPEN' AND HANDLED_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
                 // 관리자 작업 기록·검색어 통계는 1년 보관한다(database.sql 26·27번, 개인정보처리방침 2번).
                 new Target("TB_ADMIN_AUDIT", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
-                new Target("TB_SEARCH_STAT", "STAT_DATE < ?", List.of(java.sql.Date.valueOf(now.toLocalDate().minusDays(365)))));
+                new Target("TB_SEARCH_STAT", "STAT_DATE < ?", List.of(java.sql.Date.valueOf(now.toLocalDate().minusDays(365)))),
+                // 일정 맞춤 수집은 하루 수십 번 돌아 실행 이력이 빠르게 쌓인다. 끝난 실행만 90일 보관한다(database.sql 28번 권한).
+                new Target("TB_SCHEDULER_ADMIN_JOB", "JOB_KIND = 'SCHEDULED_RESULTS' AND STATUS IN ('SUCCEEDED','FAILED','CANCELLED','INTERRUPTED') AND CREATED_AT < ?",
+                        List.of(Timestamp.valueOf(now.minusDays(90)))));
     }
 
     /** 테이블별 삭제 행 수를 돌려준다. 실패한 테이블은 -1이다. */

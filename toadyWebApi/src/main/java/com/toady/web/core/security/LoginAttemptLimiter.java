@@ -14,6 +14,8 @@ import java.util.Locale;
  * - 이메일 전체 실패는 30회까지 허용한다. 공격자가 남의 이메일로 일부러 몇 번 틀려 주인을 잠그는 일을 막되,
  *   여러 IP로 나눠 한 계정을 노리는 분산 공격은 늦춘다.
  * 성공하면 그 이메일의 기록을 지운다. 기록은 Redis에 두어 배포·재시작 뒤에도 유지한다(없으면 메모리).
+ * 확인과 기록을 묶는 synchronized는 이 API 안에서만 원자적이다. API를 여러 대 띄우면 동시 시도가 한도를 조금 넘을 수 있어,
+ * 그때는 확인·기록을 Lua 스크립트 하나로 묶는다. 이메일은 길이를 제한해 키에 넣는다.
  */
 @Component
 public class LoginAttemptLimiter {
@@ -27,7 +29,12 @@ public class LoginAttemptLimiter {
     public LoginAttemptLimiter(SlidingWindows windows) { this.windows = windows; }
     LoginAttemptLimiter(Clock clock) { this(SlidingWindows.inMemory(clock)); }
 
-    private static String email(String value) { return "email|" + (value == null ? "" : value.trim().toLowerCase(Locale.ROOT)); }
+    /** 이메일 최대 길이(RFC 5321). 이보다 긴 입력은 잘라서 세므로 아주 긴 문자열로 큰 키를 만들 수 없다. */
+    static final int MAX_EMAIL = 254;
+    private static String email(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return "email|" + (normalized.length() > MAX_EMAIL ? normalized.substring(0, MAX_EMAIL) : normalized);
+    }
     private static String ip(String value) { return "ip|" + RequestLimitFilter.limitKey(value); }
     private static String pair(String ip, String email) { return email(email) + "|" + RequestLimitFilter.limitKey(ip); }
 

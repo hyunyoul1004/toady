@@ -36,6 +36,19 @@ class AdminScheduleCronTest {
         // 합친 일정도 10분 미만 간격은 막는다.
         assertThatThrownBy(() -> AdminScheduleManager.validate("0 0 * * * * | 0 5 * * * *", 7))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("10분");
+        // 하루 한 번 겹치는 간격도 7일 안에서 찾는다(저장 시각과 무관).
+        assertThatThrownBy(() -> AdminScheduleManager.validate("0 0 * * * * | 0 5 3 * * *", 7))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("10분");
+        // 끝에 남은 빈 항목도 잘못된 입력이다.
+        assertThatThrownBy(() -> AdminScheduleManager.validate("0 0 * * * * |", 7))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void unknownJobKindsFromANewerVersionAreSkipped() {
+        assertThat(JobKind.parse("SCHEDULED_RESULTS")).isEqualTo(JobKind.SCHEDULED_RESULTS);
+        assertThat(JobKind.parse("SOMETHING_NEWER")).isNull();
+        assertThat(JobKind.parse(null)).isNull();
     }
 
     @Test

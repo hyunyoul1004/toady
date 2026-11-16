@@ -103,15 +103,26 @@ public class AdminScheduleManager {
                     lookback, AdminJobService.now(), kind.name());
         } catch (DuplicateKeyException ignored) { /* 다른 인스턴스가 같은 종류를 먼저 등록했다면 기존 값을 사용한다. */ }
     }
-    /** 다음 실행 시각은 저장하지 않고 현재 한국시간과 cron으로 계산한다. 비활성 스케줄은 null이다. */
+    /**
+     * 다음 실행 시각은 저장하지 않고 현재 한국시간과 cron으로 계산한다. 비활성 스케줄은 null이다.
+     * 이 버전이 모르는 종류나 읽지 못하는 cron 행은 건너뛴다(한 행 때문에 모든 자동 수집이 멈추지 않게).
+     */
     public List<AdminSchedule> list() {
-        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_SCHEDULE ORDER BY JOB_KIND", (rs, n) -> {
+        List<AdminSchedule> schedules = jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_SCHEDULE ORDER BY JOB_KIND", (rs, n) -> {
+            JobKind kind = JobKind.parse(rs.getString("JOB_KIND"));
             String cron = rs.getString("CRON_EXPRESSION");
             boolean enabled = rs.getBoolean("ENABLED");
-            return new AdminSchedule(JobKind.valueOf(rs.getString("JOB_KIND")), enabled, cron,
-                    rs.getInt("LOOKBACK_DAYS"), rs.getTimestamp("UPDATED_AT").toLocalDateTime(),
-                    enabled ? next(cron, LocalDateTime.now(ZONE)) : null);
+            try {
+                return kind == null ? null : new AdminSchedule(kind, enabled, cron,
+                        rs.getInt("LOOKBACK_DAYS"), rs.getTimestamp("UPDATED_AT").toLocalDateTime(),
+                        enabled ? next(cron, LocalDateTime.now(ZONE)) : null);
+            } catch (IllegalArgumentException invalidCron) {
+                log.warn("Skipping schedule {} with an unreadable cron", kind);
+                return null;
+            }
         });
+        schedules.removeIf(java.util.Objects::isNull);
+        return schedules;
     }
     /** DB 저장 후 이 인스턴스의 타이머를 즉시 갱신한다. 다른 인스턴스는 주기 조회로 반영한다. */
     public synchronized void save(JobKind kind, boolean enabled, String cron, int lookback) {
@@ -128,7 +139,7 @@ public class AdminScheduleManager {
      */
     static List<CronExpression> parse(String cron) {
         List<CronExpression> expressions = new ArrayList<>();
-        for (String part : cron.split("\\|")) {
+        for (String part : cron.split("\\|", -1)) {
             String trimmed = part.trim();
             if (!CronExpression.isValidExpression(trimmed)) throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다.");
             expressions.add(CronExpression.parse(trimmed));
@@ -158,7 +169,7 @@ public class AdminScheduleManager {
             return next == null ? null : next.atZone(ZONE).toInstant();
         };
     }
-    /** cron 문법·조회 범위를 검증하고, 다음 20회 실행 사이에 10분 미만의 간격이 있는지 확인한다. */
+    /** cron 문법·조회 범위를 검증하고, 앞으로 7일(최대 2,000회) 실행 사이에 10분 미만의 간격이 있는지 확인한다. */
     static void validate(String cron, int lookback) {
         if (cron == null || cron.isBlank() || cron.length() > 100) {
             throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다(100자 이내).");
@@ -167,7 +178,8 @@ public class AdminScheduleManager {
         // 자동 실행도 수동 실행과 같은 최대 기간을 둔다(외부 API 일일 한도 보호, '다시 실행'도 같은 제한 안에서 동작).
         if (lookback < 1 || lookback > AdminJobService.MANUAL_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.MANUAL_MAX_DAYS + "일 사이여야 합니다.");
         LocalDateTime previous = LocalDateTime.now(ZONE).withSecond(0).withNano(0);
-        for (int i = 0; i < 20; i++) {
+        LocalDateTime horizon = previous.plusDays(7);
+        for (int i = 0; i < 2000 && previous.isBefore(horizon); i++) {
             LocalDateTime next = next(expressions, previous);
             if (next == null) throw new IllegalArgumentException("실행 가능한 날짜가 없는 스케줄입니다.");
             if (i > 0 && Duration.between(previous, next).compareTo(Duration.ofMinutes(10)) < 0) {
@@ -219,12 +231,23 @@ public class AdminScheduleManager {
     void trigger(AdminSchedule schedule, boolean retry) { trigger(schedule, retry, null); }
     /** generation: 이 실행을 시작한 cron 타이머의 세대(직접 호출이면 null). */
     void trigger(AdminSchedule schedule, boolean retry, Integer generation) {
+        // 일정 맞춤 수집은 자주 돌므로 다른 종류의 미뤄 둔 재시도가 있으면 양보한다(예: 20:15 경쟁률 수집이
+        // 20:10 실행과 겹쳐 20:20에 재시도할 때 20:20 실행이 먼저 슬롯을 잡아 그날 저녁 수집이 빠지지 않게).
+        if (schedule.kind() == JobKind.SCHEDULED_RESULTS && retries.keySet().stream().anyMatch(kind -> kind != JobKind.SCHEDULED_RESULTS)) {
+            log.info("Scheduled results run skipped: another scheduled job is waiting to retry");
+            return;
+        }
         try {
             LocalDate today = AdminJobService.today();
             jobs.submit(schedule.kind(), scheduleStart(today, schedule.lookbackDays()), today, "자동 스케줄", "SCHEDULE");
         } catch (IllegalStateException busy) {
             if (retry) {
                 log.warn("Scheduled retry skipped for {}: {}", schedule.kind(), busy.getMessage());
+                return;
+            }
+            // 일정 맞춤 수집은 다음 실행이 곧 오므로 재시도를 쌓지 않는다.
+            if (schedule.kind() == JobKind.SCHEDULED_RESULTS) {
+                log.info("Scheduled results run skipped: {}", busy.getMessage());
                 return;
             }
             log.info("Scheduled submission for {} is busy; retrying once in {}", schedule.kind(), busyRetryDelay);

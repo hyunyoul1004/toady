@@ -841,3 +841,11 @@ CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
 -- 스케줄러 계정: 관리자 작업 기록(26번)·검색어 통계를 1년 지나면 정리한다.
 -- GRANT SELECT, DELETE ON toady.TB_ADMIN_AUDIT TO 'toady_sources'@'%';
 -- GRANT SELECT, DELETE ON toady.TB_SEARCH_STAT TO 'toady_sources'@'%';
+
+-- ============================================================================
+-- 28. 일정 맞춤 경쟁률·가점 수집 (스케줄러 배포 후 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 일정 맞춤 수집은 하루 수십 번 실행 이력을 남긴다. 관리자 수집 화면이 5초마다 종류별 최근 이력을 읽으므로 인덱스를 둔다.
+CREATE INDEX IF NOT EXISTS IX_SCHEDULER_JOB_KIND_CREATED ON TB_SCHEDULER_ADMIN_JOB (JOB_KIND, CREATED_AT);
+-- 스케줄러 계정: 끝난 일정 맞춤 수집 이력을 90일 지나면 정리한다(DataRetentionJob). 권한이 없으면 정리만 건너뛴다.
+-- GRANT DELETE ON toady.TB_SCHEDULER_ADMIN_JOB TO 'toady_sources'@'%';

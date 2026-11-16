@@ -196,7 +196,7 @@ jobs:
           build-args: VITE_KAKAO_MAP_KEY=${{ secrets.VITE_KAKAO_MAP_KEY }}
           tags: ${{ secrets.DOCKER_USERNAME }}/toady-react-web:${{ github.sha }}
           cache-from: type=gha,scope=toady-react-web
-          cache-to: type=gha,mode=max,scope=toady-react-web
+          cache-to: type=gha,mode=max,scope=toady-react-web,ignore-error=true
       - name: Build API image
         if: steps.changes.outputs.api == 'true'
         uses: docker/build-push-action@v6
@@ -206,7 +206,7 @@ jobs:
           provenance: false
           tags: ${{ secrets.DOCKER_USERNAME }}/toady-web-api:${{ github.sha }}
           cache-from: type=gha,scope=toady-web-api
-          cache-to: type=gha,mode=max,scope=toady-web-api
+          cache-to: type=gha,mode=max,scope=toady-web-api,ignore-error=true
       - name: Build scheduler image
         if: steps.changes.outputs.scheduler == 'true'
         uses: docker/build-push-action@v6
@@ -216,7 +216,7 @@ jobs:
           provenance: false
           tags: ${{ secrets.DOCKER_USERNAME }}/toady-scheduler:${{ github.sha }}
           cache-from: type=gha,scope=toady-scheduler
-          cache-to: type=gha,mode=max,scope=toady-scheduler
+          cache-to: type=gha,mode=max,scope=toady-scheduler,ignore-error=true
       - name: Build admin image
         if: steps.changes.outputs.admin == 'true'
         uses: docker/build-push-action@v6
@@ -226,7 +226,7 @@ jobs:
           provenance: false
           tags: ${{ secrets.DOCKER_USERNAME }}/toady-admin:${{ github.sha }}
           cache-from: type=gha,scope=toady-admin
-          cache-to: type=gha,mode=max,scope=toady-admin
+          cache-to: type=gha,mode=max,scope=toady-admin,ignore-error=true
       # 바뀌지 않은 이미지는 직전 커밋 이미지에 이 커밋 태그만 붙인다(레지스트리 안에서 복사, 내려받지 않음).
       # 그래서 커밋 태그마다 이미지 4개가 모두 있고, 서버의 롤백·수동 실행은 지금처럼 태그 하나로 동작한다.
       - name: Reuse unchanged images under this commit tag
@@ -304,15 +304,31 @@ jobs:
                 toadyReactWeb) echo toady-react-web ;; toadyAdmin) echo toady-admin ;;
               esac
             }
+            # 서버 설정 파일(앱 폴더의 .env.prod)이 지난 성공 배포 뒤 바뀌었는지. 기록(.deployed-env-sums)이 없으면 바뀌지 않은 것으로 본다.
+            env_sum() { if [ -f "$1/.env.prod" ]; then cksum < "$1/.env.prod" | awk '{print $1 "-" $2}'; else echo none; fi; }
+            recorded_sum() { [ ! -f .deployed-env-sums ] || awk -v key="$1" '$1 == key { print $2 }' .deployed-env-sums; }
+            # Redis 설정 표시: compose의 redis 서비스 부분 + 비밀번호 줄. 바뀌면 Redis를 다시 만든다(기록이 없으면 한 번 다시 만든다).
+            redis_sum() { { awk '/^  redis:/ { f = 1; print; next } f && /^  [A-Za-z]/ { f = 0 } f' docker-compose.yml; grep '^REDIS_PASSWORD=' toadyWebApi/.env.prod; } | cksum | awk '{print $1 "-" $2}'; }
+            start_redis() {
+              if [ "$(recorded_sum redis)" != "$(redis_sum)" ]; then
+                echo "redis settings changed: recreating redis"
+                docker-compose -p toady up -d --force-recreate redis
+              else
+                docker-compose -p toady up -d --no-recreate redis
+              fi
+            }
             select_restart() {
               RESTART=""
               compose_changed=""
               cmp -s .rollback/docker-compose.yml docker-compose.yml 2>/dev/null || compose_changed=1
               for app in $APPS; do
+                recorded=$(recorded_sum "$app")
+                env_changed=""
+                if [ -n "$recorded" ] && [ "$recorded" != "$(env_sum "$app")" ]; then env_changed=1; fi
                 want=$(docker image inspect -f '{{.Id}}' "$DOCKER_USERNAME/$(image_of "$app"):$NEW_TAG" 2>/dev/null || true)
                 have=$(docker inspect -f '{{.Image}}' "$app" 2>/dev/null || true)
                 running=$(docker inspect -f '{{.State.Running}}' "$app" 2>/dev/null || true)
-                if [ -n "$compose_changed" ] || [ -z "$want" ] || [ "$want" != "$have" ] || [ "$running" != true ]; then
+                if [ -n "$compose_changed" ] || [ -n "$env_changed" ] || [ -z "$want" ] || [ "$want" != "$have" ] || [ "$running" != true ]; then
                   RESTART="$RESTART $app"
                 fi
               done
@@ -339,8 +355,8 @@ jobs:
               exit 1
             elif ! docker-compose -p toady pull $APPS; then
               deploy_failed="image pull failed"
-            # Redis는 앱과 따로 둔다: 없으면 띄우고, 떠 있으면 다시 만들지 않는다(배포 때 요청 제한·캐시가 비지 않게).
-            elif ! docker-compose -p toady up -d --no-recreate redis; then
+            # Redis는 앱과 따로 둔다: 없으면 띄우고, 설정이 바뀌었을 때만 다시 만든다(배포 때 요청 제한·캐시가 비지 않게).
+            elif ! start_redis; then
               deploy_failed="redis start failed"
             elif ! select_restart || ! start_apps; then
               deploy_failed="docker-compose up failed"
@@ -352,7 +368,9 @@ jobs:
                 echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed). Rolling back app containers and compose files to $PREVIOUS_TAG." >&2
                 restore_config
                 export IMAGE_TAG="$PREVIOUS_TAG"
-                if ! start_apps; then
+                if [ -z "$RESTART" ]; then
+                  echo "DEPLOY FAILED before any app container was replaced; app containers unchanged ($PREVIOUS_TAG)." >&2
+                elif ! start_apps; then
                   echo "ROLLBACK FAILED: docker-compose up for $PREVIOUS_TAG failed. Inspect the server manually." >&2
                 elif bash scripts/check-deployment.sh; then
                   echo "ROLLBACK OK: app containers are running $PREVIOUS_TAG. DB changes are not rolled back." >&2
@@ -371,7 +389,7 @@ jobs:
             umask 077
             tag_tmp=$(mktemp .deployed-image-tag.XXXXXX)
             env_tmp=$(mktemp .env.XXXXXX)
-            trap 'rm -f "$tag_tmp" "$env_tmp"' EXIT
+            trap 'rm -f "$tag_tmp" "$env_tmp" "${sums_tmp:-}"' EXIT
             # cp -p로 기존 권한을 먼저 옮긴 뒤 내용을 덮어쓴다(리다이렉션은 권한을 바꾸지 않는다).
             [ ! -f .deployed-image-tag ] || cp -p .deployed-image-tag "$tag_tmp"
             printf '%s\n' "$NEW_TAG" > "$tag_tmp"
@@ -382,6 +400,10 @@ jobs:
             printf 'IMAGE_TAG=%s\n' "$NEW_TAG" >> "$env_tmp"
             mv -f "$env_tmp" .env
             mv -f "$tag_tmp" .deployed-image-tag
+            # 이번 배포가 반영한 설정 파일·Redis 설정을 기록한다(다음 배포에서 바뀐 것만 다시 만들기 위해).
+            sums_tmp=$(mktemp .deployed-env-sums.XXXXXX)
+            { for app in $APPS; do echo "$app $(env_sum "$app")"; done; echo "redis $(redis_sum)"; } > "$sums_tmp"
+            mv -f "$sums_tmp" .deployed-env-sums
             echo "DEPLOY OK: $NEW_TAG recorded in .deployed-image-tag and .env"
             # 배포마다 이미지 4개를 받아 디스크가 차면 MariaDB까지 멈추므로, 만든 지 14일이 넘은 이미지를 지운다(마지막 사용 시각 기준이 아님).
             # 실행 중인 컨테이너의 이미지는 지우지 않는다. 되돌릴 이전 이미지가 지워졌으면 compose가 Docker Hub에서 다시 받는다.

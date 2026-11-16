@@ -17,7 +17,7 @@ def server_script():
 
 class DeployWorkflowTest(unittest.TestCase):
     def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config='', admin_env=None,
-                   same_apps='', new_compose='new compose\n', redis_password='r' * 32):
+                   same_apps='', new_compose='new compose\n', redis_password='r' * 32, recorded_sums=None, fail_pull=''):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             work = home / 'toady'
@@ -27,7 +27,7 @@ class DeployWorkflowTest(unittest.TestCase):
             log = home / 'calls.log'
             stubs = {
                 'docker-compose': '#!/bin/sh\necho "compose $IMAGE_TAG $*" >> "$CALL_LOG"\n'
-                                  'case "$*" in *" up "*redis*) true ;; *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; esac\n',
+                                  'case "$*" in *" up "*redis*) [ -z "$FAIL_REDIS" ] ;; *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; *" pull "*) [ -z "$FAIL_PULL" ] ;; esac\n',
                 # 이미지 ID 스텁: 새 태그 이미지는 id-<저장소>, SAME_APPS에 든 컨테이너만 같은 ID로 돌고 있다.
                 'docker': '#!/bin/bash\necho "docker $*" >> "$CALL_LOG"\n'
                           'if [ "$1 $2" = "image inspect" ]; then n="${@: -1}"; n="${n##*/}"; echo "id-${n%%:*}"; exit 0; fi\n'
@@ -53,6 +53,18 @@ class DeployWorkflowTest(unittest.TestCase):
             if admin_env is not None:
                 (work / 'toadyAdmin').mkdir()
                 (work / 'toadyAdmin' / '.env.prod').write_text(admin_env)
+            if recorded_sums is not None:
+                # 'current'면 지금 파일 그대로의 기록(바뀐 것 없음), 그 밖에는 주어진 값을 그대로 쓴다.
+                if recorded_sums == 'current':
+                    snippet = server_script().split('\nselect_restart() {')[0].split('\nenv_sum() {')[1]
+                    defs = 'env_sum() {' + snippet
+                    script = defs + '\nfor app in toadyWebApi toadyScheduler toadyReactWeb; do echo "$app $(env_sum "$app")"; done; echo "redis $(redis_sum)"\n'
+                    (work / 'docker-compose.yml').write_text(new_compose)
+                    recorded = subprocess.run(['bash', '-c', script], cwd=work, capture_output=True, text=True).stdout
+                    (work / 'docker-compose.yml').write_text('old compose\n')
+                else:
+                    recorded = recorded_sums
+                (work / '.deployed-env-sums').write_text(recorded)
             if env_text is not None:
                 (work / '.env').write_text(env_text)
                 (work / '.env').chmod(0o640)
@@ -60,7 +72,7 @@ class DeployWorkflowTest(unittest.TestCase):
                                     env={**os.environ, 'HOME': str(home),
                                          'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
                                          'IMAGE_TAG': 'new', 'DOCKER_USERNAME': 'tester', 'CALL_LOG': str(log),
-                                         'FAIL_UP_FOR': fail_up_for, 'SAME_APPS': same_apps, 'CHECK_FAILS_FOR': check_fails_for, 'FAIL_CONFIG': fail_config})
+                                         'FAIL_UP_FOR': fail_up_for, 'SAME_APPS': same_apps, 'FAIL_PULL': fail_pull, 'FAIL_REDIS': '', 'CHECK_FAILS_FOR': check_fails_for, 'FAIL_CONFIG': fail_config})
             self.compose = (work / 'docker-compose.yml').read_text()
             env_file = work / '.env'
             return (result, log.read_text() if log.exists() else '',
@@ -76,8 +88,8 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertEqual('new\n', tag)
         self.assertEqual('OTHER=1\nIMAGE_TAG=new\n', env)
         self.assertEqual('0o640', mode)
-        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts', 'toadyAdmin', 'toadyWebApi'], files)
-        self.assertIn('up -d --no-recreate redis', calls, 'Redis는 없을 때만 띄우고 다시 만들지 않는다')
+        self.assertEqual(['.deployed-env-sums', '.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts', 'toadyAdmin', 'toadyWebApi'], files)
+        self.assertIn('up -d --force-recreate redis', calls, 'Redis 설정 기록이 없으면 한 번 다시 만든다')
         self.assertEqual('new compose\n', self.compose)
 
     def test_admin_site_joins_the_deploy_only_after_its_env_file_is_filled(self):
@@ -150,6 +162,29 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn('compose old -p toady up -d --no-deps toadyReactWeb\n', calls)
         self.assertIn('ROLLBACK OK', result.stderr)
+        self.assertEqual('old\n', tag)
+
+    def test_unchanged_settings_keep_redis_and_record_sums(self):
+        result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n', recorded_sums='current',
+                                            same_apps='toadyWebApi toadyScheduler toadyReactWeb')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('up -d --no-recreate redis', calls)
+        self.assertNotIn('up -d --no-deps', calls)
+
+    def test_changed_env_file_restarts_only_that_app(self):
+        # 기록된 API 설정 합계가 지금 파일과 다르면(운영자가 .env.prod를 고침) 이미지가 같아도 API만 다시 만든다.
+        result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n', recorded_sums='toadyWebApi 1-1\n',
+                                            same_apps='toadyWebApi toadyScheduler toadyReactWeb')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('up -d --no-deps toadyWebApi\n', calls)
+
+    def test_pull_failure_reports_unchanged_containers(self):
+        result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', fail_pull='1')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('image pull failed', result.stderr)
+        self.assertIn('app containers unchanged', result.stderr)
+        self.assertNotIn('ROLLBACK OK', result.stderr)
+        self.assertNotIn('up -d --no-deps', calls)
         self.assertEqual('old\n', tag)
 
     def test_missing_redis_password_stops_before_touching_containers(self):

@@ -66,7 +66,11 @@ class ScheduledResultTargetsTest {
     void saved(String table, String id) { jdbc.update("INSERT INTO " + table + " VALUES (?, ?)", id, id); }
     List<String> targets(String endpoint) {
         var phase = phase(endpoint);
-        return service.scheduledTargets(phase, START, TODAY).stream().map(AnnouncementKey::houseManageNo).toList();
+        return service.scheduledTargets(phase, START, TODAY).stream().map(target -> target.key().houseManageNo()).toList();
+    }
+    List<String> hot(String table) {
+        return service.scheduledTargets(phase(table), START, TODAY).stream().filter(ApplyhomeCompetitionSyncService.ScheduledTarget::hot)
+                .map(target -> target.key().houseManageNo()).toList();
     }
     static ApplyhomeCompetitionSyncService.ResultPhase phase(String table) {
         return ApplyhomeCompetitionSyncService.RESULT_PHASES.stream().filter(p -> p.table().table().equals(table)).findFirst().orElseThrow();
@@ -115,6 +119,31 @@ class ScheduledResultTargetsTest {
         assertThat(targets("TB_CANC_RESPL_LTTOT_PBLANC_CMPET")).containsExactly("CANCELLED");
         assertThat(targets("TB_OPT_LTTOT_PBLANC_CMPET")).containsExactly("OPTIONAL");
         assertThat(targets("TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET")).isEmpty();
+    }
+
+    @Test
+    void onlyResultDaysAreHotAndEmptyLeftoversAreRecheckedSparingly() {
+        apt("IN_PROGRESS", null, "2026-11-16", "2026-11-18", "2026-11-25");
+        apt("ENDED_YESTERDAY", null, "2026-11-15", "2026-11-16", "2026-11-24");
+        apt("ENDED_MISSING", null, "2026-11-12", "2026-11-14", "2026-11-21");
+        apt("WINNERS_TODAY", null, "2026-11-05", "2026-11-07", "2026-11-17");
+        apt("WINNERS_LAST_WEEK", null, "2026-11-01", "2026-11-03", "2026-11-12");
+        assertThat(hot("TB_APT_LTTOT_PBLANC_CMPET")).containsExactly("ENDED_YESTERDAY", "IN_PROGRESS");
+        assertThat(hot("TB_APT_LTTOT_PBLANC_SCORE")).containsExactly("WINNERS_TODAY");
+
+        when(competitionApi.getPage(anyString(), eq(1), anyMap())).thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        var first = service.synchronizeScheduled(START, TODAY);
+        // 두 번째 실행(10분 뒤)은 결과가 나올 날의 공고만 다시 받고, 비어 있는 지난 공고는 간격을 둔다.
+        var second = service.synchronizeScheduled(START, TODAY);
+        assertThat(second.calls()).isLessThan(first.calls());
+        verify(competitionApi, times(2)).getPage(eq("getAptLttotPblancScore"), eq(1),
+                eq(Map.of("cond[HOUSE_MANAGE_NO::EQ]", "WINNERS_TODAY", "cond[PBLANC_NO::EQ]", "WINNERS_TODAY")));
+        verify(competitionApi, times(1)).getPage(eq("getAptLttotPblancScore"), eq(1),
+                eq(Map.of("cond[HOUSE_MANAGE_NO::EQ]", "WINNERS_LAST_WEEK", "cond[PBLANC_NO::EQ]", "WINNERS_LAST_WEEK")));
+        verify(competitionApi, times(1)).getPage(eq("getAPTLttotPblancCmpet"), eq(1),
+                eq(Map.of("cond[HOUSE_MANAGE_NO::EQ]", "ENDED_MISSING", "cond[PBLANC_NO::EQ]", "ENDED_MISSING")));
+        verify(competitionApi, times(2)).getPage(eq("getAPTLttotPblancCmpet"), eq(1),
+                eq(Map.of("cond[HOUSE_MANAGE_NO::EQ]", "IN_PROGRESS", "cond[PBLANC_NO::EQ]", "IN_PROGRESS")));
     }
 
     @Test

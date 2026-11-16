@@ -84,16 +84,26 @@ public class RedisStore {
     /** 설정돼 있고 최근 실패로 쉬는 중이 아닌지. */
     public boolean available() { return client != null && System.currentTimeMillis() >= pausedUntil; }
 
+    /**
+     * 처음 한 번만 연결하고, 끊긴 뒤의 재연결은 Lettuce에 맡긴다(끊긴 동안 명령은 REJECT_COMMANDS로 바로 실패한다).
+     * 연결 시도는 잠금 안에서 하나만 하고, 실패하면 잠금을 놓기 전에 쉬는 시간을 기록한다. 기다리던 요청 스레드는
+     * 잠금을 얻은 뒤 쉬는 중임을 보고 바로 메모리로 넘어간다(Redis 장애 때 요청마다 1초씩 줄 서지 않게).
+     */
     private StatefulRedisConnection<String, String> connect() {
         var current = connection;
-        if (current != null && current.isOpen()) return current;
+        if (current != null) return current;
         synchronized (this) {
-            if (connection == null || !connection.isOpen()) {
-                if (connection != null) connection.closeAsync();
-                connection = client.connect();
-                connection.setTimeout(COMMAND_TIMEOUT);
+            if (connection != null) return connection;
+            if (!available()) throw new IllegalStateException("Redis is paused after a recent failure");
+            try {
+                var opened = client.connect();
+                opened.setTimeout(COMMAND_TIMEOUT);
+                connection = opened;
+                return opened;
+            } catch (RuntimeException failure) {
+                pausedUntil = System.currentTimeMillis() + PAUSE_AFTER_FAILURE.toMillis();
+                throw failure;
             }
-            return connection;
         }
     }
 

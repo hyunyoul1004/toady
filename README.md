@@ -182,11 +182,12 @@ python3 scripts/check-repository.py
 ### 배포와 롤백
 - GitHub Actions가 `master` 푸시마다 검증 후 네 이미지를 같은 커밋 SHA로 태깅해 Docker Hub에 올리고, EC2의 `~/toady`에서 Compose로 갱신합니다. 관리자 사이트는 서버에 `toadyAdmin/.env.prod`가 채워져 있을 때만 함께 배포합니다.
 - 빌드는 직전 푸시 커밋 이후 폴더가 바뀐 프로젝트만 합니다. 바뀌지 않은 이미지는 직전 커밋 이미지에 새 커밋 태그만 붙이므로(내려받지 않음) 커밋 태그마다 이미지 4개가 모두 있습니다. 의존성 레이어는 GitHub Actions 빌드 캐시로 재사용합니다.
-- 서버는 새 태그 이미지 ID가 지금 컨테이너와 다른 앱만 다시 만듭니다. 화면만 바뀐 배포는 API·스케줄러·관리자를 재시작하지 않습니다. `docker-compose.yml`이 바뀌면 모든 앱을 다시 만듭니다.
+- 서버는 새 태그 이미지 ID가 지금 컨테이너와 다른 앱만 다시 만듭니다. 화면만 바뀐 배포는 API·스케줄러·관리자를 재시작하지 않습니다. `docker-compose.yml`이 바뀌면 모든 앱을, 서버의 앱별 `.env.prod`가 지난 성공 배포 뒤 바뀌었으면 그 앱을 다시 만듭니다(합계는 `~/toady/.deployed-env-sums`에 기록).
 - `VITE_KAKAO_MAP_KEY`를 바꿨거나 기반 이미지 보안 갱신을 반영하려면 Actions의 **Run workflow**(수동 실행)로 네 이미지를 모두 새로 빌드합니다.
 - CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 이전 파일로 되돌립니다.
 - 마지막 성공 태그는 `~/toady/.deployed-image-tag`와 `~/toady/.env`의 `IMAGE_TAG=`에 기록합니다. 이미지 pull·`up`·배포 확인 중 하나라도 실패하면 앱 컨테이너를 이전 태그로 다시 올립니다.
 - Compose는 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그 없이 `latest`로 넘어가지 않습니다.
+- 일정 맞춤 수집(`SCHEDULED_RESULTS`)을 넣기 전 스케줄러(`496da74` 이전)로 직접 되돌리면, 이전 버전은 이 작업 종류와 `|`로 이은 cron을 읽지 못합니다. 되돌리기 전에 `DELETE FROM TB_SCHEDULER_ADMIN_SCHEDULE WHERE JOB_KIND='SCHEDULED_RESULTS'`를 실행합니다(이후 버전은 모르는 종류를 건너뜁니다).
 
 수동 배포:
 ```bash
@@ -202,9 +203,9 @@ bash scripts/check-deployment.sh
 
 ### Redis
 - API의 요청 제한·로그인 실패 기록과 외부 API 결과 캐시(국토부 실거래 6시간, 카카오 주변 시설 1일)를 둡니다. 외부 결과는 각 기능의 메모리 캐시 다음 단이라, 배포 뒤에도 같은 조회로 호출 한도를 다시 쓰지 않습니다.
-- `redis` 컨테이너(메모리 96MB 상한, 넘으면 오래 안 쓴 키부터 삭제, 5분마다 스냅샷)는 외부 포트 없이 compose 네트워크에서만 접속합니다. 배포 스크립트가 없으면 띄우고, 떠 있으면 다시 만들지 않습니다.
+- `redis` 컨테이너(redis 계정으로 실행, 메모리 96MB 상한, 넘으면 오래 안 쓴 키부터 삭제, 5분마다 스냅샷)는 외부 포트 없이 compose 네트워크에서만 접속합니다. 배포 스크립트가 없으면 띄우고, 떠 있으면 다시 만들지 않습니다.
 - 처음 한 번: 서버의 `toadyWebApi/.env.prod`에 `REDIS_PASSWORD=`(16자 이상, 예: `openssl rand -hex 32`)를 넣습니다. Redis와 API가 같은 값을 읽고, 없으면 배포가 컨테이너를 건드리지 않고 멈춥니다.
-- 비밀번호를 바꾸거나 Redis 설정을 바꾸면 `docker-compose -p toady up -d --force-recreate --no-deps redis toadyWebApi`로 둘을 함께 다시 만듭니다.
+- 비밀번호나 compose의 Redis 설정을 바꾸면 다음 배포가 Redis와 API를 함께 다시 만듭니다. 바로 반영하려면 `docker-compose -p toady up -d --force-recreate --no-deps redis toadyWebApi`.
 - 확인: `docker exec redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info memory' | grep used_memory_human`, API 상태는 `curl -s 127.0.0.1:8080/internal/health`(`"redis":"UP"`).
 
 ### Nginx와 인증서

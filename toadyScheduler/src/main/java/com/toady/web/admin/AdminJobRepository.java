@@ -22,8 +22,9 @@ import java.util.Optional;
 public class AdminJobRepository {
     private final JdbcTemplate jdbc;
     public AdminJobRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
-    private static final RowMapper<AdminJob> MAPPER = (rs, n) -> new AdminJob(
-            rs.getString("JOB_ID"), JobKind.valueOf(rs.getString("JOB_KIND")), rs.getString("JOB_SOURCE"),
+    /** 이 버전이 모르는 종류의 행은 null로 읽어 목록에서 뺀다(새 버전에서 이전 버전으로 되돌려도 화면이 깨지지 않게). */
+    private static final RowMapper<AdminJob> MAPPER = (rs, n) -> JobKind.parse(rs.getString("JOB_KIND")) == null ? null : new AdminJob(
+            rs.getString("JOB_ID"), JobKind.parse(rs.getString("JOB_KIND")), rs.getString("JOB_SOURCE"),
             rs.getDate("START_DATE").toLocalDate(), rs.getDate("END_DATE").toLocalDate(), rs.getString("STATUS"),
             rs.getInt("TOTAL_CHUNKS"), rs.getInt("COMPLETED_CHUNKS"), rs.getBoolean("CANCEL_REQUESTED"),
             rs.getString("REQUESTED_BY"), rs.getString("MESSAGE"), rs.getTimestamp("CREATED_AT").toLocalDateTime(),
@@ -58,14 +59,15 @@ public class AdminJobRepository {
                 MAPPER, JobKind.SCHEDULED_RESULTS.name()));
         jobs.addAll(jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_KIND = ? ORDER BY CREATED_AT DESC, JOB_ID LIMIT 10",
                 MAPPER, JobKind.SCHEDULED_RESULTS.name()));
+        jobs.removeIf(java.util.Objects::isNull);
         jobs.sort(Comparator.comparing(AdminJob::createdAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(AdminJob::id));
         return jobs;
     }
     public Optional<AdminJob> find(String id) {
-        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_ID = ?", MAPPER, id).stream().findFirst();
+        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_ID = ?", MAPPER, id).stream().filter(java.util.Objects::nonNull).findFirst();
     }
     public Optional<AdminJob> active() {
-        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE ACTIVE_SLOT = 1", MAPPER).stream().findFirst();
+        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE ACTIVE_SLOT = 1", MAPPER).stream().filter(java.util.Objects::nonNull).findFirst();
     }
     /** 이미 종료·복구된 작업은 늦게 도착한 실행기의 상태 갱신으로 덮어쓰지 않는다. */
     public boolean update(String id, String status, int completed, String message, LocalDateTime now) {

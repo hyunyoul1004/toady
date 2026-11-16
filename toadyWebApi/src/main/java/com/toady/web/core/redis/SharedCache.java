@@ -25,6 +25,11 @@ import java.util.zip.GZIPOutputStream;
 @Slf4j
 @Component
 public class SharedCache {
+    /**
+     * 압축 후 이보다 큰 값은 Redis에 두지 않는다(메모리 캐시만 쓴다). Redis 96MB를 요청 제한·로그인 실패 기록과 함께 쓰므로,
+     * 큰 캐시 값이 메모리를 채워 LRU가 보안 기록을 지우는 일을 줄인다.
+     */
+    static final int MAX_STORED_CHARS = 256 * 1024;
     private static final ObjectMapper JSON = JsonMapper.builder().addModule(new JavaTimeModule()).build();
     private final RedisStore redis;
 
@@ -57,6 +62,7 @@ public class SharedCache {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             try (GZIPOutputStream zip = new GZIPOutputStream(bytes)) { JSON.writeValue(zip, value); }
             String encoded = Base64.getEncoder().encodeToString(bytes.toByteArray());
+            if (encoded.length() > MAX_STORED_CHARS) return;
             redis.call(c -> c.set(key(key), encoded, SetArgs.Builder.px(ttl.toMillis())));
         } catch (IOException unwritable) {
             log.debug("Skipping shared cache write {}: {}", key, unwritable.getClass().getSimpleName());
