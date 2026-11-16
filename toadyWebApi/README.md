@@ -14,7 +14,7 @@ Java 21, Spring Boot 3.5, Spring Data JPA, JdbcTemplate, Spring Security, JJWT, 
 | 회원 | 가입, 메일 인증, 로그인(JWT), 비밀번호 찾기, 닉네임·비밀번호·프로필 캐릭터 변경, 탈퇴 |
 | 커뮤니티 | 공고별 이야기(댓글·답글), 경쟁률 예상 투표, 1:1 쪽지, 차단, 신고 |
 | 운영 | 사이트 공지, 운영 안내, 금칙어, 공고 숨김·정정, 서비스 설정. 값은 관리자 사이트가 DB에 넣고 API는 60초마다 다시 읽음 |
-| 공개 페이지 | 공고·생활권·이번 주·무순위·FAQ 서버 HTML, 사이트맵, 새 공고 RSS, 공유 이미지(PNG) |
+| 공개 페이지 | 공고·생활권·이번 주·무순위·FAQ 서버 HTML, 사이트맵, 새 공고 RSS, 공유 이미지(PNG), 새 공고 주소를 IndexNow로 검색엔진에 알림 |
 | 측정 | 익명 페이지 조회, 행동 기록, 검색어 통계 |
 
 ## 패키지
@@ -106,6 +106,7 @@ cp .env.example .env.local   # DB_URL, DB_USERNAME, DB_PASSWORD, JWT_SECRET(open
 | `MOLIT_TRADE_SERVICE_KEY` | 국토교통부 아파트 매매 실거래 인증키 |
 | `KAKAO_REST_API_KEY` | 카카오 로컬 API(좌표, 주변 시설) |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_SUBJECT`, `PUSH_DIGEST_ENABLED` | 웹 푸시 키와 발송 사용 |
+| `INDEXNOW_ENABLED`, `INDEXNOW_KEY` | 새 공고 IndexNow 알림(운영 compose에서만 켬, 운영 주소일 때만 보냄). 키는 공개 값이고 웹의 `public/{키}.txt`와 같아야 함 |
 | `ADMIN_API_TOKEN` | 관리자 사이트가 부르는 내부 API 토큰(32자 이상, 비우면 끔) |
 | `DM_MIN_ACCOUNT_HOURS`, `DM_REQUIRE_STORY`, `DM_DAILY_NEW_THREADS`, `DM_DAILY_MESSAGES` | 쪽지 시작 조건과 하루 한도의 기본값(관리자 설정이 있으면 그 값을 씀) |
 

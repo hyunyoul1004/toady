@@ -209,6 +209,11 @@ bash scripts/check-deployment.sh
 
 `check-deployment.sh`는 API·수집기의 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. 없는 테이블이나 Redis 연결 실패는 경고만 남깁니다.
 
+### 검색엔진 등록
+- 구글 서치콘솔, 네이버 서치어드바이저, Bing 웹마스터도구, 다음 웹마스터도구에 등록했습니다. 사이트맵은 `/sitemap.xml`, 새 공고 RSS는 `/rss.xml`입니다.
+- 다음 소유 확인 코드는 `robots.txt` 맨 아래에 있습니다.
+- 새 공고 주소는 API가 매시 40분에 IndexNow(`api.indexnow.org`)로 알립니다. 한 번 알린 주소는 60일 동안 다시 보내지 않습니다. 키 파일은 `toadyReactWeb/public/{키}.txt`이고 설정 키(`INDEXNOW_KEY`)와 같아야 합니다.
+
 ### Redis
 - API의 요청 제한·로그인 실패 기록과 외부 API 결과 캐시(국토부 실거래 6시간, 카카오 주변 시설 1일)를 둡니다.
 - `redis` 컨테이너는 외부 포트 없이 Compose 네트워크 안에서만 씁니다. 메모리는 96MB까지, 넘으면 오래 안 쓴 키부터 지우고, 5분마다 스냅샷을 남깁니다.

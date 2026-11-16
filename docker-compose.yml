@@ -61,6 +61,8 @@ services:
       - SPRINGDOC_SWAGGERUI_ENABLED=false
       # 같은 compose 네트워크의 Redis(비밀번호는 env_file의 REDIS_PASSWORD).
       - REDIS_HOST=redis
+      # 새 공고 주소를 IndexNow로 검색엔진에 알린다(운영에서만).
+      - INDEXNOW_ENABLED=true
     volumes:
       - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
     ports:

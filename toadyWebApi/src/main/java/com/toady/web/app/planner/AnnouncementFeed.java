@@ -86,6 +86,18 @@ public class AnnouncementFeed {
             .limit(SIZE).toList();
     }
 
+    /** RSS에 담기는 최근 공고의 공개 주소(IndexNow 알림용). 요약을 만들지 못하거나 이름이 없는 공고는 뺀다. */
+    List<String> recentUrls() {
+        List<String> urls = new ArrayList<>();
+        for (Entry entry : recent()) {
+            try {
+                PlannerSummary.Summary s = summaries.get(entry.type(), entry.house(), entry.notice());
+                if (s.houseNm() != null && !s.houseNm().isBlank()) urls.add(domain + "/announcements/" + s.id());
+            } catch (RuntimeException skipped) { /* RSS와 같은 기준으로 건너뛴다 */ }
+        }
+        return urls;
+    }
+
     private String build() {
         List<Entry> entries = recent();
         String home = domain + "/";

@@ -57,6 +57,11 @@ toady:
     host: ${REDIS_HOST:}
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
+  # 새 공고 주소를 IndexNow로 검색엔진에 알린다. 키는 공개 값이며 웹 앱 public/{key}.txt와 같아야 한다.
+  # 기본은 꺼짐. 운영 compose가 INDEXNOW_ENABLED=true를 넣고, 그때도 운영 주소일 때만 보낸다.
+  indexnow:
+    key: ${INDEXNOW_KEY:8ec7088feb88a7a3bb1a59bb4c34ebaf}
+    enabled: ${INDEXNOW_ENABLED:false}
   mail:
     # 보내는 사람 주소·이름. 비우면 SMTP 로그인 계정이 보낸 사람이 된다(Gmail).
     # 발송 서비스(Amazon SES 등)로 옮길 때: MAIL_HOST·MAIL_USERNAME·MAIL_PASSWORD를 그 서비스 값으로, MAIL_FROM을 확인된 주소로,
