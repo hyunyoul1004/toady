@@ -54,6 +54,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // (남기면 새 공고에서 '닫기'·전체 화면 닫기가 이전 공고로 뒤로가기 됐다).
   const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');
     const state=routeLocation.state?{...routeLocation.state,overlayLayers:(routeLocation.state.overlayLayers || []).filter(layer=>layer.id!=='price-map-complex' && layer.id!=='map-fullscreen')}:routeLocation.state;
+    // 공고 주소(/announcements/종류/번호/번호)로 연 상세는 주소 경로가 공고를 정하므로 경로째 바꾼다(쿼리만 바꾸면 같은 공고에 머문다).
+    if(routeLocation.pathname.startsWith('/announcements/')){next.delete('subscriptSeq');navigate({pathname:`/announcements/${id}`,search:`?${next}`},{state});return;}
     navigate({pathname:routeLocation.pathname,search:`?${next}`},{state});};
   const today=koreaToday();
   const saleBubbles=useRef(new Map()),salePanelRef=useRef(null);
