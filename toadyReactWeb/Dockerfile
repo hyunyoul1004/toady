@@ -29,8 +29,11 @@ RUN npm run build
 # CI의 nginx -t 검사와 앞단 nginx 컨테이너와 같은 버전으로 고정한다.
 FROM nginx:1.30-alpine
 
-# Nginx 기본 설정 파일 교체 (SPA 라우팅 및 캐싱/gzip 설정 포함)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Nginx 설정 (SPA 라우팅 및 캐싱/gzip 설정 포함). 템플릿으로 두면 nginx 이미지가 켜질 때 환경 변수를 채워
+# /etc/nginx/conf.d/default.conf를 만든다. 무중단 배포에서 같은 색 API를 가리키도록 TOADY_API_UPSTREAM만 바꾼다.
+ENV TOADY_API_UPSTREAM=toadyWebApi:8080 \
+    NGINX_ENVSUBST_FILTER=^TOADY_
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # 1단계에서 빌드된 정적 산출물(dist/)만 Nginx 기본 서빙 경로로 복사
 COPY --from=builder /app/dist /usr/share/nginx/html

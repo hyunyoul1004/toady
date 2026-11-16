@@ -8,6 +8,57 @@ x-logging: &default-logging
     max-size: "20m"
     max-file: "5"
 
+# ------------------------------------------------------------------------------
+# 무중단(블루/그린) 배포
+# 사용자 요청을 받는 API·웹·관리자는 blue/green 두 벌(색 스택)로 정의한다. 배포는 쓰지 않는 색을 새 이미지로 먼저 띄우고,
+# 준비되면 앞단 nginx가 가리키는 색(conf.d/toady-color.inc)을 바꿔 reload한 뒤 이전 색을 내린다(.github/workflows/deploy.yml).
+# 같은 색끼리 짝을 이룬다: toadyReactWeb-blue는 toadyWebApi-blue로만 프록시하고(TOADY_API_UPSTREAM), toadyAdmin-blue도 toadyWebApi-blue에 부탁한다(API_BASE_URL).
+# profiles로 묶어 두어 서비스 이름 없이 `docker-compose up -d`를 실행해도 두 색이 함께 뜨거나 운영 중인 색이 다시 만들어지지 않는다.
+# 직접 포트는 서버 안(배포 확인)에서만 열며, 두 색이 동시에 떠 있을 수 있어 색마다 다르다.
+#   API   blue 127.0.0.1:18080  green 127.0.0.1:28080
+#   관리자 blue 127.0.0.1:18083  green 127.0.0.1:28083
+# 스케줄러는 같은 시각에 두 개가 돌면 안 되므로(수집 잠금·재시작 시 남은 작업 정리) 한 벌로 두고 제자리에서 교체한다.
+# ------------------------------------------------------------------------------
+x-web-api: &web-api
+  image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
+  env_file:
+    - /home/ec2-user/toady/toadyWebApi/.env.prod
+  environment:
+    - TZ=Asia/Seoul
+    - SPRING_PROFILES_ACTIVE=prod
+    # 운영은 https 출처만 허용한다(로컬 개발 출처는 application.yml 기본값에만 둔다).
+    - CORS_ALLOWED_ORIGINS=https://www.toady.co.kr,https://toady.co.kr
+    # 운영에서는 API 명세(Swagger UI·/v3/api-docs)를 공개하지 않는다.
+    - SPRINGDOC_APIDOCS_ENABLED=false
+    - SPRINGDOC_SWAGGERUI_ENABLED=false
+  # 이전 색을 내릴 때 처리 중인 요청을 마칠 시간을 준다.
+  stop_grace_period: 30s
+  volumes:
+    - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
+  depends_on:
+    - mariadb
+  restart: always
+  logging: *default-logging
+
+x-admin: &admin
+  image: ${DOCKER_USERNAME:-dukkeoba}/toady-admin:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
+  env_file:
+    - /home/ec2-user/toady/toadyAdmin/.env.prod
+  # environment는 색마다 적는다(같은 색 API 주소가 달라서. YAML 병합은 목록을 합치지 않는다).
+  stop_grace_period: 30s
+  volumes:
+    - /usr/local/dockerVolumes/toady/toadyAdmin/logs/:/app/logs/
+  depends_on:
+    - mariadb
+    - toadyScheduler
+  restart: always
+  logging: *default-logging
+
+x-react-web: &react-web
+  image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
+  restart: always
+  logging: *default-logging
+
 services:
   mariadb:
     container_name: mariadb
@@ -23,28 +74,37 @@ services:
     restart: always
     logging: *default-logging
 
-  toadyWebApi:
-    container_name: toadyWebApi
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
-    env_file:
-      - /home/ec2-user/toady/toadyWebApi/.env.prod
+  toadyWebApi-blue:
+    <<: *web-api
+    container_name: toadyWebApi-blue
+    profiles: ["blue"]
+    ports:
+      - "127.0.0.1:18080:8080"
+
+  toadyWebApi-green:
+    <<: *web-api
+    container_name: toadyWebApi-green
+    profiles: ["green"]
+    ports:
+      - "127.0.0.1:28080:8080"
+
+  toadyReactWeb-blue:
+    <<: *react-web
+    container_name: toadyReactWeb-blue
+    profiles: ["blue"]
     environment:
       - TZ=Asia/Seoul
-      - SPRING_PROFILES_ACTIVE=prod
-      # 운영은 https 출처만 허용한다(로컬 개발 출처는 application.yml 기본값에만 둔다).
-      - CORS_ALLOWED_ORIGINS=https://www.toady.co.kr,https://toady.co.kr
-      # 운영에서는 API 명세(Swagger UI·/v3/api-docs)를 공개하지 않는다.
-      - SPRINGDOC_APIDOCS_ENABLED=false
-      - SPRINGDOC_SWAGGERUI_ENABLED=false
-    volumes:
-      - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
-    ports:
-      # 외부 요청은 앞단 nginx를 거친다. 서버 안 배포 확인(127.0.0.1:8080)만 직접 접속한다.
-      - "127.0.0.1:8080:8080"
-    depends_on:
-      - mariadb
-    restart: always
-    logging: *default-logging
+      # 웹 컨테이너 nginx가 API 경로(공고 서버 HTML·사이트맵·캘린더 등)를 보낼 같은 색 API.
+      - TOADY_API_UPSTREAM=toadyWebApi-blue:8080
+
+  toadyReactWeb-green:
+    <<: *react-web
+    container_name: toadyReactWeb-green
+    profiles: ["green"]
+    environment:
+      - TZ=Asia/Seoul
+      # 웹 컨테이너 nginx가 API 경로(공고 서버 HTML·사이트맵·캘린더 등)를 보낼 같은 색 API.
+      - TOADY_API_UPSTREAM=toadyWebApi-green:8080
 
   toadyScheduler:
     container_name: toadyScheduler
@@ -68,36 +128,36 @@ services:
     logging: *default-logging
 
   # 관리자 사이트. 서버의 toadyAdmin/.env.prod를 채운 뒤부터 배포 스크립트가 함께 띄운다.
-  # 앞단 nginx가 https://admin.toady.co.kr/admin/ 을 이 컨테이너로 보낸다(nginx/toady.conf, README 참고).
-  toadyAdmin:
-    container_name: toadyAdmin
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-admin:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
-    env_file:
-      - /home/ec2-user/toady/toadyAdmin/.env.prod
+  # 앞단 nginx가 https://admin.toady.co.kr/admin/ 을 지금 색의 컨테이너로 보낸다(nginx/toady.conf, README 참고).
+  toadyAdmin-blue:
+    <<: *admin
+    container_name: toadyAdmin-blue
+    profiles: ["blue"]
     environment:
       - TZ=Asia/Seoul
       - SERVER_PORT=8083
       - ADMIN_SECURE_COOKIE=true
       # 수집 실행·일정 변경은 같은 compose 네트워크의 스케줄러 내부 API로 요청한다.
       - SCHEDULER_BASE_URL=http://toadyScheduler:8082
-    volumes:
-      - /usr/local/dockerVolumes/toady/toadyAdmin/logs/:/app/logs/
+      # 메일·푸시 발송 등은 같은 색 API에 부탁한다(.env.prod의 API_BASE_URL보다 우선한다).
+      - API_BASE_URL=http://toadyWebApi-blue:8080
     ports:
-      # 직접 포트는 서버 안(배포 확인)에서만 연다.
-      - "127.0.0.1:8083:8083"
-    depends_on:
-      - mariadb
-      - toadyScheduler
-    restart: always
-    logging: *default-logging
+      - "127.0.0.1:18083:8083"
 
-  toadyReactWeb:
-    container_name: toadyReactWeb
-    image: ${DOCKER_USERNAME:-dukkeoba}/toady-react-web:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
+  toadyAdmin-green:
+    <<: *admin
+    container_name: toadyAdmin-green
+    profiles: ["green"]
     environment:
       - TZ=Asia/Seoul
-    restart: always
-    logging: *default-logging
+      - SERVER_PORT=8083
+      - ADMIN_SECURE_COOKIE=true
+      # 수집 실행·일정 변경은 같은 compose 네트워크의 스케줄러 내부 API로 요청한다.
+      - SCHEDULER_BASE_URL=http://toadyScheduler:8082
+      # 메일·푸시 발송 등은 같은 색 API에 부탁한다(.env.prod의 API_BASE_URL보다 우선한다).
+      - API_BASE_URL=http://toadyWebApi-green:8080
+    ports:
+      - "127.0.0.1:28083:8083"
 
   nginx:
     container_name: nginx
@@ -108,9 +168,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    depends_on:
-      - toadyWebApi
-      - toadyReactWeb
+    # 앱 컨테이너 주소는 요청 때 Docker DNS로 찾으므로(nginx/toady.conf) 앱에 depends_on을 두지 않는다.
+    # 앱은 색마다 이름이 달라(toadyWebApi-blue 등) 고정 이름에 묶으면 nginx를 다시 만들 때 쓰지 않는 색까지 뜬다.
     volumes:
       - /usr/local/dockerVolumes/nginx/nginx.conf:/etc/nginx/nginx.conf
       - /usr/local/dockerVolumes/nginx/conf.d:/etc/nginx/conf.d

@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'check-deployment.sh'
 
 class DeploymentReadinessTest(unittest.TestCase):
     def run_check(self, scheduler_fails, capabilities='{"tradesEnabled":true}', schema='',
-                  public_code='200', public_exit=0, api_code='200', api_exit=0, restarting_service='', server_pages=None):
+                  public_code='200', public_exit=0, api_code='200', api_exit=0, restarting_service='', server_pages=None, extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stubs = {
@@ -32,7 +32,7 @@ case "$*" in
     echo "$count" > "$REVIEW_STATE"
     [ "$FAIL_SCHEDULER" = 0 ] && [ "$count" -ge 3 ]
     ;;
-  *) exit 0 ;;
+  *) echo "$*" >> "$CURL_LOG"; exit 0 ;;
 esac
 ''',
                 'sleep': '#!/bin/sh\nexit 0\n',
@@ -52,11 +52,12 @@ esac
             state = root / 'attempts'
             result = subprocess.run(['bash', str(SCRIPT)], capture_output=True, text=True, timeout=10,
                                     env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
-                                         'REVIEW_STATE': str(state), 'FAIL_SCHEDULER': str(int(scheduler_fails)),
+                                         'REVIEW_STATE': str(state), 'CURL_LOG': str(root / 'curl.log'), 'FAIL_SCHEDULER': str(int(scheduler_fails)),
                                          'CAPABILITIES': capabilities, 'SCHEMA': schema,
                                          'PUBLIC_CODE': public_code, 'PUBLIC_EXIT': str(public_exit),
                                          'API_CODE': api_code, 'API_EXIT': str(api_exit),
-                                         'RESTARTING_SERVICE': restarting_service, **(server_pages or {})})
+                                         'RESTARTING_SERVICE': restarting_service, **(server_pages or {}), **(extra_env or {})})
+            self.curl_calls = (root / 'curl.log').read_text() if (root / 'curl.log').exists() else ''
             return result, int(state.read_text())
 
     def test_waits_until_scheduler_is_ready(self):
@@ -127,6 +128,24 @@ esac
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn('/sitemap.xml did not return the server-rendered page', result.stderr)
         self.assertIn('/weekly did not return the server-rendered page', result.stderr)
+
+    GREEN = {'API_CONTAINER': 'toadyWebApi-green', 'API_PORT': '28080', 'WEB_CONTAINER': 'toadyReactWeb-green',
+             'ADMIN_CONTAINER': 'toadyAdmin-green', 'ADMIN_PORT': '28083'}
+
+    def test_checks_the_given_color_stack(self):
+        result, _ = self.run_check(False, extra_env=self.GREEN)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('127.0.0.1:28080/internal/health', self.curl_calls)
+        self.assertNotIn('127.0.0.1:8080/', self.curl_calls)
+        result, _ = self.run_check(False, restarting_service='toadyReactWeb-green', extra_env=self.GREEN)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Container check failed: toadyReactWeb-green', result.stderr)
+
+    def test_skips_front_nginx_checks_before_switching(self):
+        # 전환 전에는 앞단이 이전 색을 가리키므로 앞단 확인을 하지 않는다(502여도 통과).
+        result, _ = self.run_check(False, public_code='502', extra_env={**self.GREEN, 'SKIP_FRONT_CHECKS': '1'})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('front nginx checks skipped', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()
