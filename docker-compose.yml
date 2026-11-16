@@ -32,7 +32,7 @@ services:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=prod
       # 운영은 https 출처만 허용한다(로컬 개발 출처는 application.yml 기본값에만 둔다).
-      - CORS_ALLOWED_ORIGINS=https://toady.co.kr,https://www.toady.co.kr
+      - CORS_ALLOWED_ORIGINS=https://www.toady.co.kr,https://toady.co.kr
       # 운영에서는 API 명세(Swagger UI·/v3/api-docs)를 공개하지 않는다.
       - SPRINGDOC_APIDOCS_ENABLED=false
       - SPRINGDOC_SWAGGERUI_ENABLED=false
@@ -68,7 +68,7 @@ services:
     logging: *default-logging
 
   # 관리자 사이트. 서버의 toadyAdmin/.env.prod를 채운 뒤부터 배포 스크립트가 함께 띄운다.
-  # 앞단 nginx가 https://www.toady.co.kr/admin/ 을 이 컨테이너로 보낸다(서버 nginx 설정, README 참고).
+  # 앞단 nginx가 https://admin.toady.co.kr/admin/ 을 이 컨테이너로 보낸다(nginx/toady.conf, README 참고).
   toadyAdmin:
     container_name: toadyAdmin
     image: ${DOCKER_USERNAME:-dukkeoba}/toady-admin:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
@@ -126,10 +126,11 @@ services:
   certbot:
     container_name: certbot
     # 갱신 때마다 검증하지 않은 최신 이미지를 받지 않도록 버전을 고정한다.
+    # 이메일은 처음 계정을 만들 때만 쓰이고(서버의 기존 계정으로 갱신), 공개 저장소에 개인 주소를 두지 않기 위해 넣지 않는다.
     image: certbot/certbot:v5.9.0
     depends_on:
       - nginx
-    command: certonly --webroot --webroot-path=/var/www/certbot --email dbsgusduf@naver.com --agree-tos --no-eff-email --keep-until-expiring -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr
+    command: certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos --no-eff-email --keep-until-expiring --cert-name toady.co.kr-0002 --expand -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr -d admin.toady.co.kr
     volumes:
       - /usr/local/dockerVolumes/certbot/conf:/etc/letsencrypt
       - /usr/local/dockerVolumes/certbot/logs:/var/log/letsencrypt

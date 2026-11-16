@@ -25,6 +25,13 @@ jobs:
       # 배포 이미지와 같은 nginx로 설정 문법을 미리 검사한다. 설정 오류는 배포 후 웹 컨테이너 재시작 반복으로만 드러나기 때문이다.
       - name: Check nginx config
         run: docker run --rm -v "$PWD/toadyReactWeb/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.30-alpine nginx -t
+      # 앞단 nginx 설정(nginx/toady.conf)도 같은 이미지로 검사한다. 인증서 파일이 있어야 문법 검사가 끝나므로 임시 자체 서명 인증서를 둔다.
+      - name: Check front nginx config
+        run: |
+          ssl="$RUNNER_TEMP/ssl/live/toady.co.kr-0002"
+          mkdir -p "$ssl"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj "/CN=ci.toady.test" -keyout "$ssl/privkey.pem" -out "$ssl/fullchain.pem" 2>/dev/null
+          docker run --rm -v "$PWD/nginx/toady.conf:/etc/nginx/conf.d/default.conf:ro" -v "$RUNNER_TEMP/ssl:/etc/nginx/ssl:ro" nginx:1.30-alpine nginx -t
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -91,6 +98,13 @@ jobs:
           TOADY_TEST_DB_USERNAME: root
           TOADY_TEST_DB_PASSWORD: ci-test-password
         run: bash ./gradlew --no-daemon mariadbTest -Dtoady.mariadb.temporary.enabled=true
+      - name: Verify scheduler MariaDB-only SQL (lock, upsert, insert-select, retention delete)
+        env:
+          DB_CONTAINER: ${{ job.services.mariadb.id }}
+        run: |
+          result="$(docker exec -i "$DB_CONTAINER" mariadb -uroot -pci-test-password toady_test -N < scripts/tests/scheduler-mariadb-smoke.sql | tail -1)"
+          echo "result: $result"
+          test "$result" = "lock=1 release=1 req=20 schedules=1 messages=1"
       - name: Upload MariaDB test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -226,3 +240,7 @@ jobs:
             mv -f "$env_tmp" .env
             mv -f "$tag_tmp" .deployed-image-tag
             echo "DEPLOY OK: $NEW_TAG recorded in .deployed-image-tag and .env"
+            # 배포마다 이미지 4개를 받아 디스크가 차면 MariaDB까지 멈추므로, 14일 넘게 쓰지 않은 이미지를 지운다.
+            # 실행 중인 컨테이너의 이미지는 지우지 않고, 되돌릴 때 이전 이미지가 없으면 compose가 다시 받는다.
+            docker image prune -af --filter "until=336h" >/dev/null 2>&1 || echo "image prune skipped" >&2
+            df -h / | tail -1 | awk '{print "disk used: " $5 " of " $2}'

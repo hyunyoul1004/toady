@@ -18,7 +18,7 @@
                 <div class="comment-meta"><a th:href="@{/admin/members/{seq}(seq=${c.authorSeq})}"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong></a><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${c.deleted}" class="badge FAILED" th:text="${c.hiddenLabel}">숨김</span>
                     <small th:text="${(c.createdAt != null ? #temporals.format(c.createdAt, 'yyyy.MM.dd HH:mm') : '') + ' · #' + c.seq}"></small></div>
                 <p class="comment-body" th:text="${c.content}"></p>
-                <div class="comment-actions"><a class="secondary" th:href="@{${c.adminPath}}" th:text="${c.houseNm != null ? c.houseNm : c.announcementId}"></a><a class="quiet" th:href="${c.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
+                <div class="comment-actions"><a class="secondary" th:href="@{${c.adminPath}}" th:text="${c.houseNm != null ? c.houseNm : c.announcementId}"></a><a class="quiet" th:href="${siteUrl + c.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
                     <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${back}"><button class="danger" type="submit">숨기기</button></form>
                     <form th:if="${c.deleted and c.adminHidden}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="next" th:value="${back}"><button class="secondary" type="submit">되살리기</button></form></div>
             </li>

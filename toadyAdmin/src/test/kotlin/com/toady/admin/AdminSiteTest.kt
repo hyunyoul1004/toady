@@ -211,6 +211,9 @@ class AdminSiteTest {
 		val html = mvc.perform(get("/admin/announcements/apt/H1/P1").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
 		assertTrue(html.contains("95,000만원") && html.contains("1표") && html.contains("원댓글"), "주택형·투표·댓글을 함께 보여 준다")
 		assertFalse(html.contains("alert notice"), "공고번호(경로 변수)가 알림 메시지로 보이지 않는다")
+		// 관리자는 admin.toady.co.kr에 있으므로 서비스 링크는 www 절대 주소여야 한다.
+		assertTrue(html.contains("href=\"https://www.toady.co.kr/?subscriptSeq=apt%2FH1%2FP1\""), "서비스에서 보기는 www 주소로 연다")
+		assertTrue(html.contains("href=\"https://www.toady.co.kr/\""), "사이트 열기는 www 주소로 연다")
 		mvc.perform(get("/admin/announcements/apt/NOPE/P1").with(admin)).andExpect(status().isNotFound)
 		mvc.perform(get("/admin/announcements/evil/H1/P1").with(admin)).andExpect(status().isNotFound)
 	}

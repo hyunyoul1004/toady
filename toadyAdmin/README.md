@@ -17,7 +17,7 @@
 
 ```mermaid
 flowchart LR
-    Browser["관리자 브라우저"] -->|HTTPS /admin| Nginx["앞단 nginx"] --> Admin["toadyAdmin :8083"]
+    Browser["관리자 브라우저"] -->|HTTPS admin.toady.co.kr| Nginx["앞단 nginx"] --> Admin["toadyAdmin :8083"]
     Admin -->|조회 · 회원 잠금 · 댓글 숨김| DB[("MariaDB")]
     Admin -->|X-Admin-Token| Scheduler["toadyScheduler /internal/admin"]
     Scheduler -->|수집 실행 · 일정| DB
@@ -37,7 +37,7 @@ com.toady.admin
 
 ## 설계 포인트
 
-- **권한 최소화**: 관리자 전용 DB 계정(`toady_admin`)은 화면에 쓰는 테이블·컬럼만 읽고, 회원 잠금·댓글 숨김만 바꿀 수 있습니다. 비밀번호 해시와 푸시 구독 키는 읽지 못합니다([database.sql](../database.sql) 19번).
+- **권한 최소화**: 관리자 전용 DB 계정(`toady_admin`)은 화면에 쓰는 테이블·컬럼만 읽고, 회원 잠금·댓글 숨김·신고 처리·쪽지 정지·지표 제외 브라우저만 바꿀 수 있습니다. 비밀번호 해시, 푸시 구독 키, 관심 공고의 비공개 메모는 읽지 못합니다. 쪽지 내용은 신고된 쪽지와 그 앞뒤만 화면에 보입니다([database.sql](../database.sql) 19번·25번).
 - **로그인**: 환경변수 계정 하나(BCrypt로 해시해 비교), 같은 IP에서 15분 안에 5번 실패하면 15분 동안 막습니다. 세션 쿠키는 `Path=/admin`·`SameSite=Strict`, 모든 변경 요청에 CSRF 토큰을 요구합니다.
 - **수집 제어**: 실행기와 자동 일정 타이머는 수집기 프로세스에 있으므로, 관리자 사이트는 공유 토큰으로 보호한 수집기 내부 API를 호출합니다. 수집기가 꺼져 있어도 지표·회원·댓글 화면은 동작합니다.
 - **댓글 숨김 기록**: 작성자가 지운 글과 관리자가 숨긴 글은 모두 `DELETE_YN='Y'`라 구분되지 않으므로 숨김 기록(`TB_COMMENT_ADMIN_HIDE`)을 따로 남깁니다. 되살리기는 관리자가 숨긴 글만, 원댓글을 되살리면 그때 함께 숨긴 답글만 돌아옵니다(따로 숨긴 답글은 그대로).

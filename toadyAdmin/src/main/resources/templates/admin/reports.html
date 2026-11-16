@@ -34,7 +34,7 @@
                 <p class="muted" th:if="${r.commentDeleted}">이 이야기는 이미 숨겨졌거나 작성자가 지웠습니다.</p>
                 <p class="muted" th:if="${!r.open}" th:text="${'처리: ' + (r.handledBy != null ? r.handledBy : '') + (r.handledAt != null ? ' · ' + #temporals.format(r.handledAt, 'yyyy.MM.dd HH:mm') : '') + (r.actionNote != null ? ' · ' + r.actionNote : '')}"></p>
                 <div class="report-actions" th:if="${r.open}">
-                    <a class="secondary" th:if="${r.appPath != null}" th:href="${r.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
+                    <a class="secondary" th:if="${r.appPath != null}" th:href="${siteUrl + r.appPath}" target="_blank" rel="noopener noreferrer">서비스에서 보기 ↗</a>
                     <form th:if="${r.type == 'COMMENT' and !r.commentDeleted}" th:action="@{/admin/comments/{seq}/hide(seq=${r.targetSeq})}" method="post" class="confirm" data-confirm="이 이야기를 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${back}"><button class="danger" type="submit">이야기 숨기기</button></form>
                     <form th:unless="${r.suspended}" th:action="@{/admin/members/{seq}/dm-suspend(seq=${r.targetUserSeq})}" method="post" class="confirm" data-confirm="이 회원의 쪽지 보내기를 7일 정지할까요?"><input type="hidden" name="days" value="7"><input type="hidden" name="next" th:value="${back}"><button class="secondary" type="submit">쪽지 7일 정지</button></form>
                     <a class="quiet" th:href="@{/admin/members/{seq}(seq=${r.targetUserSeq})}">회원 잠금·무기한 정지는 회원 화면에서</a>

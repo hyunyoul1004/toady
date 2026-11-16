@@ -7,7 +7,7 @@
     <p class="crumbs"><a th:href="@{/admin/announcements}">공고</a> › <span th:text="${a.typeLabel}"></span></p>
     <section class="page-heading"><div><h1 th:text="${a.houseNm}"></h1><p class="muted" th:text="${a.address}"></p>
         <div class="chips spaced-top"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
-        <div class="heading-actions"><a class="secondary" th:href="${d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
+        <div class="heading-actions"><a class="secondary" th:href="${siteUrl + d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <section class="kpis">
         <div class="kpi primary"><span>상세 열람 · 30일</span><strong th:text="${d.viewers30 != null ? d.viewers30 + '명' : '—'}">0</strong><small th:text="${d.views30 != null ? d.views30 + '회 열람' : ''}"></small></div>

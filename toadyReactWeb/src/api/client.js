@@ -8,7 +8,12 @@
 import config from 'config';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 
-const BASE_HEADERS = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+/**
+ * 본문이 있는 요청에만 JSON 형식을 알린다. 본문 없는 GET·DELETE에 Content-Type이나 사용자 정의 헤더를 붙이면
+ * 다른 출처(api.toady.co.kr)로 가는 요청마다 브라우저가 CORS 사전 요청(OPTIONS)을 한 번 더 보내 모바일에서 느려진다.
+ */
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const BASE_HEADERS = JSON_HEADERS;
 
 /**
  * 화면과 동일한 인증 스토어의 토큰으로 Authorization 헤더를 생성합니다.
@@ -77,6 +82,7 @@ const toUrl = endpoint => (endpoint.startsWith('http') ? endpoint : `${config.ap
  */
 async function send(method, url, { auth = true, body } = {}) {
   const headers = auth ? getAuthHeaders() : { ...BASE_HEADERS };
+  if (body === undefined) delete headers['Content-Type'];
   const res = await fetch(url, body === undefined ? { method, headers } : { method, headers, body });
   return handleResponse(res, headers.Authorization?.slice(7));
 }

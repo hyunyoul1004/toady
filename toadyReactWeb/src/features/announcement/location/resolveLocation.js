@@ -35,7 +35,13 @@ function precise(row,address,candidate) {
 function request(service,method,query,ok,timeoutMs) {
   return new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>reject(Error('위치 검색 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.')),timeoutMs);
-    service[method](query,(rows,status)=>{clearTimeout(timer);resolve(status===ok?rows:[]);});
+    // 결과 없음(ZERO_RESULT)만 '찾지 못함'으로 본다. 카카오 쪽 일시 오류(ERROR)를 빈 결과로 보면 정확한 주소도
+    // '부지 미확정'으로 판정되어 1시간 동안 그대로 남으므로, 오류로 돌려 다시 묻게 한다(메시지의 '지도'로 재시도 대상).
+    service[method](query,(rows,status)=>{
+      clearTimeout(timer);
+      if(status==='ERROR') reject(Error('지도 검색 서비스가 잠시 응답하지 않아 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'));
+      else resolve(status===ok?rows:[]);
+    });
   });
 }
 export function siteCandidate(row,address,house) {

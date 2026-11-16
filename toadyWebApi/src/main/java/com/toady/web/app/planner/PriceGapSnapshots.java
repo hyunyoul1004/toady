@@ -70,7 +70,8 @@ public class PriceGapSnapshots {
     public void scheduled() {
         if (!locator.enabled() || !research.tradesEnabled()) return;
         try {
-            var report = run();
+            // 미리 계산은 사용자 조회 몫(하루 한도의 80%)과 별도로 남겨 둔 몫까지 쓸 수 있다.
+            var report = research.inBackground(this::run);
             log.info("주변 시세 비교 미리 계산: ready={}, noLocation={}, noTrades={}, unavailable={}, kept={}", report.get("READY"), report.get("NO_LOCATION"), report.get("NO_TRADES"), report.get("UNAVAILABLE"), report.get("KEPT"));
         } catch (BadSqlGrammarException missing) {
             log.warn("TB_PRICE_GAP을 사용할 수 없어 주변 시세 비교를 미리 계산하지 않습니다. database.sql 18번을 적용하세요.");

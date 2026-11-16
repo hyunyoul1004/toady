@@ -61,6 +61,9 @@ toady:
     molit-service-key: ${MOLIT_TRADE_SERVICE_KEY:}
     # 카카오 로컬 REST API 키(서버 전용). 있으면 매일 접수 중·예정 공고의 주변 시세 비교를 미리 계산한다.
     kakao-rest-key: ${KAKAO_REST_API_KEY:}
+    # 국토부 실거래 API 하루 호출 상한(서버 전체). 사용자 조회는 이 값의 80%까지, 나머지는 저녁 미리 계산 몫.
+    # 공공데이터포털에서 받은 이 API의 일일 트래픽 한도보다 조금 낮게 둔다(개발계정 1만 회 → 9000). 0이면 세지 않는다.
+    molit-daily-limit: ${MOLIT_DAILY_LIMIT:9000}
     # 미리 계산 시각(한국시간). 저녁 묶음 알림(18시) 전에 끝나도록 둔다. '-'이면 끈다.
     gap-cron: ${PRICE_GAP_CRON:0 20 17 * * *}
   planner:

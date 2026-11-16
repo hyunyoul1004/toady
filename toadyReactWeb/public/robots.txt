@@ -1,4 +1,4 @@
-# robots.txt for TOADY (https://toady.co.kr)
+# robots.txt for TOADY (https://www.toady.co.kr)
 User-agent: *
 Allow: /
 

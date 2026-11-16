@@ -38,9 +38,22 @@ public class NeighborhoodResearchService {
     private final String molitKey;
     private final Cache<String,TradeMonth> tradeCache=CacheBuilder.newBuilder().maximumWeight(150000)
         .weigher((String key,TradeMonth value)->Math.max(1,value.trades().size())).expireAfterWrite(6,TimeUnit.HOURS).build();
+    /** 하루 호출 수(서버 전체). 기본 생성자(테스트)는 세지 않는다. */
+    private final MolitDailyBudget dailyBudget;
+    /** 미리 계산 작업이 부르는 중인지(이 스레드). 남겨 둔 하루 몫을 쓸 수 있다. */
+    private static final ThreadLocal<Boolean> BACKGROUND=ThreadLocal.withInitial(()->false);
+    public NeighborhoodResearchService(ResearchTransport transport,String molitKey) {
+        this(transport,molitKey,MolitDailyBudget.unlimited());
+    }
+    @org.springframework.beans.factory.annotation.Autowired
     public NeighborhoodResearchService(ResearchTransport transport,
-            @Value("${toady.research.molit-service-key:}") String molitKey) {
+            @Value("${toady.research.molit-service-key:}") String molitKey,
+            @Value("${toady.research.molit-daily-limit:9000}") long dailyLimit) {
+        this(transport,molitKey,new MolitDailyBudget(dailyLimit,java.time.Clock.system(java.time.ZoneId.of("Asia/Seoul"))));
+    }
+    NeighborhoodResearchService(ResearchTransport transport,String molitKey,MolitDailyBudget dailyBudget) {
         this.transport=transport;
+        this.dailyBudget=dailyBudget;
         // 공공데이터포털의 일반/인코딩 인증키를 모두 허용하되 요청에는 한 번만 인코딩한다.
         String key=molitKey.trim();
         this.molitKey=key.contains("%")?URLDecoder.decode(key,StandardCharsets.UTF_8):key;
@@ -265,6 +278,12 @@ public class NeighborhoodResearchService {
             }
             // 차례를 기다리는 동안 다른 호출이 거절을 받아 차단기가 켜졌으면 부르지 않는다(429·한도 소모를 반복하지 않게).
             if(molitPaused()) throw new ProviderPaused();
+            // 하루 호출 수: 사용자 요청은 한도의 80%까지만, 나머지는 미리 계산 몫으로 남긴다.
+            if(!dailyBudget.tryAcquire(BACKGROUND.get())) {
+                if(!dailyLimitLogged) { dailyLimitLogged=true; log.warn("국토부 실거래 하루 호출 몫을 다 써서 사용자 조회를 멈춤(오늘 {}회)",dailyBudget.used()); }
+                throw new ProviderPaused();
+            }
+            dailyLimitLogged=false;
             return transport.get(uri,Map.of());
         } finally { molitSlots.release(); }
     }
@@ -280,6 +299,15 @@ public class NeighborhoodResearchService {
             LoggerFactory.getLogger(NeighborhoodResearchService.class).warn("국토부 실거래 호출을 {}분 멈춤: {}",Math.max(1,duration.toMinutes()),reason);
         }
     }
+    private volatile boolean dailyLimitLogged;
+    /** 미리 계산 작업처럼 남겨 둔 하루 몫까지 써도 되는 호출을 감싼다. */
+    public <T> T inBackground(java.util.function.Supplier<T> work) {
+        boolean before=BACKGROUND.get();
+        BACKGROUND.set(true);
+        try { return work.get(); } finally { BACKGROUND.set(before); }
+    }
+    /** 오늘 국토부를 부른 횟수(운영 확인용). */
+    public long molitCallsToday() { return dailyBudget.used(); }
     /** 차단기가 열려 있는지(화면 안내·테스트용). */
     public boolean molitPaused() { return System.currentTimeMillis()<molitPausedUntil; }
     static final class ProviderPaused extends IllegalStateException { ProviderPaused() { super("Provider paused after rejection"); } }

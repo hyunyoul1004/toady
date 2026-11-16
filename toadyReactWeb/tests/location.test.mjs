@@ -87,3 +87,15 @@ test('address suggestions mark exact addresses and drop duplicate place names',a
  assert.equal(items[0].detail,'서울 강남구 역삼동 737');
  assert.deepEqual(await suggestAddresses(maps([exact]),'송'),[],'한 글자는 묻지 않는다');
 });
+
+test('a temporary Kakao search error is a failure to retry, not an unresolved site', async () => {
+  const failing = { services: { Status: { OK: 'OK' },
+    Geocoder: class { addressSearch(q, cb) { cb([], 'ERROR'); } },
+    Places: class { keywordSearch(q, cb) { cb([], 'ERROR'); } } } };
+  await assert.rejects(resolveLocation(failing, { houseNm: '테스트 단지', hssplyAdres: '서울특별시 강남구 역삼동 123-4' }, { timeoutMs: 200 }), /지도/);
+  const empty = { services: { Status: { OK: 'OK' },
+    Geocoder: class { addressSearch(q, cb) { cb([], 'ZERO_RESULT'); } },
+    Places: class { keywordSearch(q, cb) { cb([], 'ZERO_RESULT'); } } } };
+  const result = await resolveLocation(empty, { houseNm: '테스트 단지', hssplyAdres: '서울특별시 강남구 역삼동 123-4' }, { timeoutMs: 200 });
+  assert.notEqual(result.status, 'ADDRESS', '결과 없음은 그대로 찾지 못함으로 판정한다');
+});

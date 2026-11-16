@@ -380,6 +380,14 @@ class PlannerIntegrationTest {
         assertFalse(budget.reserve(MailBudget.Kind.SIGNUP));
         assertTrue(budget.reserve(MailBudget.Kind.AUTH));
     }
+    @Test void remindersAndSignupsTogetherCannotUseTheAuthenticationReserve() {
+        // mail-limit=4, auth-reserve=1: 일정 알림 2통 + 가입 메일 1통으로 3통(=4-1)이 차면, 가입 메일 상한(2)이 남았어도 더 못 보낸다.
+        assertTrue(budget.reserve(MailBudget.Kind.REMINDER));assertTrue(budget.reserve(MailBudget.Kind.REMINDER));
+        assertTrue(budget.reserve(MailBudget.Kind.SIGNUP));
+        assertFalse(budget.reserve(MailBudget.Kind.SIGNUP),"합계가 예약분에 닿으면 가입 메일도 막는다");
+        assertFalse(budget.reserve(MailBudget.Kind.REMINDER));
+        assertTrue(budget.reserve(MailBudget.Kind.AUTH),"비밀번호 찾기 메일 몫은 남아 있다");
+    }
     @Test void missingAnnouncementCannotBeSaved() throws Exception {
         var account=user("missing@example.test");
         assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false,null));

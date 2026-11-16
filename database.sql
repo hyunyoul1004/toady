@@ -236,6 +236,18 @@ CREATE TABLE IF NOT EXISTS TB_APT_SPSPLY_REQST_STUS (
 -- 아래는 기존 파일의 내용이며 DB 범위·구문을 확인하고 관리 계정으로 별도 적용해야 합니다.
 -- DB 전체 권한은 DB명.* 형태로 대상을 명시합니다. 앱 계정에는 필요한 권한만 부여하세요.
 -- ============================================================================
+-- 수집기(toady_sources)가 실제로 쓰는 권한 전체(최소 권한으로 줄일 때 이 목록을 기준으로 한다):
+--   공고 상세 5개(TB_*_LTTOT_PBLANC_DETAIL): SELECT, INSERT, UPDATE (JPA merge로 덮어씀)
+--   주택형·경쟁률·가점·특별공급(아래 목록): SELECT, INSERT, UPDATE, DELETE (공고 단위로 교체)
+--   수집 관리(1번 TB_SCHEDULER_ADMIN_JOB·TB_SCHEDULER_ADMIN_SCHEDULE): SELECT, INSERT, UPDATE
+--   보관 기간 정리(14번·25번 구역의 테이블): SELECT, DELETE
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_APT_LTTOT_PBLANC_DETAIL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_REMNDR_LTTOT_PBLANC_DETAIL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_OPT_LTTOT_PBLANC_DETAIL TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_SCHEDULER_ADMIN_JOB TO 'toady_sources'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_SCHEDULER_ADMIN_SCHEDULE TO 'toady_sources'@'%';
 -- 아래 원래 줄은 DB가 아니라 'toady'라는 테이블에 권한을 주는 구문이라 쓰지 않는다(참고용으로만 남김).
 -- GRANT DELETE ON toady TO 'toady_sources'@'%';
 -- 수집기(toady_sources)는 공고별 결과·주택형을 교체하면서 아래 테이블에서 DELETE를 실행한다. DB명을 실제 값으로 바꿔 확인한다.
@@ -456,13 +468,17 @@ CREATE TABLE IF NOT EXISTS TB_PRICE_GAP (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='공고별 주변 시세 비교 요약';
 
 -- 19. 관리자 사이트(toadyAdmin) 전용 DB 계정 (관리자 배포 전에 root로 수동 실행, 자동 실행하지 않음)
--- 조회는 화면에 쓰는 테이블·컬럼만, 변경은 회원 잠금(LOCK_YN·LOCK_DT)과 댓글 숨김(DELETE_YN)만 허용한다.
--- 비밀번호 해시(USER_PASSWORD)와 푸시 구독 키(P256DH·AUTH)는 읽지 못하게 컬럼 단위로 준다. 비밀번호는 실제 값으로 바꿔 실행한다.
+-- 조회는 화면에 쓰는 테이블·컬럼만 준다. 변경은 회원 잠금(LOCK_YN·LOCK_DT), 댓글 숨김(DELETE_YN)과 숨김 기록,
+-- 지표에서 뺄 운영자 브라우저(20번), 신고 처리·쪽지 정지(25번)만 허용한다.
+-- 비밀번호 해시(USER_PASSWORD), 푸시 구독 키(P256DH·AUTH), 관심 공고의 비공개 메모(NOTE)는 읽지 못하게 컬럼 단위로 준다.
+-- 비밀번호는 실제 값으로 바꿔 실행한다.
 -- CREATE USER 'toady_admin'@'%' IDENTIFIED BY '<관리자 DB 비밀번호>';
 -- GRANT SELECT (USER_SEQ, USER_EMAIL, USER_NIC_NAME, EMAIL_CERTIFY_YN, LOCK_YN, LOCK_DT, WITHDRAWAL_YN, CREATE_DT, UPDATE_DT), UPDATE (LOCK_YN, LOCK_DT, UPDATE_DT) ON toady.TB_USER TO 'toady_admin'@'%';
 -- GRANT SELECT, UPDATE (DELETE_YN, UPDATE_DT) ON toady.TB_LTTOT_PBLANC_COMMENT TO 'toady_admin'@'%';
 -- GRANT SELECT (USER_SEQ, AREA_SLUGS, LAST_ATTEMPT_DATE, LAST_DIGEST_DT, LAST_SUCCESS_DT) ON toady.TB_PUSH_SUBSCRIPTION TO 'toady_admin'@'%';
--- GRANT SELECT ON toady.TB_FAVORITE TO 'toady_admin'@'%';
+-- GRANT SELECT (USER_SEQ, ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, STAGE, REG_DT) ON toady.TB_FAVORITE TO 'toady_admin'@'%';
+-- 예전 안내대로 테이블 전체 SELECT를 이미 줬다면 먼저 회수하고 위 줄을 실행한다(메모 열람 차단):
+-- REVOKE SELECT ON toady.TB_FAVORITE FROM 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_PAGE_VIEW TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_USAGE_EVENT TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_PRICE_GAP TO 'toady_admin'@'%';
@@ -622,7 +638,6 @@ CREATE INDEX IF NOT EXISTS IX_DM_STARTED ON TB_DM_THREAD (STARTED_BY, REG_DT);
 -- 관리자 계정: 신고 처리와 쪽지 정지. 쪽지 내용은 관리자 화면이 신고된 쪽지와 그 앞뒤 몇 통만 읽는다(평소에는 보지 않음).
 -- GRANT SELECT, UPDATE (STATUS, ACTION_NOTE, HANDLED_BY, HANDLED_DT) ON toady.TB_USER_REPORT TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_DM_MESSAGE TO 'toady_admin'@'%';
--- GRANT SELECT ON toady.TB_DM_THREAD TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, UPDATE (SUSPENDED_UNTIL, UPDATE_DT) ON toady.TB_DM_SETTING TO 'toady_admin'@'%';
 -- 스케줄러 계정: 보관 기간(180일)이 지난 쪽지(처리 대기 신고가 걸린 쪽지는 제외)와, 마지막 쪽지가 180일 지난 대화방, 처리 후 1년 지난 신고 정리.
 -- GRANT SELECT, DELETE ON toady.TB_DM_MESSAGE TO 'toady_sources'@'%';

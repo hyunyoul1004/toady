@@ -26,8 +26,8 @@ public class MailBudget {
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public boolean reserve(boolean reminder) { return reserve(reminder?Kind.REMINDER:Kind.AUTH); }
     /**
-     * 최근 24시간 발송 시도를 DB 잠금 아래 센다. 일정 알림은 인증 예약량을 남기고, 회원가입 메일은 별도 상한(기본 전체의 절반)을 넘지 않아
-     * 무작위 주소로 가입을 반복해도 비밀번호 찾기 메일 몫이 남는다.
+     * 최근 24시간 발송 시도를 DB 잠금 아래 센다. 인증 메일이 아닌 메일(일정 알림·가입 메일)은 합쳐서 인증 예약량을 남기고,
+     * 회원가입 메일은 별도 상한(기본 전체의 절반)도 넘지 않아 무작위 주소로 가입을 반복해도 비밀번호 찾기 메일 몫이 남는다.
      */
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public boolean reserve(Kind kind) {
@@ -36,6 +36,9 @@ public class MailBudget {
         Timestamp since=Timestamp.valueOf(now.minusHours(24));
         long used=jdbc.queryForObject("SELECT COUNT(*) FROM TB_MAIL_ATTEMPT WHERE REG_DT>=?",Long.class,since);
         if(used>=limit) return false;
+        // 인증 메일(비밀번호 찾기 등)이 아닌 메일은 종류를 합쳐서도 인증용 예약분을 건드리지 못한다.
+        // (일정 알림과 가입 메일이 각자 상한 안이어도 합치면 예약분까지 써 버리는 경우를 막는다)
+        if(kind!=Kind.AUTH && used>=limit-reserve) return false;
         if(kind==Kind.REMINDER && jdbc.queryForObject("SELECT COUNT(*) FROM TB_MAIL_ATTEMPT WHERE REG_DT>=? AND MAIL_KIND='REMINDER'",Long.class,since)>=limit-reserve) return false;
         if(kind==Kind.SIGNUP && jdbc.queryForObject("SELECT COUNT(*) FROM TB_MAIL_ATTEMPT WHERE REG_DT>=? AND MAIL_KIND='SIGNUP'",Long.class,since)>=signupLimit) return false;
         jdbc.update("INSERT INTO TB_MAIL_ATTEMPT (ID,MAIL_KIND,REG_DT) VALUES (?,?,?)",UUID.randomUUID().toString(),kind.name(),Timestamp.valueOf(now));

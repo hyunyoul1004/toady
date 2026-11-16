@@ -201,7 +201,11 @@ bash scripts/check-deployment.sh
   ```cron
   0 4 * * 1 cd /home/ec2-user/toady && docker-compose -p toady run --rm --no-deps certbot renew && docker exec nginx nginx -s reload
   ```
-- 관리자 위치(`/admin`)는 `proxy_set_header X-Real-IP $remote_addr;`를 꼭 둡니다(관리자 로그인 실패 제한이 이 값을 씁니다).
+- 앞단 설정 원본은 [nginx/toady.conf](nginx/toady.conf)이며 CI가 같은 이미지로 문법을 검사합니다. 서버의 `/usr/local/dockerVolumes/nginx/conf.d/toady.conf`에 복사한 뒤 `docker exec nginx nginx -t && docker exec nginx nginx -s reload`로 적용합니다.
+- 도메인: 서비스는 `www.toady.co.kr`가 표준 주소이고 `toady.co.kr`은 www로 301 이동합니다. API는 `api.toady.co.kr`, 관리자는 `admin.toady.co.kr`(관리자 IP만 허용)이며 예전 주소 `www.toady.co.kr/admin`은 관리자 도메인으로 보냅니다.
+- 인증서 하나(`toady.co.kr-0002`)에 네 도메인을 담습니다. 도메인을 추가하면 DNS A 레코드를 먼저 만든 뒤 `docker-compose -p toady run --rm --no-deps certbot`(compose의 `--expand` 명령)으로 다시 발급하고 nginx를 reload합니다.
+- 모든 프록시 서버 블록에 `proxy_set_header X-Real-IP $remote_addr;`를 꼭 둡니다(API 요청 제한과 관리자 로그인 실패 제한이 이 값을 씁니다).
+- 관리자 앱의 "서비스에서 보기" 링크는 `TOADY_SITE_URL`(기본 `https://www.toady.co.kr`)을 앞에 붙입니다. 로컬에서는 `.env.local`에 `TOADY_SITE_URL=http://localhost:3000`을 두면 됩니다.
 
 ### DB 변경 (`database.sql`)
 두 앱 모두 `ddl-auto=none`이며 SQL은 배포 전에 관리 계정으로 직접 실행합니다. `CREATE ... IF NOT EXISTS` 형태라 이미 적용한 구역을 다시 실행해도 됩니다. 단, 주석으로만 둔 구역(4·5·6, 14·19의 권한 문)은 실제 구조를 확인한 뒤 따로 적용합니다.

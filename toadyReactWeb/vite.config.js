@@ -5,6 +5,21 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // 자주 바뀌지 않는 큰 라이브러리를 따로 묶어, 앱 코드만 바뀐 배포에서는 다시 받지 않게 한다.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@fullcalendar')) return 'vendor-calendar';
+          if (id.includes('@mui') || id.includes('@emotion')) return 'vendor-mui';
+          return 'vendor';
+        }
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -59,8 +74,4 @@ export default defineConfig({
       }
     }
   },
-  build: {
-    outDir: 'dist',
-    sourcemap: false
-  }
 });

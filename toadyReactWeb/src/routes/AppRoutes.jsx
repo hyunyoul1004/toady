@@ -2,20 +2,30 @@
  * @file AppRoutes.jsx
  * @description 애플리케이션 라우팅 정의 컴포넌트
  */
-import React, { useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import MyPlanner from '@/features/planner/MyPlanner';
-import AccountPage from '@/features/account/AccountPage';
-import MessagesPage from '@/features/community/MessagesPage';
-import ScoreCalculator from '@/features/score/ScoreCalculator';
-import MatchPage from '@/features/match/MatchPage';
-import FaqPage from '@/features/faq/FaqPage';
-import ThisWeekPage from '@/features/explore/ThisWeekPage';
-import RegionsPage from '@/features/explore/RegionsPage';
-import LegalPage from '@/features/legal/LegalPage';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
-import { SignUpCertify } from '@/views/signup/SignUpCertify';
+
+// 첫 화면(청약 캘린더)만 바로 싣고, 나머지 화면은 들어갈 때 내려받는다(첫 접속 JS 크기를 줄인다).
+const MyPlanner = lazy(() => import('@/features/planner/MyPlanner'));
+const AccountPage = lazy(() => import('@/features/account/AccountPage'));
+const MessagesPage = lazy(() => import('@/features/community/MessagesPage'));
+const ScoreCalculator = lazy(() => import('@/features/score/ScoreCalculator'));
+const MatchPage = lazy(() => import('@/features/match/MatchPage'));
+const FaqPage = lazy(() => import('@/features/faq/FaqPage'));
+const ThisWeekPage = lazy(() => import('@/features/explore/ThisWeekPage'));
+const RegionsPage = lazy(() => import('@/features/explore/RegionsPage'));
+const LegalPage = lazy(() => import('@/features/legal/LegalPage'));
+const SignUpCertify = lazy(() => import('@/views/signup/SignUpCertify').then(module => ({ default: module.SignUpCertify })));
+
+/** 화면 파일을 내려받는 동안: 레이아웃(메뉴·하단 탭)은 그대로 두고 본문 자리에만 작은 표시를 둔다. */
+function PageLoading() {
+  return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} role="status" aria-label="화면을 불러오는 중"><CircularProgress size={28} /></Box>;
+}
+const page = element => <Suspense fallback={<PageLoading />}>{element}</Suspense>;
 
 /**
  * 예전 단독 /login 주소: 메인 화면 위에 로그인 팝업을 히스토리 층으로 연다.
@@ -41,20 +51,20 @@ export const AppRoutes = () => {
         <Route index element={<Main />} />
         <Route path="showSubscriptDetail" element={<Main />} />
         <Route path="announcements/:type/:house/:notice" element={<Main />} />
-        <Route path="my" element={<MyPlanner />} />
-        <Route path="account" element={<AccountPage />} />
-        <Route path="messages" element={<MessagesPage />} />
-        <Route path="score" element={<ScoreCalculator />} />
-        <Route path="match" element={<MatchPage key="match" tab="match" />} />
-        <Route path="match/zupzup" element={<MatchPage key="zupzup" tab="zupzup" />} />
-        <Route path="faq" element={<FaqPage />} />
-        <Route path="this-week" element={<ThisWeekPage />} />
-        <Route path="regions" element={<RegionsPage />} />
+        <Route path="my" element={page(<MyPlanner />)} />
+        <Route path="account" element={page(<AccountPage />)} />
+        <Route path="messages" element={page(<MessagesPage />)} />
+        <Route path="score" element={page(<ScoreCalculator />)} />
+        <Route path="match" element={page(<MatchPage key="match" tab="match" />)} />
+        <Route path="match/zupzup" element={page(<MatchPage key="zupzup" tab="zupzup" />)} />
+        <Route path="faq" element={page(<FaqPage />)} />
+        <Route path="this-week" element={page(<ThisWeekPage />)} />
+        <Route path="regions" element={page(<RegionsPage />)} />
         {/* 이전 주소(생활권별 청약)는 지역별 청약으로 옮긴다. */}
         <Route path="living-areas" element={<Navigate to="/regions" replace />} />
-        <Route path="privacy" element={<LegalPage kind="privacy" />} />
-        <Route path="terms" element={<LegalPage kind="terms" />} />
-        <Route path="certify" element={<SignUpCertify />} />
+        <Route path="privacy" element={page(<LegalPage kind="privacy" />)} />
+        <Route path="terms" element={page(<LegalPage kind="terms" />)} />
+        <Route path="certify" element={page(<SignUpCertify />)} />
       </Route>
 
       {/* 로그인은 메인 위 팝업으로 연다(회원가입·비밀번호 찾기·로그인 후 처리가 팝업에 연결되어 있음) */}

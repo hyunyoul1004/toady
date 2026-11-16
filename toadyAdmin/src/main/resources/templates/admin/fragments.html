@@ -23,7 +23,7 @@
             <a th:classappend="${menu == 'operations'} ? 'active'" th:attr="aria-current=${menu == 'operations'} ? 'page' : null" th:href="@{/admin/operations}"><span aria-hidden="true">◎</span>데이터·알림 상태</a>
             <a th:classappend="${menu == 'jobs'} ? 'active'" th:attr="aria-current=${menu == 'jobs'} ? 'page' : null" th:href="@{/admin/jobs}"><span aria-hidden="true">↻</span>수집 작업</a>
         </nav>
-        <div class="side-foot"><span class="who" th:text="${username}">admin</span><a href="/" target="_blank" rel="noopener">사이트 열기 ↗</a>
+        <div class="side-foot"><span class="who" th:text="${username}">admin</span><a th:href="${siteUrl + '/'}" href="/" target="_blank" rel="noopener">사이트 열기 ↗</a>
             <form th:action="@{/admin/logout}" method="post"><button class="quiet" type="submit">로그아웃</button></form></div>
     </div>
     <div class="side-backdrop" aria-hidden="true"></div>

@@ -210,11 +210,16 @@ test('public authentication calls omit expired JWT and preserve the current sess
   assert.equal(requests.length, 6);
   for (const request of requests) {
     assert.equal(request.headers.Authorization, undefined);
-    assert.equal(request.headers['X-Requested-With'],'XMLHttpRequest');
+    assert.equal(request.headers['Content-Type'],'application/json');
+    assert.equal(request.headers['X-Requested-With'], undefined, '쓰지 않는 사용자 정의 헤더로 CORS 사전 요청을 늘리지 않는다');
   }
   assert.equal(h.store.getState().accessToken, old);
   await h.client.apiClient.post('/protected', {});
   assert.equal(requests.at(-1).headers.Authorization, `Bearer ${old}`);
+  // 본문 없는 GET에는 Content-Type을 붙이지 않는다(비로그인 조회가 사전 요청 없이 바로 가게).
+  h.store.getState().logout?.();
+  await h.client.apiClient.get('/api/v1/announcements', { page: 0 });
+  assert.equal(requests.at(-1).headers['Content-Type'], undefined);
 });
 
 test('verification errors keep the original failure without posting to a missing legacy endpoint', async () => {

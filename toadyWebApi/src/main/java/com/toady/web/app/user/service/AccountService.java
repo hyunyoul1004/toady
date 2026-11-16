@@ -361,9 +361,26 @@ public class AccountService {
         catch (DataAccessException missing) { return null; }
     }
 
-    /** 선택 기능 테이블(관심 공고·푸시·캘린더)이 아직 없는 DB에서도 탈퇴·변경은 진행한다. */
+    /**
+     * 선택 기능 테이블(관심 공고·푸시·캘린더·쪽지 등)이 아직 없는 DB에서도 탈퇴·변경은 진행한다.
+     * 테이블이 없는 경우만 건너뛰고, 권한·잠금 대기·교착 같은 다른 오류는 그대로 던져 전체를 되돌린다
+     * (정리하지 못했는데 '탈퇴했어요'로 끝나거나, 예전 재설정 코드가 살아 있는 채 비밀번호가 바뀌지 않게).
+     */
     private void tryUpdate(String sql, Object... args) {
         try { jdbc.update(sql, args); }
-        catch (DataAccessException missing) { log.warn("계정 정리 중 건너뜀: {}", missing.getMostSpecificCause().getMessage()); }
+        catch (DataAccessException failure) {
+            if (!missingTable(failure)) throw failure;
+            log.warn("계정 정리 중 없는 테이블 건너뜀: {}", failure.getMostSpecificCause().getMessage());
+        }
+    }
+
+    /** 테이블이 없다는 오류인가(MariaDB 1146·SQLSTATE 42S02, H2 42102·42104). 그 밖의 오류는 false. */
+    static boolean missingTable(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql) {
+                if (sql.getErrorCode() == 1146 || "42S02".equals(sql.getSQLState()) || sql.getErrorCode() == 42102 || sql.getErrorCode() == 42104) return true;
+            }
+        }
+        return false;
     }
 }
