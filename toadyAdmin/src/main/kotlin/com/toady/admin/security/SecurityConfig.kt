@@ -14,6 +14,9 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.authentication.rememberme.TokenBasedRememberMeServices
+import java.security.MessageDigest
+import java.util.HexFormat
 import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.util.UrlPathHelper
 
@@ -39,8 +42,31 @@ class SecurityConfig {
 			.password("{bcrypt}" + BCryptPasswordEncoder().encode(password)).roles("ADMIN").build())
 	}
 
+	/**
+	 * 로그인 유지(자동 로그인). 세션은 30분 동안 아무 요청이 없으면 끝나고, 로그인 유지를 고른 브라우저는
+	 * 서명된 쿠키로 다시 로그인된다. 쿠키에는 비밀번호가 아닌 서명만 담기며, 비밀번호나 서명 키를 바꾸면 모든 쿠키가 무효가 된다.
+	 * 서명 키(ADMIN_REMEMBER_KEY)가 없으면 아이디·비밀번호로 만든 값을 쓴다(재시작해도 유지).
+	 */
 	@Bean
-	fun adminSecurity(http: HttpSecurity): SecurityFilterChain {
+	fun adminRememberMe(users: UserDetailsService,
+	                    @Value("\${toady.admin.username:admin}") username: String,
+	                    @Value("\${toady.admin.password:}") password: String,
+	                    @Value("\${toady.admin.remember-key:}") rememberKey: String,
+	                    @Value("\${toady.admin.remember-days:14}") rememberDays: Int,
+	                    @Value("\${server.servlet.session.cookie.secure:false}") secure: Boolean): TokenBasedRememberMeServices {
+		val key = rememberKey.ifBlank {
+			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest("toady-admin-remember:$username:$password".toByteArray()))
+		}
+		return TokenBasedRememberMeServices(key, users, TokenBasedRememberMeServices.RememberMeTokenAlgorithm.SHA256).apply {
+			setParameter(REMEMBER_PARAMETER)
+			setCookieName(REMEMBER_COOKIE)
+			setTokenValiditySeconds(rememberDays.coerceIn(1, 30) * 24 * 60 * 60)
+			setUseSecureCookie(secure)
+		}
+	}
+
+	@Bean
+	fun adminSecurity(http: HttpSecurity, rememberMe: TokenBasedRememberMeServices): SecurityFilterChain {
 		http.authorizeHttpRequests {
 			it.requestMatchers("/internal/health").permitAll()
 				.requestMatchers("/admin/login", "/admin/style.css", "/error").permitAll()
@@ -62,6 +88,8 @@ class SecurityConfig {
 					}
 					.permitAll()
 			}
+			.rememberMe { it.rememberMeServices(rememberMe) }
+			// 로그아웃하면 로그인 유지 쿠키도 지운다(rememberMe 설정이 로그아웃 처리기를 함께 등록한다).
 			.logout { it.logoutUrl("/admin/logout").logoutSuccessUrl("/admin/login?logout") }
 			// 앞단 nginx(HTTPS) 뒤에서 http://내부주소 로 보내지 않도록 로그인 이동 주소를 상대 경로로 둔다.
 			.exceptionHandling { it.authenticationEntryPoint(LoginUrlAuthenticationEntryPoint("/admin/login").apply { setFavorRelativeUris(true) }) }
@@ -105,5 +133,7 @@ class SecurityConfig {
 
 	companion object {
 		private val ATTEMPT = SecurityConfig::class.java.name + ".loginAttempt"
+		const val REMEMBER_PARAMETER = "remember"
+		const val REMEMBER_COOKIE = "TOADY_ADMIN_REMEMBER"
 	}
 }

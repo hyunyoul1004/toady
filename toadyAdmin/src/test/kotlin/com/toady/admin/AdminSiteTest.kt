@@ -68,6 +68,25 @@ class AdminSiteTest {
 			.andExpect(redirectedUrl("/admin/"))
 	}
 
+	@Test fun rememberMeKeepsTheAdminSignedInAfterTheSessionEndsUntilLogout() {
+		// 로그인 유지를 고르지 않으면 쿠키를 만들지 않는다.
+		val plain = mvc.perform(post("/admin/login").with(csrf()).param("username", "operator").param("password", "local-test-password").with { it.remoteAddr = "198.51.100.20"; it })
+			.andExpect(redirectedUrl("/admin/")).andReturn().response
+		assertEquals(null, plain.getCookie("TOADY_ADMIN_REMEMBER"))
+
+		val remembered = mvc.perform(post("/admin/login").with(csrf()).param("username", "operator").param("password", "local-test-password").param("remember", "true")
+			.with { it.remoteAddr = "198.51.100.21"; it }).andExpect(redirectedUrl("/admin/")).andReturn().response.getCookie("TOADY_ADMIN_REMEMBER")
+		assertTrue(remembered != null && remembered.maxAge == 14 * 24 * 60 * 60 && remembered.isHttpOnly, "14일짜리 HttpOnly 쿠키")
+		// 세션 없이 쿠키만으로 다시 로그인된다(세션 30분이 지난 경우와 같다).
+		mvc.perform(get("/admin/members").cookie(remembered)).andExpect(status().isOk)
+		// 서명이 맞지 않는 쿠키는 받지 않는다.
+		mvc.perform(get("/admin/members").cookie(jakarta.servlet.http.Cookie("TOADY_ADMIN_REMEMBER", remembered!!.value.reversed())))
+			.andExpect(status().is3xxRedirection).andExpect(redirectedUrl("/admin/login"))
+		// 로그아웃하면 쿠키를 지운다.
+		val cleared = mvc.perform(post("/admin/logout").with(csrf()).cookie(remembered)).andReturn().response.getCookie("TOADY_ADMIN_REMEMBER")
+		assertTrue(cleared != null && cleared.maxAge == 0, "로그아웃은 로그인 유지 쿠키도 지운다")
+	}
+
 	@Test fun membersCanBeSearchedLiterallyAndLocked() {
 		// '%'·'_'는 글자 그대로 찾는다.
 		mvc.perform(get("/admin/members").param("q", "10%").with(admin)).andExpect(status().isOk)
