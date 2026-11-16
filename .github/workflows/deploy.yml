@@ -31,7 +31,7 @@ jobs:
           ssl="$RUNNER_TEMP/ssl/live/toady.co.kr-0002"
           mkdir -p "$ssl"
           openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj "/CN=ci.toady.test" -keyout "$ssl/privkey.pem" -out "$ssl/fullchain.pem" 2>/dev/null
-          docker run --rm -v "$PWD/nginx/toady.conf:/etc/nginx/conf.d/default.conf:ro" -v "$RUNNER_TEMP/ssl:/etc/nginx/ssl:ro" nginx:1.30-alpine nginx -t
+          docker run --rm -v "$PWD/nginx/toady.conf:/etc/nginx/conf.d/default.conf:ro" -v "$PWD/nginx/admin-allow.inc.example:/etc/nginx/conf.d/admin-allow.inc:ro" -v "$RUNNER_TEMP/ssl:/etc/nginx/ssl:ro" nginx:1.30-alpine nginx -t
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -240,7 +240,7 @@ jobs:
             mv -f "$env_tmp" .env
             mv -f "$tag_tmp" .deployed-image-tag
             echo "DEPLOY OK: $NEW_TAG recorded in .deployed-image-tag and .env"
-            # 배포마다 이미지 4개를 받아 디스크가 차면 MariaDB까지 멈추므로, 14일 넘게 쓰지 않은 이미지를 지운다.
-            # 실행 중인 컨테이너의 이미지는 지우지 않고, 되돌릴 때 이전 이미지가 없으면 compose가 다시 받는다.
+            # 배포마다 이미지 4개를 받아 디스크가 차면 MariaDB까지 멈추므로, 만든 지 14일이 넘은 이미지를 지운다(마지막 사용 시각 기준이 아님).
+            # 실행 중인 컨테이너의 이미지는 지우지 않는다. 되돌릴 이전 이미지가 지워졌으면 compose가 Docker Hub에서 다시 받는다.
             docker image prune -af --filter "until=336h" >/dev/null 2>&1 || echo "image prune skipped" >&2
             df -h / | tail -1 | awk '{print "disk used: " $5 " of " $2}'

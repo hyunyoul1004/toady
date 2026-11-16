@@ -30,6 +30,7 @@ class PlannerIntegrationTest {
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired ObjectMapper json;
     @Autowired UserRepository users; @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
     @Autowired MailBudget budget; @Autowired PlannerService planner;
+    @Autowired ReminderUnsubscribe unsubscribe;
     @MockitoBean EmailUtilService mail;
     @Autowired com.toady.web.app.planner.ScoreBenchmarks benchmarks;
     @BeforeEach void setup() {
@@ -236,6 +237,7 @@ class PlannerIntegrationTest {
         assertTrue(areas.get(0).has("open") && areas.get(0).has("upcoming"));
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
         assertTrue(sitemap.contains("/zupzup") && sitemap.contains("/weekly") && sitemap.contains("/score"));
+        assertFalse(sitemap.contains("/match/zupzup"),"같은 내용의 앱 주소는 사이트맵에 따로 넣지 않는다");
     }
     @Test void ratePollAcceptsOneChangeableVoteUntilCloseAndRevealsActualBucket() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
@@ -393,14 +395,33 @@ class PlannerIntegrationTest {
         assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false,null));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE",Integer.class));
     }
+    @Test void reminderEmailCanBeTurnedOffFromTheSignedLinkWithoutLoggingIn() throws Exception {
+        var account=user("optout@example.test");
+        planner.save(account.getUserSeq(),"apt","P1","N1","메모",0,true,null);
+        String url=unsubscribe.url(account.getUserSeq());
+        String query=url.substring(url.indexOf('?'));
+        // 링크를 여는 것(GET, 메일 보안 검사기 포함)만으로는 끄지 않고 확인 화면만 보여 준다.
+        String confirm=mvc.perform(get("/api/v1/public/reminders/unsubscribe"+query)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertTrue(confirm.contains("<form method='post'") && confirm.contains("noindex"),confirm);
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE",Integer.class,account.getUserSeq()));
+        // 서명이 다르거나 다른 회원 번호면 거절한다.
+        String token=query.substring(query.indexOf("&t=")+3);
+        mvc.perform(post("/api/v1/public/reminders/unsubscribe").param("u",String.valueOf(account.getUserSeq())).param("t",token.substring(1)+"A")).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/public/reminders/unsubscribe").param("u",String.valueOf(account.getUserSeq()+1)).param("t",token)).andExpect(status().isBadRequest());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE",Integer.class,account.getUserSeq()));
+        // 메일 앱의 원클릭 해제(RFC 8058)와 같은 POST로 끈다. 관심 공고·메모는 남는다.
+        mvc.perform(post("/api/v1/public/reminders/unsubscribe"+query).contentType(MediaType.APPLICATION_FORM_URLENCODED).content("List-Unsubscribe=One-Click")).andExpect(status().isOk());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE",Integer.class,account.getUserSeq()));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?",Integer.class,account.getUserSeq()));
+    }
     @Test void reminderBundlesEventsAndDoesNotSendTwiceOrAfterOptOut() throws Exception {
         var account=user("reminder@example.test");
         var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=?,RCEPT_ENDDE=?",today.toString(),today.plusDays(1).toString());
         planner.save(account.getUserSeq(),"apt","P1","N1","개인 메모는 이메일에 넣지 않음",3,true,null);
-        var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr");
+        var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr",unsubscribe);
         reminder.send();reminder.send();
-        org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(1)).sendReminder(org.mockito.ArgumentMatchers.eq("reminder@example.test"),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.argThat(body -> body.contains("접수 시작") && body.contains("접수 마감") && !body.contains("개인 메모")));
+        org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(1)).sendReminder(org.mockito.ArgumentMatchers.eq("reminder@example.test"),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.argThat(body -> body.contains("접수 시작") && body.contains("접수 마감") && !body.contains("개인 메모") && body.contains("/api/v1/public/reminders/unsubscribe?u=")),org.mockito.ArgumentMatchers.contains("/api/v1/public/reminders/unsubscribe?u="));
         assertEquals("SENT",jdbc.queryForObject("SELECT STATUS FROM TB_REMINDER_DELIVERY",String.class));
         jdbc.update("DELETE FROM TB_REMINDER_DELIVERY");planner.disableEmails(account.getUserSeq());reminder.send();
         org.mockito.Mockito.verifyNoMoreInteractions(mail);
@@ -410,13 +431,13 @@ class PlannerIntegrationTest {
         var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=?",today.toString());
         planner.save(account.getUserSeq(),"apt","P1","N1","",0,true,null);
-        var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr");
-        org.mockito.Mockito.doThrow(new MailQuotaException()).when(mail).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
+        var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr",unsubscribe);
+        org.mockito.Mockito.doThrow(new MailQuotaException()).when(mail).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
         reminder.send();assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_REMINDER_DELIVERY",Integer.class));
-        org.mockito.Mockito.doThrow(new org.springframework.mail.MailSendException("unknown")).when(mail).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.doThrow(new org.springframework.mail.MailSendException("unknown")).when(mail).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
         reminder.send();reminder.send();
         assertEquals("UNKNOWN",jdbc.queryForObject("SELECT STATUS FROM TB_REMINDER_DELIVERY",String.class));
-        org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(2)).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(2)).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
     }
 
 }

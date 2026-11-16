@@ -82,6 +82,16 @@ class AdminSiteTest {
 		// 서명이 맞지 않는 쿠키는 받지 않는다.
 		mvc.perform(get("/admin/members").cookie(jakarta.servlet.http.Cookie("TOADY_ADMIN_REMEMBER", remembered!!.value.reversed())))
 			.andExpect(status().is3xxRedirection).andExpect(redirectedUrl("/admin/login"))
+		// 배포·재시작으로 관리자 비밀번호 해시(BCrypt, 매번 새 솔트)가 새로 만들어져도 쿠키는 유효하다.
+		val restartedUsers = com.toady.admin.security.SecurityConfig().adminUsers("operator", "local-test-password")
+		val restarted = com.toady.admin.security.SecurityConfig().adminRememberMe(restartedUsers, "operator", "local-test-password", "", 14, false)
+		val request = org.springframework.mock.web.MockHttpServletRequest().apply { setCookies(remembered) }
+		assertTrue(restarted.autoLogin(request, org.springframework.mock.web.MockHttpServletResponse()) != null, "재시작 뒤에도 로그인 유지")
+		// 비밀번호를 바꾸면 기존 쿠키는 풀린다.
+		val changed = com.toady.admin.security.SecurityConfig().adminRememberMe(
+			com.toady.admin.security.SecurityConfig().adminUsers("operator", "changed-password-123"), "operator", "changed-password-123", "", 14, false)
+		val request2 = org.springframework.mock.web.MockHttpServletRequest().apply { setCookies(remembered) }
+		assertEquals(null, changed.autoLogin(request2, org.springframework.mock.web.MockHttpServletResponse()))
 		// 로그아웃하면 쿠키를 지운다.
 		val cleared = mvc.perform(post("/admin/logout").with(csrf()).cookie(remembered)).andReturn().response.getCookie("TOADY_ADMIN_REMEMBER")
 		assertTrue(cleared != null && cleared.maxAge == 0, "로그아웃은 로그인 유지 쿠키도 지운다")

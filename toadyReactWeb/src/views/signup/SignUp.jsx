@@ -3,7 +3,8 @@
  * @description 신규 회원가입 입력 및 유효성 검증 컴포넌트
  */
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { rememberSignupReturn } from '@/features/auth/signupReturn';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -25,6 +26,7 @@ import { formatServerMessage, isEmail } from '@/utils/text.util';
 export const SignUp = (props) => {
   // 이메일은 주소(쿼리)에 넣지 않고 화면 상태로만 넘긴다(방문 기록·유입 로그에 남지 않게).
   const navigate = useNavigate();
+  const location = useLocation();
   const userNicNameFocus = useRef(null);
   const userEmailFocus = useRef(null);
   const userPasswordFocus = useRef(null);
@@ -117,6 +119,8 @@ export const SignUp = (props) => {
       });
 
       if (res?.resultCode === 'SUCCESS') {
+        // 인증을 마치면 가입하던 화면(예: 이야기를 쓰려던 공고)으로 돌아가게 지금 주소를 적어 둔다.
+        rememberSignupReturn(location.pathname + location.search);
         setIsSuccess(true);
       } else {
         setErrorMessage(res?.resultMessage || '회원가입에 실패했습니다.');
@@ -176,7 +180,7 @@ export const SignUp = (props) => {
         >
           인증을 마쳤어요, 로그인하기
         </Button>
-        <Button fullWidth variant="text" onClick={() => navigate('/certify', { state: { resendEmail: formData.userEmail } })}
+        <Button fullWidth variant="text" onClick={() => navigate('/certify', { replace: true, state: { resendEmail: formData.userEmail } })}
           sx={{ mt: 1, fontWeight: 700, color: '#475569' }}>
           메일이 오지 않았나요? 인증 메일 다시 받기
         </Button>

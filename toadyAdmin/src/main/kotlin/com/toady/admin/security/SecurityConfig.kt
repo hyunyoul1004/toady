@@ -45,7 +45,9 @@ class SecurityConfig {
 	/**
 	 * 로그인 유지(자동 로그인). 세션은 30분 동안 아무 요청이 없으면 끝나고, 로그인 유지를 고른 브라우저는
 	 * 서명된 쿠키로 다시 로그인된다. 쿠키에는 비밀번호가 아닌 서명만 담기며, 비밀번호나 서명 키를 바꾸면 모든 쿠키가 무효가 된다.
-	 * 서명 키(ADMIN_REMEMBER_KEY)가 없으면 아이디·비밀번호로 만든 값을 쓴다(재시작해도 유지).
+	 * 서명 키(ADMIN_REMEMBER_KEY)가 없으면 아이디·비밀번호로 만든 값을 쓴다.
+	 * 기본 구현은 서명에 저장된 비밀번호 해시를 넣는데, BCrypt 해시는 서버가 켜질 때마다 새 솔트로 바뀌어 배포할 때마다 쿠키가 풀린다.
+	 * 그래서 해시 대신 원래 비밀번호의 SHA-256 지문을 넣는다(재시작해도 유지, 비밀번호를 바꾸면 무효).
 	 */
 	@Bean
 	fun adminRememberMe(users: UserDetailsService,
@@ -57,7 +59,8 @@ class SecurityConfig {
 		val key = rememberKey.ifBlank {
 			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest("toady-admin-remember:$username:$password".toByteArray()))
 		}
-		return TokenBasedRememberMeServices(key, users, TokenBasedRememberMeServices.RememberMeTokenAlgorithm.SHA256).apply {
+		val fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest("toady-admin-password:$password".toByteArray()))
+		return StableRememberMeServices(key, users, fingerprint).apply {
 			setParameter(REMEMBER_PARAMETER)
 			setCookieName(REMEMBER_COOKIE)
 			setTokenValiditySeconds(rememberDays.coerceIn(1, 30) * 24 * 60 * 60)
@@ -136,4 +139,11 @@ class SecurityConfig {
 		const val REMEMBER_PARAMETER = "remember"
 		const val REMEMBER_COOKIE = "TOADY_ADMIN_REMEMBER"
 	}
+}
+
+/** 로그인 유지 서명에 저장된 비밀번호 해시 대신 고정된 비밀번호 지문을 쓴다(위 adminRememberMe 설명 참고). */
+class StableRememberMeServices(key: String, users: UserDetailsService, private val passwordFingerprint: String) :
+	TokenBasedRememberMeServices(key, users, RememberMeTokenAlgorithm.SHA256) {
+	override fun makeTokenSignature(tokenExpiryTime: Long, username: String, password: String?, algorithm: RememberMeTokenAlgorithm): String =
+		super.makeTokenSignature(tokenExpiryTime, username, passwordFingerprint, algorithm)
 }

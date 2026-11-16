@@ -137,3 +137,19 @@ test('closing a detail goes back past the inline layers stacked on it', async ()
   assert.equal(detailCloseSteps({ detailOverlay: true, overlayLayers: [{ id: 'price-map-complex', value: 'apt|1' }] }), 2);
   assert.equal(detailCloseSteps(null), 1);
 });
+
+test('공고 주소 위에 로그인 창을 열면 목록·상세·로그인 순으로 쌓는다', async () => {
+  const { detailMarker, detailListBase, openLoginOver } = await import('../src/features/push/pushSupport.js');
+  assert.deepEqual(detailMarker('/announcements/apt/1/1?tabType=comment'), { detailOverlay: true });
+  assert.equal(detailListBase('/announcements/apt/1/1?tabType=comment'), '/');
+  assert.equal(detailListBase('/my?subscriptSeq=apt%2F1%2F1&tabType=rate&x=1'), '/my?x=1');
+  const calls = [];
+  openLoginOver((to, options) => calls.push([to, options]), '/announcements/apt/1/1?tabType=comment');
+  assert.deepEqual(calls.map(([to]) => to), ['/', '/announcements/apt/1/1?tabType=comment', '/announcements/apt/1/1?tabType=comment']);
+  assert.equal(calls[0][1].replace, true);
+  assert.deepEqual(calls[1][1].state, { detailOverlay: true });
+  assert.deepEqual(calls[2][1].state, { detailOverlay: true, overlayLayers: [{ id: 'layout', value: 'login' }] });
+  const plain = [];
+  openLoginOver((to, options) => plain.push([to, options]), '/my');
+  assert.deepEqual(plain.map(([to, o]) => [to, Boolean(o.replace)]), [['/my', true], ['/my', false]]);
+});

@@ -69,8 +69,8 @@ public class AnnouncementSitemap {
         xml.append("<url><loc>").append(esc(domain+"/")).append("</loc></url>");
         xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
         for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
-        // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기
-        for(String path:List.of("/zupzup","/weekly","/score","/match","/match/zupzup","/help/faq")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
+        // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기. /match/zupzup은 /zupzup과 같은 내용이라 공개 주소(/zupzup) 하나만 알린다.
+        for(String path:List.of("/zupzup","/weekly","/score","/match","/help/faq")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
         xml.append("</urlset>");return response(xml.toString());
     }
     private static String esc(String value) { return HtmlUtils.htmlEscape(value); }

@@ -6,8 +6,12 @@ import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 import MainLayout from '@/components/layout/MainLayout';
 import { Main } from '@/views/main/Main';
+import { safeReturnPath } from '@/features/auth/signupReturn';
+import { openLoginOver } from '@/features/push/pushSupport';
 
 // 첫 화면(청약 캘린더)만 바로 싣고, 나머지 화면은 들어갈 때 내려받는다(첫 접속 JS 크기를 줄인다).
 const MyPlanner = lazy(() => import('@/features/planner/MyPlanner'));
@@ -25,7 +29,23 @@ const SignUpCertify = lazy(() => import('@/views/signup/SignUpCertify').then(mod
 function PageLoading() {
   return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} role="status" aria-label="화면을 불러오는 중"><CircularProgress size={28} /></Box>;
 }
-const page = element => <Suspense fallback={<PageLoading />}>{element}</Suspense>;
+/**
+ * 화면 파일을 받지 못했을 때(배포 직후 이전 파일 이름, 끊긴 모바일 네트워크) 빈 화면 대신 다시 시도할 길을 준다.
+ * 메뉴·하단 탭은 레이아웃이라 그대로 남는다.
+ */
+class PageErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <Box sx={{ textAlign: 'center', py: 8, px: 2 }} role="alert">
+      <Typography sx={{ fontWeight: 800, mb: 1 }}>화면을 불러오지 못했어요</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>새 버전이 배포됐거나 연결이 잠시 끊겼을 수 있어요.</Typography>
+      <Button variant="contained" disableElevation onClick={() => window.location.reload()}>새로고침</Button>
+    </Box>;
+  }
+}
+const page = element => <PageErrorBoundary><Suspense fallback={<PageLoading />}>{element}</Suspense></PageErrorBoundary>;
 
 /**
  * 예전 단독 /login 주소: 메인 화면 위에 로그인 팝업을 히스토리 층으로 연다.
@@ -33,13 +53,15 @@ const page = element => <Suspense fallback={<PageLoading />}>{element}</Suspense
  */
 function LoginRedirect() {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const done = useRef(false);
   useEffect(() => {
     if (done.current) return;
     done.current = true;
-    navigate('/', { replace: true });
-    navigate('/', { state: { overlayLayers: [{ id: 'layout', value: 'login' }] } });
-  }, [navigate]);
+    // /login?next=/my 처럼 돌아갈 앱 안 주소가 있으면 그 화면 위에 로그인 창을 연다(외부 주소는 받지 않는다).
+    const next = safeReturnPath(new URLSearchParams(search).get('next')) || '/';
+    openLoginOver(navigate, next);
+  }, [navigate, search]);
   return null;
 }
 
@@ -48,16 +70,16 @@ function LoginRedirect() {
  * 봇은 웹 nginx가 서버 HTML을 주므로 이 화면까지 오지 않는다. 유입 꼬리표(src 등) 쿼리는 그대로 넘긴다.
  */
 function PublicPathRedirect({ to }) {
-  const { search } = useLocation();
-  return <Navigate to={to + search} replace />;
+  const { search, hash, state } = useLocation();
+  return <Navigate to={to + search + hash} replace state={state} />;
 }
 /** /areas/{생활권} → 그 생활권으로 거른 청약 캘린더(/?area=). 생활권 이름 확인은 캘린더가 한다. */
 function AreaRedirect() {
   const { slug } = useParams();
-  const { search } = useLocation();
+  const { search, hash, state } = useLocation();
   const next = new URLSearchParams(search);
   if (/^[a-z0-9-]{1,40}$/.test(slug || '')) next.set('area', slug);
-  return <Navigate to={`/?${next}`} replace />;
+  return <Navigate to={`/?${next}${hash}`} replace state={state} />;
 }
 
 export const AppRoutes = () => {

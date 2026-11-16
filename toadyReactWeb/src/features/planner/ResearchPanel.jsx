@@ -1,7 +1,7 @@
 import ImageExportButton from '@/features/announcement/export/ImageExportButton';
 import { detailImageSections } from '@/features/announcement/export/exportData';
 import { useEffect, useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Alert, Box, Button, Chip, Skeleton, Tab, Tabs, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
 import BookmarkRounded from '@mui/icons-material/BookmarkRounded';
@@ -56,15 +56,31 @@ function Notes({items}) {
 }
 
 export function AnnouncementActions({detail}) {
-  const planner=usePlanner(),navigate=useNavigate();
-  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null),[justSaved,setJustSaved]=useState(false);
+  const planner=usePlanner();
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null),[justSaved,setJustSaved]=useState(false),[removed,setRemoved]=useState(null),[pending,setPending]=useState(null),[confirmRemove,setConfirmRemove]=useState(false);
   const summary=summaryOf(detail),saved=planner.items.some(x=>x.id===summary.id);
-  useEffect(()=>{setJustSaved(false);},[summary.id]);
-  async function save(){if(saved){navigate('/my');return;}setBusy(true);setMessage(null);try{await planner.save({id:summary.id,summary,note:'',checklist:0,emailEnabled:false});setJustSaved(true);}catch(e){setMessage(e.message);}finally{setBusy(false);}}
+  useEffect(()=>{setJustSaved(false);setRemoved(null);setConfirmRemove(false);},[summary.id]);
+  // 저장 버튼은 저장·해제를 오가는 토글이다(나의 청약 이동은 옆 버튼). 해제하면 메모·체크리스트·단계까지 지워지므로 바로 되돌릴 수 있게 남겨 둔다.
+  // 메모·준비 체크를 적어 둔 공고는 해제하면 함께 지워지므로 한 번 더 확인한다(되돌리기는 이 상세를 보는 동안만 가능하다).
+  async function save(force=false){
+    const item=saved?planner.items.find(x=>x.id===summary.id):null;
+    if(saved && !force && item && ((item.note||'').trim() || item.checklist>0)){setConfirmRemove(true);return;}
+    setConfirmRemove(false);setPending(saved?'remove':'save');setBusy(true);setMessage(null);
+    try{
+      if(saved){await planner.remove(summary.id);setJustSaved(false);setRemoved(item||null);}
+      else{await planner.save({id:summary.id,summary,note:'',checklist:0,emailEnabled:false});setRemoved(null);setJustSaved(true);}
+    }catch(e){setMessage(e.message);}finally{setBusy(false);setPending(null);}
+  }
+  async function undoRemove(){
+    if(!removed)return;setBusy(true);setMessage(null);
+    try{await planner.save({...removed,summary:removed.summary||summary});setRemoved(null);}catch(e){setMessage(e.message);}finally{setBusy(false);}
+  }
   return <>
-    <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} onClick={save}>{saved?'저장한 공고 관리':busy?'저장 중…':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
+    <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} aria-label={saved?'관심 공고 저장됨, 누르면 저장 해제':undefined} title={saved?'다시 누르면 관심 공고에서 빠져요':undefined} onClick={()=>save()}>{pending==='remove'?'해제 중…':pending==='save'?'저장 중…':saved?'관심 공고 저장됨':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
     {!planner.loggedIn && <p className="research-storage-note">로그인 없이 저장하고, 이 브라우저에서 이어볼 수 있어요.</p>}
     </div>    {justSaved && <PushPrompt compact overlayId="push-settings-detail" announcementId={summary.id} loggedIn={planner.loggedIn} />}
+    {confirmRemove && saved && <Alert severity="warning" sx={{my:1}} action={<><Button color="inherit" size="small" onClick={()=>setConfirmRemove(false)}>취소</Button><Button color="inherit" size="small" sx={{fontWeight:800}} disabled={busy} onClick={()=>save(true)}>해제</Button></>}>메모나 준비 체크가 있는 공고예요. 해제하면 함께 지워져요.</Alert>}
+    {removed && !saved && <Alert severity="info" sx={{my:1}} action={<Button color="inherit" size="small" disabled={busy} onClick={undoRemove}>되돌리기</Button>}>관심 공고에서 뺐어요.</Alert>}
     {message && <Alert severity="error" sx={{my:1}}>{message}</Alert>}
     {planner.error && <Alert severity="error" sx={{my:1}} action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>저장한 공고를 확인하지 못했습니다.</Alert>}
   </>;

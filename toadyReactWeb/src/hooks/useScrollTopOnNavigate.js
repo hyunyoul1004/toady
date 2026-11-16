@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 
 /**
@@ -9,8 +9,12 @@ import { useLocation, useNavigationType } from 'react-router-dom';
 export function useScrollTopOnNavigate() {
   const { pathname, hash } = useLocation();
   const type = useNavigationType();
+  const previous = useRef(pathname);
   useEffect(() => {
-    if (type === 'POP' || hash) return;
+    const from = previous.current;
+    previous.current = pathname;
+    // 공고 상세(/announcements/…)는 목록 위에 뜨는 창이라, 열고 닫을 때 뒤의 목록을 맨 위로 올리지 않는다.
+    if (type === 'POP' || hash || from.startsWith('/announcements/') || pathname.startsWith('/announcements/')) return;
     window.scrollTo(0, 0);
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 }

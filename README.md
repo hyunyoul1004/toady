@@ -201,7 +201,7 @@ bash scripts/check-deployment.sh
   ```cron
   0 4 * * 1 cd /home/ec2-user/toady && docker-compose -p toady run --rm --no-deps certbot renew && docker exec nginx nginx -s reload
   ```
-- 앞단 설정 원본은 [nginx/toady.conf](nginx/toady.conf)이며 CI가 같은 이미지로 문법을 검사합니다. 서버의 `/usr/local/dockerVolumes/nginx/conf.d/toady.conf`에 복사한 뒤 `docker exec nginx nginx -t && docker exec nginx nginx -s reload`로 적용합니다.
+- 앞단 설정 원본은 [nginx/toady.conf](nginx/toady.conf)이며 CI가 같은 이미지로 문법을 검사합니다. 관리자 허용 IP는 저장소에 두지 않고 서버의 `conf.d/admin-allow.inc`에만 둡니다(형식: [nginx/admin-allow.inc.example](nginx/admin-allow.inc.example)). 서버의 `/usr/local/dockerVolumes/nginx/conf.d/toady.conf`에 복사한 뒤 `docker exec nginx nginx -t && docker exec nginx nginx -s reload`로 적용합니다.
 - 도메인: 서비스는 `www.toady.co.kr`가 표준 주소이고 `toady.co.kr`은 www로 301 이동합니다. API는 `api.toady.co.kr`, 관리자는 `admin.toady.co.kr`(관리자 IP만 허용)이며 예전 주소 `www.toady.co.kr/admin`은 관리자 도메인으로 보냅니다.
 - 인증서 하나(`toady.co.kr-0002`)에 네 도메인을 담습니다. 도메인을 추가하면 DNS A 레코드를 먼저 만든 뒤 `docker-compose -p toady run --rm --no-deps certbot`(compose의 `--expand` 명령)으로 다시 발급하고 nginx를 reload합니다.
 - 모든 프록시 서버 블록에 `proxy_set_header X-Real-IP $remote_addr;`를 꼭 둡니다(API 요청 제한과 관리자 로그인 실패 제한이 이 값을 씁니다).

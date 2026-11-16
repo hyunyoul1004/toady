@@ -46,9 +46,14 @@ public class EmailUtilImpl implements EmailUtilService {
     public void sendSignupEmail(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.SIGNUP); }
 
     @Override
-    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.REMINDER); }
+    public void sendReminder(String toAddress, String subject, String body) { send(toAddress, subject, body, MailBudget.Kind.REMINDER, null); }
 
-    private void send(String toAddress, String subject, String body, MailBudget.Kind kind) {
+    @Override
+    public void sendReminder(String toAddress, String subject, String body, String unsubscribeUrl) { send(toAddress, subject, body, MailBudget.Kind.REMINDER, unsubscribeUrl); }
+
+    private void send(String toAddress, String subject, String body, MailBudget.Kind kind) { send(toAddress, subject, body, kind, null); }
+
+    private void send(String toAddress, String subject, String body, MailBudget.Kind kind, String unsubscribeUrl) {
         if (!budget.reserve(kind)) throw new MailQuotaException();
 
         MimeMessage message = sender.createMimeMessage();
@@ -63,6 +68,11 @@ public class EmailUtilImpl implements EmailUtilService {
             helper.setTo(toAddress);
             helper.setSubject(subject);
             helper.setText(body, true);
+            // Gmail 등 메일 앱의 '수신 거부' 버튼(RFC 8058 원클릭 해제). 주소는 https만 넣는다.
+            if (unsubscribeUrl != null && unsubscribeUrl.startsWith("https://")) {
+                message.setHeader("List-Unsubscribe", "<" + unsubscribeUrl + ">");
+                message.setHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+            }
         } catch (MessagingException | java.io.UnsupportedEncodingException e) {
             throw new IllegalStateException("이메일 메시지를 구성할 수 없습니다.", e);
         }

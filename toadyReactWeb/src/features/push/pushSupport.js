@@ -79,7 +79,31 @@ export const PUSH_HELP = {
 /** 알림으로 연 공고 상세만 '앱 안 상세'로 표시한다(그 화면의 표식 하나). 상세가 없는 화면에 표식을 붙이면 탭 다시 누르기가 이전 화면으로 빠져나간다. */
 export function detailMarker(path) {
   const url = new URL(path, 'https://toady.invalid');
+  // 공유 링크와 같은 공고 주소(/announcements/종류/번호/번호)는 메인 화면의 상세다.
+  if (/^\/announcements\/[a-z-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)) return { detailOverlay: true };
   if (!url.searchParams.get('subscriptSeq')) return null;
   const marker = { '/': 'detailOverlay', '/my': 'plannerDetail', '/score': 'scoreDetail', '/match': 'matchDetail', '/match/zupzup': 'matchDetail', '/this-week': 'weeklyDetail' }[url.pathname];
   return marker ? { [marker]: true } : null;
+}
+
+/** 상세 주소를 닫았을 때 돌아갈 목록 주소(상세 값만 뺀다). /announcements/…는 첫 화면이다. */
+export function detailListBase(path) {
+  const url = new URL(path, 'https://toady.invalid');
+  if (url.pathname.startsWith('/announcements/')) return '/';
+  url.searchParams.delete('subscriptSeq'); url.searchParams.delete('tabType'); url.searchParams.delete('comment');
+  return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '');
+}
+
+/**
+ * 어떤 화면 위에 로그인 창을 연다(인증 완료 후, 예전 /login?next=). 지금 기록은 바꾸고 새 기록을 쌓는다.
+ * 상세 주소면 [목록, 상세(표식), 상세+로그인] 순으로 쌓아, 로그인 창을 닫으면 상세가, 상세를 닫으면 목록이 나오게 한다.
+ * (표식 없이 상세를 열면 useDirectDetailHistory가 목록 단계를 다시 끼우면서 로그인을 닫을 때 상세까지 닫혔다.)
+ */
+export function openLoginOver(navigate, path) {
+  const login = { overlayLayers: [{ id: 'layout', value: 'login' }] };
+  const marker = detailMarker(path);
+  if (!marker) { navigate(path, { replace: true }); navigate(path, { state: login }); return; }
+  navigate(detailListBase(path), { replace: true });
+  navigate(path, { state: marker });
+  navigate(path, { state: { ...marker, ...login } });
 }

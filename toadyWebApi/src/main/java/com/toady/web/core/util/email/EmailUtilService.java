@@ -17,6 +17,8 @@ public interface EmailUtilService {
 
     /** 관심 일정 알림도 같은 Gmail을 사용하며 별도 할당량을 적용한다. */
     default void sendReminder(String toAddress, String subject, String body) throws MessagingException { sendEmail(toAddress, subject, body); }
+    /** 수신 해제 주소를 List-Unsubscribe(원클릭 해제) 헤더로 함께 보낸다. 구현이 헤더를 지원하지 않으면 본문 링크만 남는다. */
+    default void sendReminder(String toAddress, String subject, String body, String unsubscribeUrl) throws MessagingException { sendReminder(toAddress, subject, body); }
 
     void sendEmail(String toAddress, String subject, String body) throws MessagingException;
 

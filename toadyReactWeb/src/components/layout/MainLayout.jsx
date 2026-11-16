@@ -21,6 +21,8 @@ import { useMessageUnread } from '@/features/community/useCommunity';
 import CommunityLayers from '@/features/community/CommunityLayers';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
+import Snackbar from '@mui/material/Snackbar';
+import Button from '@mui/material/Button';
 
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Copyright from './Copyright';
@@ -48,6 +50,14 @@ export function MainLayout() {
   const { unread: replyUnread } = useMyReplies();
   const messageUnread = useMessageUnread();
   const newCount = replyUnread + messageUnread;
+
+  // 로그인이 만료돼 API가 401을 돌려주면(api/client.js가 auth-logout을 보낸다) 말없이 로그아웃되지 않게 알리고 다시 로그인할 길을 준다.
+  const [sessionExpired, setSessionExpired] = React.useState(false);
+  React.useEffect(() => {
+    const onExpired = () => setSessionExpired(true);
+    window.addEventListener('auth-logout', onExpired);
+    return () => window.removeEventListener('auth-logout', onExpired);
+  }, []);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -268,6 +278,10 @@ export function MainLayout() {
           }}
         />
       </Dialog>
+      <Snackbar open={sessionExpired} autoHideDuration={8000} onClose={(_, reason) => { if (reason !== 'clickaway') setSessionExpired(false); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} sx={{ bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', md: 24 } }}
+        message="로그인이 만료됐어요. 다시 로그인해 주세요."
+        action={<Button color="inherit" size="small" sx={{ fontWeight: 800 }} onClick={() => { setSessionExpired(false); setLoginModalOpen(true); }}>다시 로그인</Button>} />
     </Box>
   );
 }

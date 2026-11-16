@@ -7,6 +7,8 @@
 import React, { useEffect, useState } from 'react';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { takeSignupReturn } from '@/features/auth/signupReturn';
+import { openLoginOver } from '@/features/push/pushSupport';
 import { Box, Button, Container, Typography, Alert, AlertTitle, CircularProgress, TextField, InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -114,7 +116,10 @@ export const SignUpCertify = () => {
           </Box>}
 
           {succeeded
-            ? <Button variant="contained" disableElevation size="large" onClick={() => { navigate('/', { replace: true }); navigate('/', { state: { overlayLayers: [{ id: 'layout', value: 'login' }] } }); }} sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}>로그인하기</Button>
+            ? <Button variant="contained" disableElevation size="large" onClick={() => {
+                // 가입하던 화면이 있으면 그 화면 위에 로그인 창을 연다(없으면 첫 화면). 먼저 인증 주소를 그 화면으로 바꿔 뒤로가기가 인증 화면으로 돌아오지 않게 한다.
+                openLoginOver(navigate, takeSignupReturn() || '/');
+              }} sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}>로그인하기</Button>
             : <Button variant="text" onClick={() => navigate('/')} sx={{ textTransform: 'none' }}>메인으로 이동</Button>}
         </Box>
       </Container>

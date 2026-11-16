@@ -182,7 +182,7 @@ function ReceivedReplies() {
   const latest = replies.data?.latestSeq;
   useEffect(() => { if (latest) replies.markSeen(); }, [latest]);
   if (replies.isLoading || (!items.length && !replies.isError)) return null;
-  const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
   const fresh = items.filter(item => item.isNew).length;
   return <section className="account-card account-replies" aria-labelledby="account-replies-title">
     <div className="account-stories-head"><h2 id="account-replies-title"><ForumOutlined fontSize="small" />받은 답글{fresh > 0 && <span className="account-new-count">새 답글 {fresh}</span>}</h2></div>
@@ -216,7 +216,7 @@ function MyStories({ onClose, seen }) {
     staleTime: 30000
   });
   const items = (stories.data?.pages || []).flatMap(page => page?.items || []);
-  const open = item => navigate(`/?subscriptSeq=${encodeURIComponent(item.announcementId)}&tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
   return <section className="account-card account-stories" id="account-stories" aria-labelledby="account-stories-title">
     <div className="account-stories-head"><h2 id="account-stories-title"><ChatBubbleOutlineRounded fontSize="small" />내가 쓴 이야기</h2>
       <Button size="small" onClick={onClose}>접기</Button></div>

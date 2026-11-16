@@ -28,7 +28,8 @@ import '@/features/account/account.css';
 import './community.css';
 
 const MAX = 1000;
-const detailPath = contextId => `/?subscriptSeq=${encodeURIComponent(contextId)}&tabType=comment`;
+// 공고 상세는 공유 링크와 같은 주소(/announcements/…)로 연다.
+const detailPath = contextId => `/announcements/${contextId}?tabType=comment`;
 
 /** 쪽지 입력. 보낼 수 없으면 이유를 대신 보여 준다. */
 function Composer({ canSend, reason, onSend, placeholder, autoFocus }) {

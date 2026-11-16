@@ -89,7 +89,7 @@ async function render(detail,tables,label,maxHeight) {
   ctx.font=`600 22px ${FONT}`;ctx.fillStyle='#0f766e';ctx.fillText('출처: 청약홈 공개 자료 · TOADY에서 정리',MARGIN,y);
   ctx.font=`400 19px ${FONT}`;ctx.fillStyle='#64748b';
   ctx.fillText(`저장일 ${new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date())} · 공개 자료는 정정될 수 있습니다.`,MARGIN,y+34);
-  ctx.fillText(`toady.co.kr/announcements/${detail.subscriptSeq || ''}`,MARGIN,y+65);
+  ctx.fillText(`www.toady.co.kr/announcements/${detail.subscriptSeq || ''}`,MARGIN,y+65);
   return canvas;
 }
 

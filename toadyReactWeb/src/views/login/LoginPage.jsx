@@ -3,6 +3,7 @@
  * @description 사용자 로그인 화면 컴포넌트
  */
 import React, { useState, useRef } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -294,7 +295,8 @@ export const LoginPage = (props) => {
           {isLoading ? <CircularProgress size={24} color="inherit" /> : '로그인'}
         </Button>
 
-        <Button component="a" href="/certify" variant="text" sx={{ alignSelf: 'center' }}>
+        {/* 앱 안에서 이동해 보던 화면을 다시 불러오지 않는다. 적어 둔 이메일은 주소가 아닌 화면 상태로 넘긴다. */}
+        <Button component={RouterLink} to="/certify" state={{ resendEmail: isEmail(loginInfo.userEmail) ? loginInfo.userEmail : '' }} variant="text" sx={{ alignSelf: 'center' }}>
           가입 인증 메일 다시 받기
         </Button>
 
