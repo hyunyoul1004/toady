@@ -103,7 +103,7 @@ test('SPA path classification matches the service worker list', async () => {
   assert.equal(isSpaPath('/my', origin), true);
   assert.equal(isSpaPath('/my/', origin), true);
   assert.equal(isSpaPath('/areas/unjeong', origin), false);
-  assert.equal(isSpaPath('/announcements/apt/P1/N1', origin), false);
+  assert.equal(isSpaPath('/announcements/apt/P1/N1', origin), true, '공고 주소는 사람에게 앱 상세 화면이다');
   assert.equal(isSpaPath('/weekly', origin), false);
   assert.equal(isSpaPath('https://evil.example/my', origin), false);
   const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
@@ -152,4 +152,16 @@ test('공고 주소 위에 로그인 창을 열면 목록·상세·로그인 순
   const plain = [];
   openLoginOver((to, options) => plain.push([to, options]), '/my');
   assert.deepEqual(plain.map(([to, o]) => [to, Boolean(o.replace)]), [['/my', true], ['/my', false]]);
+});
+
+test('공고 주소는 앱 안 경로이고, 서비스 워커와 같은 식을 쓴다', async () => {
+  const { ANNOUNCEMENT_PATH, isSpaPath, detailMarker, detailListBase } = await import('../src/features/push/pushSupport.js');
+  const origin = 'https://www.toady.co.kr';
+  assert.equal(isSpaPath('/announcements/apt/2026000576/2026000576?tabType=rate', origin), true);
+  assert.equal(isSpaPath('/announcements/evil/1/1', origin), false);
+  assert.equal(isSpaPath('/weekly', origin), false);
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  assert.equal(source.match(/const ANNOUNCEMENT_PATH = (\/.*\/);/)[1], String(ANNOUNCEMENT_PATH));
+  assert.deepEqual(detailMarker('/showSubscriptDetail?subscriptSeq=apt%2F1%2F1'), { detailOverlay: true });
+  assert.equal(detailListBase('/showSubscriptDetail?subscriptSeq=apt%2F1%2F1'), '/');
 });

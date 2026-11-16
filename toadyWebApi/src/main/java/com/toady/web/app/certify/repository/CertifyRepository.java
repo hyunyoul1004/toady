@@ -54,4 +54,6 @@ public interface CertifyRepository extends JpaRepository<CertifyEntity, Long> {
     @Query("update CertifyEntity c set c.certifyYn = 'Y', c.updateDt = :now, c.updateUserSeq = :userSeq where c.createUserSeq = :userSeq and c.certifyType = 'ACCOUNT' and c.certifyYn = 'N'")
     int invalidateAccountCodes(@Param("userSeq") Long userSeq,
             @Param("now") LocalDateTime now);
+    /** 하루 비밀번호 재설정 메일 수(계정별 상한 확인용). */
+    long countByCertifyTypeAndCreateUserSeqAndCreateDtGreaterThanEqual(String certifyType, Long createUserSeq, java.time.LocalDateTime from);
 }

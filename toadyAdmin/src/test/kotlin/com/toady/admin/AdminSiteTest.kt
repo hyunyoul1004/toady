@@ -24,6 +24,7 @@ import kotlin.test.assertTrue
 	"spring.datasource.username=sa", "spring.datasource.password=",
 	"spring.sql.init.mode=always", "spring.sql.init.schema-locations=classpath:admin-schema.sql",
 	"toady.admin.username=operator", "toady.admin.password=local-test-password",
+	"toady.admin.remember-key=test-remember-key-0123456789abcdef0123456789",
 	// 닫힌 포트: 스케줄러에 연결하지 못했을 때의 안내를 확인한다.
 	"toady.scheduler.base-url=http://127.0.0.1:9", "toady.scheduler.token=test-internal-token-0123456789abcdef",
 ])
@@ -77,6 +78,10 @@ class AdminSiteTest {
 		val remembered = mvc.perform(post("/admin/login").with(csrf()).param("username", "operator").param("password", "local-test-password").param("remember", "true")
 			.with { it.remoteAddr = "198.51.100.21"; it }).andExpect(redirectedUrl("/admin/")).andReturn().response.getCookie("TOADY_ADMIN_REMEMBER")
 		assertTrue(remembered != null && remembered.maxAge == 14 * 24 * 60 * 60 && remembered.isHttpOnly, "14일짜리 HttpOnly 쿠키")
+		assertEquals("Strict", remembered!!.getAttribute("SameSite"))
+		assertTrue(mvc.perform(get("/admin/login")).andReturn().response.contentAsString.contains("name=\"remember\""), "키가 있으면 체크박스를 보여 준다")
+		// 키가 없거나 짧으면 로그인 유지를 끈다(비밀번호로 키를 만들지 않는다).
+		assertFalse(com.toady.admin.security.SecurityConfig.rememberEnabled("") || com.toady.admin.security.SecurityConfig.rememberEnabled("short"))
 		// 세션 없이 쿠키만으로 다시 로그인된다(세션 30분이 지난 경우와 같다).
 		mvc.perform(get("/admin/members").cookie(remembered)).andExpect(status().isOk)
 		// 서명이 맞지 않는 쿠키는 받지 않는다.
@@ -84,12 +89,12 @@ class AdminSiteTest {
 			.andExpect(status().is3xxRedirection).andExpect(redirectedUrl("/admin/login"))
 		// 배포·재시작으로 관리자 비밀번호 해시(BCrypt, 매번 새 솔트)가 새로 만들어져도 쿠키는 유효하다.
 		val restartedUsers = com.toady.admin.security.SecurityConfig().adminUsers("operator", "local-test-password")
-		val restarted = com.toady.admin.security.SecurityConfig().adminRememberMe(restartedUsers, "operator", "local-test-password", "", 14, false)
+		val restarted = com.toady.admin.security.SecurityConfig().adminRememberMe(restartedUsers, "operator", "local-test-password", "test-remember-key-0123456789abcdef0123456789", 14, false)
 		val request = org.springframework.mock.web.MockHttpServletRequest().apply { setCookies(remembered) }
 		assertTrue(restarted.autoLogin(request, org.springframework.mock.web.MockHttpServletResponse()) != null, "재시작 뒤에도 로그인 유지")
 		// 비밀번호를 바꾸면 기존 쿠키는 풀린다.
 		val changed = com.toady.admin.security.SecurityConfig().adminRememberMe(
-			com.toady.admin.security.SecurityConfig().adminUsers("operator", "changed-password-123"), "operator", "changed-password-123", "", 14, false)
+			com.toady.admin.security.SecurityConfig().adminUsers("operator", "changed-password-123"), "operator", "changed-password-123", "test-remember-key-0123456789abcdef0123456789", 14, false)
 		val request2 = org.springframework.mock.web.MockHttpServletRequest().apply { setCookies(remembered) }
 		assertEquals(null, changed.autoLogin(request2, org.springframework.mock.web.MockHttpServletResponse()))
 		// 로그아웃하면 쿠키를 지운다.

@@ -9,8 +9,12 @@ import org.springframework.web.bind.annotation.ModelAttribute
  * "사이트 열기"·"서비스에서 보기" 링크는 서비스 주소를 앞에 붙인 절대 주소로 만든다.
  */
 @ControllerAdvice
-class SiteLinks(@Value("\${toady.site.url:https://www.toady.co.kr}") url: String) {
+class SiteLinks(@Value("\${toady.site.url:https://www.toady.co.kr}") url: String,
+                @Value("\${toady.admin.remember-key:}") rememberKey: String) {
 	private val siteUrl = url.trim().trimEnd('/')
+	private val rememberEnabled = com.toady.admin.security.SecurityConfig.rememberEnabled(rememberKey)
 
 	@ModelAttribute("siteUrl") fun siteUrl() = siteUrl
+	/** 로그인 화면의 '로그인 유지' 체크박스는 서명 키(ADMIN_REMEMBER_KEY)가 있을 때만 보인다. */
+	@ModelAttribute("rememberEnabled") fun rememberEnabled() = rememberEnabled
 }

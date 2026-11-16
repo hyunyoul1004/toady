@@ -241,7 +241,7 @@ export const LoginPage = (props) => {
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
-                    aria-label="toggle password visibility"
+                    aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                     onClick={() => setShowPassword((prev) => !prev)}
                     edge="end"
                     size="small"

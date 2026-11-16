@@ -84,3 +84,6 @@ LOG_FILE_NAME_IS_UNDEFINED/
 # 개발 DB 테스트 계정 생성 스크립트(로컬에서만 사용)
 scripts/CreateDevUsers.java
 scripts/create-dev-users.sh
+
+# 관리자 허용 IP(서버에만 둔다. 예시는 nginx/admin-allow.inc.example)
+nginx/admin-allow.inc

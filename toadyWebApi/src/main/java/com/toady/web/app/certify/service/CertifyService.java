@@ -236,6 +236,8 @@ public class CertifyService {
         return true;
     }
 
+    static final int DAILY_PASSWORD_MAILS = 5;
+
     public static ResponseEntity<ResData> passwordRequestAccepted() {
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(),
                 "가입된 이메일이면 인증번호를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요."));
@@ -262,6 +264,11 @@ public class CertifyService {
             if((int)time < 4){
                 return passwordRequestAccepted();
             }
+        }
+        // 한 계정에 하루 5통까지만 보낸다. 여러 계정·IP를 돌려 가며 요청해 하루 메일 한도(가입·알림 메일 포함)를 다 쓰지 못하게 한다.
+        if (certifyRepository.countByCertifyTypeAndCreateUserSeqAndCreateDtGreaterThanEqual("FIND_PW", userEntity.getUserSeq(),
+                LocalDateTime.now().toLocalDate().atStartOfDay()) >= DAILY_PASSWORD_MAILS) {
+            return passwordRequestAccepted();
         }
 
         try {

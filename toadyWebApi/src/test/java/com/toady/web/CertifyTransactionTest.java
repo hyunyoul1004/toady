@@ -203,4 +203,13 @@ class CertifyTransactionTest {
             org.mockito.Mockito.verify(email).sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
         }
     }
+    /** 한 계정의 비밀번호 재설정 메일은 하루 5통까지(여러 IP로 돌려 요청해 메일 한도를 다 쓰지 못하게). 응답은 같아 계정 존재를 알 수 없다. */
+    @Test void passwordResetMailsAreCappedPerAccountPerDay() throws Exception {
+        LocalDateTime earlyToday = LocalDateTime.now().toLocalDate().atStartOfDay();
+        for (int i = 0; i < 5; i++) code("FIND_PW", earlyToday);
+        var response = service.findPasswordRequestCertify(new CertifyDTO.UserInfo("verify@example.test"));
+        assertEquals(com.toady.web.core.constants.ResultCode.SUCCESS.getCode(), response.getBody().getResultCode());
+        org.mockito.Mockito.verify(email, org.mockito.Mockito.never()).sendEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM TB_CERTIFY WHERE CERTIFY_TYPE='FIND_PW'", Integer.class));
+    }
 }

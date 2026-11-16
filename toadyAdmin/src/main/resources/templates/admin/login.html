@@ -10,7 +10,7 @@
     <form th:action="@{/admin/login}" method="post" class="login-form">
         <label>관리자 아이디<input name="username" autocomplete="username" autofocus required></label>
         <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
-        <label class="remember"><input type="checkbox" name="remember" value="true"> 로그인 유지 <span class="muted">(이 브라우저에서 14일)</span></label>
+        <label class="remember" th:if="${rememberEnabled}"><input type="checkbox" name="remember" value="true"> 로그인 유지 <span class="muted">(이 브라우저에서 14일)</span></label>
         <button class="primary" type="submit">로그인 <span aria-hidden="true">→</span></button>
     </form>
     <p class="login-foot">TOADY · 관리자</p>

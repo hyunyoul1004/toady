@@ -10,7 +10,7 @@ export function useDirectDetailHistory(open, marker, baseUrl) {
     const detailUrl = location.pathname + location.search + location.hash;
     // 목록 조건(?filter=·?sort= 등)은 남기고 상세 값만 뺀 주소를 첫 단계로 둔다(뒤로가기로 닫으면 같은 조건의 목록).
     const list = new URLSearchParams(location.search);
-    list.delete('subscriptSeq'); list.delete('tabType');
+    list.delete('subscriptSeq'); list.delete('tabType'); list.delete('comment');
     const listUrl = baseUrl + (list.toString() ? `?${list}` : '');
     navigate(listUrl, { replace: true });
     navigate(detailUrl, { state: { ...location.state, [marker]: true } });

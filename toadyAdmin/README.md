@@ -55,7 +55,7 @@ cp .env.example .env.local   # DB·관리자 계정·스케줄러 토큰
 | --- | --- |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | 관리자 전용 DB 계정 |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | 관리자 로그인(비밀번호 12자 이상, 서버가 BCrypt로 해시해 메모리에 보관) |
-| `ADMIN_REMEMBER_KEY`, `ADMIN_REMEMBER_DAYS` | 로그인 유지 쿠키 서명 키(비우면 아이디·비밀번호로 만듦)와 기간(기본 14일, 최대 30일) |
+| `ADMIN_REMEMBER_KEY`, `ADMIN_REMEMBER_DAYS` | 로그인 유지 쿠키 서명 키(32자 이상 무작위 값, 없으면 로그인 유지를 끔)와 기간(기본 14일, 최대 30일) |
 | `ADMIN_SECURE_COOKIE` | 운영(HTTPS)에서 `true` |
 | `SCHEDULER_BASE_URL`, `SCHEDULER_INTERNAL_TOKEN` | 수집기 내부 API 주소와 공유 토큰(32자 이상) |
 

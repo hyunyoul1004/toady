@@ -49,17 +49,19 @@ export function appPath(url, origin) {
 }
 
 /**
- * 앱 라우터 안에서 바로 이동하는 경로. 이 밖의 경로(/announcements/…, /areas, /weekly, /calendar 등)는 전체 페이지 이동으로 연다.
- * 공고·공개 주소는 웹 nginx가 사람에게 앱을 주므로 전체 이동해도 앱 화면이 열린다(.ics 등은 서버 응답). public/sw.js의 목록과 같아야 한다.
+ * 앱 라우터 안에서 바로 이동하는 경로(공고 주소는 ANNOUNCEMENT_PATH). 이 밖의 경로(/areas, /weekly, /calendar 등)는 전체 페이지 이동으로 연다.
+ * 공개 주소는 웹 nginx가 사람에게 앱을 주므로 전체 이동해도 앱 화면이 열린다(.ics 등은 서버 응답). public/sw.js의 목록과 같아야 한다.
  */
 export const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail', '/account', '/messages'];
 
+/** 공고 주소(/announcements/종류/번호/번호)도 앱 안에서 바로 연다. public/sw.js와 같은 식이어야 한다(테스트로 대조). */
+export const ANNOUNCEMENT_PATH = /^\/announcements\/(apt|urban|remaining|public-rental|optional)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,40}$/;
 /** 같은 출처의 SPA 경로인지(끝 슬래시는 무시). */
 export function isSpaPath(url, origin) {
   try {
     const parsed = new URL(url, origin);
     const path = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
-    return parsed.origin === origin && SPA_PATHS.includes(path);
+    return parsed.origin === origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path));
   } catch { return false; }
 }
 
@@ -82,14 +84,14 @@ export function detailMarker(path) {
   // 공유 링크와 같은 공고 주소(/announcements/종류/번호/번호)는 메인 화면의 상세다.
   if (/^\/announcements\/[a-z-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)) return { detailOverlay: true };
   if (!url.searchParams.get('subscriptSeq')) return null;
-  const marker = { '/': 'detailOverlay', '/my': 'plannerDetail', '/score': 'scoreDetail', '/match': 'matchDetail', '/match/zupzup': 'matchDetail', '/this-week': 'weeklyDetail' }[url.pathname];
+  const marker = { '/': 'detailOverlay', '/showSubscriptDetail': 'detailOverlay', '/my': 'plannerDetail', '/score': 'scoreDetail', '/match': 'matchDetail', '/match/zupzup': 'matchDetail', '/this-week': 'weeklyDetail' }[url.pathname];
   return marker ? { [marker]: true } : null;
 }
 
 /** 상세 주소를 닫았을 때 돌아갈 목록 주소(상세 값만 뺀다). /announcements/…는 첫 화면이다. */
 export function detailListBase(path) {
   const url = new URL(path, 'https://toady.invalid');
-  if (url.pathname.startsWith('/announcements/')) return '/';
+  if (url.pathname.startsWith('/announcements/') || url.pathname === '/showSubscriptDetail') return '/';
   url.searchParams.delete('subscriptSeq'); url.searchParams.delete('tabType'); url.searchParams.delete('comment');
   return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '');
 }

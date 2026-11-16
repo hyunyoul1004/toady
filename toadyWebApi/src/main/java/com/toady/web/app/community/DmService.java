@@ -191,6 +191,9 @@ public class DmService {
         // 내용 문제(빈 글·길이)는 대화방을 만들기 전에 거른다. 연락처 규칙은 상대가 답했는지 본 뒤에 판단한다.
         DmRules.Problem early = DmRules.check(content, false);
         if (early != null) return Result.fail("ERR-401", DmRules.message(early));
+        // 보내는 회원 행을 먼저 잠가, 같은 회원이 여러 상대에게 동시에 보낸 요청이 하루 한도(새 대화·쪽지 수)를 함께 넘지 못하게 한다.
+        // 대화방보다 먼저, 항상 자기 행만 잠그므로 두 회원이 서로에게 동시에 보내도 교착이 생기지 않는다.
+        jdbc.queryForList("SELECT USER_SEQ FROM TB_USER WHERE USER_SEQ=? FOR UPDATE", Long.class, me);
         if (pair(me, other, false) == null) {
             String context = contextId != null && CONTEXT.matcher(contextId).matches() ? contextId : null;
             try {

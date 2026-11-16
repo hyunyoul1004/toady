@@ -17,15 +17,16 @@ function safeUrl(value) {
 }
 
 /**
- * 앱 라우터 안에서 바로 이동하는 경로. 이 밖의 경로(/announcements/…·/areas·/weekly·/calendar 등)는 전체 페이지 이동으로 연다.
+ * 앱 라우터 안에서 바로 이동하는 경로(공고 주소 /announcements/… 포함). 이 밖의 경로(/areas·/weekly·/calendar 등)는 전체 페이지 이동으로 연다.
  * src/features/push/pushSupport.js의 SPA_PATHS와 같은 목록이어야 한다(테스트로 대조).
  */
 const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail', '/account', '/messages'];
+const ANNOUNCEMENT_PATH = /^\/announcements\/(apt|urban|remaining|public-rental|optional)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,40}$/;
 function isSpaUrl(value) {
   try {
     const url = new URL(value, self.location.origin);
     const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
-    return url.origin === self.location.origin && SPA_PATHS.includes(path);
+    return url.origin === self.location.origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path));
   } catch { return false; }
 }
 

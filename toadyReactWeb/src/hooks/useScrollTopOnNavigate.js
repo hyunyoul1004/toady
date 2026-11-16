@@ -13,8 +13,12 @@ export function useScrollTopOnNavigate() {
   useEffect(() => {
     const from = previous.current;
     previous.current = pathname;
-    // 공고 상세(/announcements/…)는 목록 위에 뜨는 창이라, 열고 닫을 때 뒤의 목록을 맨 위로 올리지 않는다.
-    if (type === 'POP' || hash || from.startsWith('/announcements/') || pathname.startsWith('/announcements/')) return;
+    // 공고 상세(/announcements/…)는 첫 화면 목록 위에 뜨는 창이라, 목록과 상세 사이(또는 상세끼리) 오갈 때만 위치를 그대로 둔다.
+    // 상세에서 다른 메뉴(나의 청약 등)로 가거나 다른 메뉴에서 상세로 올 때는 새 화면이므로 맨 위에서 보여 준다.
+    const list = path => path === '/' || path === '/showSubscriptDetail';
+    const detail = path => path.startsWith('/announcements/');
+    const overList = (detail(from) && (list(pathname) || detail(pathname))) || (detail(pathname) && list(from));
+    if (type === 'POP' || hash || overList) return;
     window.scrollTo(0, 0);
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 }

@@ -342,6 +342,7 @@ export const SignUp = (props) => {
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
+                    aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                     onClick={() => setShowPassword((prev) => !prev)}
                     edge="end"
                     size="small"
@@ -392,6 +393,7 @@ export const SignUp = (props) => {
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
+                    aria-label={showConfirmPassword ? '비밀번호 확인 숨기기' : '비밀번호 확인 보기'}
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
                     edge="end"
                     size="small"

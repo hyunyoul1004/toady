@@ -12,8 +12,9 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ready" != true ]; then
   echo 'API readiness check failed' >&2
-  # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
-  docker logs --tail 60 toadyWebApi >&2 2>&1 || true
+  # 롤백으로 컨테이너가 다시 만들어지면 로그가 사라지므로 서버 파일로 남긴다. 공개 저장소의 Actions 로그에는 내용을 찍지 않는다.
+  mkdir -p .rollback && docker logs --tail 200 toadyWebApi > .rollback/last-failure-toadyWebApi.log 2>&1 || true
+  echo "container log saved on the server: .rollback/last-failure-toadyWebApi.log" >&2
   exit 1
 fi
 
@@ -28,8 +29,9 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ready" != true ]; then
   echo 'Scheduler readiness check failed' >&2
-  # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
-  docker logs --tail 60 toadyScheduler >&2 2>&1 || true
+  # 롤백으로 컨테이너가 다시 만들어지면 로그가 사라지므로 서버 파일로 남긴다. 공개 저장소의 Actions 로그에는 내용을 찍지 않는다.
+  mkdir -p .rollback && docker logs --tail 200 toadyScheduler > .rollback/last-failure-toadyScheduler.log 2>&1 || true
+  echo "container log saved on the server: .rollback/last-failure-toadyScheduler.log" >&2
   exit 1
 fi
 
@@ -47,8 +49,9 @@ if [ -s toadyAdmin/.env.prod ]; then
   done
   if [ "$ready" != true ]; then
     echo 'Admin site readiness check failed' >&2
-    # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
-    docker logs --tail 60 toadyAdmin >&2 2>&1 || true
+    # 롤백으로 컨테이너가 다시 만들어지면 로그가 사라지므로 서버 파일로 남긴다. 공개 저장소의 Actions 로그에는 내용을 찍지 않는다.
+    mkdir -p .rollback && docker logs --tail 200 toadyAdmin > .rollback/last-failure-toadyAdmin.log 2>&1 || true
+    echo "container log saved on the server: .rollback/last-failure-toadyAdmin.log" >&2
     exit 1
   fi
 fi

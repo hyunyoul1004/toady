@@ -70,6 +70,27 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/help\/faq\/?/, '/api/v1/public/faq')
       },
+      '^/announcements/(apt|urban|remaining|public-rental|optional)/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/?(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        bypass: humansGetApp,
+        rewrite: path => path.replace(/^\/announcements\//, '/api/v1/public/announcements/')
+      },
+      '^/(sitemap|announcement-sitemap)\\.xml(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: () => '/api/v1/public/sitemap.xml'
+      },
+      '^/sitemaps/.+\\.xml(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/sitemaps\//, '/api/v1/public/sitemaps/')
+      },
+      '^/rss\\.xml(\\?.*)?$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: () => '/api/v1/public/rss.xml'
+      },
       '^/calendar/areas/[a-z0-9-]+\\.ics(\\?.*)?$': {
         target: 'http://localhost:8081',
         changeOrigin: true,

@@ -36,6 +36,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          # Gradle 의존성을 실행마다 Maven Central에서 다시 받지 않는다(잦은 푸시에 429 Too Many Requests로 실패했다).
+          cache: gradle
+          cache-dependency-path: |
+            toadyWebApi/*.gradle*
+            toadyScheduler/*.gradle*
+            toadyAdmin/*.gradle*
+            toadyWebApi/gradle/wrapper/gradle-wrapper.properties
+            toadyScheduler/gradle/wrapper/gradle-wrapper.properties
+            toadyAdmin/gradle/wrapper/gradle-wrapper.properties
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -85,6 +94,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          # Gradle 의존성을 실행마다 Maven Central에서 다시 받지 않는다(잦은 푸시에 429 Too Many Requests로 실패했다).
+          cache: gradle
+          cache-dependency-path: |
+            toadyWebApi/*.gradle*
+            toadyScheduler/*.gradle*
+            toadyAdmin/*.gradle*
+            toadyWebApi/gradle/wrapper/gradle-wrapper.properties
+            toadyScheduler/gradle/wrapper/gradle-wrapper.properties
+            toadyAdmin/gradle/wrapper/gradle-wrapper.properties
       - name: Prepare isolated schema fixture
         env:
           DB_CONTAINER: ${{ job.services.mariadb.id }}
@@ -188,7 +206,7 @@ jobs:
             # 앱 컨테이너만 바꾼다. --no-deps로 compose 설정이 바뀌어도 mariadb·nginx를 다시 만들지 않는다.
             start_apps() {
               # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
-              docker-compose -p toady up -d --no-deps $APPS && { docker exec nginx nginx -s reload || true; }
+              docker-compose -p toady up -d --no-deps $APPS && { { docker exec nginx nginx -t >/dev/null 2>&1 && docker exec nginx nginx -s reload; } || echo "WARNING: front nginx config test failed; not reloaded (check conf.d on the server)" >&2; }
             }
             # set -e는 if 조건 안에서 꺼지므로 pull·up·확인 중 어느 단계가 실패해도 같은 롤백 경로로 들어온다.
             deploy_failed=""

@@ -35,4 +35,21 @@ class DataRetentionJobTest {
         assertEquals(7L, result.get("T_LOG"));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM T_LOG", Integer.class));
     }
+
+    @Test void dmThreadStaysWhileAReportedMessageIsKeptAsEvidence() {
+        jdbc.execute("CREATE TABLE TB_USER_REPORT (REPORT_SEQ BIGINT PRIMARY KEY, TARGET_TYPE VARCHAR(10), TARGET_SEQ BIGINT, STATUS VARCHAR(10), HANDLED_DT TIMESTAMP)");
+        jdbc.execute("CREATE TABLE TB_DM_THREAD (THREAD_SEQ BIGINT PRIMARY KEY, LAST_MESSAGE_DT TIMESTAMP, REG_DT TIMESTAMP NOT NULL)");
+        jdbc.execute("CREATE TABLE TB_DM_MESSAGE (MESSAGE_SEQ BIGINT PRIMARY KEY, THREAD_SEQ BIGINT, REG_DT TIMESTAMP NOT NULL)");
+        var now = java.time.LocalDateTime.of(2026, 11, 16, 3, 0);
+        var old = java.sql.Timestamp.valueOf(now.minusDays(200));
+        // 1번 대화: 오래됐고 신고된 쪽지가 있다 → 쪽지·대화방 모두 남긴다. 2번 대화: 오래됐고 신고 없음 → 모두 지운다.
+        jdbc.update("INSERT INTO TB_DM_THREAD VALUES (1, ?, ?), (2, ?, ?)", old, old, old, old);
+        jdbc.update("INSERT INTO TB_DM_MESSAGE VALUES (10, 1, ?), (11, 1, ?), (20, 2, ?)", old, old, old);
+        jdbc.update("INSERT INTO TB_USER_REPORT VALUES (1, 'MESSAGE', 10, 'OPEN', NULL)");
+        var targets = DataRetentionJob.targets(now).stream()
+                .filter(t -> List.of("TB_DM_MESSAGE", "TB_DM_THREAD").contains(t.table())).toList();
+        new DataRetentionJob(jdbc, 100).run(targets);
+        assertEquals(List.of(10L), jdbc.queryForList("SELECT MESSAGE_SEQ FROM TB_DM_MESSAGE", Long.class));
+        assertEquals(List.of(1L), jdbc.queryForList("SELECT THREAD_SEQ FROM TB_DM_THREAD", Long.class));
+    }
 }

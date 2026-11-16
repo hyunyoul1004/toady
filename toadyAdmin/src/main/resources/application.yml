@@ -36,7 +36,7 @@ toady:
   admin:
     username: ${ADMIN_USERNAME:admin}
     password: ${ADMIN_PASSWORD:}
-    # 로그인 유지 쿠키의 서명 키와 기간(일, 최대 30). 키를 비우면 아이디·비밀번호로 만든 값을 쓴다.
+    # 로그인 유지 쿠키의 서명 키(32자 이상 무작위 값, 예: openssl rand -hex 32)와 기간(일, 최대 30). 키가 없으면 로그인 유지를 끈다.
     remember-key: ${ADMIN_REMEMBER_KEY:}
     remember-days: ${ADMIN_REMEMBER_DAYS:14}
   scheduler:

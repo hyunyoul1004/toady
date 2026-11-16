@@ -15,7 +15,6 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.security.web.authentication.rememberme.TokenBasedRememberMeServices
-import java.security.MessageDigest
 import java.util.HexFormat
 import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.util.UrlPathHelper
@@ -45,9 +44,10 @@ class SecurityConfig {
 	/**
 	 * 로그인 유지(자동 로그인). 세션은 30분 동안 아무 요청이 없으면 끝나고, 로그인 유지를 고른 브라우저는
 	 * 서명된 쿠키로 다시 로그인된다. 쿠키에는 비밀번호가 아닌 서명만 담기며, 비밀번호나 서명 키를 바꾸면 모든 쿠키가 무효가 된다.
-	 * 서명 키(ADMIN_REMEMBER_KEY)가 없으면 아이디·비밀번호로 만든 값을 쓴다.
+	 * 서명 키(ADMIN_REMEMBER_KEY, 32자 이상 무작위 값)는 비밀번호와 무관해야 한다. 비밀번호로 키를 만들면 쿠키 하나만 유출돼도
+	 * 비밀번호를 오프라인으로 대입해 볼 수 있다. 키가 없으면 로그인 유지를 끈다(화면의 체크박스도 숨기고, 이번 실행에만 쓰는 무작위 키를 둔다).
 	 * 기본 구현은 서명에 저장된 비밀번호 해시를 넣는데, BCrypt 해시는 서버가 켜질 때마다 새 솔트로 바뀌어 배포할 때마다 쿠키가 풀린다.
-	 * 그래서 해시 대신 원래 비밀번호의 SHA-256 지문을 넣는다(재시작해도 유지, 비밀번호를 바꾸면 무효).
+	 * 그래서 해시 대신 HMAC(키, 비밀번호) 지문을 넣는다(재시작해도 유지, 비밀번호나 키를 바꾸면 무효).
 	 */
 	@Bean
 	fun adminRememberMe(users: UserDetailsService,
@@ -56,11 +56,13 @@ class SecurityConfig {
 	                    @Value("\${toady.admin.remember-key:}") rememberKey: String,
 	                    @Value("\${toady.admin.remember-days:14}") rememberDays: Int,
 	                    @Value("\${server.servlet.session.cookie.secure:false}") secure: Boolean): TokenBasedRememberMeServices {
-		val key = rememberKey.ifBlank {
-			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest("toady-admin-remember:$username:$password".toByteArray()))
-		}
-		val fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest("toady-admin-password:$password".toByteArray()))
+		val key = if (rememberEnabled(rememberKey)) rememberKey.trim()
+			else HexFormat.of().formatHex(ByteArray(32).also { java.security.SecureRandom().nextBytes(it) })
+		val mac = javax.crypto.Mac.getInstance("HmacSHA256").apply { init(javax.crypto.spec.SecretKeySpec(key.toByteArray(), "HmacSHA256")) }
+		val fingerprint = HexFormat.of().formatHex(mac.doFinal("toady-admin-password:$username:$password".toByteArray()))
 		return StableRememberMeServices(key, users, fingerprint).apply {
+			// 세션 쿠키처럼 다른 사이트에서 온 요청에는 싣지 않는다.
+			setCookieCustomizer { it.setAttribute("SameSite", "Strict") }
 			setParameter(REMEMBER_PARAMETER)
 			setCookieName(REMEMBER_COOKIE)
 			setTokenValiditySeconds(rememberDays.coerceIn(1, 30) * 24 * 60 * 60)
@@ -138,6 +140,8 @@ class SecurityConfig {
 		private val ATTEMPT = SecurityConfig::class.java.name + ".loginAttempt"
 		const val REMEMBER_PARAMETER = "remember"
 		const val REMEMBER_COOKIE = "TOADY_ADMIN_REMEMBER"
+		/** 로그인 유지는 충분히 긴 서명 키가 설정됐을 때만 켠다. */
+		fun rememberEnabled(rememberKey: String?) = (rememberKey?.trim()?.length ?: 0) >= 32
 	}
 }
 

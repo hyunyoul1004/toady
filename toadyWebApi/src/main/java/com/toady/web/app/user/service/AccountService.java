@@ -374,11 +374,11 @@ public class AccountService {
         }
     }
 
-    /** 테이블이 없다는 오류인가(MariaDB 1146·SQLSTATE 42S02, H2 42102·42104). 그 밖의 오류는 false. */
+    /** 테이블이 없다는 오류인가(MariaDB 1146·SQLSTATE 42S02, H2 42102·42103·42104). 그 밖의 오류는 false. */
     static boolean missingTable(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof java.sql.SQLException sql) {
-                if (sql.getErrorCode() == 1146 || "42S02".equals(sql.getSQLState()) || sql.getErrorCode() == 42102 || sql.getErrorCode() == 42104) return true;
+                if (sql.getErrorCode() == 1146 || "42S02".equals(sql.getSQLState()) || sql.getErrorCode() == 42102 || sql.getErrorCode() == 42103 || sql.getErrorCode() == 42104) return true;
             }
         }
         return false;

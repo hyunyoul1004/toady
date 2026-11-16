@@ -70,7 +70,9 @@ public class DataRetentionJob {
                 // 처리를 기다리는 신고가 걸린 쪽지는 운영자가 확인할 때까지 남긴다(증거 보존).
                 new Target("TB_DM_MESSAGE", "REG_DT < ? AND NOT EXISTS (SELECT 1 FROM TB_USER_REPORT R WHERE R.TARGET_TYPE='MESSAGE'"
                         + " AND R.TARGET_SEQ=TB_DM_MESSAGE.MESSAGE_SEQ AND R.STATUS='OPEN')", List.of(Timestamp.valueOf(now.minusDays(180)))),
-                new Target("TB_DM_THREAD", "(LAST_MESSAGE_DT IS NOT NULL AND LAST_MESSAGE_DT < ?) OR (LAST_MESSAGE_DT IS NULL AND REG_DT < ?)",
+                // 신고 때문에 남겨 둔 쪽지가 있는 대화방은 함께 남긴다(대화 상대·시작 시각이 증거 맥락이다).
+                new Target("TB_DM_THREAD", "((LAST_MESSAGE_DT IS NOT NULL AND LAST_MESSAGE_DT < ?) OR (LAST_MESSAGE_DT IS NULL AND REG_DT < ?))"
+                        + " AND NOT EXISTS (SELECT 1 FROM TB_DM_MESSAGE M WHERE M.THREAD_SEQ=TB_DM_THREAD.THREAD_SEQ)",
                         List.of(Timestamp.valueOf(now.minusDays(180)), Timestamp.valueOf(now.minusDays(1)))),
                 // 처리가 끝난 신고는 1년 보관한다(대기 중인 신고는 지우지 않는다).
                 new Target("TB_USER_REPORT", "STATUS <> 'OPEN' AND HANDLED_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))));

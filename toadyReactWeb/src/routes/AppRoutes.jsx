@@ -45,7 +45,12 @@ class PageErrorBoundary extends React.Component {
     </Box>;
   }
 }
-const page = element => <PageErrorBoundary><Suspense fallback={<PageLoading />}>{element}</Suspense></PageErrorBoundary>;
+// 라우터가 화면이 바뀌어도 같은 경계 인스턴스를 다시 쓰므로, 주소마다 새 경계를 둬 한 화면의 실패가 다른 메뉴로 번지지 않게 한다.
+function Page({ children }) {
+  const { pathname } = useLocation();
+  return <PageErrorBoundary key={pathname}><Suspense fallback={<PageLoading />}>{children}</Suspense></PageErrorBoundary>;
+}
+const page = element => <Page>{element}</Page>;
 
 /**
  * 예전 단독 /login 주소: 메인 화면 위에 로그인 팝업을 히스토리 층으로 연다.
@@ -115,7 +120,7 @@ export const AppRoutes = () => {
       <Route path="/login" element={<LoginRedirect />} />
 
       {/* 정의되지 않은 경로는 메인으로 리다이렉트 */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<PublicPathRedirect to="/" />} />
     </Routes>
   );
 };
