@@ -6,6 +6,7 @@ import com.toady.web.apt.api.ApplyhomePageCollector;
 import com.toady.web.apt.api.ApplyhomeCompetitionApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -83,16 +84,110 @@ public class ApplyhomeCompetitionSyncService {
 	private final ApplyhomeCompetitionApiClient competitionApiClient;
 	private final ApplyhomeCompetitionPersistenceService persistenceService;
 	private final ApplyhomeSyncLock syncLock;
+	private final JdbcTemplate jdbc;
 
 	public ApplyhomeCompetitionSyncService(
 			ApplyhomeApiClient announcementApiClient,
 			ApplyhomeCompetitionApiClient competitionApiClient,
 			ApplyhomeCompetitionPersistenceService persistenceService,
-			ApplyhomeSyncLock syncLock) {
+			ApplyhomeSyncLock syncLock,
+			JdbcTemplate jdbc) {
 		this.announcementApiClient = announcementApiClient;
 		this.competitionApiClient = competitionApiClient;
 		this.persistenceService = persistenceService;
 		this.syncLock = syncLock;
+		this.jdbc = jdbc;
+	}
+
+	/*
+	 * 일정 기반 수집: 저장된 공고 일정을 보고 결과가 나올 때가 된 공고만 조회한다.
+	 * - 경쟁률·특별공급 신청현황: 접수 기간이 범위와 겹치는 공고. 접수가 끝난 다음 날까지는 매번 다시 받고
+	 *   (순위별 접수가 이어지며 값이 바뀐다), 그 뒤에는 아직 한 건도 없을 때만 받는다.
+	 * - 당첨 가점: 당첨자 발표일이 범위 안이고 아직 한 건도 없는 공고. 한번 공개된 가점은 바뀌지 않는다.
+	 * 범위 밖이거나 이미 받은 공고는 호출하지 않으므로, 자주 실행해도 공공데이터 호출량이 작다.
+	 * 저장은 기존 경쟁률 수집과 같은 공고 단위 교체라 여러 번 받아도 중복되지 않는다. 놓친 결과는 매일 도는
+	 * 기존 경쟁률 수집(모집공고일 기준 최근 90일 전체)이 다시 채운다.
+	 * 날짜 컬럼은 유형마다 'yyyy-MM-dd'와 'yyyyMMdd'가 섞여 있어 하이픈을 지우고 비교한다.
+	 */
+	private static final String APT_RECEIPT_BEGIN = "COALESCE(NULLIF(d.SPSPLY_RCEPT_BGNDE, ''), d.RCEPT_BGNDE)";
+	static final List<ResultPhase> RESULT_PHASES = List.of(
+			ResultPhase.rate(APT_RATE, "TB_APT_LTTOT_PBLANC_DETAIL", null, APT_RECEIPT_BEGIN, "d.RCEPT_ENDDE"),
+			ResultPhase.rate(SPECIAL_SUPPLY_STATUS, "TB_APT_LTTOT_PBLANC_DETAIL", null, APT_RECEIPT_BEGIN, "d.RCEPT_ENDDE"),
+			ResultPhase.score(APT_SCORE, "TB_APT_LTTOT_PBLANC_DETAIL"),
+			ResultPhase.rate(CANCELLED_RATE, "TB_REMNDR_LTTOT_PBLANC_DETAIL", "06", "d.SUBSCRPT_RCEPT_BGNDE", "d.SUBSCRPT_RCEPT_ENDDE"),
+			ResultPhase.rate(REMNANT_RATE, "TB_REMNDR_LTTOT_PBLANC_DETAIL", "04", "d.SUBSCRPT_RCEPT_BGNDE", "d.SUBSCRPT_RCEPT_ENDDE"),
+			ResultPhase.rate(URBAN_RATE, "TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL", null, "d.SUBSCRPT_RCEPT_BGNDE", "d.SUBSCRPT_RCEPT_ENDDE"),
+			ResultPhase.rate(PRIVATE_RENT_RATE, "TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL", null, "d.SUBSCRPT_RCEPT_BGNDE", "d.SUBSCRPT_RCEPT_ENDDE"),
+			ResultPhase.rate(OPTIONAL_RATE, "TB_OPT_LTTOT_PBLANC_DETAIL", null, "d.SUBSCRPT_RCEPT_BGNDE", "d.SUBSCRPT_RCEPT_ENDDE"));
+
+	/**
+	 * 일정 기준 범위(접수일·당첨자 발표일)에 걸린 공고의 경쟁률·특별공급·가점만 갱신한다. 반환값은 조회한 공고×항목 수다.
+	 * @param startDate 범위 시작(보통 오늘에서 재시도 일수를 뺀 날)
+	 * @param endDate 범위 끝(보통 오늘)
+	 */
+	public ScheduledResult synchronizeScheduled(LocalDate startDate, LocalDate endDate) {
+		if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
+			throw new IllegalArgumentException("A valid start and end date range is required");
+		}
+		var result = new java.util.concurrent.atomic.AtomicReference<ScheduledResult>();
+		List<String> failures = new ArrayList<>();
+		syncLock.execute(() -> {
+			int calls = 0;
+			Set<AnnouncementKey> announcements = new LinkedHashSet<>();
+			for (ResultPhase phase : RESULT_PHASES) {
+				List<AnnouncementKey> targets = scheduledTargets(phase, startDate, endDate);
+				announcements.addAll(targets);
+				calls += targets.size();
+				syncForAnnouncements(phase.table(), targets, failures);
+			}
+			result.set(new ScheduledResult(announcements.size(), calls));
+		});
+		if (!failures.isEmpty()) {
+			throw new ApplyhomePartialFailureException("일정 기반 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+					+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
+		}
+		return result.get();
+	}
+
+	/** 일정 기반 수집 결과: 대상 공고 수와 공고×항목 조회 수(대상이 없으면 둘 다 0, 외부 호출 없음). */
+	public record ScheduledResult(int announcements, int calls) { }
+
+	List<AnnouncementKey> scheduledTargets(ResultPhase phase, LocalDate startDate, LocalDate endDate) {
+		String start = startDate.format(COMPACT_DATE);
+		String end = endDate.format(COMPACT_DATE);
+		String missing = "NOT EXISTS (SELECT 1 FROM " + phase.table().table()
+				+ " r WHERE r.HOUSE_MANAGE_NO = d.HOUSE_MANAGE_NO AND r.PBLANC_NO = d.PBLANC_NO)";
+		StringBuilder sql = new StringBuilder("SELECT DISTINCT d.HOUSE_MANAGE_NO, d.PBLANC_NO FROM " + phase.detailTable() + " d WHERE ");
+		List<Object> args = new ArrayList<>();
+		if (phase.houseSecd() != null) {
+			sql.append("d.HOUSE_SECD = ? AND ");
+			args.add(phase.houseSecd());
+		}
+		if (phase.score()) {
+			sql.append("REPLACE(d.PRZWNER_PRESNATN_DE, '-', '') BETWEEN ? AND ? AND ").append(missing);
+			args.add(start);
+			args.add(end);
+		} else {
+			// 접수 기간이 범위와 겹치고, 접수가 끝난 다음 날까지는 매번 다시 받는다. 그 뒤로는 비어 있을 때만 받는다.
+			String begin = "REPLACE(" + phase.beginColumn() + ", '-', '')";
+			String finish = "REPLACE(" + phase.endColumn() + ", '-', '')";
+			sql.append(begin).append(" <= ? AND ").append(finish).append(" >= ? AND (")
+					.append(finish).append(" >= ? OR ").append(missing).append(")");
+			args.add(end);
+			args.add(start);
+			args.add(endDate.minusDays(1).format(COMPACT_DATE));
+		}
+		sql.append(" ORDER BY d.HOUSE_MANAGE_NO, d.PBLANC_NO");
+		return jdbc.query(sql.toString(), (rs, n) -> new AnnouncementKey(rs.getString(1), rs.getString(2)), args.toArray());
+	}
+
+	record ResultPhase(TableSpec table, String detailTable, String houseSecd, String beginColumn, String endColumn, boolean score) {
+		static ResultPhase rate(TableSpec table, String detailTable, String houseSecd, String begin, String end) {
+			return new ResultPhase(table, detailTable, houseSecd, begin, end, false);
+		}
+		static ResultPhase score(TableSpec table, String detailTable) {
+			return new ResultPhase(table, detailTable, null, null, null, true);
+		}
 	}
 
 	public void synchronize(LocalDate startDate, LocalDate endDate) {
@@ -213,6 +308,6 @@ public class ApplyhomeCompetitionSyncService {
 		return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
 	}
 
-	private record TableSpec(String endpoint, String table, List<String> columns, List<String> keys) {
+	record TableSpec(String endpoint, String table, List<String> columns, List<String> keys) {
 	}
 }

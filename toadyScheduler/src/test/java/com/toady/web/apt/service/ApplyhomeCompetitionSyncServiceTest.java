@@ -51,7 +51,7 @@ class ApplyhomeCompetitionSyncServiceTest {
 		}).when(syncLock).execute(any(Runnable.class));
 
 		ApplyhomeCompetitionSyncService service = new ApplyhomeCompetitionSyncService(
-				announcementApiClient, competitionApiClient, persistenceService, syncLock);
+				announcementApiClient, competitionApiClient, persistenceService, syncLock, null);
 		service.synchronize(java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 11, 12));
 
 		ArgumentCaptor<String> endpoints = ArgumentCaptor.forClass(String.class);
@@ -85,7 +85,7 @@ class ApplyhomeCompetitionSyncServiceTest {
             return null;
         }).when(syncLock).execute(any(Runnable.class));
         var service = new ApplyhomeCompetitionSyncService(
-                announcementApiClient, competitionApiClient, persistenceService, syncLock);
+                announcementApiClient, competitionApiClient, persistenceService, syncLock, null);
         service.synchronize(java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 11, 12));
         verify(competitionApiClient).getPage(eq("getCancResplLttotPblancCmpet"), eq(1),
                 eq(java.util.Map.of("cond[HOUSE_MANAGE_NO::EQ]", "CANCELLED", "cond[PBLANC_NO::EQ]", "CANCELLED")));
@@ -104,7 +104,7 @@ class ApplyhomeCompetitionSyncServiceTest {
                 .thenReturn(new ApplyhomeApiPage(List.of(score), 1, 1));
         doAnswer(invocation -> { ((Runnable) invocation.getArgument(0)).run(); return null; })
                 .when(syncLock).execute(any(Runnable.class));
-        var service = new ApplyhomeCompetitionSyncService(announcementApiClient, competitionApiClient, persistenceService, syncLock);
+        var service = new ApplyhomeCompetitionSyncService(announcementApiClient, competitionApiClient, persistenceService, syncLock, null);
         assertThat(service.synchronizeScores(java.time.LocalDate.of(2020, 1, 1), java.time.LocalDate.of(2020, 12, 31))).isEqualTo(1);
         verify(competitionApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());
         verify(announcementApiClient, org.mockito.Mockito.times(1)).getPage(anyString(), eq(1), anyMap());

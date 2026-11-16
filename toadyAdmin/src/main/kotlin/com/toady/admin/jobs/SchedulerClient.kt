@@ -93,6 +93,7 @@ enum class JobKind(val label: String) {
 	ALL("전체 수집"),
 	ANNOUNCEMENTS("공고 · 주택형"),
 	COMPETITION("경쟁률 · 가점 · 특별공급"),
-	SCORES("APT 당첨 가점");
+	SCORES("APT 당첨 가점"),
+	SCHEDULED_RESULTS("일정 맞춤 경쟁률 · 가점");
 	companion object { fun label(name: String) = entries.firstOrNull { it.name == name }?.label ?: name }
 }

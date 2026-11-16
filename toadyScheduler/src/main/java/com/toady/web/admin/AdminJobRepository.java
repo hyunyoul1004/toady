@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,9 +48,18 @@ public class AdminJobRepository {
                 """, id, kind.name(), source, start, end, chunks, user, now, now, "SCHEDULE".equals(source)
                 ? kind.name() + ":" + now.withSecond(0).withNano(0) : null);
     }
-    /** 화면에 표시할 최근 50건만 읽는다. 이전 이력을 삭제하거나 전체 이력 건수를 의미하지는 않는다. */
+    /**
+     * 화면에 표시할 최근 이력: 일반 작업 50건 + 일정 맞춤 수집 10건을 시간순으로 합친다.
+     * 일정 맞춤 수집은 하루 수십 번 돌아 함께 50건을 자르면 공고·경쟁률 수집 이력이 화면에서 밀려나기 때문이다.
+     * 이전 이력을 삭제하거나 전체 이력 건수를 의미하지는 않는다.
+     */
     public List<AdminJob> recent() {
-        return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB ORDER BY CREATED_AT DESC, JOB_ID LIMIT 50", MAPPER);
+        List<AdminJob> jobs = new ArrayList<>(jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_KIND <> ? ORDER BY CREATED_AT DESC, JOB_ID LIMIT 50",
+                MAPPER, JobKind.SCHEDULED_RESULTS.name()));
+        jobs.addAll(jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_KIND = ? ORDER BY CREATED_AT DESC, JOB_ID LIMIT 10",
+                MAPPER, JobKind.SCHEDULED_RESULTS.name()));
+        jobs.sort(Comparator.comparing(AdminJob::createdAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(AdminJob::id));
+        return jobs;
     }
     public Optional<AdminJob> find(String id) {
         return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_ID = ?", MAPPER, id).stream().findFirst();

@@ -92,7 +92,7 @@ public class AdminJobService {
         String id = UUID.randomUUID().toString();
         if (!localJob.compareAndSet(null, id)) throw new IllegalStateException("이미 수집 작업이 진행 중입니다.");
         try {
-            repository.insert(id, kind, source, start, end, chunks(start, end).size(), user, now());
+            repository.insert(id, kind, source, start, end, chunks(kind, start, end).size(), user, now());
         } catch (DuplicateKeyException exception) {
             localJob.compareAndSet(id, null);
             throw new IllegalStateException("다른 수집 작업이 진행 중입니다. 진행 중인 작업을 확인하세요.");
@@ -114,6 +114,8 @@ public class AdminJobService {
     private void run(String id) {
         int completed = 0;
         long scoreRows = 0;
+        // 일정 맞춤 수집의 대상 공고 수·조회 수(구간이 하나라 합계가 곧 결과).
+        int scheduledAnnouncements = 0, scheduledCalls = 0;
         // 일부 공고만 실패한 구간: 나머지는 저장됐으므로 다음 구간을 계속 수집하고 끝에서 함께 알린다.
         // (오래된 달의 공고 하나가 계속 실패해도 이번 달 구간이 막히지 않게)
         List<String> partialFailures = new ArrayList<>();
@@ -121,7 +123,7 @@ public class AdminJobService {
         String chunkPartial = null;
         try {
             AdminJob job = repository.find(id).orElseThrow();
-            for (DateRange chunk : chunks(job.startDate(), job.endDate())) {
+            for (DateRange chunk : chunks(job.kind(), job.startDate(), job.endDate())) {
                 boolean done = false;
                 // 전체 수집에서 경쟁률 단계만 잠금 대기로 재시도할 때 이미 끝난 공고 단계를 다시 실행하지 않는다.
                 boolean announcementsDone = false;
@@ -158,6 +160,11 @@ public class AdminJobService {
                             case ANNOUNCEMENTS -> announcements.synchronize(chunk.start(), chunk.end());
                             case COMPETITION -> competition.synchronize(chunk.start(), chunk.end());
                             case SCORES -> scoreRows += competition.synchronizeScores(chunk.start(), chunk.end());
+                            case SCHEDULED_RESULTS -> {
+                                var result = competition.synchronizeScheduled(chunk.start(), chunk.end());
+                                scheduledAnnouncements += result.announcements();
+                                scheduledCalls += result.calls();
+                            }
                         }
                         done = true;
                     } catch (ApplyhomePartialFailureException failure) {
@@ -183,9 +190,13 @@ public class AdminJobService {
                 if (!repository.update(id, "RUNNING", completed, "해당 기간 수집 완료", now())) return;
             }
             // 가점 건수는 API 응답 처리 건수다. 기존 행 갱신도 포함하므로 신규 INSERT 건수는 아니다.
-            String message = job.kind() == JobKind.SCORES
-                    ? "가점 " + scoreRows + "건 반영 완료. 0건인 경우 모집공고일 범위와 원본 공개 여부를 확인하세요."
-                    : "선택한 전체 기간을 수집했습니다. 같은 키의 기존 데이터는 갱신됩니다.";
+            String message = switch (job.kind()) {
+                case SCORES -> "가점 " + scoreRows + "건 반영 완료. 0건인 경우 모집공고일 범위와 원본 공개 여부를 확인하세요.";
+                case SCHEDULED_RESULTS -> scheduledAnnouncements == 0
+                        ? "결과를 받을 공고가 없어 호출하지 않았습니다."
+                        : "접수·발표 일정에 걸린 공고 " + scheduledAnnouncements + "건(항목 " + scheduledCalls + "개)을 갱신했습니다.";
+                default -> "선택한 전체 기간을 수집했습니다. 같은 키의 기존 데이터는 갱신됩니다.";
+            };
             if (!partialFailures.isEmpty()) {
                 // 일부 실패는 전체 실패와 구분해 어느 기간·공고가 빠졌는지 남긴다(키와 건수만, 응답 원문 없음).
                 String detail = (job.kind() == JobKind.SCORES ? "가점 " + scoreRows + "건 반영. " : "") + String.join(" / ", partialFailures);
@@ -238,6 +249,10 @@ public class AdminJobService {
         String id = localJob.get();
         if (id != null) repository.heartbeat(id, now());
         repository.recoverStale(now().minusMinutes(10), now());
+    }
+    /** 일정 맞춤 수집은 범위 안 일정을 한 번에 고르므로 나누지 않는다(월 경계에 걸친 접수 기간을 두 번 받지 않게). */
+    static List<DateRange> chunks(JobKind kind, LocalDate start, LocalDate end) {
+        return kind == JobKind.SCHEDULED_RESULTS ? List.of(new DateRange(start, end)) : chunks(start, end);
     }
     /** 시작·종료일을 모두 포함하며, 월말을 경계로 서로 겹치지 않는 조회 구간을 만든다. */
     static List<DateRange> chunks(LocalDate start, LocalDate end) {

@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronExpression;
-import org.springframework.scheduling.support.CronTrigger;
+import org.springframework.scheduling.Trigger;
 import org.springframework.stereotype.Service;
 
 import java.time.*;
@@ -72,6 +72,7 @@ public class AdminScheduleManager {
         seed(JobKind.COMPETITION, true, defaultCompetition);
         seed(JobKind.SCORES, false, "0 15 6 * * *");
         seed(JobKind.ALL, false, "0 15 1 * * *");
+        seed(JobKind.SCHEDULED_RESULTS, true, SCHEDULED_RESULTS_CRON, SCHEDULED_RESULTS_LOOKBACK);
         ready = true;
         refresh();
     }
@@ -82,8 +83,16 @@ public class AdminScheduleManager {
             log.warn("Leftover scheduler job cleanup after restart failed: {}", exception.getMessage());
         }
     }
+    /**
+     * 일정 맞춤 수집 기본 일정: 매시 정각 + 경쟁률이 올라오는 18~21시와 가점이 올라오는 7~11시에는 10분마다.
+     * 대상 공고가 없으면 외부 호출 없이 끝난다. 재시도 일수(7일) 동안 결과가 비어 있는 공고를 계속 다시 확인한다.
+     */
+    static final String SCHEDULED_RESULTS_CRON = "0 0 * * * * | 0 */10 18-21 * * * | 0 */10 7-11 * * *";
+    static final int SCHEDULED_RESULTS_LOOKBACK = 7;
+
     /** 환경변수는 최초 등록의 기본값으로만 사용하며, 관리자가 저장한 기존 설정은 덮어쓰지 않는다. */
-    private void seed(JobKind kind, boolean enabled, String cron) {
+    private void seed(JobKind kind, boolean enabled, String cron) { seed(kind, enabled, cron, defaultLookback); }
+    private void seed(JobKind kind, boolean enabled, String cron, int lookback) {
         // 재시작 시 기존 행을 유지하고, MariaDB와 H2에서 동일하게 실행할 수 있는 INSERT 구문을 사용한다.
         try {
             jdbc.update("""
@@ -91,7 +100,7 @@ public class AdminScheduleManager {
                     SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS
                     (SELECT 1 FROM TB_SCHEDULER_ADMIN_SCHEDULE WHERE JOB_KIND = ?)
                     """, kind.name(), enabled && !cron.equals("-"), cron.equals("-") ? "0 15 3 * * *" : cron,
-                    defaultLookback, AdminJobService.now(), kind.name());
+                    lookback, AdminJobService.now(), kind.name());
         } catch (DuplicateKeyException ignored) { /* 다른 인스턴스가 같은 종류를 먼저 등록했다면 기존 값을 사용한다. */ }
     }
     /** 다음 실행 시각은 저장하지 않고 현재 한국시간과 cron으로 계산한다. 비활성 스케줄은 null이다. */
@@ -101,7 +110,7 @@ public class AdminScheduleManager {
             boolean enabled = rs.getBoolean("ENABLED");
             return new AdminSchedule(JobKind.valueOf(rs.getString("JOB_KIND")), enabled, cron,
                     rs.getInt("LOOKBACK_DAYS"), rs.getTimestamp("UPDATED_AT").toLocalDateTime(),
-                    enabled ? CronExpression.parse(cron).next(LocalDateTime.now(ZONE)) : null);
+                    enabled ? next(cron, LocalDateTime.now(ZONE)) : null);
         });
     }
     /** DB 저장 후 이 인스턴스의 타이머를 즉시 갱신한다. 다른 인스턴스는 주기 조회로 반영한다. */
@@ -114,17 +123,52 @@ public class AdminScheduleManager {
         if (changed != 1) throw new IllegalArgumentException("스케줄 설정을 찾을 수 없습니다.");
         refresh();
     }
+    /**
+     * 일정 하나에 cron 여러 개를 '|'로 이어 쓸 수 있다(예: 매시 정각 + 특정 시간대 10분마다). 같은 시각은 한 번만 실행한다.
+     */
+    static List<CronExpression> parse(String cron) {
+        List<CronExpression> expressions = new ArrayList<>();
+        for (String part : cron.split("\\|")) {
+            String trimmed = part.trim();
+            if (!CronExpression.isValidExpression(trimmed)) throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다.");
+            expressions.add(CronExpression.parse(trimmed));
+        }
+        return expressions;
+    }
+    /** 여러 cron 중 가장 이른 다음 실행 시각(모두 끝났으면 null). */
+    static LocalDateTime next(List<CronExpression> expressions, LocalDateTime after) {
+        LocalDateTime earliest = null;
+        for (CronExpression expression : expressions) {
+            LocalDateTime next = expression.next(after);
+            if (next != null && (earliest == null || next.isBefore(earliest))) earliest = next;
+        }
+        return earliest;
+    }
+    static LocalDateTime next(String cron, LocalDateTime after) { return next(parse(cron), after); }
+    /**
+     * 여러 cron을 합친 타이머. 직전 예정 시각 이후로 다음 시각을 구해, 실행이 예정보다 조금 일찍 깨어나도 같은 시각을 두 번 돌지 않는다.
+     */
+    static Trigger trigger(String cron) {
+        List<CronExpression> expressions = parse(cron);
+        return context -> {
+            Instant base = Instant.now();
+            Instant last = context.lastScheduledExecution();
+            if (last != null && last.isAfter(base)) base = last;
+            LocalDateTime next = next(expressions, LocalDateTime.ofInstant(base, ZONE));
+            return next == null ? null : next.atZone(ZONE).toInstant();
+        };
+    }
     /** cron 문법·조회 범위를 검증하고, 다음 20회 실행 사이에 10분 미만의 간격이 있는지 확인한다. */
     static void validate(String cron, int lookback) {
-        if (cron == null || cron.length() > 100 || !CronExpression.isValidExpression(cron)) {
-            throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요.");
+        if (cron == null || cron.isBlank() || cron.length() > 100) {
+            throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다(100자 이내).");
         }
+        var expressions = parse(cron);
         // 자동 실행도 수동 실행과 같은 최대 기간을 둔다(외부 API 일일 한도 보호, '다시 실행'도 같은 제한 안에서 동작).
         if (lookback < 1 || lookback > AdminJobService.MANUAL_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.MANUAL_MAX_DAYS + "일 사이여야 합니다.");
-        var expression = CronExpression.parse(cron);
         LocalDateTime previous = LocalDateTime.now(ZONE).withSecond(0).withNano(0);
         for (int i = 0; i < 20; i++) {
-            LocalDateTime next = expression.next(previous);
+            LocalDateTime next = next(expressions, previous);
             if (next == null) throw new IllegalArgumentException("실행 가능한 날짜가 없는 스케줄입니다.");
             if (i > 0 && Duration.between(previous, next).compareTo(Duration.ofMinutes(10)) < 0) {
                 throw new IllegalArgumentException("자동 수집 간격은 10분 이상으로 설정하세요.");
@@ -150,7 +194,7 @@ public class AdminScheduleManager {
             int generation = generations.merge(schedule.kind(), 1, Integer::sum);
             if (schedule.enabled()) {
                 futures.put(schedule.kind(), timer.schedule(() -> trigger(schedule, false, generation),
-                        new CronTrigger(schedule.cronExpression(), ZONE)));
+                        trigger(schedule.cronExpression())));
             }
             versions.put(schedule.kind(), signature);
         }

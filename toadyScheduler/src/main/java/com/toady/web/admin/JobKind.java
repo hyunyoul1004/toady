@@ -5,7 +5,9 @@ public enum JobKind {
     ALL("전체 수집"),
     ANNOUNCEMENTS("공고 · 주택형"),
     COMPETITION("경쟁률 · 가점 · 특별공급"),
-    SCORES("APT 당첨 가점");
+    SCORES("APT 당첨 가점"),
+    /** 접수일·당첨자 발표일 기준으로 결과가 나올 공고만 경쟁률·특별공급·가점을 갱신한다(기간은 일정 기준). */
+    SCHEDULED_RESULTS("일정 맞춤 경쟁률 · 가점");
 
     private final String label;
     JobKind(String label) { this.label = label; }
