@@ -41,6 +41,17 @@ public class AnnouncementSearchService {
     private final RemainingAnnouncementRepository remainingRepository;
     private final PublicRentalAnnouncementRepository publicRentalRepository;
     private final OptionalAnnouncementRepository optionalRepository;
+    private final com.toady.web.app.operation.AnnouncementOverrides overrides;
+
+    /** 운영자가 숨긴 공고(database.sql 26번)를 뺀다. 숨긴 공고는 드물어 (주택관리번호, 공고번호) 조건을 그대로 붙인다. */
+    private <T> Specification<T> visible(AnnouncementType type, Specification<T> specification) {
+        var hidden = overrides.hiddenOf(type.name());
+        if (hidden.isEmpty()) return specification;
+        Specification<T> notHidden = (root, query, builder) -> builder.and(hidden.stream()
+                .map(pair -> builder.not(builder.and(builder.equal(root.get("houseManageNo"), pair[0]), builder.equal(root.get("pblancNo"), pair[1]))))
+                .toArray(Predicate[]::new));
+        return specification.and(notHidden);
+    }
 
     public Page<?> search(AnnouncementType type, AnnouncementSearch search) {
         validateSearch(search);
@@ -53,11 +64,11 @@ public class AnnouncementSearchService {
                 search.size()
         );
         return switch (type) {
-            case APT -> aptRepository.findAll(searchSpecification(search), pageable);
-            case URBAN -> urbanRepository.findAll(searchSpecification(search), pageable);
-            case REMAINING -> remainingRepository.findAll(searchSpecification(search), pageable);
-            case PUBLIC_RENTAL -> publicRentalRepository.findAll(searchSpecification(search), pageable);
-            case OPTIONAL -> optionalRepository.findAll(searchSpecification(search), pageable);
+            case APT -> aptRepository.findAll(visible(AnnouncementType.APT, searchSpecification(search)), pageable);
+            case URBAN -> urbanRepository.findAll(visible(AnnouncementType.URBAN, searchSpecification(search)), pageable);
+            case REMAINING -> remainingRepository.findAll(visible(AnnouncementType.REMAINING, searchSpecification(search)), pageable);
+            case PUBLIC_RENTAL -> publicRentalRepository.findAll(visible(AnnouncementType.PUBLIC_RENTAL, searchSpecification(search)), pageable);
+            case OPTIONAL -> optionalRepository.findAll(visible(AnnouncementType.OPTIONAL, searchSpecification(search)), pageable);
         };
     }
 
@@ -117,6 +128,7 @@ public class AnnouncementSearchService {
         ));
 
         return suggestions.stream()
+                .filter(item -> !overrides.hidden(AnnouncementType.fromPath(item.type()).name(), item.houseManageNo(), item.pblancNo()))
                 .sorted(Comparator
                         .comparing(
                                 (AnnouncementSuggestionResponse item) -> normalizedDate(item.rceptBgnde()),
@@ -174,19 +186,19 @@ public class AnnouncementSearchService {
             Pageable pageable = candidatePage(requiredCount);
             Page<AnnouncementListItem> page = switch (type) {
                 case APT -> aptRepository.findAll(
-                        AnnouncementSearchService.<AptAnnouncementEntity>searchSpecification(search), pageable
+                        visible(AnnouncementType.APT, AnnouncementSearchService.<AptAnnouncementEntity>searchSpecification(search)), pageable
                 ).map(AnnouncementListMapper::toListItem);
                 case URBAN -> urbanRepository.findAll(
-                        AnnouncementSearchService.<UrbanAnnouncementEntity>searchSpecification(search), pageable
+                        visible(AnnouncementType.URBAN, AnnouncementSearchService.<UrbanAnnouncementEntity>searchSpecification(search)), pageable
                 ).map(AnnouncementListMapper::toListItem);
                 case REMAINING -> remainingRepository.findAll(
-                        AnnouncementSearchService.<RemainingAnnouncementEntity>searchSpecification(search), pageable
+                        visible(AnnouncementType.REMAINING, AnnouncementSearchService.<RemainingAnnouncementEntity>searchSpecification(search)), pageable
                 ).map(AnnouncementListMapper::toListItem);
                 case PUBLIC_RENTAL -> publicRentalRepository.findAll(
-                        AnnouncementSearchService.<PublicRentalAnnouncementEntity>searchSpecification(search), pageable
+                        visible(AnnouncementType.PUBLIC_RENTAL, AnnouncementSearchService.<PublicRentalAnnouncementEntity>searchSpecification(search)), pageable
                 ).map(AnnouncementListMapper::toListItem);
                 case OPTIONAL -> optionalRepository.findAll(
-                        AnnouncementSearchService.<OptionalAnnouncementEntity>searchSpecification(search), pageable
+                        visible(AnnouncementType.OPTIONAL, AnnouncementSearchService.<OptionalAnnouncementEntity>searchSpecification(search)), pageable
                 ).map(AnnouncementListMapper::toListItem);
             };
             totalElements += page.getTotalElements();

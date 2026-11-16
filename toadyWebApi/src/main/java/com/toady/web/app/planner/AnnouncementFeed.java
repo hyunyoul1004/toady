@@ -47,6 +47,9 @@ public class AnnouncementFeed {
     private final PlannerSummary summaries;
     private final String domain;
     private final Clock clock;
+    /** 운영자가 숨긴 공고는 RSS에 넣지 않는다(database.sql 26번). 단위 테스트에서 직접 만들면 없을 수 있다. */
+    @Autowired(required = false)
+    com.toady.web.app.operation.AnnouncementOverrides overrides;
     private final Cache<String, String> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(30)).maximumSize(1).build();
 
     @Autowired
@@ -76,7 +79,8 @@ public class AnnouncementFeed {
                     + " WHERE RCRIT_PBLANC_DE IS NOT NULL AND REPLACE(RCRIT_PBLANC_DE,'-','') <= ? ORDER BY PBLANC_DAY DESC, HOUSE_MANAGE_NO DESC LIMIT " + SIZE,
                 (r, i) -> new Entry(table.getKey(), r.getString(1), r.getString(2), day(r.getString(3))), today));
         }
-        return all.stream().filter(e -> e.announced() != null && e.house() != null && e.notice() != null
+        return all.stream().filter(e -> overrides == null || !overrides.hidden(e.type().toUpperCase(Locale.ROOT).replace('-', '_'), e.house(), e.notice()))
+            .filter(e -> e.announced() != null && e.house() != null && e.notice() != null
                     && e.house().matches("[a-zA-Z0-9_-]{1,40}") && e.notice().matches("[a-zA-Z0-9_-]{1,40}"))
             .sorted(Comparator.comparing(Entry::announced).reversed().thenComparing(Entry::house, Comparator.reverseOrder()))
             .limit(SIZE).toList();

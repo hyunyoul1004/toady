@@ -28,6 +28,9 @@ public class AnnouncementSitemap {
     private static final Map<String,String> END_COLUMNS=Map.of("apt","RCEPT_ENDDE","urban","SUBSCRPT_RCEPT_ENDDE","remaining","SUBSCRPT_RCEPT_ENDDE","public-rental","SUBSCRPT_RCEPT_ENDDE","optional","SUBSCRPT_RCEPT_ENDDE");
     private static final DateTimeFormatter DAY=DateTimeFormatter.BASIC_ISO_DATE;
     private final JdbcTemplate jdbc; private final String domain; private final int recentDays; private final Clock clock;
+    /** 운영자가 숨긴 공고는 알리지 않는다(database.sql 26번). 단위 테스트에서 직접 만들면 없을 수 있다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.toady.web.app.operation.AnnouncementOverrides overrides;
     @org.springframework.beans.factory.annotation.Autowired
     public AnnouncementSitemap(JdbcTemplate jdbc,@Value("${toady.web.domain}") String domain,@Value("${toady.sitemap.recent-days:365}") int recentDays) {
         this(jdbc,domain,recentDays,Clock.system(ZoneId.of("Asia/Seoul")));
@@ -57,6 +60,7 @@ public class AnnouncementSitemap {
         // 테이블명은 고정 허용 목록에서만 가져온다. 숫자 페이지도 바인딩한다.
         jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO FROM "+TABLES.get(type)+recent(type)+" ORDER BY HOUSE_MANAGE_NO,PBLANC_NO LIMIT 5000 OFFSET ?",(RowCallbackHandler)r -> {
             String house=r.getString(1),notice=r.getString(2);
+            if(overrides!=null && overrides.hidden(type.toUpperCase().replace('-','_'),house,notice)) return;
             if(house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}")) xml.append("<url><loc>").append(esc(domain+"/announcements/"+type+"/"+house+"/"+notice)).append("</loc></url>");
         },since(),(long)page*5000);
         xml.append("</urlset>");return response(xml.toString());

@@ -19,6 +19,7 @@ import Badge from '@mui/material/Badge';
 import { useMyReplies } from '@/features/account/useMyAccount';
 import { useMessageUnread } from '@/features/community/useCommunity';
 import CommunityLayers from '@/features/community/CommunityLayers';
+import OperationNotices from '@/features/account/OperationNotices';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
 import Snackbar from '@mui/material/Snackbar';
@@ -123,6 +124,7 @@ export function MainLayout() {
         }}
       >
         <Box sx={{ flexGrow: 1,minWidth:0,maxWidth:'100%' }}>
+          <OperationNotices />
           <Outlet />
         </Box>
         <Box component="footer" sx={{ py: 3, mt: 4, mb: { xs: 'calc(64px + env(safe-area-inset-bottom))', md: 0 }, borderTop: '1px solid #f1f5f9' }}>

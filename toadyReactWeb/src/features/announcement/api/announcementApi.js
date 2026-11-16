@@ -308,7 +308,9 @@ export const announcementApi = {
       winnerAnnouncementDate: formatDate(anno.przwnerPresnatnDe),
       contractDate: formatDateRange(anno.cntrctCnclsBgnde, anno.cntrctCnclsEndde),
       housingDivision: anno.houseSecdNm || anno.houseSecd || '-',
-      subscriptCommentCnt: commentCount
+      subscriptCommentCnt: commentCount,
+      // 운영자 안내(정정·취소 공고)와 숨김 여부. 관리자 사이트에서 정한다.
+      operatorNotice: detailRes.data?.operatorNotice || null
     };
 
     const subscriptSupply = models.map((m, idx) => {

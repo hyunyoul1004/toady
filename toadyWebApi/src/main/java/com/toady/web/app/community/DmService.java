@@ -52,6 +52,9 @@ public class DmService {
     private final SafetyService safety;
     private final ProfileIcons icons;
     private final DmNotifier notifier;
+    /** 관리자 화면 금칙어(database.sql 26번). 테스트에서 직접 만들 때는 없을 수 있다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.toady.web.app.operation.ModerationRules moderation;
     /** 새 대화를 시작하려면 가입 후 지나야 하는 시간(0이면 조건 없음) */
     private final long minAccountHours;
     /** 새 대화를 시작하려면 이야기를 하나 이상 남겨야 하는가 */
@@ -207,12 +210,14 @@ public class DmService {
         boolean firstUnanswered = !sentLocked(thread.seq(), other);
         DmRules.Problem problem = DmRules.check(content, firstUnanswered);
         if (problem != null) return rollback(Result.fail("ERR-401", DmRules.message(problem)));
+        var extra = moderation == null ? null : moderation.check(content, com.toady.web.app.operation.ModerationRules.Scope.DM);
+        if (extra == com.toady.web.app.operation.ModerationRules.Action.BLOCK) return rollback(Result.fail("ERR-401", "운영 정책상 보낼 수 없는 표현이 들어 있어요. 내용을 고쳐 다시 보내 주세요."));
         if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= dailyMessages) {
             return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + dailyMessages + "통)."));
         }
         String text = content.strip();
         long receiverUnreadBefore = unreadIn(thread, other);
-        boolean flagged = DmRules.flagged(text);
+        boolean flagged = DmRules.flagged(text) || extra == com.toady.web.app.operation.ModerationRules.Action.FLAG;
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         final long threadSeq = thread.seq();
         jdbc.update(connection -> {

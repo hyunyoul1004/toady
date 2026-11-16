@@ -647,6 +647,11 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         </Box>
 
         {!isDetailLoading && !isDetailError && currentSubscriptDetail.subscriptSeq && <Collapse in={!headerCompact} ref={headerActionsRef} timeout={150}><AnnouncementActions key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail}/></Collapse>}
+        {/* 운영 안내: 관리자가 정정·취소를 알리거나 숨긴 공고. 탭과 상관없이 늘 보이게 머리글 아래에 둔다. */}
+        {!isDetailLoading && !isDetailError && currentSubscriptDetail.operatorNotice && (currentSubscriptDetail.operatorNotice.hidden || currentSubscriptDetail.operatorNotice.message) &&
+          <Alert severity={currentSubscriptDetail.operatorNotice.hidden ? 'warning' : 'info'} role="status" sx={{ mx: { xs: 2, sm: 2.5 }, mt: 1, borderRadius: 2, wordBreak: 'keep-all' }}>
+            <strong>운영 안내</strong> · {currentSubscriptDetail.operatorNotice.message || '운영자가 확인 중인 공고라 목록과 검색에서 잠시 숨겼어요. 일정과 내용은 청약홈 원문에서 확인해 주세요.'}
+          </Alert>}
 
         {/* 상세 정보 탭 내비게이션 */}
         <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 1.5, pb: 1, bgcolor: '#ffffff' }}>

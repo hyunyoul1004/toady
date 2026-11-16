@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('작업 이력')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main" th:with="base=${'/admin/audit?target=' + target + '&action=' + action + '&q=' + #uris.escapeQueryParam(q)}">
+    <section class="page-heading"><div><p class="eyebrow">AUDIT LOG</p><h1>작업 이력</h1><p class="muted">관리자 화면에서 바꾼 모든 것과 회원 상세 열람 기록입니다. 이력은 고치거나 지울 수 없습니다.</p></div>
+        <span class="timezone" th:text="${'전체 ' + #numbers.formatInteger(result.total,1,'COMMA') + '건'}"></span></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">작업 이력 테이블이 없습니다. database.sql 26번과 관리자 계정 권한을 적용하세요.</div>
+    <form class="filters three" th:action="@{/admin/audit}" method="get">
+        <label>검색<input name="q" th:value="${q}" maxlength="100" placeholder="대상 번호·메모·관리자"></label>
+        <label>대상<select name="target"><option value="">전체</option><option th:each="t : ${targets}" th:value="${t.key}" th:text="${t.value}" th:selected="${target == t.key}"></option></select></label>
+        <label>작업<select name="action"><option value="">전체</option><option th:each="a : ${actions}" th:value="${a.key}" th:text="${a.value}" th:selected="${action == a.key}"></option></select></label>
+        <button class="primary" type="submit">찾기</button>
+    </form>
+    <section class="panel">
+        <div class="empty" th:if="${#lists.isEmpty(result.items)}"><span class="empty-icon">○</span><h3>기록이 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(result.items)}"><table><thead><tr><th>시각</th><th>작업</th><th>대상</th><th>내용</th><th>관리자</th></tr></thead><tbody>
+            <tr th:each="e : ${result.items}">
+                <td class="cell-title"><strong th:text="${e.at != null ? #temporals.format(e.at, 'MM.dd HH:mm:ss') : '—'}"></strong><small class="mono" th:text="${'#' + e.seq}"></small></td>
+                <td data-label="작업"><span class="badge" th:classappend="${e.action == 'MEMBER_VIEW'} ? '' : 'SUCCEEDED'" th:text="${e.actionLabel}"></span></td>
+                <td data-label="대상"><a th:if="${e.targetPath != null}" th:href="@{${e.targetPath}}" th:text="${e.targetLabel + ' ' + e.targetId}"></a><span th:if="${e.targetPath == null}" th:text="${e.targetLabel + ' ' + e.targetId}"></span></td>
+                <td data-label="내용"><span class="muted" th:if="${e.before != null}" th:text="${e.before + ' → '}"></span><span th:text="${e.after != null ? e.after : ''}"></span><small th:if="${e.note != null}" th:text="${'메모: ' + e.note}"></small></td>
+                <td data-label="관리자" th:text="${e.admin}"></td></tr>
+        </tbody></table></div>
+        <nav th:replace="~{admin/fragments :: pager(${result}, ${base})}"></nav>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('금칙어')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">MODERATION</p><h1>금칙어</h1>
+        <p class="muted">이야기·쪽지에 쓰지 못하게 할 말을 관리합니다. 띄어쓰기·대소문자를 무시하고 글 안에 들어 있으면 걸립니다. 바꾸면 1분 안에 서비스에 적용됩니다.
+            연락처·링크·거래 문구 같은 기본 쪽지 규칙은 코드에 있고, 여기 추가한 말은 그에 더해 적용됩니다.</p></div>
+        <span class="timezone" th:text="${'사용 중 ' + #lists.size(rules.?[enabled]) + '개'}"></span></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">금칙어 테이블이 없습니다. database.sql 26번과 관리자 계정 권한을 적용하세요.</div>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>금칙어 추가</h2></div>
+            <form class="stack-form" th:action="@{/admin/moderation}" method="post">
+                <label>금칙어<input name="pattern" required maxlength="50" placeholder="예: 통장매매"></label>
+                <div class="row">
+                    <label>적용 범위<select name="scope"><option th:each="s : ${scopes}" th:value="${s.key}" th:text="${s.value}"></option></select></label>
+                    <label>처리<select name="action"><option th:each="a : ${ruleActions}" th:value="${a.key}" th:text="${a.value}"></option></select></label>
+                </div>
+                <label>메모(선택)<input name="note" maxlength="200" placeholder="추가한 이유"></label>
+                <p class="muted">한 글자 단어는 일상 표현을 너무 많이 막아 받지 않습니다. '거래 의심 표시'는 쪽지를 막지 않고 신고 화면에서 눈에 띄게 표시만 합니다.</p>
+                <div class="actions"><button class="primary" type="submit">추가</button></div>
+            </form>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>문장 시험</h2></div>
+            <form class="stack-form" th:action="@{/admin/moderation}" method="get">
+                <label>시험할 문장<textarea name="test" maxlength="1000" th:text="${test}" placeholder="회원이 쓸 만한 문장을 넣어 어떤 금칙어에 걸리는지 확인합니다"></textarea></label>
+                <div class="actions"><button class="secondary" type="submit">확인</button></div>
+            </form>
+            <div th:if="${matches != null}" class="spaced-top">
+                <p class="muted" th:if="${#lists.isEmpty(matches)}">걸리는 금칙어가 없습니다.</p>
+                <p class="rank-title" th:unless="${#lists.isEmpty(matches)}" th:text="${'걸리는 금칙어 ' + #lists.size(matches) + '개'}"></p>
+                <ul class="mini" th:unless="${#lists.isEmpty(matches)}"><li th:each="r : ${matches}"><strong th:text="${r.pattern}"></strong><small th:text="${r.scopeLabel + ' · ' + r.actionLabel}"></small></li></ul>
+            </div>
+        </section>
+    </div>
+    <section class="panel spaced"><div class="panel-head"><h2>금칙어 목록</h2></div>
+        <div class="empty" th:if="${#lists.isEmpty(rules)}"><span class="empty-icon">○</span><h3>등록된 금칙어가 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(rules)}"><table><thead><tr><th>금칙어</th><th>범위 · 처리</th><th>상태</th><th>변경</th><th>관리</th></tr></thead><tbody>
+            <tr th:each="r : ${rules}"><td class="cell-title"><strong th:text="${r.pattern}"></strong><small th:if="${r.note != null}" th:text="${r.note}"></small></td>
+                <td data-label="범위 · 처리" th:text="${r.scopeLabel + ' · ' + r.actionLabel}"></td>
+                <td data-label="상태"><span class="badge" th:classappend="${r.enabled} ? 'SUCCEEDED' : ''" th:text="${r.enabled ? '사용' : '멈춤'}"></span></td>
+                <td data-label="변경" th:text="${(r.updatedAt != null ? #temporals.format(r.updatedAt, 'yyyy.MM.dd') : '') + ' · ' + r.admin}"></td>
+                <td class="cell-actions">
+                    <form th:action="@{/admin/moderation/{seq}/toggle(seq=${r.seq})}" method="post"><input type="hidden" name="enabled" th:value="${!r.enabled}"><button class="secondary" type="submit" th:text="${r.enabled ? '멈추기' : '다시 사용'}"></button></form>
+                    <form th:action="@{/admin/moderation/{seq}/delete(seq=${r.seq})}" method="post" class="confirm" th:attr="data-confirm=${'금칙어 ‘' + r.pattern + '’를 삭제할까요?'}"><button class="danger" type="submit">삭제</button></form></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

@@ -26,6 +26,8 @@ public class PublicAnnouncementPage {
     private final String domain;
     private final AnnouncementResults results;
     private final PriceGapStore gaps;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.toady.web.app.operation.AnnouncementOverrides overrides;
     private final Cache<String,byte[]> images=CacheBuilder.newBuilder()
         .maximumWeight(64L*1024*1024).weigher((String key,byte[] value)->value.length).expireAfterWrite(Duration.ofMinutes(10)).build();
     public PublicAnnouncementPage(PlannerSummary summaries,ShareScores shareScores,@Value("${toady.web.domain}") String domain,AnnouncementResults results,PriceGapStore gaps) {this.summaries=summaries;this.shareScores=shareScores;this.domain=domain.replaceAll("/+$","");this.results=results;this.gaps=gaps;}
@@ -45,6 +47,10 @@ public class PublicAnnouncementPage {
     @GetMapping(value="/api/v1/public/announcements/{type}/{house}/{notice}",produces="text/html;charset=UTF-8")
     public ResponseEntity<String> page(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) {
         if(!valid(type,house,notice)) return ResponseEntity.notFound().build();
+        // 운영자가 숨긴 공고(잘못 수집·취소)는 검색엔진에 알리지 않는다. 사람은 앱에서 안내와 함께 볼 수 있다.
+        if(overrides!=null && overrides.hidden(type.toUpperCase(Locale.ROOT).replace('-','_'),house,notice)) {
+            return ResponseEntity.status(410).contentType(MediaType.TEXT_HTML).body("<!doctype html><html lang='ko'><meta charset='UTF-8'><meta name='robots' content='noindex'><title>공고 안내 · TOADY</title><h1>운영 안내로 숨긴 공고입니다.</h1></html>");
+        }
         PlannerSummary.Summary s;
         try{s=summaries.get(type,house,notice);}catch(EntityNotFoundException missing){return ResponseEntity.status(404).contentType(MediaType.TEXT_HTML).body("<!doctype html><html lang='ko'><meta charset='UTF-8'><title>공고 없음 · TOADY</title><h1>공고를 찾을 수 없습니다.</h1></html>");}
         String tab=section(tabType),base=domain+"/announcements/"+s.id();

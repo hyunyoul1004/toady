@@ -432,3 +432,20 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 28px
 .report-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .report-actions input[type=text] { min-width: 200px; flex: 1; }
 .spaced-top { margin-top: 10px; }
+
+/* 26번 운영 기능: 제재·금칙어·공고 안내 양식, 작업 이력 */
+textarea { display: block; width: 100%; margin-top: 6px; padding: 10px 12px; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; min-height: 72px; }
+textarea:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px #087f6d1a; }
+.stack-form { display: grid; gap: 12px; }
+.stack-form .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stack-form .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 650; min-height: 44px; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--green); }
+.audit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.audit-list li { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 4px; }
+.audit-list small { color: var(--muted); }
+.meter { height: 10px; border-radius: 99px; background: #eef1f3; overflow: hidden; margin-top: 8px; }
+.meter i { display: block; height: 100%; background: var(--green); }
+.meter.warn i { background: var(--amber); }
+.notice-box { padding: 12px 14px; border-radius: 8px; background: var(--amber-soft); color: #6b4b00; margin-bottom: 12px; }
+[hidden] { display: none !important; }

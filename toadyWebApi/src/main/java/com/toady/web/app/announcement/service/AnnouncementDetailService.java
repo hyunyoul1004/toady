@@ -26,6 +26,7 @@ public class AnnouncementDetailService {
     private final PublicRentalAnnouncementModelRepository publicRentalModelRepository;
     private final OptionalAnnouncementRepository optionalRepository;
     private final OptionalAnnouncementModelRepository optionalModelRepository;
+    private final com.toady.web.app.operation.AnnouncementOverrides overrides;
 
     public Map<String, Object> getDetail(AnnouncementType type, String houseManageNo, String pblancNo) {
         Object announcement;
@@ -61,6 +62,14 @@ public class AnnouncementDetailService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("announcement", announcement);
         result.put("models", models);
+        // 운영자 안내(정정·취소 등)와 숨김 여부. 숨긴 공고도 주소로 열면 안내와 함께 보여 준다.
+        var override = overrides.get(type.name(), houseManageNo, pblancNo);
+        if (override != null) {
+            Map<String, Object> notice = new LinkedHashMap<>();
+            notice.put("hidden", override.hidden());
+            notice.put("message", override.notice());
+            result.put("operatorNotice", notice);
+        }
         return result;
     }
 

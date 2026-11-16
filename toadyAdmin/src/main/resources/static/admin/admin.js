@@ -82,3 +82,11 @@ if (document.getElementById('history')) {
   // 뒤로가기로 돌아온 화면(bfcache)에 펼친 메뉴가 남지 않게 한다.
   window.addEventListener('pageshow', () => set(false));
 })();
+
+// 회원 제재 양식: 기간은 '이야기 쓰기 정지'에만 쓰므로 다른 종류를 고르면 숨긴다.
+document.querySelectorAll('form[action$="/sanctions"]').forEach(function (form) {
+  var kind = form.querySelector('select[name="kind"]'), days = form.querySelector('.sanction-days');
+  if (!kind || !days) return;
+  var sync = function () { days.hidden = kind.value !== 'STORY_BAN'; };
+  kind.addEventListener('change', sync); sync();
+});

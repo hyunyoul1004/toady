@@ -9,6 +9,7 @@
         <div class="chips spaced-top"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
         <div class="heading-actions"><a class="secondary" th:href="${siteUrl + d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="notice-box" th:if="${override != null and override.hidden}">서비스에서 숨긴 공고입니다. 목록·검색·캘린더·사이트맵·RSS에 나오지 않고 새 이야기를 쓸 수 없습니다.</div>
     <section class="kpis">
         <div class="kpi primary"><span>상세 열람 · 30일</span><strong th:text="${d.viewers30 != null ? d.viewers30 + '명' : '—'}">0</strong><small th:text="${d.views30 != null ? d.views30 + '회 열람' : ''}"></small></div>
         <div class="kpi"><span>관심 저장 · 회원</span><strong th:text="${d.favorites != null ? d.favorites : '—'}">0</strong><small>비회원 기기 저장은 제외</small></div>
@@ -42,6 +43,16 @@
                 <ul class="rank"><li th:each="c, s : ${d.polls}"><span class="name" th:text="${{'미달','1~5 : 1','5~10 : 1','10~30 : 1','30~100 : 1','100 : 1 이상'}[s.index]}"></span><span class="bar"><i th:style="${'width:' + (c * 100 / d.pollTotal) + '%'}"></i></span><em th:text="${c + '표'}"></em></li></ul></div>
         </section>
     </div>
+    <section class="panel spaced"><div class="panel-head"><h2>숨김 · 운영 안내</h2><span class="panel-note">공고 원본은 바꾸지 않습니다 · 저장하면 1분 안에 반영</span></div>
+        <div class="alert error" th:unless="${overrideReady}">공고 안내 테이블이 없습니다. database.sql 26번과 관리자 계정 권한을 적용하세요.</div>
+        <form class="stack-form" th:if="${overrideReady}" th:action="@{${here + '/override'}}" method="post">
+            <label class="check"><input type="checkbox" name="hidden" value="true" th:checked="${override != null and override.hidden}"> 서비스에서 숨기기 <span class="muted">(잘못 수집됐거나 취소된 공고)</span></label>
+            <label>공고 상세 위 운영 안내(선택)<textarea name="message" maxlength="500" th:text="${override != null and override.notice != null ? override.notice : ''}" placeholder="예: 청약홈 정정 공고로 1순위 접수일이 11월 25일로 바뀌었습니다."></textarea></label>
+            <label>관리자 메모(선택, 작업 이력에만 남음)<input name="memo" maxlength="300"></label>
+            <div class="actions"><button class="primary" type="submit">저장</button></div>
+            <p class="muted" th:if="${override != null}" th:text="${'마지막 변경 ' + (override.updatedAt != null ? #temporals.format(override.updatedAt, 'yyyy.MM.dd HH:mm') : '') + ' · ' + override.admin}"></p>
+        </form>
+    </section>
     <section class="panel spaced"><div class="panel-head"><h2>주택형 · 분양가</h2><span class="panel-note">청약홈 공개 값(만원)</span></div>
         <p class="muted" th:if="${#lists.isEmpty(d.units)}">주택형 자료가 없습니다.</p>
         <div class="table-wrap" th:unless="${#lists.isEmpty(d.units)}"><table><thead><tr><th>주택형</th><th th:if="${d.hasUnitArea}">전용면적</th><th>공급 세대</th><th>최고 공급금액</th></tr></thead><tbody>
@@ -62,5 +73,6 @@
             </li>
         </ul>
     </section>
+    <section th:replace="~{admin/fragments :: history(${history})}"></section>
     <footer>TOADY · 관리자 <span>조회 수는 사람 방문 기준이며 ‘내 방문 제외’에 등록한 브라우저는 뺍니다.</span></footer>
 </main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

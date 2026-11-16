@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('메일 발송 현황')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main" th:with="r=${report}">
+    <section class="page-heading"><div><p class="eyebrow">MAIL</p><h1>메일 발송 현황</h1>
+        <p class="muted">Gmail 한 계정으로 보내므로 최근 24시간 발송 시도 수로 한도를 지킵니다. 비밀번호 찾기 같은 인증 메일 몫(예비분)은 알림·가입 메일이 쓰지 못합니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:if="${r.usage == null}">발송 기록 테이블을 읽지 못했습니다. database.sql 8번(메일 기록)과 26번의 관리자 권한을 확인하세요.</div>
+    <div class="notice-box" th:if="${r.warning}">알림·가입 메일 한도에 닿았습니다. 지금은 인증 메일만 보낼 수 있습니다.</div>
+    <section class="kpis" th:if="${r.usage != null}">
+        <div class="kpi primary"><span>최근 24시간 발송</span><strong th:text="${r.usage.total + ' / ' + r.limit}">0</strong>
+            <div class="meter" th:classappend="${r.warning} ? 'warn'"><i th:style="${'width:' + r.usedPercent + '%'}"></i></div></div>
+        <div class="kpi"><span>인증(비밀번호 찾기 등)</span><strong th:text="${r.usage.auth}">0</strong><small th:text="${'남은 양 ' + r.authLeft}"></small></div>
+        <div class="kpi"><span>가입 인증</span><strong th:text="${r.usage.signup}">0</strong><small th:text="${'상한 ' + r.signupCap}"></small></div>
+        <div class="kpi"><span>일정 알림</span><strong th:text="${r.usage.reminder}">0</strong><small th:text="${'알림·가입 남은 양 ' + r.generalLeft}"></small></div>
+    </section>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>일정 알림 발송 결과 · 최근 7일</h2></div>
+            <p class="muted" th:if="${r.deliveries == null}">발송 결과 테이블을 읽지 못했습니다.</p>
+            <p class="muted" th:if="${r.deliveries != null and #lists.isEmpty(r.deliveries)}">최근 7일 동안 보낸 일정 알림이 없습니다.</p>
+            <div class="table-wrap stack" th:if="${r.deliveries != null and !#lists.isEmpty(r.deliveries)}"><table><thead><tr><th>날짜</th><th>보냄</th><th>실패</th><th>불명확</th><th>보내는 중</th></tr></thead><tbody>
+                <tr th:each="d : ${r.deliveries}"><td class="cell-title"><strong th:text="${#temporals.format(d.date, 'MM.dd (E)')}"></strong></td>
+                    <td data-label="보냄" th:text="${d.sent}"></td><td data-label="실패" th:text="${d.failed}"></td><td data-label="불명확" th:text="${d.unknown}"></td><td data-label="보내는 중" th:text="${d.sending}"></td></tr>
+            </tbody></table></div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>알림 설정</h2></div>
+            <dl class="facts">
+                <div><dt>이메일 알림을 켠 관심 공고</dt><dd th:text="${r.alertsOn != null ? r.alertsOn + '개' : '—'}"></dd></div>
+                <div><dt>24시간 한도 · 인증 예비분</dt><dd th:text="${r.limit + '통 · ' + r.reserve + '통'}"></dd></div>
+            </dl>
+            <p class="muted">회원은 알림 메일의 '이 메일 그만 받기'로 로그인 없이 수신을 끌 수 있습니다. 한도 값은 API와 같은 환경변수(GMAIL_ROLLING_LIMIT 등)를 읽습니다.</p>
+        </section>
+    </div>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

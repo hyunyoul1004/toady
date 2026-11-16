@@ -38,7 +38,8 @@ class AdminSiteTest {
 	@BeforeEach fun setup() {
 		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_OPT_LTTOT_PBLANC_DETAIL",
 			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE",
-			"TB_USER_REPORT", "TB_DM_MESSAGE", "TB_DM_THREAD", "TB_DM_SETTING").forEach { jdbc.update("DELETE FROM $it") }
+			"TB_USER_REPORT", "TB_DM_MESSAGE", "TB_DM_THREAD", "TB_DM_SETTING",
+			"TB_ADMIN_AUDIT", "TB_USER_SANCTION", "TB_MODERATION_RULE", "TB_ANNOUNCEMENT_OVERRIDE", "TB_MAIL_ATTEMPT", "TB_REMINDER_DELIVERY").forEach { jdbc.update("DELETE FROM $it") }
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
 			today.minusDays(1).toString(), today.plusDays(1).toString())
@@ -293,6 +294,81 @@ class AdminSiteTest {
 		assertEquals(50L, funnel.otherReturnRate)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("방문 → 알림 흐름")))
 	}
+	@Test fun sanctionsAreRecordedAndStoryBanCanBeLiftedEarly() {
+		// 회원 상세를 열면 열람 기록이 남는다.
+		mvc.perform(get("/admin/members/1").with(admin)).andExpect(status().isOk)
+		assertEquals(1L, count("SELECT COUNT(*) FROM TB_ADMIN_AUDIT WHERE ACTION='MEMBER_VIEW' AND TARGET_ID='1'"))
+		mvc.perform(post("/admin/members/1/sanctions").with(admin).with(csrf()).param("kind", "STORY_BAN").param("reason", "TRADE").param("days", "7").param("memo", "거래 유도"))
+			.andExpect(redirectedUrl("/admin/members/1")).andExpect(flash().attributeExists("notice"))
+		// 같은 회원에게 다시 정지하면 앞 정지를 끝내고 새 기간으로 바꾼다(겹쳐 쌓지 않는다).
+		mvc.perform(post("/admin/members/1/sanctions").with(admin).with(csrf()).param("kind", "STORY_BAN").param("reason", "SPAM").param("days", "-1"))
+		assertEquals(1L, count("SELECT COUNT(*) FROM TB_USER_SANCTION WHERE USER_SEQ=1 AND KIND='STORY_BAN' AND CANCELED_DT IS NULL"))
+		val active = count("SELECT SANCTION_SEQ FROM TB_USER_SANCTION WHERE USER_SEQ=1 AND CANCELED_DT IS NULL")
+		assertEquals(null, jdbc.queryForObject("SELECT END_DT FROM TB_USER_SANCTION WHERE SANCTION_SEQ=?", java.sql.Timestamp::class.java, active), "무기한")
+		val html = mvc.perform(get("/admin/members/1").with(admin)).andReturn().response.contentAsString
+		assertTrue(html.contains("이야기 정지 무기한") && html.contains("거래 유도") && html.contains("관리자 작업 이력"))
+		mvc.perform(post("/admin/members/1/sanctions/$active/cancel").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_USER_SANCTION WHERE USER_SEQ=1 AND CANCELED_DT IS NULL"))
+		assertEquals(3L, count("SELECT COUNT(*) FROM TB_ADMIN_AUDIT WHERE TARGET_TYPE='MEMBER' AND TARGET_ID='1' AND ACTION IN ('SANCTION_ADD','SANCTION_CANCEL')"))
+		// 없는 종류·기간은 받지 않는다.
+		mvc.perform(post("/admin/members/1/sanctions").with(admin).with(csrf()).param("kind", "BAN_ALL").param("reason", "TRADE")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/members/1/sanctions").with(admin).with(csrf()).param("kind", "STORY_BAN").param("reason", "TRADE").param("days", "999")).andExpect(flash().attributeExists("error"))
+		// 탈퇴 회원은 제재하지 않는다.
+		mvc.perform(post("/admin/members/3/sanctions").with(admin).with(csrf()).param("kind", "WARNING").param("reason", "ETC")).andExpect(flash().attributeExists("error"))
+	}
+
+	@Test fun nicknameResetUsesAFreeDefaultNameAndKeepsTheOldOneInTheLog() {
+		jdbc.update("INSERT INTO TB_USER (USER_SEQ,USER_EMAIL,USER_PASSWORD,USER_NIC_NAME,EMAIL_CERTIFY_YN) VALUES (4,'d@example.test','x','회원2','Y')")
+		mvc.perform(post("/admin/members/2/sanctions").with(admin).with(csrf()).param("kind", "NICKNAME_RESET").param("reason", "NICKNAME"))
+			.andExpect(flash().attributeExists("notice"))
+		assertEquals("회원2a", jdbc.queryForObject("SELECT USER_NIC_NAME FROM TB_USER WHERE USER_SEQ=2", String::class.java), "이미 있는 닉네임이면 글자를 붙인다")
+		assertEquals("나래_10%", jdbc.queryForObject("SELECT BEFORE_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='NICKNAME_RESET'", String::class.java))
+	}
+
+	@Test fun moderationRulesCanBeAddedTestedPausedAndDeleted() {
+		mvc.perform(post("/admin/moderation").with(admin).with(csrf()).param("pattern", "통장 매매").param("scope", "ALL").param("action", "BLOCK"))
+			.andExpect(flash().attributeExists("notice"))
+		// 띄어쓰기만 다른 같은 말은 중복, 한 글자·이야기 표시(FLAG)는 받지 않는다.
+		mvc.perform(post("/admin/moderation").with(admin).with(csrf()).param("pattern", "통장매매").param("scope", "ALL")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/moderation").with(admin).with(csrf()).param("pattern", "돈").param("scope", "ALL")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/moderation").with(admin).with(csrf()).param("pattern", "선입금").param("scope", "STORY").param("action", "FLAG")).andExpect(flash().attributeExists("error"))
+		val tested = mvc.perform(get("/admin/moderation").param("test", "청약 통장매매 하실 분").with(admin)).andReturn().response.contentAsString
+		assertTrue(tested.contains("<strong>통장 매매</strong>"), "띄어쓰기를 무시하고 찾는다")
+		val seq = count("SELECT RULE_SEQ FROM TB_MODERATION_RULE")
+		mvc.perform(post("/admin/moderation/$seq/toggle").with(admin).with(csrf()).param("enabled", "false")).andExpect(flash().attributeExists("notice"))
+		assertEquals("N", jdbc.queryForObject("SELECT USE_YN FROM TB_MODERATION_RULE", String::class.java))
+		mvc.perform(post("/admin/moderation/$seq/delete").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_MODERATION_RULE"))
+		assertEquals(listOf("RULE_ADD", "RULE_TOGGLE", "RULE_DELETE"), jdbc.queryForList("SELECT ACTION FROM TB_ADMIN_AUDIT ORDER BY AUDIT_SEQ", String::class.java))
+	}
+
+	@Test fun announcementsCanBeHiddenWithANoticeAndRestored() {
+		mvc.perform(post("/admin/announcements/apt/H1/P1/override").with(admin).with(csrf()).param("hidden", "true").param("message", "청약홈에서 취소된 공고입니다."))
+			.andExpect(redirectedUrl("/admin/announcements/apt/H1/P1"))
+		assertEquals("Y", jdbc.queryForObject("SELECT HIDDEN_YN FROM TB_ANNOUNCEMENT_OVERRIDE WHERE ANNOUNCEMENT_TYPE='APT' AND HOUSE_MANAGE_NO='H1'", String::class.java))
+		val html = mvc.perform(get("/admin/announcements/apt/H1/P1").with(admin)).andReturn().response.contentAsString
+		assertTrue(html.contains("서비스에서 숨긴 공고입니다") && html.contains("청약홈에서 취소된 공고입니다."))
+		// 숨김을 풀고 안내도 비우면 원래대로(행 삭제).
+		mvc.perform(post("/admin/announcements/apt/H1/P1/override").with(admin).with(csrf()).param("message", ""))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_ANNOUNCEMENT_OVERRIDE"))
+		assertEquals(listOf("공개", "숨김 · 안내: 청약홈에서 취소된 공고입니다."), jdbc.queryForList("SELECT BEFORE_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='ANNOUNCEMENT_OVERRIDE' ORDER BY AUDIT_SEQ", String::class.java))
+		mvc.perform(post("/admin/announcements/evil/H1/P1/override").with(admin).with(csrf())).andExpect(status().isNotFound)
+	}
+
+	@Test fun existingActionsAreWrittenToTheAuditLogAndMailStatusRenders() {
+		mvc.perform(post("/admin/members/2/lock").with(admin).with(csrf()).param("locked", "true"))
+		mvc.perform(post("/admin/comments/10/hide").with(admin).with(csrf()))
+		assertEquals(listOf("MEMBER_LOCK", "COMMENT_HIDE"), jdbc.queryForList("SELECT ACTION FROM TB_ADMIN_AUDIT ORDER BY AUDIT_SEQ", String::class.java))
+		val log = mvc.perform(get("/admin/audit").param("target", "COMMENT").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(log.contains(">이야기 10<") && !log.contains(">회원 2<"), "대상으로 거른다")
+		val now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
+		jdbc.update("INSERT INTO TB_MAIL_ATTEMPT VALUES ('a',  'AUTH', ?), ('b', 'REMINDER', ?), ('c', 'REMINDER', ?)", now, now, now.minusHours(30))
+		jdbc.update("INSERT INTO TB_REMINDER_DELIVERY VALUES (1, ?, 'SENT', ?)", com.toady.admin.Kst.today(), now)
+		val mail = mvc.perform(get("/admin/mail").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(mail.contains("2 / 400"), "24시간 안의 발송만 센다")
+	}
+
+	private fun count(sql: String): Long = jdbc.queryForObject(sql, Long::class.java) ?: 0
 }
 
 class MetricsRulesTest {
@@ -303,5 +379,6 @@ class MetricsRulesTest {
 		assertEquals(LocalDate.of(2026, 11, 9), MetricsService.weekStart(LocalDate.of(2026, 11, 15)))
 		assertTrue(MetricsService.Week(LocalDate.MIN, LocalDate.MIN, 3, 0, 0, 1, 0, 0, 0, 0).returningRate == 33L)
 	}
+
 
 }

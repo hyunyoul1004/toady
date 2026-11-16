@@ -28,6 +28,9 @@ public class AnnouncementCommentService {
     private final AnnouncementService announcementService;
     private final UserRepository userRepository;
     private final ProfileIcons profileIcons;
+    private final com.toady.web.app.operation.Sanctions sanctions;
+    private final com.toady.web.app.operation.ModerationRules moderation;
+    private final com.toady.web.app.operation.AnnouncementOverrides overrides;
 
     public Page<AnnouncementCommentResponse> list(
             AnnouncementType type,
@@ -64,6 +67,9 @@ public class AnnouncementCommentService {
             Long userSeq
     ) {
         requireAnnouncement(type, houseManageNo, pblancNo);
+        // 운영자가 숨긴 공고에는 새 이야기를 받지 않는다.
+        if (overrides.hidden(type.name(), houseManageNo, pblancNo)) throw new AccessDeniedException("운영자가 숨긴 공고라 이야기를 쓸 수 없어요.");
+        checkWriter(userSeq, request.content());
 
         if (request.parentCommentSeq() != null) {
             AnnouncementCommentEntity parent = commentRepository.findForUpdate(request.parentCommentSeq())
@@ -96,6 +102,7 @@ public class AnnouncementCommentService {
         AnnouncementCommentEntity comment = ownedComment(
                 commentSeq, userSeq, type, houseManageNo, pblancNo
         );
+        checkWriter(userSeq, request.content());
         comment.setContent(request.content());
         comment.setUpdateDt(LocalDateTime.now());
         comment.setUpdateUserSeq(userSeq);
@@ -119,6 +126,15 @@ public class AnnouncementCommentService {
         comment.setUpdateUserSeq(userSeq);
         // 답글이 있는 댓글을 지우면 답글도 함께 지운다(부모 없는 답글이 일반 댓글처럼 보이지 않게).
         if (comment.getParentCommentSeq() == null) commentRepository.deleteReplies(comment.getCommentSeq(), userSeq, now);
+    }
+
+    /** 이야기 쓰기 정지(관리자 제재)와 금칙어. 걸리면 그 이유를 그대로 화면에 보여 준다. */
+    private void checkWriter(Long userSeq, String content) {
+        String banned = sanctions.storyBanMessage(userSeq);
+        if (banned != null) throw new AccessDeniedException(banned);
+        if (moderation.check(content, com.toady.web.app.operation.ModerationRules.Scope.STORY) == com.toady.web.app.operation.ModerationRules.Action.BLOCK) {
+            throw new IllegalArgumentException("운영 정책상 쓸 수 없는 표현이 들어 있어요. 내용을 고쳐 다시 올려 주세요.");
+        }
     }
 
     private AnnouncementCommentEntity ownedComment(
