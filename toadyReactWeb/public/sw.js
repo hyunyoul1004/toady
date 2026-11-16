@@ -17,7 +17,7 @@ function safeUrl(value) {
 }
 
 /**
- * React 앱(SPA)이 그리는 경로. /areas·/announcements·/zupzup·/weekly·/calendar 등은 서버가 HTML을 직접 그린다.
+ * 앱 라우터 안에서 바로 이동하는 경로. 이 밖의 경로(/announcements/…·/areas·/weekly·/calendar 등)는 전체 페이지 이동으로 연다.
  * src/features/push/pushSupport.js의 SPA_PATHS와 같은 목록이어야 한다(테스트로 대조).
  */
 const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail', '/account', '/messages'];

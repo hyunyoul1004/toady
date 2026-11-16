@@ -245,7 +245,7 @@ class PushIntegrationTest {
         JsonNode weekly = decrypt(SENT.get(0).body());
         assertEquals("이번 주 청약 브리핑", weekly.path("title").asText(), weekly.toString());
         assertTrue(weekly.path("body").asText().contains("접수 시작 2건 · 아파트 1건 · 무순위·줍줍 1건"), weekly.toString());
-        assertEquals("/weekly", weekly.path("url").asText());
+        assertEquals("/this-week", weekly.path("url").asText());
         // 일요일이 아니면 주간 브리핑을 넣지 않는다.
         SENT.clear();
         assertEquals(0, digest("2026-11-16T18:00").run().sent());
@@ -289,7 +289,7 @@ class PushIntegrationTest {
         assertEquals("TOADY 청약 알림 · 3건", message.title());
         assertEquals("내일 일정 2건 · 가 단지 접수 마감 외 1건\n동탄 새 공고 1건 · 다 단지", message.body());
         assertEquals("/?subscriptSeq=apt%2FA%2F1", message.url());
-        assertEquals(List.of("/my", "/areas/dongtan"), message.actions().stream().map(PushMessage.Action::url).toList());
+        assertEquals(List.of("/my", "/?area=dongtan"), message.actions().stream().map(PushMessage.Action::url).toList());
         assertTrue(PushMessage.digest(List.of()).isEmpty());
     }
 

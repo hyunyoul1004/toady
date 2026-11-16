@@ -3,7 +3,7 @@
  * @description 애플리케이션 라우팅 정의 컴포넌트
  */
 import React, { Suspense, lazy, useEffect, useRef } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import MainLayout from '@/components/layout/MainLayout';
@@ -43,6 +43,23 @@ function LoginRedirect() {
   return null;
 }
 
+/**
+ * 검색·공유용 공개 주소(/areas, /weekly, /zupzup, /help/faq)로 들어온 사람은 같은 내용의 앱 화면으로 옮긴다.
+ * 봇은 웹 nginx가 서버 HTML을 주므로 이 화면까지 오지 않는다. 유입 꼬리표(src 등) 쿼리는 그대로 넘긴다.
+ */
+function PublicPathRedirect({ to }) {
+  const { search } = useLocation();
+  return <Navigate to={to + search} replace />;
+}
+/** /areas/{생활권} → 그 생활권으로 거른 청약 캘린더(/?area=). 생활권 이름 확인은 캘린더가 한다. */
+function AreaRedirect() {
+  const { slug } = useParams();
+  const { search } = useLocation();
+  const next = new URLSearchParams(search);
+  if (/^[a-z0-9-]{1,40}$/.test(slug || '')) next.set('area', slug);
+  return <Navigate to={`/?${next}`} replace />;
+}
+
 export const AppRoutes = () => {
   return (
     <Routes>
@@ -62,6 +79,11 @@ export const AppRoutes = () => {
         <Route path="regions" element={page(<RegionsPage />)} />
         {/* 이전 주소(생활권별 청약)는 지역별 청약으로 옮긴다. */}
         <Route path="living-areas" element={<Navigate to="/regions" replace />} />
+        <Route path="areas" element={<PublicPathRedirect to="/regions" />} />
+        <Route path="areas/:slug" element={<AreaRedirect />} />
+        <Route path="weekly" element={<PublicPathRedirect to="/this-week" />} />
+        <Route path="zupzup" element={<PublicPathRedirect to="/match/zupzup" />} />
+        <Route path="help/faq" element={<PublicPathRedirect to="/faq" />} />
         <Route path="privacy" element={page(<LegalPage kind="privacy" />)} />
         <Route path="terms" element={page(<LegalPage kind="terms" />)} />
         <Route path="certify" element={page(<SignUpCertify />)} />

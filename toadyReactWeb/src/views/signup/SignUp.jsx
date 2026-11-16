@@ -3,6 +3,7 @@
  * @description 신규 회원가입 입력 및 유효성 검증 컴포넌트
  */
 import React, { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -22,6 +23,8 @@ import { authApi } from '@/features/auth/api/authApi';
 import { formatServerMessage, isEmail } from '@/utils/text.util';
 
 export const SignUp = (props) => {
+  // 이메일은 주소(쿼리)에 넣지 않고 화면 상태로만 넘긴다(방문 기록·유입 로그에 남지 않게).
+  const navigate = useNavigate();
   const userNicNameFocus = useRef(null);
   const userEmailFocus = useRef(null);
   const userPasswordFocus = useRef(null);
@@ -147,11 +150,12 @@ export const SignUp = (props) => {
           <CheckCircleOutlineIcon sx={{ fontSize: 44 }} />
         </Box>
         <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', mb: 1 }}>
-          회원가입 완료!
+          인증 메일을 보냈어요
         </Typography>
-        <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, mb: 3 }}>
-          입력하신 <b>{formData.userEmail}</b>으로<br />
-          인증 이메일을 발송했습니다. 메일함을 확인해 주세요.
+        {/* 인증 전에는 로그인이 거절되므로, 바로 로그인하라고 안내하지 않고 다음에 할 일(메일 인증)을 먼저 알린다. */}
+        <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, mb: 3, wordBreak: 'keep-all' }}>
+          <b>{formData.userEmail}</b>으로 보낸 메일의 인증 버튼을 누르면 가입이 끝나요.<br />
+          인증을 마친 뒤 로그인할 수 있어요. 메일이 안 보이면 스팸함도 확인해 주세요.
         </Typography>
 
         <Button
@@ -170,7 +174,11 @@ export const SignUp = (props) => {
             '&:hover': { bgcolor: '#1d4ed8' }
           }}
         >
-          로그인하러 가기
+          인증을 마쳤어요, 로그인하기
+        </Button>
+        <Button fullWidth variant="text" onClick={() => navigate('/certify', { state: { resendEmail: formData.userEmail } })}
+          sx={{ mt: 1, fontWeight: 700, color: '#475569' }}>
+          메일이 오지 않았나요? 인증 메일 다시 받기
         </Button>
       </Box>
     );

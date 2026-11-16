@@ -31,6 +31,7 @@ public final class PushTopics {
     public static Optional<Topic> bySlug(String slug) { return ALL.stream().filter(topic -> topic.slug().equals(slug)).findFirst(); }
     /** 구독 범위에 저장할 수 있는 slug: 생활권 또는 알림 주제. */
     public static boolean valid(String slug) { return LivingAreas.bySlug(slug).isPresent() || bySlug(slug).isPresent() || WEEKLY.equals(slug); }
-    /** 알림의 '새 공고 모아보기' 버튼 주소. */
-    public static String url(String slug) { return WEEKLY.equals(slug) ? "/weekly" : bySlug(slug).map(Topic::url).orElse("/areas/" + slug); }
+    /** 알림의 '새 공고 모아보기' 버튼 주소. 구독자는 앱 사용자이므로 서버 공개 페이지가 아닌 앱 화면으로 보낸다(이번 주 화면, 생활권으로 거른 캘린더). */
+    public static String url(String slug) { return WEEKLY.equals(slug) ? WEEKLY_URL : bySlug(slug).map(Topic::url).orElse("/?area=" + slug); }
+    public static final String WEEKLY_URL = "/this-week";
 }

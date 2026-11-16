@@ -49,8 +49,8 @@ export function appPath(url, origin) {
 }
 
 /**
- * React 앱(SPA)이 그리는 경로. 나머지(/areas, /announcements, /zupzup, /weekly, /calendar 등)는 서버가 HTML을 직접 그려
- * 앱 라우터로 이동하면 첫 화면으로 떨어지므로 전체 페이지 이동이 필요하다. public/sw.js의 목록과 같아야 한다.
+ * 앱 라우터 안에서 바로 이동하는 경로. 이 밖의 경로(/announcements/…, /areas, /weekly, /calendar 등)는 전체 페이지 이동으로 연다.
+ * 공고·공개 주소는 웹 nginx가 사람에게 앱을 주므로 전체 이동해도 앱 화면이 열린다(.ics 등은 서버 응답). public/sw.js의 목록과 같아야 한다.
  */
 export const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail', '/account', '/messages'];
 

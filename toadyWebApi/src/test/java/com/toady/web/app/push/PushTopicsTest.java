@@ -17,7 +17,7 @@ class PushTopicsTest {
         assertTrue(PushTopics.valid("unjeong"));
         assertFalse(PushTopics.valid("zupzup-busan"));
         assertEquals("/match/zupzup", PushTopics.url("zupzup-all"));
-        assertEquals("/areas/unjeong", PushTopics.url("unjeong"));
+        assertEquals("/?area=unjeong", PushTopics.url("unjeong"));
     }
 
     @Test void capitalTopicKeepsOnlySeoulGyeonggiIncheon() {

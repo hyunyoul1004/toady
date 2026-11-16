@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { Box, Button, Container, Typography, Alert, AlertTitle, CircularProgress, TextField, InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -17,6 +17,7 @@ const RETRYABLE = 'ERR-205';
 
 export const SignUpCertify = () => {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const userEmail = searchParams.get('userEmail');
@@ -32,11 +33,10 @@ export const SignUpCertify = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
-  const [resultState, setResultState] = useState(hasLink ? null : {
-    resultCode: 'FAIL', resultMessage: '인증 링크가 없거나 만료됐다면 가입 이메일로 새 링크를 요청해 주세요.'
-  });
+  // 링크 없이 들어온 경우(메일 다시 받기)는 실패가 아니므로 오류를 띄우지 않고 재발송 양식만 보여 준다.
+  const [resultState, setResultState] = useState(null);
 
-  const [resendEmail, setResendEmail] = useState(userEmail || '');
+  const [resendEmail, setResendEmail] = useState(userEmail || location.state?.resendEmail || '');
   const [isSending, setIsSending] = useState(false);
   const [resendNotice, setResendNotice] = useState(null);
 
@@ -73,7 +73,7 @@ export const SignUpCertify = () => {
   const succeeded = resultState?.resultCode === 'SUCCESS';
   const retryable = resultState?.resultCode === RETRYABLE;
   const showPasswordForm = hasLink && !succeeded && (!resultState || retryable);
-  const showResend = resultState && !succeeded && !retryable;
+  const showResend = (!hasLink || resultState) && !succeeded && !retryable;
 
   return (
     <Box component="main" sx={{ alignItems: 'center', display: 'flex', flexGrow: 1, minHeight: '60vh', justifyContent: 'center' }}>
@@ -81,6 +81,9 @@ export const SignUpCertify = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, p: { xs: 3, sm: 4 }, borderRadius: 3, border: '1px solid #e2e8f0', bgcolor: 'background.paper' }}>
           <Box>
             <Typography component="h1" sx={{ fontWeight: 800, fontSize: { xs: 22, sm: 26 }, letterSpacing: '-.02em' }}>이메일 인증</Typography>
+            {!hasLink && !succeeded && <Typography variant="body2" color="text.secondary" sx={{ mt: .8, wordBreak: 'keep-all' }}>
+              가입한 이메일을 입력하면 인증 메일을 다시 보내 드려요. 메일이 안 보이면 스팸함도 확인해 주세요.
+            </Typography>}
             {hasLink && !succeeded && <Typography variant="body2" color="text.secondary" sx={{ mt: .8, wordBreak: 'keep-all' }}>
               본인 확인을 위해 <b>{userEmail}</b>로 가입할 때 정한 비밀번호를 입력하면 인증이 완료돼요.
             </Typography>}
