@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "applyhome.admin.enabled=true",
         "applyhome.admin.internal-token=" + AdminConsoleTest.TOKEN,
-        "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-",
+        "applyhome.scheduler.cron=-", "applyhome.competition.scheduler.cron=-", "applyhome.scheduled-results.cron=-",
         "applyhome.admin.busy-retry-seconds=1", "applyhome.admin.busy-wait-seconds=1", "data.retention.cron=-",
         "spring.datasource.url=jdbc:h2:mem:admin;MODE=MariaDB;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",

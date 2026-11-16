@@ -42,6 +42,7 @@ public class AdminScheduleManager {
     private final String defaultDaily;
     private final String defaultCompetition;
     private final int defaultLookback;
+    private final String defaultScheduledResults;
     private volatile boolean ready;
 
     // 다른 작업과 겹쳐 건너뛴 자동 실행을 한 번 더 시도하기까지의 대기 시간.
@@ -53,10 +54,12 @@ public class AdminScheduleManager {
             @Value("${applyhome.scheduler.cron:0 15 3 * * *}") String daily,
             @Value("${applyhome.competition.scheduler.cron:0 15 4,20 * * *}") String competition,
             @Value("${applyhome.scheduler.lookback-days:90}") int lookback,
+            @Value("${applyhome.scheduled-results.cron:" + SCHEDULED_RESULTS_CRON + "}") String scheduledResults,
             @Value("${applyhome.admin.busy-retry-seconds:300}") long busyRetrySeconds) {
         this.jdbc = jdbc; this.jobs = jobs;
         this.busyRetryDelay = Duration.ofSeconds(Math.max(1, busyRetrySeconds));
         this.defaultDaily = daily; this.defaultCompetition = competition; this.defaultLookback = lookback;
+        this.defaultScheduledResults = scheduledResults;
         timer.setPoolSize(1); timer.setThreadNamePrefix("admin-schedule-"); timer.initialize();
     }
 
@@ -72,7 +75,8 @@ public class AdminScheduleManager {
         seed(JobKind.COMPETITION, true, defaultCompetition);
         seed(JobKind.SCORES, false, "0 15 6 * * *");
         seed(JobKind.ALL, false, "0 15 1 * * *");
-        seed(JobKind.SCHEDULED_RESULTS, true, SCHEDULED_RESULTS_CRON, SCHEDULED_RESULTS_LOOKBACK);
+        // '-'이면 꺼진 채로 등록한다(테스트·수동 운영). 다른 기본 일정과 같은 규칙.
+        seed(JobKind.SCHEDULED_RESULTS, true, defaultScheduledResults, SCHEDULED_RESULTS_LOOKBACK);
         ready = true;
         refresh();
     }
@@ -99,7 +103,7 @@ public class AdminScheduleManager {
                     INSERT INTO TB_SCHEDULER_ADMIN_SCHEDULE (JOB_KIND, ENABLED, CRON_EXPRESSION, LOOKBACK_DAYS, UPDATED_AT)
                     SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS
                     (SELECT 1 FROM TB_SCHEDULER_ADMIN_SCHEDULE WHERE JOB_KIND = ?)
-                    """, kind.name(), enabled && !cron.equals("-"), cron.equals("-") ? "0 15 3 * * *" : cron,
+                    """, kind.name(), enabled && !cron.equals("-"), cron.equals("-") ? (kind == JobKind.SCHEDULED_RESULTS ? SCHEDULED_RESULTS_CRON : "0 15 3 * * *") : cron,
                     lookback, AdminJobService.now(), kind.name());
         } catch (DuplicateKeyException ignored) { /* 다른 인스턴스가 같은 종류를 먼저 등록했다면 기존 값을 사용한다. */ }
     }
