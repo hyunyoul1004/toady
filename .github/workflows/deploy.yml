@@ -48,7 +48,11 @@ jobs:
           java-version: '21'
           # Gradle 의존성을 실행마다 Maven Central에서 다시 받지 않는다(잦은 푸시에 429 Too Many Requests로 실패했다).
           cache: gradle
+          # 이 작업은 세 프로젝트의 테스트 의존성을 모두 받으므로 캐시 키를 verify-mariadb(API만)와 다르게 둔다.
+          # 같은 키를 쓰면 먼저 끝난 verify-mariadb가 API 의존성만 든 캐시를 저장하고, 그 뒤로는 스케줄러·관리자
+          # 의존성을 매번 Maven Central에서 받다가 429로 실패했다. 이 파일이 바뀌면 캐시도 새로 만든다.
           cache-dependency-path: |
+            .github/workflows/deploy.yml
             toadyWebApi/*.gradle*
             toadyScheduler/*.gradle*
             toadyAdmin/*.gradle*
@@ -108,13 +112,10 @@ jobs:
           java-version: '21'
           # Gradle 의존성을 실행마다 Maven Central에서 다시 받지 않는다(잦은 푸시에 429 Too Many Requests로 실패했다).
           cache: gradle
+          # API의 MariaDB 테스트만 돌리므로 API 의존성만 캐시한다(verify와 다른 키).
           cache-dependency-path: |
             toadyWebApi/*.gradle*
-            toadyScheduler/*.gradle*
-            toadyAdmin/*.gradle*
             toadyWebApi/gradle/wrapper/gradle-wrapper.properties
-            toadyScheduler/gradle/wrapper/gradle-wrapper.properties
-            toadyAdmin/gradle/wrapper/gradle-wrapper.properties
       - name: Prepare isolated schema fixture
         env:
           DB_CONTAINER: ${{ job.services.mariadb.id }}
