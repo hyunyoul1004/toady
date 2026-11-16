@@ -16,7 +16,8 @@ def server_script():
 
 
 class DeployWorkflowTest(unittest.TestCase):
-    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config='', admin_env=None):
+    def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config='', admin_env=None,
+                   same_apps='', new_compose='new compose\n'):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             work = home / 'toady'
@@ -27,7 +28,13 @@ class DeployWorkflowTest(unittest.TestCase):
             stubs = {
                 'docker-compose': '#!/bin/sh\necho "compose $IMAGE_TAG $*" >> "$CALL_LOG"\n'
                                   'case "$*" in *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; esac\n',
-                'docker': '#!/bin/sh\necho "docker $*" >> "$CALL_LOG"\n',
+                # 이미지 ID 스텁: 새 태그 이미지는 id-<저장소>, SAME_APPS에 든 컨테이너만 같은 ID로 돌고 있다.
+                'docker': '#!/bin/bash\necho "docker $*" >> "$CALL_LOG"\n'
+                          'if [ "$1 $2" = "image inspect" ]; then n="${@: -1}"; n="${n##*/}"; echo "id-${n%%:*}"; exit 0; fi\n'
+                          'if [ "$1" = inspect ]; then app="${@: -1}"\n'
+                          '  case "$3" in *Running*) echo true ;;\n'
+                          '    *) case " $SAME_APPS " in *" $app "*) case "$app" in toadyWebApi) echo id-toady-web-api ;; toadyScheduler) echo id-toady-scheduler ;;'
+                          ' toadyReactWeb) echo id-toady-react-web ;; toadyAdmin) echo id-toady-admin ;; esac ;; *) echo id-old ;; esac ;; esac; fi\n',
             }
             for name, source in stubs.items():
                 (bin_dir / name).write_text(source)
@@ -37,7 +44,7 @@ class DeployWorkflowTest(unittest.TestCase):
             (work / 'docker-compose.yml').write_text('old compose\n')
             # scp가 받아 둔 새 파일(배포 스크립트가 이전 파일을 보관한 뒤 교체한다).
             (work / '.incoming' / 'scripts').mkdir(parents=True)
-            (work / '.incoming' / 'docker-compose.yml').write_text('new compose\n')
+            (work / '.incoming' / 'docker-compose.yml').write_text(new_compose)
             (work / '.incoming' / 'scripts' / 'check-deployment.sh').write_text(check)
             if previous_tag:
                 (work / '.deployed-image-tag').write_text(previous_tag + '\n')
@@ -51,7 +58,7 @@ class DeployWorkflowTest(unittest.TestCase):
                                     env={**os.environ, 'HOME': str(home),
                                          'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
                                          'IMAGE_TAG': 'new', 'DOCKER_USERNAME': 'tester', 'CALL_LOG': str(log),
-                                         'FAIL_UP_FOR': fail_up_for, 'CHECK_FAILS_FOR': check_fails_for, 'FAIL_CONFIG': fail_config})
+                                         'FAIL_UP_FOR': fail_up_for, 'SAME_APPS': same_apps, 'CHECK_FAILS_FOR': check_fails_for, 'FAIL_CONFIG': fail_config})
             self.compose = (work / 'docker-compose.yml').read_text()
             env_file = work / '.env'
             return (result, log.read_text() if log.exists() else '',
@@ -111,6 +118,36 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn('no previous successful tag', result.stderr)
         self.assertEqual('', tag)
         self.assertIsNone(env)
+
+    def test_only_apps_with_a_new_image_are_restarted(self):
+        result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n',
+                                                 same_apps='toadyWebApi toadyScheduler')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('up -d --no-deps toadyReactWeb\n', calls)
+        self.assertIn('apps to restart: toadyReactWeb', result.stdout)
+        self.assertEqual('new\n', tag)
+
+    def test_nothing_is_restarted_when_every_image_is_unchanged(self):
+        result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n',
+                                                 same_apps='toadyWebApi toadyScheduler toadyReactWeb')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn(' up ', calls)
+        self.assertNotIn('nginx -s reload', calls)
+        self.assertIn('check new', calls, '재시작이 없어도 배포 확인은 한다')
+        self.assertEqual('new\n', tag)
+
+    def test_changed_compose_restarts_every_app(self):
+        result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', same_apps='toadyWebApi toadyScheduler toadyReactWeb')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('up -d --no-deps toadyWebApi toadyScheduler toadyReactWeb', calls)
+
+    def test_rollback_restarts_only_the_apps_that_were_replaced(self):
+        result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n',
+                                                 same_apps='toadyWebApi toadyScheduler', check_fails_for='new')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('compose old -p toady up -d --no-deps toadyReactWeb\n', calls)
+        self.assertIn('ROLLBACK OK', result.stderr)
+        self.assertEqual('old\n', tag)
 
     def test_first_success_creates_private_env(self):
         result, _, tag, env, mode, _ = self.run_deploy(previous_tag='')

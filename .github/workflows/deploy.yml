@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [master]
+  # 같은 커밋을 다시 배포하거나 VITE_KAKAO_MAP_KEY·기반 이미지 갱신을 반영할 때 Actions 화면에서 실행한다(이미지 4개를 모두 새로 빌드).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -132,30 +134,109 @@ jobs:
 
   build-and-deploy:
     needs: [verify, verify-mariadb]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 직전 푸시 커밋과 비교해 바뀐 프로젝트만 빌드하므로 이력을 모두 받는다.
+          fetch-depth: 0
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build and push commit-tagged images
+      - uses: docker/setup-buildx-action@v3
+      # 직전 푸시 커밋 이후 폴더가 바뀌지 않았고 그 커밋의 이미지가 Docker Hub에 있으면 다시 빌드하지 않는다.
+      # 수동 실행, 이력을 비교할 수 없는 푸시(강제 푸시 등), 직전 이미지가 없는 경우는 모두 빌드한다.
+      - name: Detect changed projects
+        id: changes
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -eu
+          full=""
+          if [ "$EVENT_NAME" != push ] || [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then full=1; fi
+          echo "base=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          for entry in web:toadyReactWeb:toady-react-web api:toadyWebApi:toady-web-api scheduler:toadyScheduler:toady-scheduler admin:toadyAdmin:toady-admin; do
+            IFS=: read -r key dir image <<< "$entry"
+            build=true
+            if [ -z "$full" ] && git diff --quiet "$BASE_SHA" HEAD -- "$dir" \
+              && docker buildx imagetools inspect "$DOCKER_USERNAME/$image:$BASE_SHA" > /dev/null 2>&1; then
+              build=false
+            fi
+            echo "$key=$build" >> "$GITHUB_OUTPUT"
+            echo "$dir: build=$build"
+          done
+      # 빌드 캐시(GitHub Actions 캐시)로 의존성 레이어를 재사용한다. 의존성 파일이 그대로면 Maven Central·npm에서 다시 받지 않는다.
+      # provenance를 끄면 이미지 하나짜리 매니페스트가 되어, 바뀌지 않은 이미지에 새 태그만 붙이기 쉽다.
+      - name: Check frontend build secret
+        if: steps.changes.outputs.web == 'true'
+        env:
+          VITE_KAKAO_MAP_KEY: ${{ secrets.VITE_KAKAO_MAP_KEY }}
+        run: '[ -n "$VITE_KAKAO_MAP_KEY" ] || { echo "Set the VITE_KAKAO_MAP_KEY GitHub Actions secret before deploying" >&2; exit 1; }'
+      - name: Build web image
+        if: steps.changes.outputs.web == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./toadyReactWeb
+          push: true
+          provenance: false
+          build-args: VITE_KAKAO_MAP_KEY=${{ secrets.VITE_KAKAO_MAP_KEY }}
+          tags: ${{ secrets.DOCKER_USERNAME }}/toady-react-web:${{ github.sha }}
+          cache-from: type=gha,scope=toady-react-web
+          cache-to: type=gha,mode=max,scope=toady-react-web
+      - name: Build API image
+        if: steps.changes.outputs.api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./toadyWebApi
+          push: true
+          provenance: false
+          tags: ${{ secrets.DOCKER_USERNAME }}/toady-web-api:${{ github.sha }}
+          cache-from: type=gha,scope=toady-web-api
+          cache-to: type=gha,mode=max,scope=toady-web-api
+      - name: Build scheduler image
+        if: steps.changes.outputs.scheduler == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./toadyScheduler
+          push: true
+          provenance: false
+          tags: ${{ secrets.DOCKER_USERNAME }}/toady-scheduler:${{ github.sha }}
+          cache-from: type=gha,scope=toady-scheduler
+          cache-to: type=gha,mode=max,scope=toady-scheduler
+      - name: Build admin image
+        if: steps.changes.outputs.admin == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./toadyAdmin
+          push: true
+          provenance: false
+          tags: ${{ secrets.DOCKER_USERNAME }}/toady-admin:${{ github.sha }}
+          cache-from: type=gha,scope=toady-admin
+          cache-to: type=gha,mode=max,scope=toady-admin
+      # 바뀌지 않은 이미지는 직전 커밋 이미지에 이 커밋 태그만 붙인다(레지스트리 안에서 복사, 내려받지 않음).
+      # 그래서 커밋 태그마다 이미지 4개가 모두 있고, 서버의 롤백·수동 실행은 지금처럼 태그 하나로 동작한다.
+      - name: Reuse unchanged images under this commit tag
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           IMAGE_TAG: ${{ github.sha }}
-          VITE_KAKAO_MAP_KEY: ${{ secrets.VITE_KAKAO_MAP_KEY }}
+          BASE_SHA: ${{ steps.changes.outputs.base }}
+          WEB: ${{ steps.changes.outputs.web }}
+          API: ${{ steps.changes.outputs.api }}
+          SCHEDULER: ${{ steps.changes.outputs.scheduler }}
+          ADMIN: ${{ steps.changes.outputs.admin }}
         run: |
           set -eu
-          : "${VITE_KAKAO_MAP_KEY:?Set the VITE_KAKAO_MAP_KEY GitHub Actions secret before deploying}"
-          docker build --build-arg VITE_KAKAO_MAP_KEY -t "$DOCKER_USERNAME/toady-react-web:$IMAGE_TAG" ./toadyReactWeb
-          docker build -t "$DOCKER_USERNAME/toady-web-api:$IMAGE_TAG" ./toadyWebApi
-          docker build -t "$DOCKER_USERNAME/toady-scheduler:$IMAGE_TAG" ./toadyScheduler
-          docker build -t "$DOCKER_USERNAME/toady-admin:$IMAGE_TAG" ./toadyAdmin
-          docker push "$DOCKER_USERNAME/toady-react-web:$IMAGE_TAG"
-          docker push "$DOCKER_USERNAME/toady-web-api:$IMAGE_TAG"
-          docker push "$DOCKER_USERNAME/toady-scheduler:$IMAGE_TAG"
-          docker push "$DOCKER_USERNAME/toady-admin:$IMAGE_TAG"
+          for entry in "$WEB:toady-react-web" "$API:toady-web-api" "$SCHEDULER:toady-scheduler" "$ADMIN:toady-admin"; do
+            built="${entry%%:*}"; image="${entry#*:}"
+            if [ "$built" = false ]; then
+              docker buildx imagetools create -t "$DOCKER_USERNAME/$image:$IMAGE_TAG" "$DOCKER_USERNAME/$image:$BASE_SHA"
+              echo "$image: reused $BASE_SHA"
+            fi
+          done
       - name: Copy deployment files to EC2
         # 서버 SSH 키를 받는 서드파티 Action은 태그가 옮겨져도 바뀌지 않도록 커밋 SHA로 고정한다(v0.1.7).
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
@@ -203,10 +284,36 @@ jobs:
             mkdir -p scripts
             cp .incoming/docker-compose.yml docker-compose.yml
             cp .incoming/scripts/check-deployment.sh scripts/check-deployment.sh
-            # 앱 컨테이너만 바꾼다. --no-deps로 compose 설정이 바뀌어도 mariadb·nginx를 다시 만들지 않는다.
+            # 새 태그 이미지가 지금 컨테이너와 같은 앱은 다시 만들지 않는다(CI가 바뀌지 않은 앱은 직전 이미지에 태그만 붙인다).
+            # 이미지 ID로 비교하므로 직전 배포가 실패·롤백돼 서버가 더 오래된 이미지를 쓰고 있어도 필요한 앱은 교체된다.
+            # compose 파일이 바뀌었거나 컨테이너가 없거나 멈춰 있으면 다시 만든다.
+            RESTART=""
+            image_of() {
+              case "$1" in
+                toadyWebApi) echo toady-web-api ;; toadyScheduler) echo toady-scheduler ;;
+                toadyReactWeb) echo toady-react-web ;; toadyAdmin) echo toady-admin ;;
+              esac
+            }
+            select_restart() {
+              RESTART=""
+              compose_changed=""
+              cmp -s .rollback/docker-compose.yml docker-compose.yml 2>/dev/null || compose_changed=1
+              for app in $APPS; do
+                want=$(docker image inspect -f '{{.Id}}' "$DOCKER_USERNAME/$(image_of "$app"):$NEW_TAG" 2>/dev/null || true)
+                have=$(docker inspect -f '{{.Image}}' "$app" 2>/dev/null || true)
+                running=$(docker inspect -f '{{.State.Running}}' "$app" 2>/dev/null || true)
+                if [ -n "$compose_changed" ] || [ -z "$want" ] || [ "$want" != "$have" ] || [ "$running" != true ]; then
+                  RESTART="$RESTART $app"
+                fi
+              done
+              RESTART="${RESTART# }"
+              echo "apps to restart: ${RESTART:-none}"
+            }
+            # 바뀐 앱 컨테이너만 다시 만든다. --no-deps로 compose 설정이 바뀌어도 mariadb·nginx를 다시 만들지 않는다.
             start_apps() {
+              [ -n "$RESTART" ] || return 0
               # 앞단 nginx는 업스트림 IP를 기억한다. 앱 컨테이너를 다시 만든 뒤 설정을 다시 읽혀 502를 막는다.
-              docker-compose -p toady up -d --no-deps $APPS && { { docker exec nginx nginx -t >/dev/null 2>&1 && docker exec nginx nginx -s reload; } || echo "WARNING: front nginx config test failed; not reloaded (check conf.d on the server)" >&2; }
+              docker-compose -p toady up -d --no-deps $RESTART && { { docker exec nginx nginx -t >/dev/null 2>&1 && docker exec nginx nginx -s reload; } || echo "WARNING: front nginx config test failed; not reloaded (check conf.d on the server)" >&2; }
             }
             # set -e는 if 조건 안에서 꺼지므로 pull·up·확인 중 어느 단계가 실패해도 같은 롤백 경로로 들어온다.
             deploy_failed=""
@@ -217,7 +324,7 @@ jobs:
               exit 1
             elif ! docker-compose -p toady pull $APPS; then
               deploy_failed="image pull failed"
-            elif ! start_apps; then
+            elif ! select_restart || ! start_apps; then
               deploy_failed="docker-compose up failed"
             elif ! bash scripts/check-deployment.sh; then
               deploy_failed="deployment checks failed"

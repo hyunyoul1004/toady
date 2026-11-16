@@ -130,7 +130,7 @@ flowchart LR
     Push[master push / PR] --> Check[저장소 정책 검사 · nginx 문법]
     Check --> Test[API · 수집기 · 관리자 테스트 · 웹 테스트·빌드]
     Test --> Maria[임시 MariaDB에서 SQL·트랜잭션 검증]
-    Maria -->|master만| Image[커밋 SHA 태그 이미지 4개 빌드·푸시]
+    Maria -->|master만| Image[바뀐 프로젝트만 빌드 · 나머지는 태그만 추가]
     Image --> Deploy[EC2 Compose 갱신]
     Deploy --> Verify[헬스체크 · DB 연결 · 웹 응답 확인]
     Verify -->|실패| Rollback[마지막 성공 태그로 자동 롤백]
@@ -179,6 +179,9 @@ python3 scripts/check-repository.py
 
 ### 배포와 롤백
 - GitHub Actions가 `master` 푸시마다 검증 후 네 이미지를 같은 커밋 SHA로 태깅해 Docker Hub에 올리고, EC2의 `~/toady`에서 Compose로 갱신합니다. 관리자 사이트는 서버에 `toadyAdmin/.env.prod`가 채워져 있을 때만 함께 배포합니다.
+- 빌드는 직전 푸시 커밋 이후 폴더가 바뀐 프로젝트만 합니다. 바뀌지 않은 이미지는 직전 커밋 이미지에 새 커밋 태그만 붙이므로(내려받지 않음) 커밋 태그마다 이미지 4개가 모두 있습니다. 의존성 레이어는 GitHub Actions 빌드 캐시로 재사용합니다.
+- 서버는 새 태그 이미지 ID가 지금 컨테이너와 다른 앱만 다시 만듭니다. 화면만 바뀐 배포는 API·스케줄러·관리자를 재시작하지 않습니다. `docker-compose.yml`이 바뀌면 모든 앱을 다시 만듭니다.
+- `VITE_KAKAO_MAP_KEY`를 바꿨거나 기반 이미지 보안 갱신을 반영하려면 Actions의 **Run workflow**(수동 실행)로 네 이미지를 모두 새로 빌드합니다.
 - CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 이전 파일로 되돌립니다.
 - 마지막 성공 태그는 `~/toady/.deployed-image-tag`와 `~/toady/.env`의 `IMAGE_TAG=`에 기록합니다. 이미지 pull·`up`·배포 확인 중 하나라도 실패하면 앱 컨테이너를 이전 태그로 다시 올립니다.
 - Compose는 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그 없이 `latest`로 넘어가지 않습니다.
