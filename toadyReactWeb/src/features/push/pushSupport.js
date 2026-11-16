@@ -109,3 +109,21 @@ export function openLoginOver(navigate, path) {
   navigate(path, { state: marker });
   navigate(path, { state: { ...marker, ...login } });
 }
+
+
+/**
+ * 알림을 아직 켜지 않았고 켤 수 있는 환경인데 알림 설정을 한 번도 열어 보지 않았으면 true.
+ * 하단 '더보기' 탭과 메뉴의 알림 설정에 점을 찍어 알림 진입점을 알린다(한 번 열어 보면 사라진다).
+ */
+export function needsPushAttention({ status, mode, enabled, permission, subscribed }, seen) {
+  if (status !== 'ready' || subscribed || seen) return false;
+  if (mode === 'ready') return Boolean(enabled) && permission !== 'denied';
+  return mode === 'ios-home';
+}
+
+/** 알림 안내 카드를 닫은 뒤 다시 보여 주기까지의 기간. 닫은 시각(ms)이 이보다 오래됐거나 예전 형식('1')이면 false. */
+export const PROMPT_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+export function promptSnoozed(value, now = Date.now()) {
+  const at = Number(value);
+  return Number.isFinite(at) && at > 1 && now - at < PROMPT_SNOOZE_MS;
+}

@@ -42,7 +42,7 @@ class AdminSiteTest {
 			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE",
 			"TB_USER_REPORT", "TB_DM_MESSAGE", "TB_DM_THREAD", "TB_DM_SETTING",
 			"TB_ADMIN_AUDIT", "TB_USER_SANCTION", "TB_MODERATION_RULE", "TB_ANNOUNCEMENT_OVERRIDE", "TB_MAIL_ATTEMPT", "TB_REMINDER_DELIVERY",
-			"TB_SITE_NOTICE", "TB_FAQ_ITEM", "TB_LIVING_AREA", "TB_APP_SETTING", "TB_SEARCH_STAT", "TB_COMMENT_OFFICIAL", "TB_MEMBER_MEMO").forEach { jdbc.update("DELETE FROM $it") }
+			"TB_SITE_NOTICE", "TB_FAQ_ITEM", "TB_LIVING_AREA", "TB_APP_SETTING", "TB_SEARCH_STAT", "TB_COMMENT_OFFICIAL", "TB_MEMBER_MEMO", "TB_MEMBER_VISIT_DAY").forEach { jdbc.update("DELETE FROM $it") }
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
 			today.minusDays(1).toString(), today.plusDays(1).toString())
@@ -296,6 +296,33 @@ class AdminSiteTest {
 		assertEquals(2L, funnel.otherBase)
 		assertEquals(50L, funnel.otherReturnRate)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("방문 → 알림 흐름")))
+	}
+	@Test fun retentionMetricsUseThirtyDayAndFavoriteCycleWindows() {
+		val today = Kst.today()
+		val d = { n: Long -> today.minusDays(n) }
+		// n1: 45일 전 첫 방문 → 40일 전 다시 옴(30일 안) / n2: 45일 전 한 번만
+		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('r1','n1','s1','/',NULL,?,CURRENT_TIMESTAMP),('r2','n1','s2','/',NULL,?,CURRENT_TIMESTAMP),('r3','n2','s3','/',NULL,?,CURRENT_TIMESTAMP)", d(45), d(40), d(45))
+		// 회원 1: 50일 전 → 35일 전 다시 옴 / 회원 2: 50일 전 한 번
+		jdbc.update("INSERT INTO TB_MEMBER_VISIT_DAY VALUES (1,?),(1,?),(2,?)", d(50), d(35), d(50))
+		// n1이 45일 전 관심 저장한 공고의 발표일이 39일 전 → 그 사이(40일 전)에 다시 왔다
+		jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET PRZWNER_PRESNATN_DE=? WHERE HOUSE_MANAGE_NO='H1'", d(39).toString())
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('u1','n1','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP)", d(45))
+		// 최근 28일: v1 상세 2번·푸시 켬, v2 상세 1번, 저장 1번, 결과 알림 열기 2번, 거절·끄기 각 1번
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('u2','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('u3','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)," +
+			"('u4','v1','push_enable','tool/push',?,CURRENT_TIMESTAMP),('u5','v2','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('u6','v2','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP)," +
+			"('u7','v1','push_open','tool/push-result',?,CURRENT_TIMESTAMP),('u8','v2','push_open','tool/push-result',?,CURRENT_TIMESTAMP),('u9','v3','push_denied','tool/push',?,CURRENT_TIMESTAMP),('u10','v1','push_disable','tool/push',?,CURRENT_TIMESTAMP)",
+			d(3), d(2), d(2), d(1), d(1), d(1), today, today, today)
+		val r = metrics.retention(today)
+		assertEquals(null, r.error)
+		assertEquals(2L, r.visitorBase); assertEquals(50L, r.visitorRate)
+		assertEquals(2L, r.memberBase); assertEquals(50L, r.memberRate)
+		assertEquals(1L, r.cycleBase); assertEquals(100L, r.cycleRate)
+		assertEquals(1L, r.subscribeBase, "상세를 2번 이상 본 사람만 분모"); assertEquals(100L, r.subscribeRate)
+		assertEquals(33L, r.saveRate)
+		assertEquals(listOf("결과 즉시 알림" to 2L), r.opens.map { it.label to it.count })
+		assertEquals(1L, r.denied); assertEquals(1L, r.disabled)
+		assertEquals("알림 · 결과 즉시 알림", MetricsService.sourceLabel("push.result"))
+		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("재방문 핵심 지표")))
 	}
 	@Test fun sanctionsAreRecordedAndStoryBanCanBeLiftedEarly() {
 		// 회원 상세를 열면 열람 기록이 남는다.

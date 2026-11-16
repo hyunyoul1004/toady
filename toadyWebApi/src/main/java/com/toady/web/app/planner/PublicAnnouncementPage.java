@@ -66,7 +66,7 @@ public class PublicAnnouncementPage {
         if(!price.isEmpty()) summary.append("주택형별 최고 공급금액 ").append(price).append(" · ");
         summary.append("접수 ").append(PublicHtml.shortDate(s.startDate())).append("~").append(PublicHtml.shortDate(s.endDate()))
             .append(" · 발표 ").append(PublicHtml.shortDate(s.winnerDate()));
-        String description=(tab.equals("rate")?(scores.available()?scores.text()+" · 공개 주택형·지역 전체 기준 · ":"주택형·순위별 공개 경쟁률 · "):"")+summary+" · "+s.address();
+        String description=(tab.equals("rate")?(scores.available()?scores.text()+" · 공개 주택형·지역 전체 기준 · ":"주택형·순위별 공개 경쟁률 · "):resultLead(s.id()))+summary+" · "+s.address();
         String image=domain+"/api/v1/public/announcement-images/"+s.id()+".png?tabType="+tab+"&v=2";
         String app=domain+"/?subscriptSeq="+URLEncoder.encode(s.id(),StandardCharsets.UTF_8)+"&tabType="+tab;
         StringBuilder events=new StringBuilder();
@@ -110,4 +110,15 @@ public class PublicAnnouncementPage {
         }
     }
     private static String esc(String value){return PublicHtml.esc(value);}
+
+    /** 상세 탭 공유에서 1순위 경쟁률이 공개된 APT 공고면 '1순위 최고 12.4 대 1 · '을 앞에 둔다. 조회 실패는 설명만 평소대로. */
+    String resultLead(String id) {
+        // 공개된 1순위 경쟁률을 공유 미리보기 설명 앞에 둔다(결과가 나온 뒤 공유하면 결과가 먼저 보이게).
+        if(results==null || !id.startsWith("apt/")) return "";
+        try {
+            var result=results.forIds(List.of(id)).get(id);
+            if(result==null || !result.ratePublished() || result.topRate()==null) return "";
+            return "1순위 최고 "+com.toady.web.app.push.PushMessage.rate(result.topRate())+" 대 1 · ";
+        } catch(RuntimeException unavailable) { return ""; }
+    }
 }

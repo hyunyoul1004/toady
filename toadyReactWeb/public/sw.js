@@ -30,6 +30,26 @@ function isSpaUrl(value) {
   } catch { return false; }
 }
 
+/**
+ * 어떤 알림으로 들어왔는지 알 수 있게 src 꼬리표를 붙인다(앱이 첫 기록 뒤 주소에서 지운다).
+ * src/features/analytics/pageViews.js의 PUSH_SOURCES와 같은 값이어야 한다.
+ */
+function pushSource(tag) {
+  if (tag === 'toady-digest') return 'push.digest';
+  if (typeof tag === 'string' && tag.startsWith('toady-result')) return 'push.result';
+  if (typeof tag === 'string' && tag.startsWith('dm-')) return 'push.message';
+  if (typeof tag === 'string' && tag.startsWith('notice')) return 'push.notice';
+  return 'push.other';
+}
+function withSource(value, tag) {
+  try {
+    const url = new URL(value);
+    if (url.origin !== self.location.origin) return value;
+    url.searchParams.set('src', pushSource(tag));
+    return url.href;
+  } catch { return value; }
+}
+
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : '' }; }
@@ -41,7 +61,7 @@ self.addEventListener('push', event => {
     badge: BADGE,
     tag: data.tag || 'toady',
     lang: 'ko',
-    data: { url: data.url || '/', urls },
+    data: { url: data.url || '/', urls, tag: data.tag || '' },
     actions: actions.map(action => ({ action: action.action, title: action.title }))
   }));
 });
@@ -49,7 +69,7 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const data = event.notification.data || {};
-  const target = safeUrl((event.action && data.urls && data.urls[event.action]) || data.url);
+  const target = withSource(safeUrl((event.action && data.urls && data.urls[event.action]) || data.url), data.tag);
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const client = windows.find(item => new URL(item.url).origin === self.location.origin);

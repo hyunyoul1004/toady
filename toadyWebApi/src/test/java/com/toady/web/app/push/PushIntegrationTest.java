@@ -72,7 +72,8 @@ class PushIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT,ANNOUNCEMENT_TYPE VARCHAR(20),HOUSE_MANAGE_NO VARCHAR(40),PBLANC_NO VARCHAR(40),NOTE VARCHAR(2000),CHECKLIST INT,EMAIL_ENABLED BOOLEAN,REG_DT TIMESTAMP,PRIMARY KEY(USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_PUSH_SUBSCRIPTION (ENDPOINT_HASH CHAR(64) PRIMARY KEY,ENDPOINT VARCHAR(1000) NOT NULL,P256DH VARCHAR(100) NOT NULL,AUTH VARCHAR(40) NOT NULL,USER_SEQ BIGINT,VISITOR_ID CHAR(36),FAVORITES_ENABLED BOOLEAN DEFAULT TRUE NOT NULL,FAVORITE_IDS TEXT,AREA_SLUGS VARCHAR(200) DEFAULT '' NOT NULL,REG_DT TIMESTAMP NOT NULL,UPDATED_DT TIMESTAMP NOT NULL,LAST_ATTEMPT_DATE DATE,LAST_DIGEST_DT TIMESTAMP,LAST_SUCCESS_DT TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_PUSH_AREA_SEEN (AREA_SLUG VARCHAR(40),ANNOUNCEMENT_ID VARCHAR(110),FIRST_SEEN_DT TIMESTAMP NOT NULL,PRIMARY KEY(AREA_SLUG,ANNOUNCEMENT_ID))");
-        for (String table : List.of("TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN", "TB_FAVORITE", "TB_CERTIFY", "TB_USER", "TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM " + table);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (ENDPOINT_HASH CHAR(64),ANNOUNCEMENT_ID VARCHAR(110),RESULT_KIND VARCHAR(10),SENT_DT TIMESTAMP NOT NULL,PRIMARY KEY(ENDPOINT_HASH,ANNOUNCEMENT_ID,RESULT_KIND))");
+        for (String table : List.of("TB_PUSH_SUBSCRIPTION", "TB_PUSH_AREA_SEEN", "TB_PUSH_RESULT_SENT", "TB_FAVORITE", "TB_CERTIFY", "TB_USER", "TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM " + table);
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','운정 푸시 테스트','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         SENT.clear(); status = 201;
         browser = ephemeral(); new java.security.SecureRandom().nextBytes(auth);
@@ -279,6 +280,61 @@ class PushIntegrationTest {
         SENT.clear();
         assertEquals(0, digest("2026-11-18T18:00").run().sent());
         assertTrue(SENT.isEmpty());
+    }
+
+    @Test void resultsAreSentRightAwayOncePerDayAndNotRepeatedByTheDigest() throws Exception {
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_CMPET");
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_SCORE");
+        String endpoint = "https://fcm.googleapis.com/fcm/send/instant";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favoriteIds", List.of("apt/P1/N1")))).andExpect(status().isOk());
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+        // 결과 기록을 시작하는 실행(아직 결과 없음).
+        assertEquals(0, digest("2026-11-13T18:05").runResults().sent());
+        // 접수 다음 날 저녁 1순위 경쟁률이 들어오면 묶음 알림을 기다리지 않고 바로 보낸다(숫자와 반영 시각 포함).
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,CMPET_RATE) VALUES ('P1','N1','01','1','01','12.5')");
+        SENT.clear();
+        assertEquals(1, digest("2026-11-14T20:15").runResults().sent());
+        JsonNode message = decrypt(SENT.get(0).body());
+        assertEquals("경쟁률 발표 · 운정 푸시 테스트", message.path("title").asText(), message.toString());
+        assertTrue(message.path("body").asText().startsWith("1순위 최고 12.5 대 1 · 청약홈 집계, 20:15 확인"), message.toString());
+        assertEquals("toady-result", message.path("tag").asText());
+        assertEquals("/?subscriptSeq=apt%2FP1%2FN1&tabType=rate", message.path("url").asText());
+        // 같은 날 가점이 또 공개돼도 즉시 알림은 하루 한 번까지(묶음 알림과 합쳐 하루 2건).
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE) VALUES ('P1','N1','01','01','61','74')");
+        SENT.clear();
+        assertEquals(0, digest("2026-11-14T20:25").runResults().sent());
+        // 밤 10시~아침 8시에는 보내지 않는다.
+        assertEquals(0, digest("2026-11-15T07:55").runResults().sent());
+        // 다음 날 묶음 알림은 이미 보낸 경쟁률을 빼고 가점만 알린다.
+        SENT.clear();
+        assertEquals(1, digest("2026-11-15T18:00").run().sent());
+        JsonNode digest = decrypt(SENT.get(0).body());
+        assertEquals("당첨가점 공개 · 운정 푸시 테스트", digest.path("title").asText(), digest.toString());
+        // 묶음 알림 뒤에는 같은 결과를 즉시 알림으로 다시 보내지 않는다.
+        SENT.clear();
+        assertEquals(0, digest("2026-11-15T18:15").runResults().sent());
+        assertTrue(SENT.isEmpty());
+    }
+
+    @Test void resultMessagesUseCollectedNumbers() {
+        var rate = new com.toady.web.app.planner.AnnouncementResults.Result("apt/A/1", true, 152.4, "", "", false);
+        var score = new com.toady.web.app.planner.AnnouncementResults.Result("apt/B/1", false, null, "61", "79", true);
+        var at = LocalDateTime.parse("2026-11-14T20:15:31");
+        var single = PushMessage.results(List.of(new PushMessage.Line("RESULT", "apt/A/1", "가 단지", "경쟁률 발표", null, null)),
+            Map.of("apt/A/1", rate), Map.of("RATE|apt/A/1", at), at.plusMinutes(5)).orElseThrow();
+        assertEquals("1순위 최고 152 대 1 · 청약홈 집계, 20:15 확인. 눌러서 주택형별 경쟁률을 확인하세요.", single.body());
+        // 밤사이 미뤄져 다음 날 보내면 확인 날짜를 밝힌다(오늘 시각처럼 읽히지 않게).
+        var nextMorning = PushMessage.results(List.of(new PushMessage.Line("RESULT", "apt/A/1", "가 단지", "경쟁률 발표", null, null)),
+            Map.of("apt/A/1", rate), Map.of("RATE|apt/A/1", at), at.plusHours(12)).orElseThrow();
+        assertTrue(nextMorning.body().contains("청약홈 집계, 어제 20:15 확인"), nextMorning.body());
+        var scored = PushMessage.results(List.of(new PushMessage.Line("RESULT", "apt/B/1", "나 단지", "당첨가점 공개", null, null)),
+            Map.of("apt/B/1", score), Map.of(), at).orElseThrow();
+        assertEquals("주택형별 당첨가점 61~79점. 눌러서 내 가점과 비교해 보세요.", scored.body());
+        var both = PushMessage.results(List.of(new PushMessage.Line("RESULT", "apt/A/1", "가 단지", "경쟁률 발표", null, null),
+            new PushMessage.Line("RESULT", "apt/B/1", "나 단지", "당첨가점 공개", null, null)), Map.of(), Map.of(), at).orElseThrow();
+        assertEquals("관심 공고 결과 2건", both.title());
+        assertEquals("12.35", PushMessage.rate(12.345));
+        assertTrue(PushMessage.results(List.of(), Map.of(), Map.of(), at).isEmpty());
     }
 
     @Test void bundledMessageListsBothKindsWithActions() {

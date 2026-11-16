@@ -78,6 +78,8 @@ export const usePushStore = create((set, get) => ({
     if (state.platform.mode !== 'ready' || !state.enabled) throw Error('이 환경에서는 알림을 켤 수 없어요.');
     const result = await Notification.requestPermission();
     set({ permission: result });
+    // 권한 거절은 다시 되돌리기 어려워 따로 센다(알림을 묻는 시점·문구가 맞는지 보는 지표).
+    if (result === 'denied') trackAction('push_denied', 'tool/push');
     if (result !== 'granted') throw Error(result === 'denied' ? '알림이 차단되어 있어요. 브라우저 설정에서 TOADY 알림을 허용해 주세요.' : '알림 권한을 허용해야 받을 수 있어요.');
     const reg = await registration();
     await navigator.serviceWorker.ready;
@@ -112,6 +114,7 @@ export const usePushStore = create((set, get) => ({
     if (subscription) {
       await apiClient.post('/api/v1/push/unsubscribe', { endpoint: subscription.endpoint }).catch(() => {});
       await subscription.unsubscribe().catch(() => {});
+      trackAction('push_disable', 'tool/push');
     }
     set({ subscribed: false, endpoint: null });
   },

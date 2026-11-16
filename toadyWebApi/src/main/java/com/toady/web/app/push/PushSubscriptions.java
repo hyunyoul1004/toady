@@ -78,6 +78,10 @@ public class PushSubscriptions {
         return jdbc.update("DELETE FROM TB_PUSH_SUBSCRIPTION WHERE COALESCE(LAST_SUCCESS_DT,REG_DT)<? AND UPDATED_DT<?", at, at);
     }
 
+    /** 관심 공고 알림을 켠 구독 전체(결과 즉시 알림용). */
+    List<Row> withFavorites() {
+        return jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE FAVORITES_ENABLED=TRUE ORDER BY REG_DT", (r, n) -> map(r));
+    }
     /** 오늘 아직 묶음 발송을 시도하지 않은 구독. */
     List<Row> pending(LocalDate today) {
         return jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<? ORDER BY REG_DT", (r, n) -> map(r), Date.valueOf(today));

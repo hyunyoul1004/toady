@@ -5,6 +5,7 @@ import FactCheckOutlined from '@mui/icons-material/FactCheckOutlined';
 import BookmarkBorderRounded from '@mui/icons-material/BookmarkBorderRounded';
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded';
 import { MAIN_NAV, isMoreActive, isNavActive, retapAction } from './navItems';
+import { usePushAttention } from '@/features/push/usePushAttention';
 import './mobileTabBar.css';
 
 const ICONS = { calendar: <CalendarMonthOutlined />, match: <FactCheckOutlined />, score: <CalculateOutlined />, my: <BookmarkBorderRounded /> };
@@ -13,6 +14,7 @@ const ICONS = { calendar: <CalendarMonthOutlined />, match: <FactCheckOutlined /
 export default function MobileTabBar({ onOpenMenu, menuOpen = false }) {
   const location = useLocation(), navigate = useNavigate();
   const more = isMoreActive(location.pathname);
+  const pushDot = usePushAttention();
   function open(path) {
     const action = retapAction(path, location);
     const state = path === '/' ? { browseView: 'calendar' } : null;
@@ -33,6 +35,6 @@ export default function MobileTabBar({ onOpenMenu, menuOpen = false }) {
         {ICONS[tab.key]}<span>{tab.short}</span>
       </button>;
     })}
-    <button type="button" className={more || menuOpen ? 'is-active' : ''} onClick={onOpenMenu} aria-haspopup="dialog" aria-expanded={menuOpen}><MoreHorizRounded /><span>더보기</span></button>
+    <button type="button" className={more || menuOpen ? 'is-active' : ''} onClick={onOpenMenu} aria-haspopup="dialog" aria-expanded={menuOpen} aria-label={pushDot ? '더보기, 알림이 꺼져 있어요' : undefined}><span className="mobile-tabbar-icon"><MoreHorizRounded />{pushDot && <i className="mobile-tabbar-dot" aria-hidden="true" />}</span><span>더보기</span></button>
   </nav>;
 }

@@ -1,6 +1,7 @@
 import { detailCloseSteps, useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
-import { announcementShareUrl, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
+import { announcementShareUrl, announcementShareImage, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
+import { kakaoShareKey, preloadKakaoShare, shareToKakao } from '@/utils/kakaoShare';
 /**
  * @file Main.jsx
  * @description 청약 일정 캘린더 및 공고 메인 화면 컴포넌트
@@ -36,6 +37,8 @@ import Typography from '@mui/material/Typography';
 
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
@@ -348,8 +351,31 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     writeTabType(value === 'trades' ? 'trades' : 'detail');
   };
 
+  // 공유 버튼: 카카오톡 키가 있으면 '카카오톡으로 보내기 / 링크 공유' 메뉴를 열고, 없으면 바로 기존 공유.
+  // 청약은 가족과 단톡방에서 함께 보는 경우가 많아, 이미지 카드로 보내는 카카오톡 공유를 앞에 둔다.
+  // 메뉴도 히스토리 레이어로 연다(뒤로가기로 메뉴만 닫히고, 상세를 닫았다 다른 공고를 열어도 메뉴가 남지 않게).
+  const [shareOpen, setShareOpen] = useHistoryOverlay('share-menu');
+  const shareButton = useRef(null);
+  const closeShareMenu = () => { if (shareOpen) setShareOpen(false); };
+  const openShare = () => { if (kakaoShareKey()) { preloadKakaoShare(); setShareOpen(true); } else void handleShare(); };
+  const handleKakaoShare = () => {
+    closeShareMenu();
+    const seq = selectedSubscriptSeq || currentSubscriptDetail?.subscriptSeq || '';
+    const tab = scoreText ? 'rate' : ['detail','rate','map','comment'][detailTabValue];
+    const url = announcementShareUrl(seq, tab, window.location.origin);
+    const houseNm = currentSubscriptDetail?.houseNm || '청약 공고';
+    const place = currentSubscriptDetail?.supplyLocation || currentSubscriptDetail?.hssplyAdres || '';
+    const date = currentSubscriptDetail?.subscriptDate || '';
+    const description = [scoreText || (date ? `접수 ${date}` : ''), place].filter(Boolean).join(' · ');
+    // SDK가 준비돼 있으면 누른 순간 바로 보낸다(기다리면 브라우저가 공유 창을 팝업으로 막는다). 준비 전이면 링크 공유로 넘긴다.
+    const result = shareToKakao({ title: `${houseNm} ${scoreText ? '청약 결과' : shareLabel(tab)}`, description, imageUrl: announcementShareImage(seq, tab, window.location.origin), url });
+    if (result === 'shared') trackAction('share', seq);
+    else void handleShare();
+  };
+
   // 공고 공유하기 (Web Share API 및 클립보드 복사 폴백)
   const handleShare = async () => {
+    closeShareMenu();
     const seq = selectedSubscriptSeq || currentSubscriptDetail?.subscriptSeq || '';
     const tab=['detail','rate','map','comment'][detailTabValue];
     const shareUrl = announcementShareUrl(seq,tab,window.location.origin);
@@ -589,7 +615,10 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexShrink: 0 }}>
             <Tooltip title="공고 공유하기">
               <IconButton
-                onClick={handleShare}
+                ref={shareButton}
+                onClick={openShare}
+                aria-haspopup={kakaoShareKey() ? 'menu' : undefined}
+                aria-expanded={kakaoShareKey() ? Boolean(shareOpen) : undefined}
                 aria-label="공고 공유하기"
                 size="small"
                 sx={{
@@ -622,6 +651,11 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
                 </svg>
               </IconButton>
             </Tooltip>
+            <Menu anchorEl={shareButton.current} open={Boolean(shareOpen) && Boolean(shareButton.current)} onClose={closeShareMenu}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+              <MenuItem onClick={handleKakaoShare} sx={{ fontWeight: 700, fontSize: '0.9rem' }}>카카오톡으로 보내기</MenuItem>
+              <MenuItem onClick={handleShare} sx={{ fontSize: '0.9rem' }}>링크 공유·복사</MenuItem>
+            </Menu>
 
             <IconButton
               onClick={handleCloseDetail}

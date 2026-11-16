@@ -125,6 +125,86 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		Funnel(days, emptyList(), 0, null, 0, null, 0, null, "흐름 지표를 읽지 못했습니다. TB_PAGE_VIEW·TB_USAGE_EVENT와 관리자 DB 계정의 SELECT 권한을 확인하세요.")
 	}
 
+	/**
+	 * 재방문 핵심 지표(기획 P0 측정 보강). 공고가 몰렸다 끊기는 리듬이라 7일보다 30일과 '관심 공고 주기 안 재방문'을 본다.
+	 * - 신규 방문자 30일 재방문: 첫 방문(그 전 28일 방문 없음)이 30~59일 전인 방문자 중 첫 방문 뒤 1~30일 안에 다시 온 비율.
+	 *   익명 번호는 아이폰 사파리·인앱 브라우저에서 지워져 실제보다 낮게 나온다.
+	 * - 회원 30일 재방문: 31~60일 전에 온 회원(그 기간 첫 방문 기준) 중 그 뒤 1~30일 안에 다시 온 비율. 저장소 삭제 왜곡이 없다.
+	 * - 관심 공고 주기 재방문: 최근 60일 안에 관심 저장한 공고 중 당첨자 발표일이 지난 것에서, 저장 다음 날부터 발표일까지 다시 온 비율.
+	 * - 알림 구독률: 최근 28일 공고 상세를 2번 이상 본 방문자 중 알림(푸시·메일)을 켠 비율. 한 번 보고 나간 검색 유입을 빼고 본다.
+	 * - 저장률: 최근 28일 관심 저장 수 ÷ 상세 열람 수.
+	 * - 알림 열기·권한 거절·알림 끄기(28일): 알림 피로도를 보는 안전 지표.
+	 */
+	data class Retention(val visitorBase: Long, val visitorRate: Long?, val memberBase: Long?, val memberRate: Long?,
+	                     val cycleBase: Long, val cycleRate: Long?, val subscribeBase: Long, val subscribeRate: Long?,
+	                     val saveRate: Long?, val opens: List<Ranked>, val denied: Long, val disabled: Long, val error: String?)
+	fun retention(today: LocalDate = Kst.today()): Retention = try {
+		val ex = exclusions.clause()
+		// 1) 신규 방문자 30일 재방문: 첫 방문 [today-59, today-30], 신규 판단용 28일을 더 읽는다(조회 기록 보관 90일 안).
+		val cohortFrom = today.minusDays(59); val cohortTo = today.minusDays(30)
+		val visits = HashMap<String, NavigableSet<LocalDate>>()
+		jdbc.query("SELECT DISTINCT VISITOR_ID,VISIT_DATE FROM TB_PAGE_VIEW WHERE VISIT_DATE BETWEEN ? AND ?$ex", RowCallbackHandler { r ->
+			visits.getOrPut(r.getString(1)) { TreeSet() }.add(r.getDate(2).toLocalDate())
+		}, cohortFrom.minusDays(28), today)
+		val cohort = visits.values.filter { val first = it.first(); !first.isBefore(cohortFrom) && !first.isAfter(cohortTo) }
+		val visitorBack = cohort.count { dates -> dates.higher(dates.first())?.let { !it.isAfter(dates.first().plusDays(30)) } == true }
+		// 2) 회원 30일 재방문(database.sql 29번이 없으면 비워 둔다).
+		var memberBase: Long? = null; var memberRate: Long? = null
+		try {
+			val members = HashMap<Long, NavigableSet<LocalDate>>()
+			jdbc.query("SELECT USER_SEQ,VISIT_DATE FROM TB_MEMBER_VISIT_DAY WHERE VISIT_DATE BETWEEN ? AND ?", RowCallbackHandler { r ->
+				members.getOrPut(r.getLong(1)) { TreeSet() }.add(r.getDate(2).toLocalDate())
+			}, today.minusDays(60), today)
+			val anchors = members.values.mapNotNull { dates -> dates.ceiling(today.minusDays(60))?.takeIf { !it.isAfter(today.minusDays(31)) }?.let { it to dates } }
+			memberBase = anchors.size.toLong()
+			memberRate = if (anchors.isEmpty()) null else anchors.count { (anchor, dates) -> dates.higher(anchor)?.let { !it.isAfter(anchor.plusDays(30)) } == true } * 100L / anchors.size
+		} catch (missing: DataAccessException) { /* 29번 미적용 */ }
+		// 3) 관심 공고 주기 재방문.
+		data class Saved(val visitor: String, val subject: String, val day: LocalDate)
+		val saved = ArrayList<Saved>()
+		jdbc.query("SELECT VISITOR_ID,SUBJECT_ID,MIN(VISIT_DATE) FROM TB_USAGE_EVENT WHERE ACTION_NAME='favorite_add' AND VISIT_DATE BETWEEN ? AND ?$ex GROUP BY VISITOR_ID,SUBJECT_ID",
+			RowCallbackHandler { r -> saved += Saved(r.getString(1), r.getString(2), r.getDate(3).toLocalDate()) }, today.minusDays(60), today)
+		// 당첨자 발표일은 유형별 상세 테이블에서 공고 묶음으로 한 번에 읽는다(저장한 공고마다 조회하지 않게).
+		val winners = HashMap<String, LocalDate>()
+		saved.map { it.subject }.distinct().mapNotNull { subject -> subject.split('/').takeIf { it.size == 3 && DETAIL_TABLES.containsKey(it[0]) } }
+			.groupBy { it[0] }.forEach { (type, rows) ->
+				rows.map { it[1] }.distinct().chunked(500).forEach { houses ->
+					try {
+						jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO,PRZWNER_PRESNATN_DE FROM ${DETAIL_TABLES[type]} WHERE HOUSE_MANAGE_NO IN (${houses.joinToString(",") { "?" }})",
+							RowCallbackHandler { r ->
+								r.getString(3)?.replace("-", "")?.takeIf { it.matches(Regex("\\d{8}")) }
+									?.let { winners["$type/${r.getString(1)}/${r.getString(2)}"] = LocalDate.parse(it, java.time.format.DateTimeFormatter.BASIC_ISO_DATE) }
+							}, *houses.toTypedArray())
+					} catch (unavailable: DataAccessException) { /* 그 유형만 빼고 계산 */ }
+				}
+			}
+		val finished = saved.mapNotNull { s -> winners[s.subject]?.takeIf { it.isAfter(s.day) && !it.isAfter(today) }?.let { s to it } }
+		val cycleBack = finished.count { (s, winner) -> visits[s.visitor]?.subSet(s.day.plusDays(1), true, winner, true)?.isNotEmpty() == true }
+		// 4) 알림 구독률·저장률·알림 열기·안전 지표(최근 28일).
+		val start = today.minusDays(27)
+		val details = HashMap<String, Int>(); var detailCount = 0L; var saveCount = 0L
+		val alerted = HashSet<String>(); val opens = HashMap<String, Long>(); var denied = 0L; var disabled = 0L
+		jdbc.query("SELECT VISITOR_ID,ACTION_NAME,SUBJECT_ID FROM TB_USAGE_EVENT WHERE VISIT_DATE BETWEEN ? AND ? AND ACTION_NAME IN ('detail_view','favorite_add','alert_enable','push_enable','push_open','push_denied','push_disable')$ex",
+			RowCallbackHandler { r ->
+				when (r.getString(2)) {
+					"detail_view" -> { detailCount++; details.merge(r.getString(1), 1, Int::plus) }
+					"favorite_add" -> saveCount++
+					"alert_enable", "push_enable" -> alerted += r.getString(1)
+					"push_open" -> opens.merge(PUSH_OPEN_NAMES[r.getString(3)] ?: r.getString(3), 1, Long::plus)
+					"push_denied" -> denied++
+					"push_disable" -> disabled++
+				}
+			}, start, today)
+		val engaged = details.filterValues { it >= 2 }.keys
+		fun pct(n: Int, base: Int) = if (base == 0) null else n * 100L / base
+		Retention(cohort.size.toLong(), pct(visitorBack, cohort.size), memberBase, memberRate,
+			finished.size.toLong(), pct(cycleBack, finished.size), engaged.size.toLong(), pct(engaged.count { it in alerted }, engaged.size),
+			if (detailCount == 0L) null else saveCount * 100 / detailCount,
+			opens.values.sum().let { total -> opens.entries.sortedByDescending { it.value }.map { Ranked(it.key, it.key, it.value, 0, if (total == 0L) 0 else it.value * 100 / total) } }, denied, disabled, null)
+	} catch (missing: DataAccessException) {
+		Retention(0, null, null, null, 0, null, 0, null, null, emptyList(), 0, 0, "재방문 지표를 읽지 못했습니다. TB_PAGE_VIEW·TB_USAGE_EVENT와 관리자 DB 계정의 SELECT 권한을 확인하세요.")
+	}
+
 	/** 최근 days일 지도 기능 사용(위치 탭): 기능별 횟수와 사람 수. 측정 이름은 웹 trackAction('map_tool', 'tool/…')과 같다. */
 	fun mapTools(days: Int = 7, today: LocalDate = Kst.today()): List<Ranked> = try {
 		val rows = jdbc.query("""SELECT SUBJECT_ID, COUNT(*) AS USES, COUNT(DISTINCT VISITOR_ID) AS PEOPLE FROM TB_USAGE_EVENT
@@ -240,6 +320,7 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 				isHost(h, "naver.com") -> if (isHost(h, "cafe.naver.com")) "네이버 카페" else if (isHost(h, "blog.naver.com")) "네이버 블로그" else "검색 · 네이버"
 				isHost(h, "daum.net") -> if (isHost(h, "cafe.daum.net")) "다음 카페" else "검색 · 다음"
 				isHost(h, "bing.com") -> "검색 · 빙"
+				h.startsWith("push.") -> "알림 · " + (PUSH_OPEN_NAMES["tool/push-" + h.removePrefix("push.")] ?: "기타 알림")
 				isHost(h, "kakao.com") || isHost(h, "kakaocorp.com") -> "카카오톡·카카오"
 				SNS.any { isHost(h, it) } -> "SNS"
 				else -> h
@@ -248,5 +329,11 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		private val GOOGLE = Regex("(?:.+\\.)?google\\.(?:com|co\\.[a-z]{2}|com\\.[a-z]{2}|[a-z]{2})")
 		private val SNS = listOf("instagram.com", "threads.net", "threads.com", "facebook.com", "t.co", "x.com", "twitter.com")
 		fun isHost(host: String, domain: String) = host == domain || host.endsWith(".$domain")
+		/** 재방문 지표에서 공고 키의 당첨자 발표일을 읽을 상세 테이블(고정 목록). */
+		val DETAIL_TABLES = mapOf("apt" to "TB_APT_LTTOT_PBLANC_DETAIL", "urban" to "TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL", "remaining" to "TB_REMNDR_LTTOT_PBLANC_DETAIL",
+			"public-rental" to "TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL", "optional" to "TB_OPT_LTTOT_PBLANC_DETAIL")
+		/** 웹 trackAction('push_open', 'tool/push-…')의 알림 종류 이름. */
+		val PUSH_OPEN_NAMES = mapOf("tool/push-digest" to "하루 묶음 알림", "tool/push-result" to "결과 즉시 알림", "tool/push-message" to "쪽지 알림",
+			"tool/push-notice" to "운영 공지 알림", "tool/push-other" to "기타 알림")
 	}
 }

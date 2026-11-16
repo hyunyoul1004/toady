@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import config from 'config';
-import { createPageViewTracker, externalReferrer } from './pageViews';
+import { createPageViewTracker, externalReferrer, pushOpenSubject } from './pageViews';
+import { trackAction } from './trackAction';
 
 let tracker;
 function track(path) {
@@ -28,6 +29,8 @@ export default function PageViewTracker() {
   const navigate = useNavigate();
   const { pathname, search, key } = location;
   const previous = useRef(null);
+  // 같은 주소의 알림 열기를 두 번 세지 않는다(개발 모드 StrictMode의 effect 재실행 등).
+  const pushCounted = useRef(null);
   const path = logicalPath(pathname, search);
   useEffect(() => {
     if (previous.current?.key === key || previous.current?.path === path) return;
@@ -39,6 +42,9 @@ export default function PageViewTracker() {
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (!params.has('src')) return;
+    // 알림을 눌러 들어온 방문은 세션과 무관하게 알림 종류별로 한 번 센다(서비스 워커가 src=push.* 를 붙인다).
+    const pushSubject = pushOpenSubject(params.get('src'));
+    if (pushSubject && pushCounted.current !== key) { pushCounted.current = key; trackAction('push_open', pushSubject); }
     params.delete('src');
     const rest = params.toString();
     navigate(`${pathname}${rest ? `?${rest}` : ''}${location.hash}`, { replace: true, state: location.state });

@@ -340,6 +340,8 @@ public class AccountService {
         // 운영 조치(제재)·문의 대응 메모도 탈퇴 시 지운다(개인정보처리방침 2번).
         tryUpdate("DELETE FROM TB_USER_SANCTION WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_MEMBER_MEMO WHERE USER_SEQ=?", userSeq);
+        // 회원 방문 일자(재방문 통계)도 지운다(database.sql 29번).
+        tryUpdate("DELETE FROM TB_MEMBER_VISIT_DAY WHERE USER_SEQ=?", userSeq);
         tryUpdate("UPDATE TB_CERTIFY SET CERTIFY_YN='Y', UPDATE_DT=? WHERE CREATE_USER_SEQ=? AND CERTIFY_YN='N'", now, userSeq);
         log.info("{}: userSeq={}", reason, userSeq);
         return Outcome.done("탈퇴했어요. 그동안 TOADY를 이용해 주셔서 고마워요.", null);

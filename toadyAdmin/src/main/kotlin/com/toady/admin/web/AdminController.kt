@@ -62,6 +62,7 @@ class AdminController(
 		model.addAttribute("topPages", metrics.topPages())
 		model.addAttribute("mapTools", metrics.mapTools())
 		model.addAttribute("funnel", metrics.funnel())
+		model.addAttribute("retention", metrics.retention())
 		model.addAttribute("signups", metrics.recentSignups())
 		model.addAttribute("recentComments", comments.search(null, "visible", 0, 6).items)
 		model.addAttribute("exclusions", exclusions.list())

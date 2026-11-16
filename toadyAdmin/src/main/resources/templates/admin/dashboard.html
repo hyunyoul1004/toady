@@ -58,6 +58,23 @@
         </tbody></table></div>
         <p class="hint">활성 탐색자: 한 주에 서로 다른 공고 상세를 2개 이상 보거나 관심 공고를 저장한 방문자. 재방문: 그 주 마지막 방문 이전(그 주 시작 전 4주 안)에 다른 날에도 방문한 방문자.</p>
     </section>
+    <section class="panel spaced" id="retention"><div class="panel-head"><h2>재방문 핵심 지표</h2><span class="panel-note">개선 효과를 볼 기준값</span></div>
+        <div class="alert error" th:if="${retention.error}" th:text="${retention.error}"></div>
+        <th:block th:unless="${retention.error}">
+        <div class="kpis kpis-3">
+            <article class="kpi"><span>신규 방문자 30일 재방문</span><strong th:text="${retention.visitorRate != null ? retention.visitorRate + '%' : '—'}"></strong><small th:text="${retention.visitorBase + '명 기준 · 익명 번호라 실제보다 낮게 나옴'}"></small></article>
+            <article class="kpi"><span>회원 30일 재방문</span><strong th:text="${retention.memberRate != null ? retention.memberRate + '%' : '—'}"></strong><small th:text="${retention.memberBase != null ? retention.memberBase + '명 기준' : 'database.sql 29번 적용 후 표시'}"></small></article>
+            <article class="kpi"><span>관심 공고 주기 재방문</span><strong th:text="${retention.cycleRate != null ? retention.cycleRate + '%' : '—'}"></strong><small th:text="${retention.cycleBase + '건 기준 · 저장 뒤 발표일까지 다시 옴'}"></small></article>
+            <article class="kpi"><span>알림 구독률</span><strong th:text="${retention.subscribeRate != null ? retention.subscribeRate + '%' : '—'}"></strong><small th:text="${retention.subscribeBase + '명 기준 · 상세 2번 이상 본 방문자'}"></small></article>
+            <article class="kpi"><span>저장률</span><strong th:text="${retention.saveRate != null ? retention.saveRate + '%' : '—'}"></strong><small>관심 저장 ÷ 상세 열람 · 28일</small></article>
+            <article class="kpi"><span>권한 거절 · 알림 끄기</span><strong th:text="${retention.denied + ' · ' + retention.disabled}"></strong><small>28일 · 알림이 늘면 함께 봐야 하는 안전 지표</small></article>
+        </div>
+        <ul class="sources" th:unless="${#lists.isEmpty(retention.opens)}">
+            <li th:each="open : ${retention.opens}"><div><strong th:text="${open.label}"></strong></div><span class="bar"><i th:style="${'width:' + open.percent + '%'}"></i></span><em th:text="${open.count + '번 열림 · ' + open.percent + '%'}"></em></li>
+        </ul>
+        <p class="hint">알림 열기는 알림을 눌러 앱 화면으로 들어온 횟수(28일)입니다. 이번 주 청약·생활권 같은 서버 페이지로 열린 알림은 세지 않습니다. 신규 방문자 재방문은 첫 방문이 30~59일 전인 사람, 회원 재방문은 31~60일 전에 온 회원을 봅니다.</p>
+        </th:block>
+    </section>
     <section class="panel spaced"><div class="panel-head"><h2>방문 → 알림 흐름 · 최근 28일</h2><span class="panel-note">같은 방문자는 한 번만 셉니다</span></div>
         <div class="alert error" th:if="${funnel.error}" th:text="${funnel.error}"></div>
         <th:block th:unless="${funnel.error}">
@@ -95,5 +112,5 @@
                 <td class="cell-actions"><form th:action="@{/admin/exclusions/remove}" method="post"><input type="hidden" name="visitorId" th:value="${e.visitorId}"><button class="secondary" type="submit">제외 풀기</button></form></td></tr>
         </tbody></table></div>
     </section>
-    <footer>TOADY · 관리자 <span>회원 정보·검색어·전체 URL은 지표로 수집하지 않습니다.</span></footer>
+    <footer>TOADY · 관리자 <span>검색어·전체 URL은 지표로 수집하지 않고, 회원은 방문한 날짜만 셉니다.</span></footer>
 </main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

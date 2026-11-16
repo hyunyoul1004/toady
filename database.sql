@@ -849,3 +849,33 @@ CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
 CREATE INDEX IF NOT EXISTS IX_SCHEDULER_JOB_KIND_CREATED ON TB_SCHEDULER_ADMIN_JOB (JOB_KIND, CREATED_AT);
 -- 스케줄러 계정: 끝난 일정 맞춤 수집 이력을 90일 지나면 정리한다(DataRetentionJob). 권한이 없으면 정리만 건너뛴다.
 -- GRANT DELETE ON toady.TB_SCHEDULER_ADMIN_JOB TO 'toady_sources'@'%';
+
+-- ============================================================================
+-- 29. 재방문 개선: 회원 방문 일자·결과 즉시 알림 기록 (API·관리자·스케줄러 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 익명 방문자 번호는 브라우저 저장소에 있어 아이폰 사파리·인앱 브라우저에서 같은 사람이 새 방문자로 잡힌다.
+-- 로그인한 회원이 서비스를 쓴 날짜만 하루 한 줄 남겨 회원 기준 30일 재방문을 본다(무엇을 봤는지는 남기지 않음).
+-- 탈퇴하면 지우고(API), 400일이 지나면 스케줄러가 지운다.
+CREATE TABLE IF NOT EXISTS TB_MEMBER_VISIT_DAY (
+    USER_SEQ BIGINT NOT NULL,
+    VISIT_DATE DATE NOT NULL COMMENT '한국시간 날짜',
+    PRIMARY KEY (USER_SEQ, VISIT_DATE),
+    INDEX IX_MEMBER_VISIT_DATE (VISIT_DATE)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 방문 일자(재방문 통계)';
+-- 앱 계정: INSERT, DELETE(탈퇴) / 관리자 계정: SELECT / 스케줄러 계정: DELETE(보관 기간)
+-- GRANT SELECT ON toady.TB_MEMBER_VISIT_DAY TO 'toady_admin'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_MEMBER_VISIT_DAY TO 'toady_sources'@'%';
+
+-- 결과 즉시 알림: 관심 공고의 경쟁률·당첨가점이 처음 공개되면 바로 보낸 기록(구독·공고·결과 종류마다 한 번).
+-- 같은 결과를 하루 묶음 알림이 다시 보내지 않게 하고, 한 구독에 하루 한 번만 즉시 알림을 보내는 데 쓴다. 60일 뒤 스케줄러가 지운다.
+-- 테이블이 없으면 API는 즉시 알림만 쉬고 하루 묶음 알림은 그대로 보낸다.
+CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (
+    ENDPOINT_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'TB_PUSH_SUBSCRIPTION.ENDPOINT_HASH',
+    ANNOUNCEMENT_ID VARCHAR(110) NOT NULL COMMENT '유형/주택관리번호/공고번호',
+    RESULT_KIND VARCHAR(10) NOT NULL COMMENT 'RATE(1순위 경쟁률) / SCORE(당첨가점)',
+    SENT_DT DATETIME NOT NULL COMMENT '한국시간',
+    PRIMARY KEY (ENDPOINT_HASH, ANNOUNCEMENT_ID, RESULT_KIND),
+    INDEX IX_PUSH_RESULT_SENT_DT (SENT_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='결과 즉시 알림 발송 기록';
+-- 앱 계정: SELECT, INSERT, DELETE(발송이 일시 실패하면 선점 기록을 지워 다시 보냄) / 스케줄러 계정: DELETE(보관 기간)
+-- GRANT SELECT, DELETE ON toady.TB_PUSH_RESULT_SENT TO 'toady_sources'@'%';

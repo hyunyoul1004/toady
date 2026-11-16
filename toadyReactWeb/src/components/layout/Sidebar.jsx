@@ -6,6 +6,7 @@
  * - 상단 로고, 주요 메뉴 리스트, 하단 로그인/회원가입/로그아웃 인증 영역 포함
  */
 import React, { useRef } from 'react';
+import { usePushAttention } from '@/features/push/usePushAttention';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
@@ -47,6 +48,7 @@ export const DRAWER_WIDTH = 240;
 
 export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }) {
   const location = useLocation();
+  const pushDot = usePushAttention();
   const navigate = useNavigate();
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
@@ -172,6 +174,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
                 sx={{ borderRadius: 1.5, py: 0.75, px: 1.5, bgcolor: selected ? '#eff6ff' : 'transparent', color: selected ? '#2563eb' : '#475569', '&:hover': { bgcolor: selected ? '#eff6ff' : '#f8fafc' } }}>
                 <ListItemIcon sx={{ minWidth: 36, color: selected ? '#2563eb' : '#64748b' }}>{MORE_ICONS[item.key]}</ListItemIcon>
                 <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 800 : 600, fontSize: '0.86rem' }} />
+                {item.key === 'push' && pushDot && <Box component="span" sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#dc2626', bgcolor: '#fef2f2', borderRadius: 999, px: 0.9, py: 0.2 }}>꺼짐</Box>}
               </ListItemButton>
             </ListItem>;
           })}

@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,6 +79,137 @@ public class PushDigest {
             log.info("웹 푸시 묶음 알림: sent={}, removed={}, retry={}, empty={}", report.sent(), report.removed(), report.retry(), report.empty());
     }
 
+    /**
+     * 결과 즉시 알림: 관심 공고의 1순위 경쟁률·당첨가점이 처음 공개되면 묶음 알림(18~20시)을 기다리지 않고 바로 보낸다.
+     * 수집기가 결과 시간대에 10분마다 수집하므로 그 5분 뒤에 확인한다. 밤 10시~아침 8시에는 보내지 않고 아침 8시 이후로 미룬다.
+     * 한 구독에 하루 한 번까지(여러 결과는 한 알림으로 묶음). 묶음 알림과 합쳐 하루 2건을 넘지 않는다.
+     * 보낸 결과는 TB_PUSH_RESULT_SENT(database.sql 29번)에 남겨 묶음 알림이 다시 보내지 않는다. 테이블이 없으면 즉시 알림만 쉰다.
+     */
+    @Scheduled(cron = "0 5/10 * * * *", zone = "Asia/Seoul")
+    public void scheduledResults() {
+        if (!sender.enabled() || !store.ready()) return;
+        Report report = runResults();
+        if (report.sent() + report.removed() + report.retry() > 0)
+            log.info("웹 푸시 결과 즉시 알림: sent={}, removed={}, retry={}", report.sent(), report.removed(), report.retry());
+    }
+
+    static final int QUIET_FROM = 22, QUIET_UNTIL = 8;
+    private volatile boolean resultTableMissingLogged;
+
+    public Report runResults() {
+        LocalDateTime now = PushSubscriptions.now(clock);
+        if (now.getHour() >= QUIET_FROM || now.getHour() < QUIET_UNTIL) return new Report(0, 0, 0, 0);
+        LocalDate today = now.toLocalDate();
+        try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_RESULT_SENT WHERE 1=0", Integer.class); }
+        catch (DataAccessException missing) {
+            if (!resultTableMissingLogged) { resultTableMissingLogged = true; log.warn("결과 즉시 알림을 쉽니다: database.sql 29번(TB_PUSH_RESULT_SENT)을 적용하세요"); }
+            return new Report(0, 0, 0, 0);
+        }
+        Map<String, LocalDateTime> resultSeen = new HashMap<>();
+        Map<String, AnnouncementResults.Result> resultCache = new HashMap<>();
+        Set<String> startedResultKinds = new HashSet<>();
+        safely("결과 기록", () -> { trackResults(today, now, resultCache, resultSeen, startedResultKinds); return List.of(); });
+        // 최근 하루 안에 처음 공개된 결과가 있는 공고만 본다. 없으면 구독을 훑지 않는다(평소 대부분의 실행).
+        LocalDateTime dayAgo = now.minusDays(1);
+        Set<String> freshIds = new HashSet<>();
+        resultSeen.forEach((key, at) -> { if (at.isAfter(dayAgo)) freshIds.add(key.substring(key.indexOf('|') + 1)); });
+        if (freshIds.isEmpty()) return new Report(0, 0, 0, 0);
+        // 오늘 이미 받은 구독, 이 공고들의 발송 기록, 이 공고를 저장한 회원을 실행마다 한 번에 읽는다(구독마다 조회하지 않게).
+        Set<String> sentTodayHashes = new HashSet<>(jdbc.queryForList("SELECT DISTINCT ENDPOINT_HASH FROM TB_PUSH_RESULT_SENT WHERE SENT_DT>=?",
+            String.class, Timestamp.valueOf(today.atStartOfDay())));
+        Map<String, Set<String>> sentByHash = sentResults(freshIds);
+        Map<Long, List<String>> memberFresh = memberFavoritesAmong(freshIds);
+        Map<Long, Boolean> activeMembers = new HashMap<>();
+        Map<String, Optional<PlannerSummary.Summary>> guestSummaries = new HashMap<>();
+        Map<String, LocalDateTime> seenAt = new HashMap<>();
+        resultSeen.forEach((key, at) -> seenAt.put((key.startsWith(RATE_SLUG + "|") ? "RATE|" : "SCORE|") + key.substring(key.indexOf('|') + 1), at));
+        int sent = 0, removed = 0, retry = 0;
+        for (PushSubscriptions.Row row : store.withFavorites()) {
+            List<PushMessage.Line> claimed = List.of();
+            try {
+                if (sentTodayHashes.contains(row.hash())) continue;
+                List<String> ids = row.userSeq() != null
+                    ? (activeMembers.computeIfAbsent(row.userSeq(), this::memberActive) ? memberFresh.getOrDefault(row.userSeq(), List.of()) : List.of())
+                    : row.favoriteIds().stream().filter(freshIds::contains).toList();
+                if (ids.isEmpty()) continue;
+                List<PlannerSummary.Summary> favorites = new ArrayList<>();
+                for (String id : ids) guestSummary(id, guestSummaries).ifPresent(favorites::add);
+                // 마지막 묶음 알림 뒤에 처음 공개된 결과만(묶음이 이미 알린 결과를 다시 보내지 않게).
+                LocalDateTime since = row.lastDigestAt() != null && row.lastDigestAt().isAfter(row.registeredAt()) ? row.lastDigestAt() : row.registeredAt();
+                Set<String> already = sentByHash.getOrDefault(row.hash(), Set.of());
+                List<PushMessage.Line> lines = safely("결과 즉시 알림", () -> resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds)).stream()
+                    .filter(line -> !already.contains(resultKey(line))).toList();
+                // 보내기 전에 발송 기록을 먼저 남겨 선점한다. 다른 실행(배포 중 겹친 API 등)이 먼저 기록한 결과는 빼서 두 번 울리지 않게 한다.
+                claimed = claimResults(row.hash(), lines, now);
+                if (claimed.isEmpty()) continue;
+                var message = PushMessage.results(claimed, resultCache, seenAt, now);
+                if (message.isEmpty()) { releaseResults(row.hash(), claimed); continue; }
+                var status = sender.send(row.target(), message.get().json(mapper), "result");
+                // 발송 응답을 받은 뒤의 실패(전달 기록 등)로는 선점을 풀지 않는다(이미 보낸 알림을 다시 보내지 않게).
+                List<PushMessage.Line> attempted = claimed;
+                claimed = List.of();
+                switch (status) {
+                    case ACCEPTED -> { store.delivered(row.hash(), now, false); sent++; }
+                    case GONE -> { store.deleteHash(row.hash()); removed++; }
+                    // 일시 장애는 기록을 지워 다음 확인(10분 뒤) 때 다시 보낸다. 같은 tag라 중복 표시되지 않는다.
+                    case RETRY -> { releaseResults(row.hash(), attempted); retry++; }
+                    case REJECTED -> { }
+                }
+            } catch (Exception failure) {
+                log.warn("웹 푸시 결과 즉시 알림 처리 실패: error={}", failure.getClass().getSimpleName());
+                // 선점한 뒤 실패하면 기록을 풀어 다음 확인이나 묶음 알림이 보내게 한다(선점만 남아 영영 빠지지 않게).
+                try { releaseResults(row.hash(), claimed); } catch (RuntimeException ignored) { /* 다음 실행에서 정리되지 않으면 묶음 알림 대상에서만 빠진다 */ }
+            }
+        }
+        return new Report(sent, removed, retry, 0);
+    }
+    /** 결과 줄의 중복 판정 키: 공고 id|RATE 또는 id|SCORE. */
+    static String resultKey(PushMessage.Line line) { return line.announcementId() + "|" + ("경쟁률 발표".equals(line.label()) ? "RATE" : "SCORE"); }
+    private static String placeholders(int count) { return String.join(",", java.util.Collections.nCopies(count, "?")); }
+    /** 이 구독에 즉시 알림으로 보낸 결과(키 모음). 테이블이 없으면 빈 모음. */
+    Set<String> sentResults(String hash) {
+        try {
+            return new HashSet<>(jdbc.queryForList("SELECT CONCAT(ANNOUNCEMENT_ID,'|',RESULT_KIND) FROM TB_PUSH_RESULT_SENT WHERE ENDPOINT_HASH=?", String.class, hash));
+        } catch (DataAccessException missing) { return Set.of(); }
+    }
+    /** 주어진 공고들에 대해 구독별로 보낸 결과(키 모음). */
+    private Map<String, Set<String>> sentResults(Set<String> ids) {
+        Map<String, Set<String>> out = new HashMap<>();
+        jdbc.query("SELECT ENDPOINT_HASH,CONCAT(ANNOUNCEMENT_ID,'|',RESULT_KIND) FROM TB_PUSH_RESULT_SENT WHERE ANNOUNCEMENT_ID IN (" + placeholders(ids.size()) + ")",
+            (RowCallbackHandler) r -> out.computeIfAbsent(r.getString(1), key -> new HashSet<>()).add(r.getString(2)), ids.toArray());
+        return out;
+    }
+    /** 주어진 공고를 저장한 회원별 공고 id(저장 최신순). */
+    private Map<Long, List<String>> memberFavoritesAmong(Set<String> ids) {
+        Set<String> houses = new HashSet<>();
+        for (String id : ids) { String[] parts = id.split("/"); if (parts.length == 3) houses.add(parts[1]); }
+        Map<Long, List<String>> out = new HashMap<>();
+        if (houses.isEmpty()) return out;
+        jdbc.query("SELECT USER_SEQ,CONCAT(ANNOUNCEMENT_TYPE,'/',HOUSE_MANAGE_NO,'/',PBLANC_NO) FROM TB_FAVORITE WHERE HOUSE_MANAGE_NO IN (" + placeholders(houses.size()) + ") ORDER BY REG_DT DESC",
+            (RowCallbackHandler) r -> { if (ids.contains(r.getString(2))) out.computeIfAbsent(r.getLong(1), key -> new ArrayList<>()).add(r.getString(2)); }, houses.toArray());
+        return out;
+    }
+    /** 결과 발송 기록을 먼저 넣어 선점한다. 이미 기록된(다른 실행이 보낸) 결과는 돌려주지 않는다. */
+    private List<PushMessage.Line> claimResults(String hash, List<PushMessage.Line> lines, LocalDateTime now) {
+        List<PushMessage.Line> claimed = new ArrayList<>();
+        for (PushMessage.Line line : lines) {
+            String key = resultKey(line);
+            try {
+                jdbc.update("INSERT INTO TB_PUSH_RESULT_SENT (ENDPOINT_HASH,ANNOUNCEMENT_ID,RESULT_KIND,SENT_DT) VALUES (?,?,?,?)",
+                    hash, line.announcementId(), key.substring(key.lastIndexOf('|') + 1), Timestamp.valueOf(now));
+                claimed.add(line);
+            } catch (DuplicateKeyException already) { /* 다른 실행이 먼저 선점 */ }
+        }
+        return claimed;
+    }
+    private void releaseResults(String hash, List<PushMessage.Line> lines) {
+        for (PushMessage.Line line : lines) {
+            String key = resultKey(line);
+            jdbc.update("DELETE FROM TB_PUSH_RESULT_SENT WHERE ENDPOINT_HASH=? AND ANNOUNCEMENT_ID=? AND RESULT_KIND=?",
+                hash, line.announcementId(), key.substring(key.lastIndexOf('|') + 1));
+        }
+    }
+
     public Report run() {
         LocalDateTime now = PushSubscriptions.now(clock);
         LocalDate today = now.toLocalDate(), tomorrow = today.plusDays(1);
@@ -112,7 +244,10 @@ public class PushDigest {
                     else for (String id : row.favoriteIds()) guestSummary(id, guestSummaries).ifPresent(favorites::add);
                     for (PlannerSummary.Summary summary : favorites) lines.addAll(favoriteLines(summary, tomorrow));
                     // 결과 조회가 실패해도 내일 일정 줄은 보낸다.
-                    lines.addAll(safely("결과 알림", () -> resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds)));
+                    // 결과 즉시 알림으로 이미 보낸 결과는 묶음에서 뺀다(같은 소식을 두 번 보내지 않게).
+                    Set<String> sentNow = sentResults(row.hash());
+                    lines.addAll(safely("결과 알림", () -> resultLines(favorites, today, since, now, resultCache, resultSeen, startedResultKinds)).stream()
+                        .filter(line -> !sentNow.contains(resultKey(line))).toList());
                 }
                 Set<String> already = new HashSet<>();
                 lines.forEach(line -> already.add(line.announcementId()));
@@ -156,12 +291,16 @@ public class PushDigest {
 
     /** 회원 관심 공고 요약. 공고 요약은 비회원과 같은 캐시로 공고 단위로 한 번만 만든다(회원마다 다시 만들지 않는다). */
     private List<PlannerSummary.Summary> memberSummaries(long user, Map<String, Optional<PlannerSummary.Summary>> cache) {
-        var account = users.findById(user).orElse(null);
-        if (account == null || !"N".equals(account.getWithdrawalYn()) || !"N".equals(account.getLockYn())) return List.of();
+        if (!memberActive(user)) return List.of();
         List<PlannerSummary.Summary> out = new ArrayList<>();
         for (String id : jdbc.queryForList("SELECT CONCAT(ANNOUNCEMENT_TYPE,'/',HOUSE_MANAGE_NO,'/',PBLANC_NO) FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", String.class, user))
             guestSummary(id, cache).ifPresent(out::add);
         return out;
+    }
+    /** 탈퇴·잠금되지 않은 회원인지. */
+    private boolean memberActive(long user) {
+        var account = users.findById(user).orElse(null);
+        return account != null && "N".equals(account.getWithdrawalYn()) && "N".equals(account.getLockYn());
     }
     /** 실패한 계산은 빈 결과로 이번 실행 동안 기억해, 같은 실패를 구독마다 되풀이하지 않고 다른 알림 줄은 계속 보낸다. */
     private <T> List<T> safely(String what, Supplier<List<T>> work) {
@@ -175,6 +314,14 @@ public class PushDigest {
         if (ids.isEmpty()) return;
         for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
         Map<String, AnnouncementResults.Result> found = results.forIds(ids);
+        // 이미 기록된 최초 확인 시각은 공고마다 묻지 않고 한 번에 읽는다(10분마다 도는 즉시 알림의 DB 부담을 줄인다).
+        List<Object> args = new ArrayList<>(List.of(RATE_SLUG, SCORE_SLUG));
+        args.addAll(ids);
+        jdbc.query("SELECT AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG IN (?,?) AND ANNOUNCEMENT_ID IN (" + placeholders(ids.size()) + ")",
+            (RowCallbackHandler) r -> {
+                String slug = r.getString(1), id = r.getString(2);
+                if (seen.putIfAbsent(slug + "|" + id, r.getTimestamp(3).toLocalDateTime()) == null) markResult(slug, id, now);
+            }, args.toArray());
         for (String id : ids) {
             var result = found.get(id);
             cache.put(id, result);
@@ -244,14 +391,23 @@ public class PushDigest {
     private LocalDateTime resultSeen(String slug, String id, LocalDateTime now, Map<String, LocalDateTime> seen, Set<String> started) {
         return seen.computeIfAbsent(slug + "|" + id, key -> {
             List<Timestamp> found = jdbc.queryForList("SELECT FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG=? AND ANNOUNCEMENT_ID=?", Timestamp.class, slug, id);
-            if (!found.isEmpty()) { markSeen(slug, List.of(id), now); return found.get(0).toLocalDateTime(); }
+            if (!found.isEmpty()) { markResult(slug, id, now); return found.get(0).toLocalDateTime(); }
             // slug+"*": 이번 실행에서 기록을 시작했다 → 지금 공개돼 있는 결과는 모두 기준 시각으로 둔다.
             LocalDateTime at = started.contains(slug + "*") ? BASELINE : now;
             try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(at)); }
             catch (DuplicateKeyException raced) { at = BASELINE; }
-            markSeen(slug, List.of(id), now);
+            markResult(slug, id, now);
             return at;
         });
+    }
+    /** 결과의 마지막 확인 시각은 하루 한 번만 갱신한다(보관 정리 기준이라 날짜 단위면 충분하다). */
+    private final Map<String, LocalDate> resultMarked = new java.util.concurrent.ConcurrentHashMap<>();
+    private void markResult(String slug, String id, LocalDateTime now) {
+        LocalDate today = now.toLocalDate();
+        if (today.equals(resultMarked.put(slug + "|" + id, today))) return;
+        // 지난 날짜 항목은 비워 서버가 오래 떠 있어도 쌓이지 않게 한다.
+        if (resultMarked.size() > 2_000) resultMarked.values().removeIf(day -> !day.equals(today));
+        markSeen(slug, List.of(id), now);
     }
     private Optional<PlannerSummary.Summary> guestSummary(String id, Map<String, Optional<PlannerSummary.Summary>> cache) {
         return cache.computeIfAbsent(id, key -> {

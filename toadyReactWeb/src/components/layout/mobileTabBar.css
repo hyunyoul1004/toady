@@ -10,3 +10,6 @@
 @media (max-width:899.95px){.MuiSnackbar-anchorOriginBottomCenter{bottom:calc(76px + env(safe-area-inset-bottom)) !important}}
 /* 아이폰 가로 모드: 노치 쪽 탭이 가려지지 않게 좌우 안전 영역만큼 띄운다 */
 @media (max-width:899.95px){.mobile-tabbar{padding-left:max(4px, env(safe-area-inset-left));padding-right:max(4px, env(safe-area-inset-right))}}
+/* 알림이 꺼져 있고 설정을 아직 안 열어 본 사람에게 '더보기'에 점을 찍는다 */
+.mobile-tabbar-icon{position:relative;display:inline-flex}
+.mobile-tabbar-dot{position:absolute;top:-1px;right:-4px;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px #fff}

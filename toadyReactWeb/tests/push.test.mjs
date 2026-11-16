@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { SPA_PATHS, appPath, base64UrlToBytes, detectPlatform, isSpaPath, pushMode, scopeKey } from '../src/features/push/pushSupport.js';
+import { SPA_PATHS, appPath, base64UrlToBytes, detectPlatform, isSpaPath, needsPushAttention, promptSnoozed, PROMPT_SNOOZE_MS, pushMode, scopeKey } from '../src/features/push/pushSupport.js';
+import { pushOpenSubject } from '../src/features/analytics/pageViews.js';
+import { kakaoTagged } from '../src/utils/kakaoShare.js';
 
 const win = (standalone = false) => ({ isSecureContext: true, PushManager: function () {}, Notification: function () {}, matchMedia: () => ({ matches: standalone }) });
 const nav = (userAgent, extra = {}) => ({ userAgent, serviceWorker: {}, ...extra });
@@ -63,17 +65,18 @@ test('service worker shows the payload and opens only same-origin detail pages',
   assert.equal(sw.shown[0].options.icon, '/icons/icon-192.png');
   const notification = { data: sw.shown[0].options.data, close() {} };
   await sw.fire('notificationclick', { notification, action: '' });
-  assert.deepEqual(sw.opened, ['https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1']);
+  // 어떤 알림으로 들어왔는지 src 꼬리표를 붙인다(앱이 첫 기록 뒤 지운다).
+  assert.deepEqual(sw.opened, ['https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1&src=push.digest']);
   await sw.fire('notificationclick', { notification, action: 'my' });
-  assert.equal(sw.opened[1], 'https://www.toady.co.kr/my');
+  assert.equal(sw.opened[1], 'https://www.toady.co.kr/my?src=push.digest');
   await sw.fire('notificationclick', { notification: { data: { url: 'https://evil.example/' }, close() {} }, action: '' });
-  assert.equal(sw.opened[2], 'https://www.toady.co.kr/');
+  assert.equal(sw.opened[2], 'https://www.toady.co.kr/?src=push.other');
 
   // 이미 열린 TOADY 창이 있으면 새 창 대신 앱 라우터로 이동시킨다.
   const open = await serviceWorker(['https://www.toady.co.kr/my']);
   await open.fire('notificationclick', { notification, action: '' });
   assert.deepEqual(open.opened, []);
-  assert.equal(JSON.stringify(open.messages[0].message), JSON.stringify({ type: 'toady-push-open', url: 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1' }));
+  assert.equal(JSON.stringify(open.messages[0].message), JSON.stringify({ type: 'toady-push-open', url: 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1&src=push.digest' }));
 });
 
 test('notification click: SPA window + SPA target uses the router, otherwise the window navigates', async () => {
@@ -85,12 +88,12 @@ test('notification click: SPA window + SPA target uses the router, otherwise the
   // 서버 HTML 생활권 페이지로 가는 알림은 열린 앱 창이 있어도 창을 직접 이동시킨다.
   let sw = await click(['https://www.toady.co.kr/my'], '/areas/unjeong');
   assert.deepEqual(sw.messages, []);
-  assert.deepEqual(sw.navigated, [{ from: 'https://www.toady.co.kr/my', to: 'https://www.toady.co.kr/areas/unjeong' }]);
+  assert.deepEqual(sw.navigated, [{ from: 'https://www.toady.co.kr/my', to: 'https://www.toady.co.kr/areas/unjeong?src=push.other' }]);
   assert.deepEqual(sw.opened, []);
   // 열린 창이 서버 페이지면 앱 라우터가 없으므로 앱 경로도 창 이동으로 처리한다.
   sw = await click(['https://www.toady.co.kr/weekly'], '/?subscriptSeq=apt%2FP1%2FN1');
   assert.deepEqual(sw.messages, []);
-  assert.equal(sw.navigated[0].to, 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1');
+  assert.equal(sw.navigated[0].to, 'https://www.toady.co.kr/?subscriptSeq=apt%2FP1%2FN1&src=push.other');
   // 앱 창 + 앱 경로(끝 슬래시 포함)는 메시지로 라우터 이동.
   sw = await click(['https://www.toady.co.kr/score/'], '/my');
   assert.equal(sw.messages.length, 1);
@@ -164,4 +167,40 @@ test('공고 주소는 앱 안 경로이고, 서비스 워커와 같은 식을 �
   assert.equal(source.match(/const ANNOUNCEMENT_PATH = (\/.*\/);/)[1], String(ANNOUNCEMENT_PATH));
   assert.deepEqual(detailMarker('/showSubscriptDetail?subscriptSeq=apt%2F1%2F1'), { detailOverlay: true });
   assert.equal(detailListBase('/showSubscriptDetail?subscriptSeq=apt%2F1%2F1'), '/');
+});
+
+test('notification clicks are tagged by kind so the app can count opens per notification', async () => {
+  const sw = await serviceWorker();
+  for (const [tag, source] of [['toady-result', 'push.result'], ['dm-12', 'push.message'], ['notice', 'push.notice'], ['notice-test', 'push.notice'], ['toady-test', 'push.other']]) {
+    await sw.fire('notificationclick', { notification: { data: { url: '/my', tag }, close() {} }, action: '' });
+    assert.equal(new URL(sw.opened.at(-1)).searchParams.get('src'), source, tag);
+    assert.ok(pushOpenSubject(source), `${source} must be a known push source in pageViews.js`);
+  }
+  assert.equal(pushOpenSubject('push.result'), 'tool/push-result');
+  assert.equal(pushOpenSubject('kakao.com'), null);
+  assert.equal(pushOpenSubject(null), null);
+});
+
+test('the notification dot shows only when push can be turned on and settings were never opened', () => {
+  const base = { status: 'ready', mode: 'ready', enabled: true, permission: 'default', subscribed: false };
+  assert.equal(needsPushAttention(base, false), true);
+  assert.equal(needsPushAttention(base, true), false, '설정을 한 번 열어 봤으면 점을 지운다');
+  assert.equal(needsPushAttention({ ...base, subscribed: true }, false), false);
+  assert.equal(needsPushAttention({ ...base, permission: 'denied' }, false), false, '거절했으면 켤 수 없으니 재촉하지 않는다');
+  assert.equal(needsPushAttention({ ...base, status: 'loading' }, false), false);
+  assert.equal(needsPushAttention({ ...base, mode: 'ios-home' }, false), true, '아이폰 사파리는 홈 화면 추가 안내로 이어진다');
+  assert.equal(needsPushAttention({ ...base, mode: 'in-app' }, false), false);
+});
+
+test('a dismissed notification card comes back after 30 days', () => {
+  const now = 1_800_000_000_000;
+  assert.equal(promptSnoozed(String(now - 1000), now), true);
+  assert.equal(promptSnoozed(String(now - PROMPT_SNOOZE_MS - 1), now), false);
+  assert.equal(promptSnoozed('1', now), false, '예전 형식(영구 닫기)은 한 번 다시 보여 준다');
+  assert.equal(promptSnoozed(null, now), false);
+});
+
+test('kakao shares carry a source tag so KakaoTalk visits are counted', () => {
+  assert.equal(kakaoTagged('https://www.toady.co.kr/announcements/apt/1/1?tabType=rate'), 'https://www.toady.co.kr/announcements/apt/1/1?tabType=rate&src=kakao.com');
+  assert.equal(kakaoTagged('not a url'), 'not a url');
 });

@@ -30,6 +30,52 @@ public record PushMessage(String title, String body, String url, String tag, Lis
         return new PushMessage("TOADY 알림이 켜졌어요", "이렇게 알려 드려요. 눌러서 ‘" + name(houseNm) + "’ 상세를 열어 보세요.", detailUrl(announcementId), "toady-test", List.of());
     }
 
+    /**
+     * 결과 즉시 알림(관심 공고의 1순위 경쟁률·당첨가점이 처음 공개된 직후). 숫자는 청약홈 수집값 그대로, 반영 시각을 함께 적는다.
+     * lines의 label은 "경쟁률 발표"·"당첨가점 공개", details는 공고 id → 결과, seenAt은 "RATE|id"·"SCORE|id" → 처음 확인 시각.
+     */
+    /** 확인 시각 표기: 오늘이면 'HH:mm', 어제면 '어제 HH:mm', 그보다 전이면 'M월 d일'. */
+    static String checkedAt(java.time.LocalDateTime at, java.time.LocalDate today) {
+        String time = at.toLocalTime().withSecond(0).withNano(0).toString();
+        if (at.toLocalDate().equals(today)) return time;
+        if (at.toLocalDate().equals(today.minusDays(1))) return "어제 " + time;
+        return at.getMonthValue() + "월 " + at.getDayOfMonth() + "일";
+    }
+    public static Optional<PushMessage> results(List<Line> lines, java.util.Map<String, com.toady.web.app.planner.AnnouncementResults.Result> details,
+            java.util.Map<String, java.time.LocalDateTime> seenAt, java.time.LocalDateTime now) {
+        if (lines.isEmpty()) return Optional.empty();
+        String tag = "toady-result";
+        if (lines.size() == 1) {
+            Line only = lines.get(0);
+            var result = details.get(only.announcementId());
+            boolean rate = "경쟁률 발표".equals(only.label());
+            var at = seenAt.get((rate ? "RATE|" : "SCORE|") + only.announcementId());
+            // TOADY가 청약홈 수집값을 처음 확인한 시각(밤사이 공개분은 아침 확인 시각이 된다). 공개 시각처럼 쓰지 않는다.
+            String when = at == null ? "" : " · 청약홈 집계, " + checkedAt(at, now.toLocalDate()) + " 확인";
+            String body;
+            if (rate) body = result != null && result.topRate() != null
+                ? "1순위 최고 " + formatRate(result.topRate()) + " 대 1" + when + ". 눌러서 주택형별 경쟁률을 확인하세요."
+                : "1순위 경쟁률이 공개됐어요" + when + ". 눌러서 주택형별 경쟁률을 확인하세요.";
+            else body = result != null && !result.scoreLow().isEmpty()
+                ? "주택형별 당첨가점 " + scoreRange(result.scoreLow(), result.scoreHigh()) + when + ". 눌러서 내 가점과 비교해 보세요."
+                : "당첨가점이 공개됐어요" + when + ". 눌러서 내 가점과 비교해 보세요.";
+            return Optional.of(new PushMessage(only.label() + " · " + name(only.houseNm()), body, resultUrl(only.announcementId()), tag, List.of()));
+        }
+        Line first = lines.get(0);
+        String body = "‘" + name(first.houseNm()) + "’ " + first.label() + " 외 " + (lines.size() - 1) + "건이 공개됐어요. 눌러서 확인하세요.";
+        return Optional.of(new PushMessage("관심 공고 결과 " + lines.size() + "건", body, resultUrl(first.announcementId()), tag,
+            List.of(new Action("my", "나의 청약", "/my"))));
+    }
+    /** 경쟁률 숫자 표기(100 이상은 정수, 그 아래는 소수 둘째 자리까지). 공유 미리보기에서도 같은 표기를 쓴다. */
+    public static String rate(double rate) { return formatRate(rate); }
+    static String formatRate(double rate) {
+        return rate >= 100 ? String.valueOf(Math.round(rate)) : java.math.BigDecimal.valueOf(rate).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
+    static String scoreRange(String low, String high) {
+        if (high == null || high.isEmpty() || high.equals(low)) return low + "점";
+        return low + "~" + high + "점";
+    }
+
     /** 결과 알림은 경쟁률 탭으로 바로 연다. */
     public static String resultUrl(String announcementId) { return detailUrl(announcementId) + "&tabType=rate"; }
 

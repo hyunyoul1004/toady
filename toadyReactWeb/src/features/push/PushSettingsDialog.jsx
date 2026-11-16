@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { markPushSettingsSeen } from './usePushAttention';
 import { WEEKLY_BRIEF, ZUPZUP_TOPICS, withWeekly, withZupzup, zupzupTopic } from './pushTopics';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControlLabel, IconButton, Switch, useMediaQuery } from '@mui/material';
@@ -37,7 +38,7 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
   const toggleArea = slug => change({ ...scope, areas: scope.areas.includes(slug) ? scope.areas.filter(value => value !== slug) : [...scope.areas, slug].slice(0, 6) });
   const close = () => { if (busy) return; setError(null); setNotice(null); setDraft(null); onClose(); };
   // 뒤로가기로 닫힌 경우 close()를 거치지 않으므로, 다시 열릴 때 지난 안내·초안을 비운다.
-  useEffect(() => { if (open) { setError(null); setNotice(null); setDraft(null); } }, [open]);
+  useEffect(() => { if (open) { setError(null); setNotice(null); setDraft(null); markPushSettingsSeen(); } }, [open]);
 
   let body;
   if (push.status === 'loading') body = <div className="push-loading"><CircularProgress size={24} /></div>;

@@ -20,13 +20,17 @@ public class UsageEventController {
     private final JdbcTemplate jdbc; private final boolean enabled;
     public UsageEventController(JdbcTemplate jdbc,@Value("${toady.analytics.enabled:true}") boolean enabled) { this.jdbc=jdbc;this.enabled=enabled; }
     public record Event(@NotNull UUID eventId,@NotNull UUID visitorId,
-        @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share|score_save|poll_vote|push_enable|match_save|map_tool") String action,
+        @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share|score_save|poll_vote|push_enable|match_save|map_tool|push_open|push_denied|push_disable") String action,
         @NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}|tool/[a-z0-9-]{1,40}") String subject) { }
     /** 공고 행동은 공고 주소만, 지도 기능은 정해진 기능 이름만 받는다(임의 값으로 관리자 집계가 채워지지 않게). */
     static final java.util.Set<String> ANNOUNCEMENT_ACTIONS=java.util.Set.of("detail_view","favorite_add","alert_enable","official_click","research_click","compare","poll_vote");
     static final java.util.Set<String> MAP_TOOLS=java.util.Set.of("tool/map-fullscreen","tool/map-measure","tool/map-radius","tool/map-search","tool/map-suggest");
+    /** 알림 열기(어떤 알림인지)·권한 거절·알림 끄기는 정해진 이름만 받는다. 열기는 웹 서비스 워커가 붙인 src(push.digest 등)에서 온다. */
+    static final java.util.Set<String> PUSH_OPEN=java.util.Set.of("tool/push-digest","tool/push-result","tool/push-message","tool/push-notice","tool/push-other");
     static boolean validPair(String action,String subject) {
         if("map_tool".equals(action)) return MAP_TOOLS.contains(subject);
+        if("push_open".equals(action)) return PUSH_OPEN.contains(subject);
+        if("push_denied".equals(action)||"push_disable".equals(action)) return "tool/push".equals(subject);
         if(ANNOUNCEMENT_ACTIONS.contains(action)) return !subject.startsWith("tool/");
         return true;
     }

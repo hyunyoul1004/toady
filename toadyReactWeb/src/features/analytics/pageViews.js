@@ -23,6 +23,10 @@ export function externalReferrer(referrer, search, ownHost) {
   } catch { return null; }
 }
 
+/** 알림 클릭 꼬리표(src=push.digest 등)를 행동 기록 이름으로 바꾼다. 정해진 값이 아니면 null. */
+const PUSH_SOURCES = { 'push.digest': 'tool/push-digest', 'push.result': 'tool/push-result', 'push.message': 'tool/push-message', 'push.notice': 'tool/push-notice', 'push.other': 'tool/push-other' };
+export function pushOpenSubject(source) { return PUSH_SOURCES[(source || '').toLowerCase()] || null; }
+
 /** 저장소 차단 시 메모리 식별자로 동작하며, 조회 실패는 화면으로 전파하지 않는다. */
 export function createPageViewTracker({ apiUrl, storage, fetcher, randomUUID, now = Date.now, referrerHost = () => null }) {
   let visitor;

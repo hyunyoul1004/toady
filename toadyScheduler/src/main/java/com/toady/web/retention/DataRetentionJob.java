@@ -79,6 +79,10 @@ public class DataRetentionJob {
                 // 관리자 작업 기록·검색어 통계는 1년 보관한다(database.sql 26·27번, 개인정보처리방침 2번).
                 new Target("TB_ADMIN_AUDIT", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
                 new Target("TB_SEARCH_STAT", "STAT_DATE < ?", List.of(java.sql.Date.valueOf(now.toLocalDate().minusDays(365)))),
+                // 회원 방문 일자는 30일 재방문 통계용이라 400일만 둔다(database.sql 29번, 개인정보처리방침 2번).
+                // 결과 즉시 알림 발송 기록은 같은 결과를 두 번 보내지 않는 데만 쓴다. 결과 알림 대상(접수 마감 30일 안)보다 넉넉히 60일 둔다.
+                new Target("TB_PUSH_RESULT_SENT", "SENT_DT < ?", List.of(Timestamp.valueOf(now.minusDays(60)))),
+                new Target("TB_MEMBER_VISIT_DAY", "VISIT_DATE < ?", List.of(Date.valueOf(today.minusDays(400)))),
                 // 일정 맞춤 수집은 하루 수십 번 돌아 실행 이력이 빠르게 쌓인다. 끝난 실행만 90일 보관한다(database.sql 28번 권한).
                 new Target("TB_SCHEDULER_ADMIN_JOB", "JOB_KIND = 'SCHEDULED_RESULTS' AND STATUS IN ('SUCCEEDED','FAILED','CANCELLED','INTERRUPTED') AND CREATED_AT < ?",
                         List.of(Timestamp.valueOf(now.minusDays(90)))));
