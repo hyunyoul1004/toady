@@ -19,5 +19,5 @@ Allow: /
 Sitemap: https://www.toady.co.kr/sitemap.xml
 
 # Daum 웹마스터도구 사이트 소유 확인
-#DaumWebMasterTool:7ab002f3142843c3317e3989454d2ad7e97804dbce9ab4cac04839d7ad66363c:/U8QWp/Cxm097lAEJOWTSw==
+#DaumWebMasterTool:ad951f29ba23815382f0ddad7e1b7d83b7fafd3f9c5631fbea9aeee792b980a6:/U8QWp/Cxm097lAEJOWTSw==
 
