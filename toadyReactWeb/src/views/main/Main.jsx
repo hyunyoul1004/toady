@@ -302,8 +302,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     setResearchTab('info');
     setDetailTabValue(0);
     setModalOpen(true);
-    // 앱 안 상세는 SPA 주소를 쓴다. /announcements/…는 nginx가 검색·공유용 서버 HTML로 보내므로 새로고침하면 앱이 아닌 정적 페이지가 열린다.
-    navigate(`/?subscriptSeq=${encodeURIComponent(seq)}`, {state:{detailOverlay:true}});
+    // 상세 주소는 공유 링크와 같은 /announcements/…를 쓴다. 웹 nginx가 사람에게는 앱을, 검색·공유 봇에게는 서버 HTML을 준다.
+    // 그래서 주소창을 복사해도 공유 버튼과 같은 링크가 되고, 새로고침해도 앱 상세가 그대로 열린다.
+    navigate(`/announcements/${seq}`, {state:{detailOverlay:true}});
   };
 
   const handleCloseDetail = () => {
