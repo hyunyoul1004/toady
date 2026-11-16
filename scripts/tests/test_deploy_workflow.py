@@ -17,7 +17,7 @@ def server_script():
 
 class DeployWorkflowTest(unittest.TestCase):
     def run_deploy(self, previous_tag='old', fail_up_for='', check_fails_for='', env_text=None, fail_config='', admin_env=None,
-                   same_apps='', new_compose='new compose\n'):
+                   same_apps='', new_compose='new compose\n', redis_password='r' * 32):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             work = home / 'toady'
@@ -27,7 +27,7 @@ class DeployWorkflowTest(unittest.TestCase):
             log = home / 'calls.log'
             stubs = {
                 'docker-compose': '#!/bin/sh\necho "compose $IMAGE_TAG $*" >> "$CALL_LOG"\n'
-                                  'case "$*" in *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; esac\n',
+                                  'case "$*" in *" up "*redis*) true ;; *" up "*) [ "$IMAGE_TAG" != "$FAIL_UP_FOR" ] ;; *" config "*) [ -z "$FAIL_CONFIG" ] ;; esac\n',
                 # 이미지 ID 스텁: 새 태그 이미지는 id-<저장소>, SAME_APPS에 든 컨테이너만 같은 ID로 돌고 있다.
                 'docker': '#!/bin/bash\necho "docker $*" >> "$CALL_LOG"\n'
                           'if [ "$1 $2" = "image inspect" ]; then n="${@: -1}"; n="${n##*/}"; echo "id-${n%%:*}"; exit 0; fi\n'
@@ -48,6 +48,8 @@ class DeployWorkflowTest(unittest.TestCase):
             (work / '.incoming' / 'scripts' / 'check-deployment.sh').write_text(check)
             if previous_tag:
                 (work / '.deployed-image-tag').write_text(previous_tag + '\n')
+            (work / 'toadyWebApi').mkdir()
+            (work / 'toadyWebApi' / '.env.prod').write_text('DB_URL=x\n' + (f'REDIS_PASSWORD={redis_password}\n' if redis_password else ''))
             if admin_env is not None:
                 (work / 'toadyAdmin').mkdir()
                 (work / 'toadyAdmin' / '.env.prod').write_text(admin_env)
@@ -74,7 +76,8 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertEqual('new\n', tag)
         self.assertEqual('OTHER=1\nIMAGE_TAG=new\n', env)
         self.assertEqual('0o640', mode)
-        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts', 'toadyAdmin'], files)
+        self.assertEqual(['.deployed-image-tag', '.env', '.incoming', '.rollback', 'docker-compose.yml', 'scripts', 'toadyAdmin', 'toadyWebApi'], files)
+        self.assertIn('up -d --no-recreate redis', calls, 'Redis는 없을 때만 띄우고 다시 만들지 않는다')
         self.assertEqual('new compose\n', self.compose)
 
     def test_admin_site_joins_the_deploy_only_after_its_env_file_is_filled(self):
@@ -131,7 +134,7 @@ class DeployWorkflowTest(unittest.TestCase):
         result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n',
                                                  same_apps='toadyWebApi toadyScheduler toadyReactWeb')
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertNotIn(' up ', calls)
+        self.assertNotIn('up -d --no-deps', calls)
         self.assertNotIn('nginx -s reload', calls)
         self.assertIn('check new', calls, '재시작이 없어도 배포 확인은 한다')
         self.assertEqual('new\n', tag)
@@ -148,6 +151,16 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn('compose old -p toady up -d --no-deps toadyReactWeb\n', calls)
         self.assertIn('ROLLBACK OK', result.stderr)
         self.assertEqual('old\n', tag)
+
+    def test_missing_redis_password_stops_before_touching_containers(self):
+        for password in ('', 'short'):
+            result, calls, tag, *_ = self.run_deploy(redis_password=password)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn('REDIS_PASSWORD', result.stderr)
+            self.assertNotIn(' up ', calls)
+            self.assertNotIn(' pull ', calls)
+            self.assertEqual('old\n', tag)
+            self.assertEqual('old compose\n', self.compose)
 
     def test_first_success_creates_private_env(self):
         result, _, tag, env, mode, _ = self.run_deploy(previous_tag='')

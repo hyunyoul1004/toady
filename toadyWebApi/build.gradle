@@ -37,6 +37,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 
 	implementation 'com.google.guava:guava:32.1.3-jre'
+	// Redis 클라이언트만 쓴다(Spring Data Redis 자동 설정 없이). REDIS_HOST가 없으면 연결하지 않고 메모리로 동작한다.
+	implementation 'io.lettuce:lettuce-core'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

@@ -1,5 +1,6 @@
 package com.toady.web.core.health;
 
+import com.toady.web.core.redis.RedisStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
@@ -18,12 +19,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;
+    private final RedisStore redis;
 
     @GetMapping("/internal/health")
     public ResponseEntity<Map<String, String>> health() {
         try {
             jdbcTemplate.queryForObject("SELECT 1", Integer.class);
-            return ResponseEntity.ok(Map.of("status", "UP"));
+            // Redis는 멈춰도 메모리로 대신하므로 준비 상태를 실패로 만들지 않고 상태만 알린다(배포 확인이 경고로 표시).
+            return ResponseEntity.ok(Map.of("status", "UP", "redis", redis.status()));
         } catch (DataAccessException exception) {
             return ResponseEntity.status(503).body(Map.of("status", "DOWN"));
         }

@@ -92,6 +92,7 @@ cp .env.example .env        # DB_URL·DB_USERNAME·DB_PASSWORD, JWT_SECRET(opens
 | `MAIL_HOST`·`MAIL_PORT`·`MAIL_USERNAME`·`MAIL_PASSWORD`, `MAIL_FROM`·`MAIL_FROM_NAME` | SMTP와 보내는 사람(비우면 SMTP 계정) |
 | `GMAIL_ROLLING_LIMIT`, `GMAIL_AUTH_RESERVE`, `PLANNER_REMINDERS_ENABLED` | 24시간 발송 상한, 인증용 여유분, 일정 알림 사용 |
 | `MOLIT_TRADE_SERVICE_KEY` | 국토교통부 아파트 매매 실거래 인증키(서버 전용) |
+| `REDIS_HOST`·`REDIS_PORT`·`REDIS_PASSWORD` | 요청 제한·외부 API 결과 캐시용 Redis. 호스트가 비면(로컬·테스트) 메모리로 동작하고, 운영은 compose가 `REDIS_HOST=redis`를 넣는다 |
 | `KAKAO_REST_API_KEY` | 카카오 로컬 API(주소 좌표·주변 시설, 서버 전용) |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`·`WEB_PUSH_VAPID_PRIVATE_KEY`·`WEB_PUSH_SUBJECT`, `PUSH_DIGEST_ENABLED` | 웹 푸시 키와 발송 사용 |
 | `DM_MIN_ACCOUNT_HOURS`, `DM_REQUIRE_STORY`, `DM_DAILY_NEW_THREADS`, `DM_DAILY_MESSAGES` | 쪽지 새 대화 시작 조건(가입 후 시간·이야기 작성, 기본 끔)과 하루 한도(새 대화 5명·쪽지 50통) |

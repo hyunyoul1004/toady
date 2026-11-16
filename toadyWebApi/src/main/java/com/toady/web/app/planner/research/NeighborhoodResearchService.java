@@ -2,6 +2,7 @@ package com.toady.web.app.planner.research;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.toady.web.core.redis.SharedCache;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,6 +39,22 @@ public class NeighborhoodResearchService {
     private final String molitKey;
     private final Cache<String,TradeMonth> tradeCache=CacheBuilder.newBuilder().maximumWeight(150000)
         .weigher((String key,TradeMonth value)->Math.max(1,value.trades().size())).expireAfterWrite(6,TimeUnit.HOURS).build();
+    /**
+     * 메모리 다음 단의 공유 캐시(Redis). 배포·재시작 뒤에도 받은 달을 다시 부르지 않아 국토부 일일 한도를 아낀다.
+     * 기본(테스트)은 메모리만 쓴다.
+     */
+    private SharedCache shared=SharedCache.none();
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void useSharedCache(SharedCache shared) { this.shared=shared; }
+    static final Duration TRADE_TTL=Duration.ofHours(6);
+    /** 공유 캐시에 있으면 그것을, 없으면 받아서 공유 캐시에도 둔다(남은 시간은 처음 받은 시각 기준 6시간). */
+    private TradeMonth sharedMonth(String key,java.util.concurrent.Callable<TradeMonth> load) throws Exception {
+        TradeMonth hit=shared.get("trade:"+key,TradeMonth.class);
+        if(hit!=null && hit.fetchedAt()!=null && hit.fetchedAt().isAfter(Instant.now().minus(TRADE_TTL))) return hit;
+        TradeMonth loaded=load.call();
+        shared.put("trade:"+key,loaded,TRADE_TTL);
+        return loaded;
+    }
     /** 하루 호출 수(서버 전체). 기본 생성자(테스트)는 세지 않는다. */
     private final MolitDailyBudget dailyBudget;
     /** 미리 계산 작업이 부르는 중인지(이 스레드). 남겨 둔 하루 몫을 쓸 수 있다. */
@@ -82,7 +99,7 @@ public class NeighborhoodResearchService {
                 // 최근 실패한 시군구·월은 몇 분간 다시 부르지 않는다(잘못된 코드 반복으로 공공데이터 일일 쿼터를 쓰지 않게).
                 if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
                 TradeMonth data;
-                try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                try { data=tradeCache.get(key,()->sharedMonth(key,()->loadMonth(bcode.substring(0,5),ymd,deadline))); }
                 catch(Exception failure) { if(!deadlineExceeded(failure)) failedMonths.put(key,Boolean.TRUE); throw failure; }
                 all.addAll(data.trades());updated.add(data.fetchedAt());
             }
@@ -129,7 +146,7 @@ public class NeighborhoodResearchService {
                 if(data==null) {
                     // 응답 시간 한도를 넘기면 제공처 실패로 기록하지 않고, 이미 받은 달까지만으로 결과를 만든다.
                     if(System.nanoTime()>deadline) break;
-                    try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                    try { data=tradeCache.get(key,()->sharedMonth(key,()->loadMonth(bcode.substring(0,5),ymd,deadline))); }
                     catch(Exception failure) {
                         if(deadlineExceeded(failure)) break;
                         failedMonths.put(key,Boolean.TRUE); continue;
@@ -175,7 +192,7 @@ public class NeighborhoodResearchService {
                 TradeMonth data=tradeCache.getIfPresent(key);
                 if(data==null) {
                     if(System.nanoTime()>deadline) break;
-                    try { data=tradeCache.get(key,()->loadMonth(bcode.substring(0,5),ymd,deadline)); }
+                    try { data=tradeCache.get(key,()->sharedMonth(key,()->loadMonth(bcode.substring(0,5),ymd,deadline))); }
                     catch(Exception failure) { if(deadlineExceeded(failure)) break; failedMonths.put(key,Boolean.TRUE); continue; }
                 }
                 all.addAll(data.trades());updated.add(data.fetchedAt());earliest=end.minusMonths(month);
@@ -192,6 +209,7 @@ public class NeighborhoodResearchService {
         if(!tradesEnabled() || lawd5==null || !lawd5.matches("\\d{5}") || !SIDO_CODES.contains(lawd5.substring(0,2))) return Optional.empty();
         String ymd=month.format(DateTimeFormatter.ofPattern("yyyyMM")),key=lawd5+"/"+ymd;
         TradeMonth cached=tradeCache.getIfPresent(key);
+        if(cached==null) cached=shared.get("trade:"+key,TradeMonth.class);
         if(cached!=null) return Optional.of(cached.trades());
         if(failedMonths.getIfPresent(key)!=null) return Optional.empty();
         try { return Optional.of(loadMonth(lawd5,ymd,deadline).trades()); }
@@ -205,7 +223,11 @@ public class NeighborhoodResearchService {
         if(lawd5==null) return false;
         String key=lawd5+"/"+month.format(DateTimeFormatter.ofPattern("yyyyMM"));
         if(tradeCache.getIfPresent(key)!=null) return false;
-        return molitPaused() || failedMonths.getIfPresent(key)!=null;
+        if(!molitPaused() && failedMonths.getIfPresent(key)==null) return false;
+        // 호출을 쉬는 중이어도 공유 캐시에 받아 둔 달이 있으면 기다릴 필요가 없다(메모리에 올려 둔다).
+        TradeMonth hit=shared.get("trade:"+key,TradeMonth.class);
+        if(hit!=null && hit.fetchedAt()!=null && hit.fetchedAt().isAfter(Instant.now().minus(TRADE_TTL))) { tradeCache.put(key,hit); return false; }
+        return true;
     }
     /** 정렬된 값의 p 분위(선형 보간, 만원 반올림). */
     static long quantile(List<Long> sorted,double p) {

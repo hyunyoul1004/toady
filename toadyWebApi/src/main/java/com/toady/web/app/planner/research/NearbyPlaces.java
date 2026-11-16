@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.toady.web.core.redis.SharedCache;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,11 @@ public class NearbyPlaces {
     private final ObjectMapper json = new ObjectMapper();
     private final Cache<String, Result> cache = CacheBuilder.newBuilder().maximumSize(5000).expireAfterWrite(1, TimeUnit.DAYS).build();
 
+    /** 메모리 다음 단의 공유 캐시(Redis). 배포 뒤에도 같은 지점의 카카오 호출(요청당 3회)을 아낀다. */
+    private SharedCache shared = SharedCache.none();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useSharedCache(SharedCache shared) { this.shared = shared; }
+
     public NearbyPlaces(ResearchTransport transport, @Value("${toady.research.kakao-rest-key:}") String key) {
         this.transport = transport; this.key = key == null ? "" : key.trim();
     }
@@ -52,6 +58,8 @@ public class NearbyPlaces {
         String cacheKey = y + "," + x;
         Result cached = cache.getIfPresent(cacheKey);
         if (cached != null) return cached;
+        cached = shared.get("nearby:" + cacheKey, Result.class);
+        if (cached != null) { cache.put(cacheKey, cached); return cached; }
         try {
             List<Place> places = new ArrayList<>();
             for (Category category : CATEGORIES) {
@@ -62,6 +70,7 @@ public class NearbyPlaces {
             }
             Result result = new Result("READY", RADIUS, List.copyOf(places));
             cache.put(cacheKey, result);
+            shared.put("nearby:" + cacheKey, result, java.time.Duration.ofDays(1));
             return result;
         } catch (Exception failure) {
             log.debug("Nearby places failed: {}", failure.getClass().getSimpleName());

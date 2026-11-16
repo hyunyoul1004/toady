@@ -1,7 +1,6 @@
 package com.toady.web.core.security;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
+import com.toady.web.core.redis.SlidingWindows;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,13 +17,9 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -32,7 +27,7 @@ import java.util.regex.Pattern;
  * - 메일: 가입·인증 재발송·비밀번호 찾기. 무작위 이메일 대량 요청으로 하루 메일 한도(Gmail)를 소진시키는 공격을 막는다.
  * - 외부 API·대량 조회: 동네 실거래(국토부 일일 쿼터), 관심 공고 요약(요청당 최대 50건 조회), 자동완성.
  * - 익명 쓰기: 웹 푸시 구독, 경쟁률 투표.
- * API는 단일 인스턴스로 운영하므로 메모리 창으로 충분하다(재시작 시 초기화).
+ * 기록은 Redis에 두어 배포·재시작 뒤에도 유지하고 API 여러 대가 함께 센다(Redis가 없거나 멈추면 메모리로 대신한다).
  */
 @Component
 public class RequestLimitFilter extends OncePerRequestFilter {
@@ -92,17 +87,18 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     private static final UrlPathHelper PATHS = new UrlPathHelper();
     private final List<Rule> rules;
     private final Duration shortWindow;
-    private final Clock clock;
-    private final Cache<String, Deque<Long>> hits = CacheBuilder.newBuilder()
-            .maximumSize(200_000).expireAfterAccess(1, TimeUnit.DAYS).build();
+    private final SlidingWindows windows;
 
     @Autowired
     public RequestLimitFilter(@Value("${toady.security.mail-requests-per-10min:5}") int mailShort,
-                              @Value("${toady.security.mail-requests-per-day:20}") int mailDaily) {
-        this(rules(mailShort, mailDaily), Duration.ofMinutes(10), Clock.systemUTC());
+                              @Value("${toady.security.mail-requests-per-day:20}") int mailDaily, SlidingWindows windows) {
+        this(rules(mailShort, mailDaily), Duration.ofMinutes(10), windows);
     }
     RequestLimitFilter(List<Rule> rules, Duration shortWindow, Clock clock) {
-        this.rules = rules; this.shortWindow = shortWindow; this.clock = clock;
+        this(rules, shortWindow, SlidingWindows.inMemory(clock));
+    }
+    RequestLimitFilter(List<Rule> rules, Duration shortWindow, SlidingWindows windows) {
+        this.rules = rules; this.shortWindow = shortWindow; this.windows = windows;
     }
 
     private Optional<Rule> rule(HttpServletRequest request) {
@@ -135,16 +131,9 @@ public class RequestLimitFilter extends OncePerRequestFilter {
 
     /** 규칙별 10분·하루 창 안의 요청 수를 확인하고, 허용할 때만 이번 요청을 기록한다. */
     boolean allow(Rule rule, String ip) {
-        long now = clock.millis(), shortFrom = now - shortWindow.toMillis(), dayFrom = now - Duration.ofDays(1).toMillis();
-        Deque<Long> times;
-        try { times = hits.get(rule.name() + "|" + ip, ArrayDeque::new); } catch (ExecutionException impossible) { return true; }
-        synchronized (times) {
-            while (!times.isEmpty() && times.peekFirst() <= dayFrom) times.pollFirst();
-            long recent = times.stream().filter(time -> time > shortFrom).count();
-            if (recent >= rule.shortLimit() || times.size() >= rule.dailyLimit()) return false;
-            times.addLast(now);
-            return true;
-        }
+        Duration day = Duration.ofDays(1);
+        return windows.tryHit("limit|" + rule.name() + "|" + ip, day,
+                List.of(new SlidingWindows.Limit(shortWindow, rule.shortLimit()), new SlidingWindows.Limit(day, rule.dailyLimit())));
     }
 
     /**

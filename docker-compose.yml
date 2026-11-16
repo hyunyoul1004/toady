@@ -23,6 +23,28 @@ services:
     restart: always
     logging: *default-logging
 
+  # API의 요청 제한·로그인 실패 기록·외부 API 결과 캐시(배포·재시작 뒤에도 유지). 외부 포트는 열지 않는다.
+  # 비밀번호는 API와 같은 toadyWebApi/.env.prod의 REDIS_PASSWORD를 쓴다. 배포 스크립트가 없으면 띄우고, 떠 있으면 그대로 둔다.
+  # 메모리는 96MB까지만 쓰고 넘으면 오래 안 쓴 키부터 지운다. 5분마다(10건 이상 바뀌었을 때) 디스크에 스냅샷을 남긴다.
+  redis:
+    container_name: redis
+    image: redis:7.4.2-alpine
+    env_file:
+      - /home/ec2-user/toady/toadyWebApi/.env.prod
+    command:
+      - sh
+      - -c
+      - '[ -n "$$REDIS_PASSWORD" ] || { echo "REDIS_PASSWORD is missing in toadyWebApi/.env.prod" >&2; exit 1; }; exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 96mb --maxmemory-policy allkeys-lru --save 300 10 --appendonly no'
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - /usr/local/dockerVolumes/toady/redis/data:/data
+    restart: always
+    logging: *default-logging
+
   toadyWebApi:
     container_name: toadyWebApi
     image: ${DOCKER_USERNAME:-dukkeoba}/toady-web-api:${IMAGE_TAG:?Set IMAGE_TAG (see .deployed-image-tag)}
@@ -36,6 +58,8 @@ services:
       # 운영에서는 API 명세(Swagger UI·/v3/api-docs)를 공개하지 않는다.
       - SPRINGDOC_APIDOCS_ENABLED=false
       - SPRINGDOC_SWAGGERUI_ENABLED=false
+      # 같은 compose 네트워크의 Redis(비밀번호는 env_file의 REDIS_PASSWORD).
+      - REDIS_HOST=redis
     volumes:
       - /usr/local/dockerVolumes/toady/toadyWebApi/logs/:/app/logs/
     ports:
@@ -43,6 +67,7 @@ services:
       - "127.0.0.1:8080:8080"
     depends_on:
       - mariadb
+      - redis
     restart: always
     logging: *default-logging
 

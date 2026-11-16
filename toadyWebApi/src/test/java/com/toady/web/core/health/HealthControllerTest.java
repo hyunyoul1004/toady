@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 
 class HealthControllerTest {
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    private final HealthController controller = new HealthController(jdbcTemplate);
+    private final HealthController controller = new HealthController(jdbcTemplate, com.toady.web.core.redis.RedisStore.disabled());
 
     @Test
     void reportsReadyWhenDatabaseIsReachable() {

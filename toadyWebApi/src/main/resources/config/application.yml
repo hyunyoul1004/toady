@@ -51,6 +51,12 @@ server:
     min-response-size: 2048
 
 toady:
+  # 요청 제한·로그인 실패 기록·외부 API 결과 캐시를 재시작 뒤에도 유지하고 API 여러 대가 함께 쓰게 하는 Redis.
+  # 호스트가 비어 있으면(로컬·테스트) 연결하지 않고 메모리로 동작한다. 운영은 compose가 REDIS_HOST=redis를 넣는다.
+  redis:
+    host: ${REDIS_HOST:}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
   mail:
     # 보내는 사람 주소·이름. 비우면 SMTP 로그인 계정이 보낸 사람이 된다(Gmail).
     # 발송 서비스(Amazon SES 등)로 옮길 때: MAIL_HOST·MAIL_USERNAME·MAIL_PASSWORD를 그 서비스 값으로, MAIL_FROM을 확인된 주소로,

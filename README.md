@@ -104,6 +104,7 @@ flowchart LR
 ### 6. 인증과 남용 방지
 - JWT에 비밀번호 기반 확인값(credentialVersion)을 넣어 비밀번호 변경·잠금·탈퇴 시 다른 기기의 토큰을 즉시 무효화합니다. 토큰을 갱신해도 최초 로그인 시각(`tca`)을 이어받아 최대 14일이 지나면 다시 로그인하게 합니다.
 - 로그인·현재 비밀번호 확인은 IP와 계정 기준으로 함께 제한하고, 계정 변경은 행 잠금으로 직렬화한 뒤 잠금 안에서 다시 검사합니다.
+- 요청 제한·로그인 실패 기록은 Redis 정렬 집합에 두고, 한도 확인과 기록을 Lua 스크립트 하나로 처리해 동시 요청에도 정확하게 셉니다. 배포·재시작해도 제한이 풀리지 않고, API를 여러 대 띄워도 함께 셉니다. Redis가 응답하지 않으면 300ms 안에 포기하고 30초 동안 메모리로 대신해 사이트를 막지 않습니다.
 - 관리자 사이트는 CSRF·세션 쿠키(`Path=/admin`, `SameSite=Strict`)를 쓰고, 수집 실행은 32자 이상 공유 토큰의 내부 API로만 요청합니다.
 → [JwtProviderImpl](toadyWebApi/src/main/java/com/toady/web/core/security/jwt/impl/JwtProviderImpl.java) · [AccountService](toadyWebApi/src/main/java/com/toady/web/app/user/service/AccountService.java) · [RequestLimitFilter](toadyWebApi/src/main/java/com/toady/web/core/security/RequestLimitFilter.java)
 
@@ -197,7 +198,14 @@ docker exec nginx nginx -s reload      # 앞단 nginx가 새 컨테이너 IP를 
 bash scripts/check-deployment.sh
 ```
 
-`check-deployment.sh`는 API·스케줄러 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다.
+`check-deployment.sh`는 API·스케줄러 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. `/internal/schema`가 알려 주는 누락 테이블과 API의 Redis 연결 실패는 경고만 남깁니다.
+
+### Redis
+- API의 요청 제한·로그인 실패 기록과 외부 API 결과 캐시(국토부 실거래 6시간, 카카오 주변 시설 1일)를 둡니다. 외부 결과는 각 기능의 메모리 캐시 다음 단이라, 배포 뒤에도 같은 조회로 호출 한도를 다시 쓰지 않습니다.
+- `redis` 컨테이너(메모리 96MB 상한, 넘으면 오래 안 쓴 키부터 삭제, 5분마다 스냅샷)는 외부 포트 없이 compose 네트워크에서만 접속합니다. 배포 스크립트가 없으면 띄우고, 떠 있으면 다시 만들지 않습니다.
+- 처음 한 번: 서버의 `toadyWebApi/.env.prod`에 `REDIS_PASSWORD=`(16자 이상, 예: `openssl rand -hex 32`)를 넣습니다. Redis와 API가 같은 값을 읽고, 없으면 배포가 컨테이너를 건드리지 않고 멈춥니다.
+- 비밀번호를 바꾸거나 Redis 설정을 바꾸면 `docker-compose -p toady up -d --force-recreate --no-deps redis toadyWebApi`로 둘을 함께 다시 만듭니다.
+- 확인: `docker exec redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info memory' | grep used_memory_human`, API 상태는 `curl -s 127.0.0.1:8080/internal/health`(`"redis":"UP"`).
 
 ### Nginx와 인증서
 - 웹 컨테이너·CI 문법 검사·앞단 nginx는 같은 `nginx:1.30-alpine`을 씁니다. 앞단 nginx 버전 변경은 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d --no-deps nginx`로 적용합니다.

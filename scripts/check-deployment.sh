@@ -76,6 +76,10 @@ done
 if ! curl --fail --silent --max-time 3 http://127.0.0.1:8080/api/v1/research/capabilities | grep -q '"tradesEnabled":true'; then
   echo 'WARNING: Neighborhood trades are disabled. Set MOLIT_TRADE_SERVICE_KEY in toadyWebApi/.env.prod and recreate the API container.' >&2
 fi
+# Redis가 멈추면 API는 메모리로 대신하므로 배포를 막지 않고 알린다(요청 제한·캐시가 재시작 때마다 비게 된다).
+if curl --fail --silent --max-time 3 http://127.0.0.1:8080/internal/health | grep -q '"redis":"DOWN"'; then
+  echo 'WARNING: API cannot reach Redis (using in-memory fallback). Check `docker ps` for the redis container and REDIS_PASSWORD in toadyWebApi/.env.prod.' >&2
+fi
 # API가 필요로 하는 테이블 중 DB에 없는 것을 알려 준다. 이전 이미지(404)나 응답 실패는 건너뛴다.
 # 일부 기능만 숨겨지는 선택 테이블일 수 있으므로 배포를 막지 않고 database.sql 적용을 안내한다.
 schema=$(curl --fail --silent --max-time 5 http://127.0.0.1:8080/internal/schema || true)
