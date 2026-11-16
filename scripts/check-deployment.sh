@@ -12,6 +12,8 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ready" != true ]; then
   echo 'API readiness check failed' >&2
+  # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
+  docker logs --tail 60 toadyWebApi >&2 2>&1 || true
   exit 1
 fi
 
@@ -26,6 +28,8 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ready" != true ]; then
   echo 'Scheduler readiness check failed' >&2
+  # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
+  docker logs --tail 60 toadyScheduler >&2 2>&1 || true
   exit 1
 fi
 
@@ -43,6 +47,8 @@ if [ -s toadyAdmin/.env.prod ]; then
   done
   if [ "$ready" != true ]; then
     echo 'Admin site readiness check failed' >&2
+    # 실패하면 롤백으로 컨테이너가 다시 만들어져 로그가 사라지므로 여기서 남긴다.
+    docker logs --tail 60 toadyAdmin >&2 2>&1 || true
     exit 1
   fi
 fi

@@ -130,7 +130,7 @@ services:
     image: certbot/certbot:v5.9.0
     depends_on:
       - nginx
-    command: certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos --no-eff-email --keep-until-expiring --cert-name toady.co.kr-0002 --expand -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr -d admin.toady.co.kr
+    command: certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos --no-eff-email --keep-until-expiring --key-type rsa --cert-name toady.co.kr-0002 --expand -d toady.co.kr -d www.toady.co.kr -d api.toady.co.kr -d admin.toady.co.kr
     volumes:
       - /usr/local/dockerVolumes/certbot/conf:/etc/letsencrypt
       - /usr/local/dockerVolumes/certbot/logs:/var/log/letsencrypt
