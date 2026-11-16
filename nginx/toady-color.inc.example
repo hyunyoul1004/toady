@@ -1,7 +1,0 @@
-# 앞단 nginx가 지금 요청을 보내는 색(서버: /usr/local/dockerVolumes/nginx/conf.d/toady-color.inc).
-# 배포 스크립트(.github/workflows/deploy.yml)가 새 색이 준비된 뒤 이 줄을 바꾸고 reload한다. 서버에서 직접 고치지 않는다.
-#   "-blue"  → toadyWebApi-blue, toadyReactWeb-blue, toadyAdmin-blue
-#   "-green" → toadyWebApi-green, toadyReactWeb-green, toadyAdmin-green
-#   ""       → 블루/그린 이전의 컨테이너 이름(toadyWebApi 등). 처음 전환할 때만 쓴다(README 참고).
-# 확장자가 .conf가 아니라 conf.d에서 자동으로 읽히지 않고, toady.conf가 http 단계에서 한 번 include한다.
-map $host $toady_suffix { default "-blue"; }

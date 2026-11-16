@@ -85,7 +85,7 @@ cp .env.example .env.local   # DB·관리자 계정·스케줄러 토큰
 location /admin {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;   # 필수: 접속자가 보낸 값을 덮어쓴다
-    proxy_pass http://$toady_admin;            # set $toady_admin toadyAdmin$toady_suffix:8083; (색은 무중단 배포가 정한다)
+    proxy_pass http://$toady_admin;            # set $toady_admin toadyAdmin:8083;
 }
 ```
 

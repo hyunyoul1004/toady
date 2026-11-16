@@ -177,47 +177,23 @@ python3 scripts/check-repository.py
 <details>
 <summary><b>운영 메모 — 배포·롤백·인증서·DB 변경</b></summary>
 
-### 배포와 롤백 (무중단 블루/그린)
+### 배포와 롤백
 - GitHub Actions가 `master` 푸시마다 검증 후 네 이미지를 같은 커밋 SHA로 태깅해 Docker Hub에 올리고, EC2의 `~/toady`에서 Compose로 갱신합니다. 관리자 사이트는 서버에 `toadyAdmin/.env.prod`가 채워져 있을 때만 함께 배포합니다.
-- 사용자 요청을 받는 API·웹·관리자는 `blue`/`green` 두 벌(색 스택)입니다. 컨테이너 이름은 `toadyWebApi-blue`, `toadyReactWeb-green`처럼 색이 붙고, 웹은 같은 색 API로만 프록시하고(`TOADY_API_UPSTREAM`), 관리자도 같은 색 API에 메일·푸시 발송을 부탁합니다(compose의 `API_BASE_URL`이 `.env.prod` 값보다 우선). 지금 요청을 받는 색은 앞단 nginx의 `conf.d/toady-color.inc` 한 줄이 정합니다.
-- 배포 순서: ① 쓰지 않는 색을 새 이미지로 띄움(이전 색은 그대로 응답) → ② 스케줄러를 제자리에서 교체 → ③ 새 색의 `/internal/health`(DB 포함)·웹 응답·컨테이너 상태 확인 → ④ `toady-color.inc`를 새 색으로 바꾸고 `nginx -t` 통과 시 reload → ⑤ 앞단을 거친 `check-deployment.sh` 전체 확인 → ⑥ 15초 기다린 뒤 이전 색을 내림. 색 이름이 바뀌므로 resolver 캐시와 무관하게 reload 즉시 새 색으로 가고, 처리 중이던 요청은 이전 nginx 작업자·이전 컨테이너가 마칩니다.
-- 실패하면: ④ 이전이면 앞단을 건드리지 않은 채 새 색만 내리고, ④ 이후면 앞단을 이전 색으로 되돌린 뒤 새 색을 내립니다. 스케줄러는 이전 태그로 다시 올리고 compose·확인 스크립트도 `.rollback/`의 이전 파일로 되돌린 뒤 이전 색을 다시 확인합니다. DB 변경은 되돌리지 않습니다. 실패한 컨테이너 로그는 `.rollback/last-failure-*.log`에 남습니다.
-- 스케줄러를 블루/그린으로 두지 않는 이유: 두 개가 동시에 돌면 같은 자동 일정이 두 번 실행되고(청약홈 수집은 DB 잠금으로 한쪽이 대기·건너뜀, 보관 기간 정리는 잠금이 없음), 새 스케줄러가 시작할 때 이전 실행의 남은 작업을 '중단'으로 정리해 아직 돌고 있는 이전 스케줄러의 작업까지 끊습니다. 사용자 요청을 받지 않으므로 교체 중 수십 초 멈춰도 서비스는 끊기지 않고, 그동안 관리자 사이트의 수집 실행·일정 변경만 잠시 실패합니다.
-- CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하거나 앞단 nginx가 색 전환 설정을 쓰지 않으면 컨테이너를 건드리지 않고 끝냅니다.
-- 마지막 성공 태그는 `~/toady/.deployed-image-tag`와 `~/toady/.env`의 `IMAGE_TAG=`에 기록합니다. Compose는 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그 없이 `latest`로 넘어가지 않습니다.
-- 색 스택은 compose `profiles`(`blue`/`green`)로 묶여 있어 서비스 이름 없이 `docker-compose -p toady up -d`를 실행해도 뜨지 않습니다(운영 중인 색이 다시 만들어지지 않도록). 서버에서 앱을 직접 다룰 때는 지금 색을 먼저 확인합니다.
-- 배포 중에는 API·관리자 JVM이 잠시 두 벌씩 뜹니다. 서버 메모리가 부족하면 새 색이 준비되지 못해 배포가 실패(이전 색 유지)하므로 `free -m`으로 여유를 확인합니다.
-- 서버 안 직접 포트(127.0.0.1만): API blue `18080`·green `28080`, 관리자 blue `18083`·green `28083`, 스케줄러 `8082`.
+- CI는 `docker-compose.yml`·`scripts/check-deployment.sh`를 `~/toady/.incoming/`에 받은 뒤 기존 파일을 `.rollback/`에 보관하고 교체합니다. `docker-compose config`가 실패하면 이전 파일로 되돌립니다.
+- 마지막 성공 태그는 `~/toady/.deployed-image-tag`와 `~/toady/.env`의 `IMAGE_TAG=`에 기록합니다. 이미지 pull·`up`·배포 확인 중 하나라도 실패하면 앱 컨테이너를 이전 태그로 다시 올립니다.
+- Compose는 앱 이미지에 `${IMAGE_TAG:?...}`를 써서 태그 없이 `latest`로 넘어가지 않습니다.
 
+수동 배포:
 ```bash
 cd ~/toady
-docker exec nginx cat /etc/nginx/conf.d/toady-color.inc   # 지금 색 ("-blue" 또는 "-green")
-docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
-docker logs --tail 100 toadyWebApi-blue                     # 색이 붙은 이름으로 본다
+export DOCKER_USERNAME=dukkeoba IMAGE_TAG=배포할_커밋_SHA
+docker-compose -p toady pull toadyWebApi toadyScheduler toadyAdmin toadyReactWeb
+docker-compose -p toady up -d --no-deps toadyWebApi toadyScheduler toadyAdmin toadyReactWeb
+docker exec nginx nginx -s reload      # 앞단 nginx가 새 컨테이너 IP를 다시 읽게 한다(502 방지)
+bash scripts/check-deployment.sh
 ```
 
-이전 버전으로 되돌리기·다시 배포는 GitHub Actions에서 해당 커밋의 성공한 실행을 "Re-run jobs"로 다시 돌리면 같은 무중단 절차를 탑니다(블루/그린 이전 이미지로는 되돌릴 수 없습니다: 웹 이미지가 `TOADY_API_UPSTREAM`을 모름).
-
-`check-deployment.sh`는 API·스케줄러 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. 확인할 색은 `API_CONTAINER`·`API_PORT`·`WEB_CONTAINER`·`ADMIN_CONTAINER`·`ADMIN_PORT`로 받고(없으면 블루/그린 이전 이름·포트), `SKIP_FRONT_CHECKS=1`이면 앞단을 거치는 확인을 건너뜁니다. `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다.
-
-#### 서버 일회성 작업: 무중단 배포로 처음 바꿀 때 (순서대로)
-이 변경을 `master`에 올리기 **전에** 서버에서 1~4를 끝냅니다. 순서를 어겨도 배포는 컨테이너를 건드리지 않고 실패만 하지만, 그동안 배포가 막힙니다.
-
-1. Compose 버전 확인: `docker-compose version`이 v2이거나 1.28 이상이어야 합니다(`profiles`). 낮으면 Compose를 먼저 올립니다.
-2. 색 파일을 **블루/그린 이전 이름(빈 값)** 으로 만듭니다. 지금 컨테이너(`toadyWebApi` 등)를 그대로 가리키므로 동작은 바뀌지 않습니다.
-   ```bash
-   printf '%s\n' 'map $host $toady_suffix { default ""; }' | sudo tee /usr/local/dockerVolumes/nginx/conf.d/toady-color.inc
-   ```
-3. 앞단 설정을 교체합니다(기존 파일은 보관). 새 `toady.conf`가 2의 파일을 include하므로 반드시 2 다음에 합니다. 저장소의 새 [nginx/toady.conf](nginx/toady.conf)를 먼저 서버의 `~/toady.conf`로 옮겨 둡니다(예: 로컬에서 `scp nginx/toady.conf 서버:~/toady.conf`).
-   ```bash
-   sudo cp -p /usr/local/dockerVolumes/nginx/conf.d/toady.conf ~/toady/.rollback/toady.conf.before-blue-green
-   sudo cp ~/toady.conf /usr/local/dockerVolumes/nginx/conf.d/toady.conf
-   docker exec nginx nginx -t && docker exec nginx nginx -s reload
-   ```
-   `nginx -t`가 실패하면 reload하지 말고 보관한 파일로 되돌립니다.
-4. 지금 서비스가 그대로인지 확인합니다: `curl -sI https://www.toady.co.kr/ | head -1`, `curl -s https://api.toady.co.kr/api/v1/planner/settings -o /dev/null -w '%{http_code}\n'`.
-5. 변경을 `master`에 올립니다. 첫 배포가 `blue` 스택(`toadyWebApi-blue` 등)을 띄우고 색 파일을 `"-blue"`로 바꾼 뒤 이전 이름의 `toadyWebApi`·`toadyReactWeb`·`toadyAdmin`을 내립니다. 이 첫 배포에서 실패하면 색 파일은 빈 값으로 돌아가고 이전 컨테이너가 계속 응답합니다.
-6. 끝나면 `docker exec nginx cat /etc/nginx/conf.d/toady-color.inc`가 `"-blue"`인지, `docker ps`에 이전 이름 컨테이너가 없는지 확인합니다. 서버의 cron·메모 등에 `toadyWebApi`처럼 이전 컨테이너 이름이나 `127.0.0.1:8080`을 쓰는 곳이 있으면 색이 붙은 이름·포트로 바꿉니다.
+`check-deployment.sh`는 API·스케줄러 `/internal/health`(DB 연결 포함), 웹 응답, 컨테이너 상태, 서버 자신을 거친 `https://www.toady.co.kr/` 응답을 확인합니다. `/internal/schema`가 알려 주는 누락 테이블은 경고만 남깁니다.
 
 ### Nginx와 인증서
 - 웹 컨테이너·CI 문법 검사·앞단 nginx는 같은 `nginx:1.30-alpine`을 씁니다. 앞단 nginx 버전 변경은 서버에서 `docker-compose -p toady pull nginx && docker-compose -p toady up -d --no-deps nginx`로 적용합니다.
@@ -225,7 +201,7 @@ docker logs --tail 100 toadyWebApi-blue                     # 색이 붙은 이�
   ```cron
   0 4 * * 1 cd /home/ec2-user/toady && docker-compose -p toady run --rm --no-deps certbot renew && docker exec nginx nginx -s reload
   ```
-- 앞단 설정 원본은 [nginx/toady.conf](nginx/toady.conf)이며 CI가 같은 이미지로 문법을 검사합니다. 지금 색을 정하는 `conf.d/toady-color.inc`(형식: [nginx/toady-color.inc.example](nginx/toady-color.inc.example))는 배포 스크립트가 관리하므로 직접 고치지 않습니다. 관리자 허용 IP는 저장소에 두지 않고 서버의 `conf.d/admin-allow.inc`에만 둡니다(형식: [nginx/admin-allow.inc.example](nginx/admin-allow.inc.example)). 서버의 `/usr/local/dockerVolumes/nginx/conf.d/toady.conf`에 복사한 뒤 `docker exec nginx nginx -t && docker exec nginx nginx -s reload`로 적용합니다.
+- 앞단 설정 원본은 [nginx/toady.conf](nginx/toady.conf)이며 CI가 같은 이미지로 문법을 검사합니다. 관리자 허용 IP는 저장소에 두지 않고 서버의 `conf.d/admin-allow.inc`에만 둡니다(형식: [nginx/admin-allow.inc.example](nginx/admin-allow.inc.example)). 서버의 `/usr/local/dockerVolumes/nginx/conf.d/toady.conf`에 복사한 뒤 `docker exec nginx nginx -t && docker exec nginx nginx -s reload`로 적용합니다.
 - 도메인: 서비스는 `www.toady.co.kr`가 표준 주소이고 `toady.co.kr`은 www로 301 이동합니다. API는 `api.toady.co.kr`, 관리자는 `admin.toady.co.kr`(관리자 IP만 허용)이며 예전 주소 `www.toady.co.kr/admin`은 관리자 도메인으로 보냅니다.
 - 인증서 하나(`toady.co.kr-0002`)에 네 도메인을 담습니다. 도메인을 추가하면 DNS A 레코드를 먼저 만든 뒤 `docker-compose -p toady run --rm --no-deps certbot`(compose의 `--expand` 명령)으로 다시 발급하고 nginx를 reload합니다.
 - 모든 프록시 서버 블록에 `proxy_set_header X-Real-IP $remote_addr;`를 꼭 둡니다(API 요청 제한과 관리자 로그인 실패 제한이 이 값을 씁니다).
