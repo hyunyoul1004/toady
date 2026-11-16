@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import './profileAvatar.css';
 /**
  * 프로필 캐릭터. 이미지를 올리지 않고 TOADY가 준비한 캐릭터 중에서 고른다(서버는 키만 저장: TB_USER_PROFILE).
  * 모두 직접 그린 SVG라 외부 파일·저작권 걱정 없이 어떤 크기로도 선명하게 보인다.
