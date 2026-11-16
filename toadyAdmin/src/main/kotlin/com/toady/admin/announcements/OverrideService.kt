@@ -38,7 +38,14 @@ class OverrideService(private val jdbc: JdbcTemplate) {
 		val before = get(id)
 		val text = notice.trim().replace(Regex("\\s+"), " ").take(500).ifEmpty { null }
 		if (!hidden && text == null) {
-			jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE WHERE ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?", key.first, key.second, key.third)
+			// 숨김·안내를 비운다. 운영자가 확인한 위치 주소(27번)가 남아 있으면 행은 지우지 않는다.
+			jdbc.update("UPDATE TB_ANNOUNCEMENT_OVERRIDE SET HIDDEN_YN='N', NOTICE=NULL, ADMIN_NAME=?, UPDATE_DT=? WHERE ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",
+				admin.take(100), Timestamp.valueOf(Kst.now()), key.first, key.second, key.third)
+			try {
+				jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE WHERE ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND LOCATION_ADDRESS IS NULL", key.first, key.second, key.third)
+			} catch (noLocationColumn: DataAccessException) {
+				jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE WHERE ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?", key.first, key.second, key.third)
+			}
 			return true to before
 		}
 		val now = Timestamp.valueOf(Kst.now())

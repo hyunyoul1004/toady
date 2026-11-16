@@ -72,7 +72,7 @@ public class AnnouncementSitemap {
         // 홈(청약 캘린더)을 맨 앞에 둔다. /sitemap.xml이 이 색인을 가리키므로 홈도 여기서 알려야 한다.
         xml.append("<url><loc>").append(esc(domain+"/")).append("</loc></url>");
         xml.append("<url><loc>").append(esc(domain+"/areas")).append("</loc></url>");
-        for(var area:LivingAreas.ALL) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
+        for(var area:LivingAreas.all()) xml.append("<url><loc>").append(esc(domain+"/areas/"+area.slug())).append("</loc></url>");
         // 공고 데이터로 자동 생성되는 모음 페이지와 가점 계산기. /match/zupzup은 /zupzup과 같은 내용이라 공개 주소(/zupzup) 하나만 알린다.
         for(String path:List.of("/zupzup","/weekly","/score","/match","/help/faq")) xml.append("<url><loc>").append(esc(domain+path)).append("</loc></url>");
         xml.append("</urlset>");return response(xml.toString());

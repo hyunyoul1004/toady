@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('유입·커뮤니티 지표')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main" th:with="r=${report}">
+    <section class="page-heading"><div><p class="eyebrow">INSIGHTS</p><h1>유입·커뮤니티 지표</h1>
+        <p class="muted">많이 찾은 검색어와 결과가 없던 검색어(생활권·데이터 보강 근거), 공유와 메신저 유입, 단지별 이야기 활성도입니다.</p></div>
+        <form class="tabs" th:action="@{/admin/insights}" method="get">
+            <a th:each="d : ${ {7, 30, 90} }" th:href="@{/admin/insights(days=${d},excludeTest=${r.excludeTest})}" th:classappend="${days == d} ? 'active'" th:text="${d + '일'}"></a>
+            <a th:href="@{/admin/insights(days=${days},excludeTest=${!r.excludeTest})}" th:text="${r.excludeTest ? '시험 계정 포함하기' : '시험 계정(.test) 빼기'}"></a>
+        </form></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>많이 찾은 검색어</h2></div>
+            <p class="muted" th:if="${r.terms == null}">검색어 통계 테이블이 없습니다(database.sql 27번).</p>
+            <p class="muted" th:if="${r.terms != null and #lists.isEmpty(r.terms)}">아직 기록이 없습니다.</p>
+            <ul class="mini" th:if="${r.terms != null}"><li th:each="t : ${r.terms}"><strong th:text="${t.term}"></strong><small th:text="${t.hits + '회'}"></small></li></ul>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>결과가 없던 검색어</h2><span class="panel-note">생활권 추가·데이터 보강 후보</span></div>
+            <p class="muted" th:if="${r.emptyTerms != null and #lists.isEmpty(r.emptyTerms)}">결과 없는 검색이 없었습니다.</p>
+            <ul class="mini" th:if="${r.emptyTerms != null}"><li th:each="t : ${r.emptyTerms}"><strong th:text="${t.term}"></strong><small th:text="${t.hits + '회'}"></small></li></ul>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>공유</h2><span class="panel-note" th:text="${r.shareTotal != null ? '전체 ' + r.shareTotal + '회' : ''}"></span></div>
+            <p class="muted" th:if="${r.shares == null or #lists.isEmpty(r.shares)}">공유 기록이 없습니다.</p>
+            <ul class="mini" th:if="${r.shares != null}"><li th:each="s : ${r.shares}"><a th:if="${s.adminPath != null}" th:href="@{${s.adminPath}}" th:text="${s.name != null ? s.name : s.id}"></a><strong th:if="${s.adminPath == null}" th:text="${s.name != null ? s.name : s.id}"></strong><small th:text="${s.shares + '회'}"></small></li></ul>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>메신저·SNS 유입</h2><span class="panel-note">방문 수(세션)</span></div>
+            <p class="muted" th:if="${r.inflow == null or #lists.isEmpty(r.inflow)}">기록이 없습니다.</p>
+            <ul class="mini" th:if="${r.inflow != null}"><li th:each="i : ${r.inflow}"><strong th:text="${i.host}"></strong><small th:text="${i.sessions + '회'}"></small></li></ul>
+        </section>
+    </div>
+    <section class="panel spaced"><div class="panel-head"><h2>단지별 이야기</h2><span class="panel-note" th:if="${r.storyTotals != null}" th:text="${'원글 ' + r.storyTotals.roots + ' · 답글 ' + r.storyTotals.replies + ' · 첫 답글까지 중앙값 ' + (r.storyTotals.firstReplyMinutes != null ? r.storyTotals.firstReplyMinutes + '분' : '—')}"></span></div>
+        <div class="empty" th:if="${#lists.isEmpty(r.stories)}"><span class="empty-icon">○</span><h3>기간 안 이야기가 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(r.stories)}"><table><thead><tr><th>공고</th><th>원글 · 답글</th><th>글쓴이</th><th>첫 답글까지</th><th>신고</th></tr></thead><tbody>
+            <tr th:each="s : ${r.stories}"><td class="cell-title"><a class="row-link" th:href="@{${s.adminPath}}"><strong th:text="${s.name != null ? s.name : s.id}"></strong></a></td>
+                <td data-label="원글 · 답글" th:text="${s.roots + ' · ' + s.replies}"></td><td data-label="글쓴이" th:text="${s.writers + '명'}"></td>
+                <td data-label="첫 답글까지" th:text="${s.firstReplyMinutes != null ? s.firstReplyMinutes + '분' : '—'}"></td><td data-label="신고" th:text="${s.reports}"></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

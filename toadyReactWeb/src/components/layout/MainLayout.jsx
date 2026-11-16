@@ -20,6 +20,7 @@ import { useMyReplies } from '@/features/account/useMyAccount';
 import { useMessageUnread } from '@/features/community/useCommunity';
 import CommunityLayers from '@/features/community/CommunityLayers';
 import OperationNotices from '@/features/account/OperationNotices';
+import SiteNotices from '@/features/account/SiteNotices';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
 import Snackbar from '@mui/material/Snackbar';
@@ -124,6 +125,7 @@ export function MainLayout() {
         }}
       >
         <Box sx={{ flexGrow: 1,minWidth:0,maxWidth:'100%' }}>
+          <SiteNotices />
           <OperationNotices />
           <Outlet />
         </Box>

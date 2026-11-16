@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('생활권')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">LIVING AREAS</p><h1>생활권</h1>
+        <p class="muted">검색(예: '운정'), 생활권 공개 페이지(/areas/주소이름), 사이트맵, 생활권 알림에 함께 쓰입니다. 1분 안에 반영됩니다.
+            목록은 쉼표로 나눕니다. 공백 없는 짧은 검색어(예: 검단)는 시·군(예: 인천)이 함께 있어야 인정해 다른 지역의 같은 동 이름을 잘못 묶지 않습니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">생활권 테이블이 없습니다. database.sql 27번과 관리자 계정 권한을 적용하세요. API가 처음 켜질 때 지금 생활권으로 채웁니다.</div>
+    <section class="panel"><div class="panel-head"><h2>생활권 추가</h2><span class="panel-note">주소 이름(slug)은 공개 주소라 만든 뒤 바꿀 수 없습니다</span></div>
+        <form class="stack-form" th:action="@{/admin/areas}" method="post">
+            <div class="row">
+                <label>주소 이름(slug)<input name="slug" required maxlength="40" pattern="[a-z0-9-]{2,40}" placeholder="예: godeok"></label>
+                <label>이름<input name="label" required maxlength="30" placeholder="예: 고덕"></label>
+                <label>순서<input name="order" inputmode="numeric" value="1000"></label>
+            </div>
+            <label>검색 별칭(쉼표)<input name="aliases" required placeholder="예: 고덕, 고덕신도시, 고덕국제신도시"></label>
+            <label>주소·단지명 검색어(쉼표)<input name="terms" required placeholder="예: 고덕, 평택시 고덕동, 평택시 서정동"></label>
+            <label>시·군(쉼표)<input name="scope" placeholder="예: 평택"></label>
+            <label>설명<input name="description" required maxlength="100" placeholder="예: 평택 고덕 생활권 · 주소/단지명 기준"></label>
+            <div class="actions"><button class="primary" type="submit">추가</button></div>
+        </form>
+    </section>
+    <section class="panel spaced"><div class="panel-head"><h2>생활권 목록</h2></div>
+        <details class="faq-edit" th:each="a : ${areas}"><summary><strong th:text="${a.label}"></strong> <span class="mono muted" th:text="${'/areas/' + a.slug}"></span> <span class="badge" th:unless="${a.enabled}">숨김</span></summary>
+            <form class="stack-form" th:action="@{/admin/areas/{slug}(slug=${a.slug})}" method="post">
+                <div class="row"><label>이름<input name="label" required th:value="${a.label}"></label><label>순서<input name="order" inputmode="numeric" th:value="${a.order}"></label></div>
+                <label>검색 별칭(쉼표)<input name="aliases" required th:value="${a.aliases}"></label>
+                <label>주소·단지명 검색어(쉼표)<input name="terms" required th:value="${a.terms}"></label>
+                <label>시·군(쉼표)<input name="scope" th:value="${a.scope}"></label>
+                <label>설명<input name="description" required th:value="${a.description}"></label>
+                <label class="check"><input type="checkbox" name="enabled" value="true" th:checked="${a.enabled}"> 서비스에 보이기</label>
+                <div class="actions"><small class="muted" th:text="${(a.updatedAt != null ? #temporals.format(a.updatedAt, 'yyyy.MM.dd HH:mm') : '') + ' · ' + a.admin}"></small><button class="primary" type="submit">저장</button></div>
+            </form>
+        </details>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

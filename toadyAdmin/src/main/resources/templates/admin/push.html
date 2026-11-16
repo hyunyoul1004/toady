@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('푸시 발송')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">PUSH</p><h1>푸시 발송</h1>
+        <p class="muted">알림을 켠 모든 브라우저에 공지를 보냅니다. 먼저 운영자 본인 계정(회원 번호)으로 시험 발송해 문구와 이동 화면을 확인하세요.
+            전체 발송은 하루 두 번까지이며, 너무 자주 보내면 알림을 끄는 사람이 늘어납니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${apiConfigured}">API 내부 토큰(ADMIN_API_TOKEN)이 없어 보낼 수 없습니다. 관리자와 API의 .env.prod에 같은 값(32자 이상)을 넣으세요.</div>
+    <div class="grid-2">
+        <section class="panel"><div class="panel-head"><h2>보낼 내용</h2></div>
+            <form class="stack-form" th:action="@{/admin/push}" method="post">
+                <label>제목(40자)<input name="title" required maxlength="40" placeholder="예: 이번 주 청약 일정이 나왔어요"></label>
+                <label>내용(120자)<input name="body" required maxlength="120" placeholder="예: 접수 시작 6건 · 무순위 2건. 눌러서 확인하세요."></label>
+                <label>누르면 열 화면<input name="url" value="/this-week" maxlength="200" placeholder="/this-week"></label>
+                <div class="row">
+                    <label>시험 발송 회원 번호<input name="testUserSeq" inputmode="numeric" placeholder="비우면 전체 발송"></label>
+                    <label>전체 발송 확인<input name="confirm" placeholder="'전체 발송' 입력"></label>
+                </div>
+                <div class="actions"><button class="primary" type="submit">보내기</button></div>
+            </form>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>최근 발송</h2></div>
+            <p class="muted" th:if="${#lists.isEmpty(recent)}">기록이 없습니다.</p>
+            <ul class="audit-list" th:unless="${#lists.isEmpty(recent)}"><li th:each="e : ${recent}"><div><strong th:text="${e.actionLabel}"></strong> <span th:text="${e.after}"></span></div>
+                <small th:text="${#temporals.format(e.at, 'yyyy.MM.dd HH:mm') + ' · ' + e.admin}"></small></li></ul>
+        </section>
+    </div>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

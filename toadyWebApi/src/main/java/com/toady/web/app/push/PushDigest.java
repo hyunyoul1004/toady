@@ -95,7 +95,7 @@ public class PushDigest {
         List<List<AnnouncementListItem>> unranked = new ArrayList<>();
         // 새 공고·결과의 최초 확인 시각을 구독자 유무와 상관없이 매 실행 기록한다. 그래야 한동안 구독자가 없던 생활권이나
         // 결과가 공개된 뒤 저장한 공고도 '실제로 처음 보인 시각' 기준으로 판정해, 지난 공고·결과를 새 소식으로 보내지 않는다.
-        for (var area : LivingAreas.ALL) news.put(area.slug(), safely("생활권 " + area.slug(), () -> refreshArea(area, today, now)));
+        for (var area : LivingAreas.all()) news.put(area.slug(), safely("생활권 " + area.slug(), () -> refreshArea(area, today, now)));
         for (var topic : PushTopics.ALL) news.put(topic.slug(), safely("주제 " + topic.slug(),
             () -> refresh(topic.slug(), unranked(today, unranked).stream().filter(topic::includes).toList(), now)));
         safely("결과 기록", () -> { trackResults(today, now, resultCache, resultSeen, startedResultKinds); return List.of(); });

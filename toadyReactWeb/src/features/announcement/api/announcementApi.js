@@ -393,6 +393,9 @@ export const announcementApi = {
 
     const subscriptCommentList = content.map((c) => ({
       ...c,
+      // 운영팀 글과 맨 위 고정 여부(관리자 사이트에서 정함).
+      official: Boolean(c.official),
+      pinned: Boolean(c.pinned),
       subscriptCommentSeq: c.commentSeq,
       commentSeq: c.commentSeq,
       subscriptSeq: `${c.announcementType || type}/${c.houseManageNo || houseManageNo}/${c.pblancNo || pblancNo}`,

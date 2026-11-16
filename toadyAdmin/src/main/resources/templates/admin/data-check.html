@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('데이터 점검')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">DATA CHECK</p><h1>데이터 점검</h1>
+        <p class="muted">최근 90일·앞으로의 공고에서 주소·접수 일정 누락, 날짜 형식 불일치(유형별 YYYY-MM-DD / YYYYMMDD), APT 주택형·분양가 누락을 찾습니다.
+            공고 상세의 '이 공고 다시 수집'으로 모집공고일 하루를 다시 받을 수 있습니다.</p></div>
+        <span class="timezone" th:text="${'문제 ' + #lists.size(issues) + '건'}"></span></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <section class="panel">
+        <div class="empty" th:if="${#lists.isEmpty(issues)}"><span class="empty-icon">✓</span><h3>찾은 문제가 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(issues)}"><table><thead><tr><th>공고</th><th>문제</th><th>주소</th></tr></thead><tbody>
+            <tr th:each="i : ${issues}"><td class="cell-title"><a class="row-link" th:href="@{${i.adminPath}}"><strong th:text="${i.houseNm}"></strong></a><small th:text="${i.typeLabel + (i.start != null ? ' · 접수 ' + #temporals.format(i.start, 'yyyy.MM.dd') : '')}"></small></td>
+                <td data-label="문제"><span class="badge WAITING" th:text="${i.problem}"></span></td>
+                <td data-label="주소" th:text="${i.address != null ? i.address : '—'}"></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

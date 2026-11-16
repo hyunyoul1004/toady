@@ -16,14 +16,25 @@
 | 공고 숨김·안내 | `/admin/announcements/{공고}` | 잘못 수집·취소된 공고를 목록·검색·사이트맵·RSS에서 숨기고, 상세 위 운영 안내 문구 표시 |
 | 메일 발송 현황 | `/admin/mail` | 최근 24시간 Gmail 한도 사용량(인증·가입·알림), 일정 알림 발송 결과 |
 | 작업 이력 | `/admin/audit` | 관리자 화면에서 바꾼 모든 것과 회원 상세 열람 기록(고치거나 지울 수 없음) |
+| 유입·커뮤니티 지표 | `/admin/insights` | 많이 찾은 검색어·결과 없던 검색어, 공유·메신저 유입, 단지별 이야기(원글·답글·첫 답글까지 시간·신고), 시험 계정 제외 |
+| 사이트 공지 | `/admin/notices` | 기간·노출 위치(모든 화면·첫 화면)·종류를 정한 공지 띠 |
+| 자주 묻는 질문 | `/admin/faq` | 질문 추가·수정·숨김(앱 화면과 검색용 페이지에 함께 반영) |
+| 생활권 | `/admin/areas` | 생활권 추가·수정(검색·생활권 페이지·사이트맵·알림에 반영) |
+| 푸시 발송 | `/admin/push` | 회원 번호로 시험 발송, 확인 문구를 넣은 전체 발송(하루 2번까지) |
+| 위치 확인 | `/admin/locations` | 지번 없는 지구·블록 주소 공고에 확인한 주소 입력(앱이 지도 검색으로 다시 검증) |
+| 데이터 점검 | `/admin/data-check` | 주소·일정 누락, 날짜 형식 불일치, APT 주택형 누락 |
+| 서비스 설정 | `/admin/settings` | 쪽지 조건·한도, 메일 한도, 실거래 API 하루 한도, 운영팀 계정 |
+
+공고 상세에는 '이 공고 다시 수집'(모집공고일 하루 전체 수집)과 운영팀 이야기 쓰기·고정이, 회원 상세에는 메모·인증 메일 다시 보내기·이야기 모두 숨기기·탈퇴 처리 대행이 있습니다.
 
 ## 구조
 
 ```mermaid
 flowchart LR
     Browser["관리자 브라우저"] -->|HTTPS admin.toady.co.kr| Nginx["앞단 nginx"] --> Admin["toadyAdmin :8083"]
-    Admin -->|조회 · 회원 잠금 · 댓글 숨김| DB[("MariaDB")]
+    Admin -->|조회 · 운영 변경| DB[("MariaDB")]
     Admin -->|X-Admin-Token| Scheduler["toadyScheduler /internal/admin"]
+    Admin -->|X-Admin-Token · 푸시 · 인증 메일 · 탈퇴 대행| Api["toadyWebApi /internal/admin"]
     Scheduler -->|수집 실행 · 일정| DB
 ```
 

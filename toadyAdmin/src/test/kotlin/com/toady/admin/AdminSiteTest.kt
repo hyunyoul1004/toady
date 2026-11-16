@@ -25,6 +25,8 @@ import kotlin.test.assertTrue
 	"spring.sql.init.mode=always", "spring.sql.init.schema-locations=classpath:admin-schema.sql",
 	"toady.admin.username=operator", "toady.admin.password=local-test-password",
 	"toady.admin.remember-key=test-remember-key-0123456789abcdef0123456789",
+	// 로컬 .env.local의 API 토큰과 상관없이, API 내부 호출이 설정되지 않은 상태로 시험한다.
+	"toady.api.token=", "toady.api.base-url=http://127.0.0.1:9",
 	// 닫힌 포트: 스케줄러에 연결하지 못했을 때의 안내를 확인한다.
 	"toady.scheduler.base-url=http://127.0.0.1:9", "toady.scheduler.token=test-internal-token-0123456789abcdef",
 ])
@@ -39,7 +41,8 @@ class AdminSiteTest {
 		listOf("TB_USER", "TB_LTTOT_PBLANC_COMMENT", "TB_FAVORITE", "TB_PAGE_VIEW", "TB_USAGE_EVENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_OPT_LTTOT_PBLANC_DETAIL",
 			"TB_APT_LTTOT_PBLANC_MDL", "TB_RATE_POLL", "TB_ANALYTICS_EXCLUDED_VISITOR", "TB_COMMENT_ADMIN_HIDE",
 			"TB_USER_REPORT", "TB_DM_MESSAGE", "TB_DM_THREAD", "TB_DM_SETTING",
-			"TB_ADMIN_AUDIT", "TB_USER_SANCTION", "TB_MODERATION_RULE", "TB_ANNOUNCEMENT_OVERRIDE", "TB_MAIL_ATTEMPT", "TB_REMINDER_DELIVERY").forEach { jdbc.update("DELETE FROM $it") }
+			"TB_ADMIN_AUDIT", "TB_USER_SANCTION", "TB_MODERATION_RULE", "TB_ANNOUNCEMENT_OVERRIDE", "TB_MAIL_ATTEMPT", "TB_REMINDER_DELIVERY",
+			"TB_SITE_NOTICE", "TB_FAQ_ITEM", "TB_LIVING_AREA", "TB_APP_SETTING", "TB_SEARCH_STAT", "TB_COMMENT_OFFICIAL", "TB_MEMBER_MEMO").forEach { jdbc.update("DELETE FROM $it") }
 		val today = Kst.today()
 		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,TOT_SUPLY_HSHLDCO) VALUES ('H1','P1','역삼 새 단지','서울특별시 강남구 역삼동 1',?,?,'300')",
 			today.minusDays(1).toString(), today.plusDays(1).toString())
@@ -366,6 +369,106 @@ class AdminSiteTest {
 		jdbc.update("INSERT INTO TB_REMINDER_DELIVERY VALUES (1, ?, 'SENT', ?)", com.toady.admin.Kst.today(), now)
 		val mail = mvc.perform(get("/admin/mail").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
 		assertTrue(mail.contains("2 / 400"), "24시간 안의 발송만 센다")
+	}
+
+	@Test fun settingsAreValidatedAndCanReturnToDefaults() {
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "dm.dailyMessages").param("value", "999")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "dm.dailyMessages").param("value", "30")).andExpect(flash().attributeExists("notice"))
+		assertEquals("30", jdbc.queryForObject("SELECT SETTING_VALUE FROM TB_APP_SETTING WHERE SETTING_KEY='dm.dailyMessages'", String::class.java))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "dm.requireStory").param("value", "maybe")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "unknown.key").param("value", "1")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "dm.dailyMessages").param("value", ""))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_APP_SETTING"), "비우면 기본값(행 삭제)")
+		assertEquals(listOf("기본값", "30"), jdbc.queryForList("SELECT AFTER_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='SETTING_SAVE' ORDER BY AUDIT_SEQ DESC", String::class.java))
+		assertTrue(mvc.perform(get("/admin/settings").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString.contains("하루 쪽지 수"))
+	}
+
+	@Test fun noticesOnlyAcceptSafeLinksAndCanBePaused() {
+		val start = java.time.LocalDateTime.now().withNano(0).toString(); val end = java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()
+		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "점검 안내").param("link", "javascript:alert(1)").param("start", start).param("end", end))
+			.andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "점검 안내").param("link", "/this-week").param("start", end).param("end", start))
+			.andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "11월 20일 새벽 점검").param("link", "/this-week").param("level", "WARN").param("start", start).param("end", end))
+			.andExpect(flash().attributeExists("notice"))
+		val seq = count("SELECT NOTICE_SEQ FROM TB_SITE_NOTICE")
+		assertTrue(mvc.perform(get("/admin/notices").with(admin)).andReturn().response.contentAsString.contains("노출 중"))
+		mvc.perform(post("/admin/notices/$seq/toggle").with(admin).with(csrf()).param("enabled", "false"))
+		assertEquals("N", jdbc.queryForObject("SELECT USE_YN FROM TB_SITE_NOTICE", String::class.java))
+		mvc.perform(post("/admin/notices/$seq/delete").with(admin).with(csrf()))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_SITE_NOTICE"))
+	}
+
+	@Test fun faqAndLivingAreasCanBeEditedWithGuards() {
+		mvc.perform(post("/admin/faq").with(admin).with(csrf()).param("id", "Bad ID").param("groupId", "basics").param("groupTitle", "청약 기초").param("question", "질문입니다?").param("answer", "답변 내용입니다. 충분히 길게"))
+			.andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/faq").with(admin).with(csrf()).param("id", "test-q").param("groupId", "basics").param("groupTitle", "청약 기초").param("question", "특별공급은 몇 번 받을 수 있나요?").param("answer", "평생 한 번만 받을 수 있어요. [청약홈](https://www.applyhome.co.kr)"))
+			.andExpect(flash().attributeExists("notice"))
+		mvc.perform(post("/admin/faq/test-q").with(admin).with(csrf()).param("groupId", "basics").param("groupTitle", "청약 기초").param("question", "특별공급은 몇 번 받을 수 있나요?").param("answer", "세대 기준으로 평생 한 번이에요.").param("order", "5"))
+		assertEquals("N", jdbc.queryForObject("SELECT USE_YN FROM TB_FAQ_ITEM WHERE ITEM_ID='test-q'", String::class.java), "체크박스를 끄면 숨김")
+		// 공백 없는 짧은 검색어에는 시·군이 필요하다(다른 지역 같은 동 이름 오인 방지).
+		mvc.perform(post("/admin/areas").with(admin).with(csrf()).param("slug", "godeok").param("label", "고덕").param("aliases", "고덕").param("terms", "고덕").param("description", "평택 고덕 생활권"))
+			.andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/areas").with(admin).with(csrf()).param("slug", "godeok").param("label", "고덕").param("aliases", "고덕, 고덕신도시 ,고덕").param("terms", "고덕, 평택시 고덕동").param("scope", "평택").param("description", "평택 고덕 생활권"))
+			.andExpect(flash().attributeExists("notice"))
+		assertEquals("고덕,고덕신도시", jdbc.queryForObject("SELECT ALIASES FROM TB_LIVING_AREA WHERE SLUG='godeok'", String::class.java), "공백·중복 정리")
+		mvc.perform(post("/admin/areas/godeok").with(admin).with(csrf()).param("label", "고덕국제").param("aliases", "고덕").param("terms", "평택시 고덕동").param("description", "평택 고덕 생활권").param("order", "1").param("enabled", "true"))
+			.andExpect(flash().attributeExists("notice"))
+		assertTrue(mvc.perform(get("/admin/areas").with(admin)).andReturn().response.contentAsString.contains("고덕국제"))
+		assertTrue(mvc.perform(get("/admin/faq").with(admin)).andReturn().response.contentAsString.contains("특별공급은 몇 번"))
+	}
+
+	@Test fun locationsNeedParcelNumbersAndDataCheckFindsGaps() {
+		jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('H2','P2','검단 블록 단지','인천광역시 서구 검단신도시 AA13-2블록',?,?)",
+			com.toady.admin.Kst.today().plusDays(3).toString(), com.toady.admin.Kst.today().plusDays(4).toString())
+		val queue = mvc.perform(get("/admin/locations").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(queue.contains("검단 블록 단지") && !queue.contains("역삼 새 단지"), "지번 있는 주소는 대기열에 없다")
+		mvc.perform(post("/admin/locations").with(admin).with(csrf()).param("id", "apt/H2/P2").param("address", "인천 서구 검단신도시")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/locations").with(admin).with(csrf()).param("id", "apt/H2/P2").param("address", "인천광역시 서구 원당동 1234-5")).andExpect(flash().attributeExists("notice"))
+		assertEquals("인천광역시 서구 원당동 1234-5", jdbc.queryForObject("SELECT LOCATION_ADDRESS FROM TB_ANNOUNCEMENT_OVERRIDE", String::class.java))
+		// 숨김·안내를 비워도 확인 주소는 남는다.
+		mvc.perform(post("/admin/announcements/apt/H2/P2/override").with(admin).with(csrf()).param("message", ""))
+		assertEquals(1L, count("SELECT COUNT(*) FROM TB_ANNOUNCEMENT_OVERRIDE"))
+		val check = mvc.perform(get("/admin/data-check").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(check.contains("검단 블록 단지") && check.contains("주택형·분양가 없음"), "APT 주택형 누락을 찾는다")
+		// 스케줄러에 연결하지 못하면 다시 수집은 오류로 안내한다.
+		mvc.perform(post("/admin/announcements/apt/H1/P1/recollect").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+	}
+
+	@Test fun officialStoriesNeedTheOfficialAccountAndCanBePinned() {
+		mvc.perform(post("/admin/announcements/apt/H1/P1/official").with(admin).with(csrf()).param("content", "정정 공고 안내입니다.")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "official.userSeq").param("value", "1"))
+		mvc.perform(post("/admin/announcements/apt/H1/P1/official").with(admin).with(csrf()).param("content", "정정 공고 안내입니다.").param("pinned", "true"))
+			.andExpect(flash().attributeExists("notice"))
+		val seq = count("SELECT COMMENT_SEQ FROM TB_COMMENT_OFFICIAL")
+		assertEquals("Y", jdbc.queryForObject("SELECT PINNED_YN FROM TB_COMMENT_OFFICIAL", String::class.java))
+		assertEquals(1L, count("SELECT CREATE_USER_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=$seq"))
+		mvc.perform(post("/admin/announcements/apt/H1/P1/official").with(admin).with(csrf()).param("content", "답글로 덧붙여요.").param("parentSeq", "$seq").param("pinned", "true"))
+		assertEquals(1L, count("SELECT COUNT(*) FROM TB_COMMENT_OFFICIAL WHERE PINNED_YN='Y'"), "답글은 고정하지 않는다")
+		val page = mvc.perform(get("/admin/announcements/apt/H1/P1").with(admin)).andReturn().response.contentAsString
+		assertTrue(page.contains("운영팀 · 고정"))
+		mvc.perform(post("/admin/comments/$seq/pin").with(admin).with(csrf()).param("pinned", "false")).andExpect(flash().attributeExists("notice"))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_COMMENT_OFFICIAL WHERE PINNED_YN='Y'"))
+	}
+
+	@Test fun memberSupportToolsAndBulkHide() {
+		mvc.perform(post("/admin/members/2/memo").with(admin).with(csrf()).param("memo", "메일 문의: 인증 메일 미수신")).andExpect(flash().attributeExists("notice"))
+		assertTrue(mvc.perform(get("/admin/members/2").with(admin)).andReturn().response.contentAsString.contains("인증 메일 미수신"))
+		mvc.perform(post("/admin/members/2/hide-all").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
+		assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=11", String::class.java))
+		// API 토큰이 없으면 탈퇴 대행·인증 메일은 안내만 한다. 확인 문구가 없으면 시도하지 않는다.
+		mvc.perform(post("/admin/members/2/withdraw").with(admin).with(csrf()).param("confirm", "")).andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("탈퇴 처리")))
+		mvc.perform(post("/admin/members/2/withdraw").with(admin).with(csrf()).param("confirm", "탈퇴 처리")).andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("ADMIN_API_TOKEN")))
+		mvc.perform(post("/admin/push").with(admin).with(csrf()).param("title", "알림 제목").param("body", "알림 내용입니다").param("url", "/this-week")).andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("전체 발송")))
+		mvc.perform(post("/admin/push").with(admin).with(csrf()).param("title", "알림 제목").param("body", "알림 내용입니다").param("url", "https://evil.example")).andExpect(flash().attributeExists("error"))
+	}
+
+	@Test fun insightsShowSearchSharesAndStories() {
+		jdbc.update("INSERT INTO TB_SEARCH_STAT VALUES (?, '운정', 'N', 5), (?, '고덕', 'Y', 3)", com.toady.admin.Kst.today(), com.toady.admin.Kst.today())
+		jdbc.update("INSERT INTO TB_USAGE_EVENT (EVENT_ID,VISITOR_ID,ACTION_NAME,SUBJECT_ID,VISIT_DATE,REG_DT) VALUES ('e1','v1','share','apt/H1/P1',?,CURRENT_TIMESTAMP)", com.toady.admin.Kst.today())
+		jdbc.update("UPDATE TB_LTTOT_PBLANC_COMMENT SET REG_DT=CURRENT_TIMESTAMP")
+		val html = mvc.perform(get("/admin/insights").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(html.contains("운정") && html.contains("고덕") && html.contains("역삼 새 단지"), html.take(200))
 	}
 
 	private fun count(sql: String): Long = jdbc.queryForObject(sql, Long::class.java) ?: 0

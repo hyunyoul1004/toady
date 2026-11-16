@@ -277,7 +277,7 @@ class AdminConsoleTest {
         var job = new com.toady.web.retention.DataRetentionJob(jdbc);
         var result = job.run(now);
         assertEquals(java.util.Map.of("TB_PAGE_VIEW", 5L, "TB_USAGE_EVENT", 1L, "TB_REMINDER_DELIVERY", 1L, "TB_PUSH_AREA_SEEN", 1L,
-                "TB_DM_MESSAGE", 2L, "TB_DM_THREAD", 1L, "TB_USER_REPORT", 1L), result);
+                "TB_DM_MESSAGE", 2L, "TB_DM_THREAD", 1L, "TB_USER_REPORT", 1L, "TB_ADMIN_AUDIT", 0L, "TB_SEARCH_STAT", 0L), result);
         assertEquals(java.util.List.of(3L, 4L), jdbc.queryForList("SELECT MESSAGE_SEQ FROM TB_DM_MESSAGE ORDER BY MESSAGE_SEQ", Long.class));
         // 신고된 쪽지(4번)가 남은 1번 대화방은 증거 맥락으로 함께 남긴다. 빈 3번 대화방만 지운다.
         assertEquals(java.util.List.of(1L, 2L), jdbc.queryForList("SELECT THREAD_SEQ FROM TB_DM_THREAD ORDER BY THREAD_SEQ", Long.class));

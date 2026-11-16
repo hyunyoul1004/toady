@@ -20,9 +20,18 @@
             <a th:classappend="${menu == 'comments'} ? 'active'" th:attr="aria-current=${menu == 'comments'} ? 'page' : null" th:href="@{/admin/comments}"><span aria-hidden="true">✎</span>댓글</a>
             <a th:classappend="${menu == 'reports'} ? 'active'" th:attr="aria-current=${menu == 'reports'} ? 'page' : null" th:href="@{/admin/reports}"><span aria-hidden="true">⚑</span>신고<span class="nav-count" th:if="${openReports != null and openReports > 0}" th:text="${openReports}">0</span></a>
             <a th:classappend="${menu == 'moderation'} ? 'active'" th:attr="aria-current=${menu == 'moderation'} ? 'page' : null" th:href="@{/admin/moderation}"><span aria-hidden="true">⊘</span>금칙어</a>
+            <a th:classappend="${menu == 'insights'} ? 'active'" th:attr="aria-current=${menu == 'insights'} ? 'page' : null" th:href="@{/admin/insights}"><span aria-hidden="true">↗</span>유입·커뮤니티 지표</a>
+            <p class="side-group">콘텐츠</p>
+            <a th:classappend="${menu == 'notices'} ? 'active'" th:attr="aria-current=${menu == 'notices'} ? 'page' : null" th:href="@{/admin/notices}"><span aria-hidden="true">▣</span>사이트 공지</a>
+            <a th:classappend="${menu == 'faq'} ? 'active'" th:attr="aria-current=${menu == 'faq'} ? 'page' : null" th:href="@{/admin/faq}"><span aria-hidden="true">?</span>자주 묻는 질문</a>
+            <a th:classappend="${menu == 'areas'} ? 'active'" th:attr="aria-current=${menu == 'areas'} ? 'page' : null" th:href="@{/admin/areas}"><span aria-hidden="true">⌂</span>생활권</a>
+            <a th:classappend="${menu == 'push'} ? 'active'" th:attr="aria-current=${menu == 'push'} ? 'page' : null" th:href="@{/admin/push}"><span aria-hidden="true">✦</span>푸시 발송</a>
             <p class="side-group">운영</p>
             <a th:classappend="${menu == 'operations'} ? 'active'" th:attr="aria-current=${menu == 'operations'} ? 'page' : null" th:href="@{/admin/operations}"><span aria-hidden="true">◎</span>데이터·알림 상태</a>
             <a th:classappend="${menu == 'jobs'} ? 'active'" th:attr="aria-current=${menu == 'jobs'} ? 'page' : null" th:href="@{/admin/jobs}"><span aria-hidden="true">↻</span>수집 작업</a>
+            <a th:classappend="${menu == 'locations'} ? 'active'" th:attr="aria-current=${menu == 'locations'} ? 'page' : null" th:href="@{/admin/locations}"><span aria-hidden="true">⌖</span>위치 확인</a>
+            <a th:classappend="${menu == 'data-check'} ? 'active'" th:attr="aria-current=${menu == 'data-check'} ? 'page' : null" th:href="@{/admin/data-check}"><span aria-hidden="true">✓</span>데이터 점검</a>
+            <a th:classappend="${menu == 'settings'} ? 'active'" th:attr="aria-current=${menu == 'settings'} ? 'page' : null" th:href="@{/admin/settings}"><span aria-hidden="true">⚙</span>서비스 설정</a>
             <a th:classappend="${menu == 'mail'} ? 'active'" th:attr="aria-current=${menu == 'mail'} ? 'page' : null" th:href="@{/admin/mail}"><span aria-hidden="true">✉</span>메일 발송 현황</a>
             <a th:classappend="${menu == 'audit'} ? 'active'" th:attr="aria-current=${menu == 'audit'} ? 'page' : null" th:href="@{/admin/audit}"><span aria-hidden="true">≣</span>작업 이력</a>
         </nav>

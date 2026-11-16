@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('사이트 공지')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">NOTICES</p><h1>사이트 공지</h1>
+        <p class="muted">점검 안내·새 기능 소개를 기간을 정해 화면 위에 띄웁니다. 방문자는 닫기를 누르면 그 공지를 다시 보지 않습니다. 동시에 최대 3개까지 보입니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">공지 테이블이 없습니다. database.sql 27번과 관리자 계정 권한을 적용하세요.</div>
+    <section class="panel"><div class="panel-head"><h2>공지 추가</h2></div>
+        <form class="stack-form" th:action="@{/admin/notices}" method="post">
+            <label>공지 문구<input name="message" required maxlength="300" placeholder="예: 11월 20일 02:00~03:00 점검으로 잠시 접속이 안 됩니다."></label>
+            <div class="row">
+                <label>링크(선택)<input name="link" maxlength="300" placeholder="/this-week 또는 https://…"></label>
+                <label>링크 문구<input name="linkLabel" maxlength="30" placeholder="자세히 보기"></label>
+                <label>보일 곳<select name="placement"><option value="ALL">모든 화면</option><option value="HOME">첫 화면만</option></select></label>
+                <label>종류<select name="level"><option value="INFO">안내</option><option value="WARN">주의(점검 등)</option></select></label>
+            </div>
+            <div class="row">
+                <label>시작<input type="datetime-local" name="start" required th:value="${#temporals.format(defaultStart, 'yyyy-MM-dd''T''HH:mm')}"></label>
+                <label>끝<input type="datetime-local" name="end" required th:value="${#temporals.format(defaultEnd, 'yyyy-MM-dd''T''HH:mm')}"></label>
+            </div>
+            <div class="actions"><button class="primary" type="submit">추가</button></div>
+        </form>
+    </section>
+    <section class="panel spaced"><div class="panel-head"><h2>공지 목록</h2></div>
+        <div class="empty" th:if="${#lists.isEmpty(notices)}"><span class="empty-icon">○</span><h3>공지가 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(notices)}"><table><thead><tr><th>공지</th><th>기간</th><th>상태</th><th>관리</th></tr></thead><tbody>
+            <tr th:each="n : ${notices}"><td class="cell-title"><strong th:text="${n.message}"></strong><small th:text="${n.placementLabel + ' · ' + (n.level == 'WARN' ? '주의' : '안내') + (n.link != null ? ' · ' + n.link : '')}"></small></td>
+                <td data-label="기간" th:text="${#temporals.format(n.start, 'MM.dd HH:mm') + ' ~ ' + #temporals.format(n.end, 'MM.dd HH:mm')}"></td>
+                <td data-label="상태"><span class="badge" th:classappend="${n.live} ? 'SUCCEEDED' : ''" th:text="${n.stateLabel}"></span></td>
+                <td class="cell-actions">
+                    <form th:action="@{/admin/notices/{seq}/toggle(seq=${n.seq})}" method="post"><input type="hidden" name="enabled" th:value="${!n.enabled}"><button class="secondary" type="submit" th:text="${n.enabled ? '멈추기' : '다시 보이기'}"></button></form>
+                    <form th:action="@{/admin/notices/{seq}/delete(seq=${n.seq})}" method="post" class="confirm" data-confirm="이 공지를 삭제할까요?"><button class="danger" type="submit">삭제</button></form></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

@@ -309,6 +309,18 @@ public class AccountService {
         if (!WITHDRAW_PHRASE.equals(phrase == null ? "" : phrase.trim())) {
             return Outcome.fail(ResultCode.VALID_ERROR, "확인 문구 '" + WITHDRAW_PHRASE + "'를 그대로 입력해 주세요.");
         }
+        return erase(user, userSeq, "회원 탈퇴");
+    }
+
+    /** 회원 요청을 받은 운영자의 탈퇴 처리(관리자 사이트 → 내부 API). 비밀번호 확인 없이 같은 정리를 한다. */
+    @Transactional
+    public Outcome withdrawByOperator(long userSeq) {
+        UserEntity user = lockedUser(userSeq);
+        if (user == null) return gone();
+        return erase(user, userSeq, "운영자 탈퇴 처리");
+    }
+
+    private Outcome erase(UserEntity user, long userSeq, String reason) {
         LocalDateTime now = LocalDateTime.now();
         // 가입 규칙으로는 만들 수 없는 값이라 실제 이메일·닉네임과 겹치지 않는다(.invalid는 메일이 가지 않는 예약 도메인).
         user.setUserEmail("withdrawn-" + userSeq + "@withdrawn.invalid");
@@ -325,8 +337,11 @@ public class AccountService {
         // 쪽지 설정과 내가 한 차단은 지운다. 주고받은 쪽지는 상대 쪽지함에 '탈퇴한 회원'으로 남고 보관 기간(180일)이 지나면 지워진다.
         tryUpdate("DELETE FROM TB_DM_SETTING WHERE USER_SEQ=?", userSeq);
         tryUpdate("DELETE FROM TB_USER_BLOCK WHERE USER_SEQ=?", userSeq);
+        // 운영 조치(제재)·문의 대응 메모도 탈퇴 시 지운다(개인정보처리방침 2번).
+        tryUpdate("DELETE FROM TB_USER_SANCTION WHERE USER_SEQ=?", userSeq);
+        tryUpdate("DELETE FROM TB_MEMBER_MEMO WHERE USER_SEQ=?", userSeq);
         tryUpdate("UPDATE TB_CERTIFY SET CERTIFY_YN='Y', UPDATE_DT=? WHERE CREATE_USER_SEQ=? AND CERTIFY_YN='N'", now, userSeq);
-        log.info("회원 탈퇴: userSeq={}", userSeq);
+        log.info("{}: userSeq={}", reason, userSeq);
         return Outcome.done("탈퇴했어요. 그동안 TOADY를 이용해 주셔서 고마워요.", null);
     }
 

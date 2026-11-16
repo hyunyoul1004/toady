@@ -726,3 +726,118 @@ CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (
 -- GRANT SELECT ON toady.TB_MAIL_ATTEMPT TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_REMINDER_DELIVERY TO 'toady_admin'@'%';
 -- GRANT SELECT (EMAIL_ENABLED) ON toady.TB_FAVORITE TO 'toady_admin'@'%';
+
+-- ============================================================================
+-- 27. 관리자 2·3단계: 공지·자주 묻는 질문·생활권·서비스 설정·사용량·위치 확인·검색 통계·운영팀 이야기·회원 메모
+--     (API·관리자 배포 전 실행 권장, 미적용이어도 앱은 지금처럼 코드에 있는 값으로 동작)
+-- ============================================================================
+-- 사이트 공지·배너. PLACEMENT: ALL(모든 화면 위) · HOME(첫 화면만). LEVEL: INFO·WARN. 기간 안이고 USE_YN='Y'인 것만 보인다.
+CREATE TABLE IF NOT EXISTS TB_SITE_NOTICE (
+    NOTICE_SEQ BIGINT NOT NULL AUTO_INCREMENT,
+    MESSAGE VARCHAR(300) NOT NULL,
+    LINK_URL VARCHAR(300) NULL COMMENT '사이트 안 경로(/로 시작) 또는 https 주소',
+    LINK_LABEL VARCHAR(30) NULL,
+    PLACEMENT VARCHAR(10) NOT NULL DEFAULT 'ALL',
+    LEVEL VARCHAR(10) NOT NULL DEFAULT 'INFO',
+    START_DT DATETIME(6) NOT NULL COMMENT '한국시간',
+    END_DT DATETIME(6) NOT NULL COMMENT '한국시간',
+    USE_YN VARCHAR(1) NOT NULL DEFAULT 'Y',
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    UPDATE_DT DATETIME(6) NOT NULL,
+    PRIMARY KEY (NOTICE_SEQ),
+    INDEX IX_SITE_NOTICE_TIME (USE_YN, START_DT, END_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사이트 공지·배너';
+
+-- 자주 묻는 질문. 비어 있으면 API가 처음 한 번 코드에 있는 기본 질문으로 채운다(앱 계정 INSERT 필요).
+CREATE TABLE IF NOT EXISTS TB_FAQ_ITEM (
+    ITEM_ID VARCHAR(40) NOT NULL COMMENT '영문 소문자·숫자·하이픈(주소 #앵커로도 씀)',
+    GROUP_ID VARCHAR(40) NOT NULL,
+    GROUP_TITLE VARCHAR(50) NOT NULL,
+    QUESTION VARCHAR(200) NOT NULL,
+    ANSWER TEXT NOT NULL COMMENT '[문구](/경로) 표기로 사이트 안 링크',
+    SORT_ORDER INT NOT NULL DEFAULT 0,
+    USE_YN VARCHAR(1) NOT NULL DEFAULT 'Y',
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    UPDATE_DT DATETIME(6) NOT NULL,
+    PRIMARY KEY (ITEM_ID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자주 묻는 질문';
+
+-- 생활권. 비어 있으면 API가 처음 한 번 코드의 기본 생활권으로 채운다. SLUG는 공개 주소(/areas/{slug})라 바꾸지 않는다.
+-- ALIASES·TERMS·SCOPE는 쉼표로 나눈 목록. TERMS의 짧은 이름(공백 없음)은 SCOPE(시·군) 중 하나가 함께 있어야 인정한다.
+CREATE TABLE IF NOT EXISTS TB_LIVING_AREA (
+    SLUG VARCHAR(40) NOT NULL,
+    LABEL VARCHAR(30) NOT NULL,
+    ALIASES VARCHAR(300) NOT NULL,
+    TERMS VARCHAR(1000) NOT NULL,
+    SCOPE VARCHAR(200) NOT NULL DEFAULT '',
+    DESCRIPTION VARCHAR(100) NOT NULL,
+    SORT_ORDER INT NOT NULL DEFAULT 0,
+    USE_YN VARCHAR(1) NOT NULL DEFAULT 'Y',
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    UPDATE_DT DATETIME(6) NOT NULL,
+    PRIMARY KEY (SLUG)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='생활권';
+
+-- 서비스 설정(쪽지 조건·한도, 메일 한도, 실거래 API 한도, 운영팀 계정 등). 행이 없으면 환경변수 값을 쓴다. API가 1분마다 다시 읽는다.
+CREATE TABLE IF NOT EXISTS TB_APP_SETTING (
+    SETTING_KEY VARCHAR(50) NOT NULL PRIMARY KEY,
+    SETTING_VALUE VARCHAR(200) NOT NULL,
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    UPDATE_DT DATETIME(6) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='서비스 설정';
+
+-- 날짜별 사용량(예: 국토부 실거래 API 호출 수). 재시작해도 이어서 센다.
+CREATE TABLE IF NOT EXISTS TB_DAILY_COUNTER (
+    COUNTER_KEY VARCHAR(40) NOT NULL,
+    COUNT_DATE DATE NOT NULL COMMENT '한국시간 날짜',
+    COUNT_VALUE BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (COUNTER_KEY, COUNT_DATE)
+) ENGINE=InnoDB COMMENT='날짜별 사용량';
+
+-- 운영자가 확인한 공고 위치 주소(지구·블록 주소 공고). 앱은 이 주소를 지도 검색으로 다시 검증한 뒤에만 핀을 놓는다.
+ALTER TABLE TB_ANNOUNCEMENT_OVERRIDE ADD COLUMN IF NOT EXISTS LOCATION_ADDRESS VARCHAR(200) NULL COMMENT '운영자가 확인한 지번·도로명 주소';
+
+-- 검색어 통계. 방문자·회원과 연결하지 않고 날짜별 건수만 모은다(검색어는 30자까지, 결과 0건 여부).
+CREATE TABLE IF NOT EXISTS TB_SEARCH_STAT (
+    STAT_DATE DATE NOT NULL,
+    TERM VARCHAR(30) NOT NULL,
+    EMPTY_YN VARCHAR(1) NOT NULL,
+    HITS INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (STAT_DATE, TERM, EMPTY_YN)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='검색어 일별 통계';
+
+-- 운영팀 이야기(관리자 화면에서 운영팀 계정으로 쓴 글)와 고정 여부. 고정한 원글은 공고 이야기 맨 위에 따로 보인다.
+CREATE TABLE IF NOT EXISTS TB_COMMENT_OFFICIAL (
+    COMMENT_SEQ BIGINT NOT NULL PRIMARY KEY,
+    PINNED_YN VARCHAR(1) NOT NULL DEFAULT 'N',
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    REG_DT DATETIME(6) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='운영팀 이야기';
+
+-- 회원 메모(문의 대응 기록). 관리자만 본다.
+CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
+    MEMO_SEQ BIGINT NOT NULL AUTO_INCREMENT,
+    USER_SEQ BIGINT NOT NULL,
+    MEMO VARCHAR(500) NOT NULL,
+    ADMIN_NAME VARCHAR(100) NOT NULL,
+    REG_DT DATETIME(6) NOT NULL,
+    PRIMARY KEY (MEMO_SEQ),
+    INDEX IX_MEMBER_MEMO_USER (USER_SEQ, MEMO_SEQ)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 메모';
+
+-- 앱 계정: 위 테이블 모두 SELECT, TB_FAQ_ITEM·TB_LIVING_AREA(처음 채우기 INSERT), TB_DAILY_COUNTER(INSERT·UPDATE), TB_SEARCH_STAT(INSERT·UPDATE).
+-- 관리자 계정(19번에 추가):
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_SITE_NOTICE TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_FAQ_ITEM TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_LIVING_AREA TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE ON toady.TB_APP_SETTING TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_DAILY_COUNTER TO 'toady_admin'@'%';
+-- GRANT SELECT ON toady.TB_SEARCH_STAT TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_COMMENT_OFFICIAL TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT ON toady.TB_MEMBER_MEMO TO 'toady_admin'@'%';
+-- 운영팀 이야기 쓰기와 회원 이야기 한꺼번에 숨기기: 이야기 INSERT(19번 SELECT·UPDATE에 추가)
+-- GRANT INSERT ON toady.TB_LTTOT_PBLANC_COMMENT TO 'toady_admin'@'%';
+-- 위치 주소: 26번 TB_ANNOUNCEMENT_OVERRIDE 권한에 포함된다(테이블 단위 UPDATE).
+-- 스케줄러 계정: 관리자 작업 기록(26번)·검색어 통계를 1년 지나면 정리한다.
+-- GRANT SELECT, DELETE ON toady.TB_ADMIN_AUDIT TO 'toady_sources'@'%';
+-- GRANT SELECT, DELETE ON toady.TB_SEARCH_STAT TO 'toady_sources'@'%';

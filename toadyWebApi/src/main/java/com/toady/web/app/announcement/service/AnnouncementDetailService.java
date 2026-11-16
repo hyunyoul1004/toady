@@ -68,6 +68,7 @@ public class AnnouncementDetailService {
             Map<String, Object> notice = new LinkedHashMap<>();
             notice.put("hidden", override.hidden());
             notice.put("message", override.notice());
+            notice.put("locationAddress", override.locationAddress());
             result.put("operatorNotice", notice);
         }
         return result;

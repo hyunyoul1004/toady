@@ -55,6 +55,13 @@ public class DmService {
     /** 관리자 화면 금칙어(database.sql 26번). 테스트에서 직접 만들 때는 없을 수 있다. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.toady.web.app.operation.ModerationRules moderation;
+    /** 관리자 화면 서비스 설정(database.sql 27번). 값이 없으면 환경변수 값을 쓴다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.toady.web.app.operation.AppSettings settings;
+    private long minAccountHours() { return settings == null ? minAccountHours : settings.number(com.toady.web.app.operation.AppSettings.DM_MIN_ACCOUNT_HOURS, minAccountHours, 0, 720); }
+    private boolean requireStory() { return settings == null ? requireStory : settings.flag(com.toady.web.app.operation.AppSettings.DM_REQUIRE_STORY, requireStory); }
+    private long dailyNewThreads() { return settings == null ? dailyNewThreads : settings.number(com.toady.web.app.operation.AppSettings.DM_DAILY_NEW_THREADS, dailyNewThreads, 1, 50); }
+    private long dailyMessages() { return settings == null ? dailyMessages : settings.number(com.toady.web.app.operation.AppSettings.DM_DAILY_MESSAGES, dailyMessages, 1, 500); }
     /** 새 대화를 시작하려면 가입 후 지나야 하는 시간(0이면 조건 없음) */
     private final long minAccountHours;
     /** 새 대화를 시작하려면 이야기를 하나 이상 남겨야 하는가 */
@@ -155,17 +162,18 @@ public class DmService {
         Member self = community.member(me);
         if (self == null || !self.active()) return Gate.no("UNAVAILABLE", "다시 로그인해 주세요.");
         if (!self.emailVerified()) return Gate.no("VERIFY", "이메일 인증을 마치면 쪽지를 보낼 수 있어요.");
+        long minAccountHours = minAccountHours();
         if (minAccountHours > 0 && self.joinedAt() != null && self.joinedAt().plusHours(minAccountHours).isAfter(now)) {
             String wait = minAccountHours == 24 ? "하루가" : minAccountHours % 24 == 0 ? minAccountHours / 24 + "일이" : minAccountHours + "시간이";
             return Gate.no("TOO_NEW", "가입하고 " + wait + " 지나면 쪽지를 보낼 수 있어요.");
         }
-        if (requireStory && community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", me) == 0) {
+        if (requireStory() && community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", me) == 0) {
             return Gate.no("NO_STORY", "공고 ‘이야기’에 글을 하나 이상 남기면 쪽지를 보낼 수 있어요.");
         }
         // 보내기 중에는 방금 만든(아직 쪽지 없는) 이 대화방은 세지 않는다.
         if (community.count("SELECT COUNT(*) FROM TB_DM_THREAD WHERE STARTED_BY=? AND REG_DT>=? AND THREAD_SEQ<>?", me,
-                Community.ts(now.toLocalDate().atStartOfDay()), thread == null ? 0L : thread.seq()) >= dailyNewThreads) {
-            return Gate.no("LIMIT", "새 대화는 하루에 " + dailyNewThreads + "명까지 시작할 수 있어요. 내일 다시 시도해 주세요.");
+                Community.ts(now.toLocalDate().atStartOfDay()), thread == null ? 0L : thread.seq()) >= dailyNewThreads()) {
+            return Gate.no("LIMIT", "새 대화는 하루에 " + dailyNewThreads() + "명까지 시작할 수 있어요. 내일 다시 시도해 주세요.");
         }
         return Gate.yes();
     }
@@ -212,8 +220,8 @@ public class DmService {
         if (problem != null) return rollback(Result.fail("ERR-401", DmRules.message(problem)));
         var extra = moderation == null ? null : moderation.check(content, com.toady.web.app.operation.ModerationRules.Scope.DM);
         if (extra == com.toady.web.app.operation.ModerationRules.Action.BLOCK) return rollback(Result.fail("ERR-401", "운영 정책상 보낼 수 없는 표현이 들어 있어요. 내용을 고쳐 다시 보내 주세요."));
-        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= dailyMessages) {
-            return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + dailyMessages + "통)."));
+        if (community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE SENDER_SEQ=? AND REG_DT>=?", me, Community.ts(now.toLocalDate().atStartOfDay())) >= dailyMessages()) {
+            return rollback(Result.fail("ERR-429", "오늘은 쪽지를 더 보낼 수 없어요(하루 " + dailyMessages() + "통)."));
         }
         String text = content.strip();
         long receiverUnreadBefore = unreadIn(thread, other);

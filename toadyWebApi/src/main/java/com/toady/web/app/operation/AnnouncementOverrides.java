@@ -19,7 +19,10 @@ import java.util.stream.Collectors;
 public class AnnouncementOverrides {
     private static final Logger log = LoggerFactory.getLogger(AnnouncementOverrides.class);
     private static final long REFRESH_MS = 60_000;
-    public record Override(boolean hidden, String notice) { }
+    /** locationAddress: 운영자가 확인한 지번·도로명 주소(27번). 앱이 지도 검색으로 다시 검증한 뒤에만 쓴다. */
+    public record Override(boolean hidden, String notice, String locationAddress) {
+        public Override(boolean hidden, String notice) { this(hidden, notice, null); }
+    }
 
     private final JdbcTemplate jdbc;
     private volatile Map<String, Override> overrides = Map.of();
@@ -52,9 +55,15 @@ public class AnnouncementOverrides {
             if (now - loadedAt < REFRESH_MS) return overrides;
             try {
                 Map<String, Override> next = new HashMap<>();
-                jdbc.query("SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE FROM TB_ANNOUNCEMENT_OVERRIDE", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
-                    String notice = r.getString(5);
-                    next.put(key(r.getString(1), r.getString(2), r.getString(3)), new Override("Y".equals(r.getString(4)), notice == null || notice.isBlank() ? null : notice.strip()));
+                boolean withLocation = true;
+                String sql = "SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE, LOCATION_ADDRESS FROM TB_ANNOUNCEMENT_OVERRIDE";
+                try { jdbc.queryForList(sql + " WHERE 1=0"); }
+                catch (DataAccessException noColumn) { withLocation = false; sql = "SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE FROM TB_ANNOUNCEMENT_OVERRIDE"; }
+                final boolean location = withLocation;
+                jdbc.query(sql, (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+                    String notice = r.getString(5), address = location ? r.getString(6) : null;
+                    next.put(key(r.getString(1), r.getString(2), r.getString(3)), new Override("Y".equals(r.getString(4)),
+                            notice == null || notice.isBlank() ? null : notice.strip(), address == null || address.isBlank() ? null : address.strip()));
                 });
                 overrides = Map.copyOf(next);
             } catch (DataAccessException missing) {

@@ -7,7 +7,8 @@
     <p class="crumbs"><a th:href="@{/admin/announcements}">공고</a> › <span th:text="${a.typeLabel}"></span></p>
     <section class="page-heading"><div><h1 th:text="${a.houseNm}"></h1><p class="muted" th:text="${a.address}"></p>
         <div class="chips spaced-top"><span class="chip" th:text="${a.typeLabel}"></span><span class="chip" th:classappend="${a.status == 'OPEN'} ? 'on' : (${a.status == 'UPCOMING'} ? 'warn' : '')" th:text="${a.statusLabel}"></span><span class="chip mono" th:text="${a.id}"></span></div></div>
-        <div class="heading-actions"><a class="secondary" th:href="${siteUrl + d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a></div></section>
+        <div class="heading-actions"><a class="secondary" th:href="${siteUrl + d.appPath}" target="_blank" rel="noopener">서비스에서 보기 ↗</a><a class="secondary" th:if="${d.url}" th:href="${d.url}" target="_blank" rel="noopener noreferrer">청약홈 원문 ↗</a>
+            <form th:action="@{${here + '/recollect'}}" method="post" class="confirm" data-confirm="이 공고의 모집공고일 하루를 다시 수집할까요? 같은 날 다른 공고도 함께 갱신됩니다."><button class="secondary" type="submit">이 공고 다시 수집</button></form></div></section>
     <div th:replace="~{admin/fragments :: flash}"></div>
     <div class="notice-box" th:if="${override != null and override.hidden}">서비스에서 숨긴 공고입니다. 목록·검색·캘린더·사이트맵·RSS에 나오지 않고 새 이야기를 쓸 수 없습니다.</div>
     <section class="kpis">
@@ -53,6 +54,18 @@
             <p class="muted" th:if="${override != null}" th:text="${'마지막 변경 ' + (override.updatedAt != null ? #temporals.format(override.updatedAt, 'yyyy.MM.dd HH:mm') : '') + ' · ' + override.admin}"></p>
         </form>
     </section>
+    <section class="panel spaced" th:if="${needsLocation or locationAddress != null}"><div class="panel-head"><h2>위치 확인</h2><span class="panel-note">지번·도로명 번호가 없는 주소 · 앱이 지도 검색으로 다시 검증한 뒤에만 핀을 놓습니다</span></div>
+        <form class="inline-setting" th:action="@{/admin/locations}" method="post"><input type="hidden" name="id" th:value="${a.id}"><input type="hidden" name="next" th:value="${here}">
+            <input name="address" maxlength="200" th:value="${locationAddress}" placeholder="예: 경기도 파주시 동패동 1234-5" aria-label="확인한 주소"><button class="secondary" type="submit">저장</button></form>
+    </section>
+    <section class="panel spaced"><div class="panel-head"><h2>운영팀 이야기</h2><span class="panel-note">'서비스 설정'의 운영팀 계정으로 올라가고 '운영팀' 표시가 붙습니다</span></div>
+        <form class="stack-form" th:action="@{${here + '/official'}}" method="post">
+            <label>내용<textarea name="content" required maxlength="1000" rows="3" placeholder="예: 청약홈 정정 공고로 1순위 접수일이 11월 25일로 바뀌었어요. 원문을 꼭 확인해 주세요."></textarea></label>
+            <div class="row"><label>답글을 달 원글 번호(선택)<input name="parentSeq" inputmode="numeric" placeholder="비우면 새 원글"></label>
+                <label class="check"><input type="checkbox" name="pinned" value="true"> 이야기 맨 위에 고정(원글만)</label></div>
+            <div class="actions"><button class="primary" type="submit">운영팀으로 올리기</button></div>
+        </form>
+    </section>
     <section class="panel spaced"><div class="panel-head"><h2>주택형 · 분양가</h2><span class="panel-note">청약홈 공개 값(만원)</span></div>
         <p class="muted" th:if="${#lists.isEmpty(d.units)}">주택형 자료가 없습니다.</p>
         <div class="table-wrap" th:unless="${#lists.isEmpty(d.units)}"><table><thead><tr><th>주택형</th><th th:if="${d.hasUnitArea}">전용면적</th><th>공급 세대</th><th>최고 공급금액</th></tr></thead><tbody>
@@ -64,11 +77,12 @@
         <p class="muted" th:if="${#lists.isEmpty(comments.items)}">댓글이 없습니다.</p>
         <ul class="comment-list" th:unless="${#lists.isEmpty(comments.items)}">
             <li th:each="c : ${comments.items}" th:classappend="${c.deleted} ? 'is-hidden'">
-                <div class="comment-meta"><a th:href="@{/admin/members/{seq}(seq=${c.authorSeq})}"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong></a><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${c.deleted}" class="badge FAILED" th:text="${c.hiddenLabel}">숨김</span>
+                <div class="comment-meta"><a th:href="@{/admin/members/{seq}(seq=${c.authorSeq})}"><strong th:text="${c.author != null ? c.author : '(알 수 없음)'}"></strong></a><span th:if="${c.parentSeq != null}" class="badge">답글</span><span th:if="${official.containsKey(c.seq)}" class="badge official" th:text="${official.get(c.seq) ? '운영팀 · 고정' : '운영팀'}">운영팀</span><span th:if="${c.deleted}" class="badge FAILED" th:text="${c.hiddenLabel}">숨김</span>
                     <small th:text="${(c.createdAt != null ? #temporals.format(c.createdAt, 'yyyy.MM.dd HH:mm') : '') + ' · #' + c.seq}"></small></div>
                 <p class="comment-body" th:text="${c.content}"></p>
                 <div class="comment-actions">
                     <form th:unless="${c.deleted}" th:action="@{/admin/comments/{seq}/hide(seq=${c.seq})}" method="post" class="confirm" data-confirm="이 댓글을 숨길까요? 원댓글이면 답글도 함께 숨겨집니다."><input type="hidden" name="next" th:value="${here + '?state=' + state}"><button class="danger" type="submit">숨기기</button></form>
+                    <form th:if="${official.containsKey(c.seq) and c.parentSeq == null and !c.deleted}" th:action="@{/admin/comments/{seq}/pin(seq=${c.seq})}" method="post"><input type="hidden" name="pinned" th:value="${!official.get(c.seq)}"><input type="hidden" name="next" th:value="${here}"><button class="secondary" type="submit" th:text="${official.get(c.seq) ? '고정 풀기' : '맨 위에 고정'}"></button></form>
                     <form th:if="${c.deleted and c.adminHidden}" th:action="@{/admin/comments/{seq}/restore(seq=${c.seq})}" method="post"><input type="hidden" name="next" th:value="${here + '?state=' + state}"><button class="secondary" type="submit">되살리기</button></form></div>
             </li>
         </ul>

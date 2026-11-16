@@ -31,6 +31,7 @@ public class AnnouncementCommentService {
     private final com.toady.web.app.operation.Sanctions sanctions;
     private final com.toady.web.app.operation.ModerationRules moderation;
     private final com.toady.web.app.operation.AnnouncementOverrides overrides;
+    private final com.toady.web.app.operation.OfficialComments officials;
 
     public Page<AnnouncementCommentResponse> list(
             AnnouncementType type,
@@ -49,7 +50,18 @@ public class AnnouncementCommentService {
         );
         // 작성자 프로필 캐릭터를 한 번에 읽어 붙인다(테이블이 없으면 모두 null → 닉네임 첫 글자).
         var icons = profileIcons.of(comments.getContent().stream().map(AnnouncementCommentResponse::createUserSeq).toList());
-        return comments.map(comment -> comment.withProfileIcon(icons.get(comment.createUserSeq())));
+        // 운영팀이 쓴 글에는 표시를 붙인다(화면이 '운영팀' 배지를 단다).
+        var official = officials.officialOf(comments.getContent().stream().map(AnnouncementCommentResponse::commentSeq).toList());
+        return comments.map(comment -> comment.withProfileIcon(icons.get(comment.createUserSeq()))
+                .withOfficial(official.containsKey(comment.commentSeq()), Boolean.TRUE.equals(official.get(comment.commentSeq()))));
+    }
+
+    /** 공고 이야기 맨 위에 고정한 운영팀 원글. */
+    public java.util.List<AnnouncementCommentResponse> pinned(AnnouncementType type, String houseManageNo, String pblancNo) {
+        requireAnnouncement(type, houseManageNo, pblancNo);
+        return officials.pinned(type.name(), houseManageNo, pblancNo).stream()
+                .map(seq -> commentRepository.findById(seq).filter(row -> "N".equals(row.getDeleteYn())).map(this::toResponse).map(row -> row.withOfficial(true, true)).orElse(null))
+                .filter(java.util.Objects::nonNull).toList();
     }
 
     public long count(AnnouncementType type, String houseManageNo, String pblancNo) {
@@ -182,7 +194,9 @@ public class AnnouncementCommentService {
                 comment.getRegDt(),
                 comment.getUpdateUserSeq(),
                 comment.getUpdateDt(),
-                profileIcons.of(comment.getCreateUserSeq())
+                profileIcons.of(comment.getCreateUserSeq()),
+                false,
+                false
         );
     }
 }

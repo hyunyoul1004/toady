@@ -97,6 +97,59 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		return changed
 	}
 
+	/** 한 회원이 쓴 보이는 이야기를 모두 숨긴다(원글이면 답글도 함께). 숨긴 건수를 돌려준다. */
+	fun hideAllBy(userSeq: Long, admin: String): Int {
+		val roots = jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N' ORDER BY COMMENT_SEQ LIMIT 1000", Long::class.java, userSeq)
+		return roots.sumOf { hide(it, admin) }
+	}
+
+	/**
+	 * 운영팀 계정으로 이야기를 쓴다(database.sql 27번 TB_COMMENT_OFFICIAL에 운영팀 글로 표시). parentSeq가 있으면 그 원글의 답글.
+	 * pinned면 공고 이야기 맨 위에 고정한다(원글만). 새 이야기 번호를 돌려준다.
+	 */
+	@org.springframework.transaction.annotation.Transactional
+	fun writeOfficial(announcementId: String, officialUserSeq: Long, content: String, parentSeq: Long?, pinned: Boolean, admin: String): Long {
+		val (type, house, notice) = announcementId.split('/').also { require(it.size == 3) }
+		val typeName = type.uppercase().replace('-', '_')
+		if (parentSeq != null) {
+			val ok = jdbc.queryForObject("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=? AND PARENT_COMMENT_SEQ IS NULL AND DELETE_YN='N' AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",
+				Long::class.java, parentSeq, typeName, house, notice) ?: 0
+			require(ok > 0) { "답글을 달 원글을 찾을 수 없습니다." }
+		}
+		val now = Timestamp.valueOf(Kst.now())
+		val key = org.springframework.jdbc.support.GeneratedKeyHolder()
+		jdbc.update({ c ->
+			c.prepareStatement("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, PARENT_COMMENT_SEQ, CONTENT, RECOMMEND, OPPOSE, DELETE_YN, CREATE_USER_SEQ, REG_DT) VALUES (?,?,?,?,?,0,0,'N',?,?)",
+				arrayOf("COMMENT_SEQ")).apply {
+				setString(1, typeName); setString(2, house); setString(3, notice)
+				if (parentSeq == null) setNull(4, java.sql.Types.BIGINT) else setLong(4, parentSeq)
+				setString(5, content.trim()); setLong(6, officialUserSeq); setTimestamp(7, now)
+			}
+		}, key)
+		val seq = key.key!!.toLong()
+		jdbc.update("INSERT INTO TB_COMMENT_OFFICIAL (COMMENT_SEQ, PINNED_YN, ADMIN_NAME, REG_DT) VALUES (?,?,?,?)", seq, if (pinned && parentSeq == null) "Y" else "N", admin.take(100), now)
+		log.info("운영팀 이야기 작성: commentSeq={}, announcement={}, admin={}", seq, announcementId, admin)
+		return seq
+	}
+
+	/** 운영팀 원글 고정·해제. 바뀐 행이 없으면 false. */
+	fun setPinned(seq: Long, pinned: Boolean): Boolean = try {
+		jdbc.update("UPDATE TB_COMMENT_OFFICIAL SET PINNED_YN=? WHERE COMMENT_SEQ=? AND PINNED_YN<>?", if (pinned) "Y" else "N", seq, if (pinned) "Y" else "N") > 0
+	} catch (missing: DataAccessException) { false }
+
+	/** 공고의 운영팀 글 번호와 고정 여부. */
+	fun officialIn(announcementId: String): Map<Long, Boolean> {
+		val parts = announcementId.split('/'); if (parts.size != 3) return emptyMap()
+		return try {
+			val result = LinkedHashMap<Long, Boolean>()
+			jdbc.query("SELECT O.COMMENT_SEQ, O.PINNED_YN FROM TB_COMMENT_OFFICIAL O JOIN TB_LTTOT_PBLANC_COMMENT C ON C.COMMENT_SEQ=O.COMMENT_SEQ WHERE C.ANNOUNCEMENT_TYPE=? AND C.HOUSE_MANAGE_NO=? AND C.PBLANC_NO=?",
+				{ r -> result[r.getLong(1)] = r.getString(2) == "Y" }, parts[0].uppercase().replace('-', '_'), parts[1], parts[2])
+			result
+		} catch (missing: DataAccessException) { emptyMap() }
+	}
+
+	fun officialReady(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_COMMENT_OFFICIAL WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
+
 	/** 관리자가 숨긴 댓글을 되살린다. 작성자가 지운 댓글과 원댓글이 숨겨진 답글은 되살리지 않는다. */
 	@Transactional
 	fun restore(seq: Long, admin: String): RestoreResult {

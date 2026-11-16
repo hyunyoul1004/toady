@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('자주 묻는 질문')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">FAQ</p><h1>자주 묻는 질문</h1>
+        <p class="muted">앱의 '자주 묻는 질문'과 검색용 페이지(/help/faq)에 함께 반영됩니다(1분). 답에서 <code>[문구](/경로)</code>는 사이트 안 링크, <code>[문구](https://www.applyhome.co.kr)</code>는 청약홈 링크가 됩니다. 줄바꿈은 문단이 됩니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">자주 묻는 질문 테이블이 없습니다. database.sql 27번과 관리자 계정 권한을 적용하세요. API가 처음 켜질 때 지금 질문으로 채웁니다.</div>
+    <section class="panel"><div class="panel-head"><h2>질문 추가</h2></div>
+        <form class="stack-form" th:action="@{/admin/faq}" method="post">
+            <div class="row">
+                <label>질문 ID<input name="id" required maxlength="40" pattern="[a-z0-9-]{2,40}" placeholder="예: special-newlywed"></label>
+                <label>묶음 ID<input name="groupId" required maxlength="40" list="faq-groups" placeholder="예: basics"></label>
+                <label>묶음 이름<input name="groupTitle" required maxlength="50" placeholder="예: 청약 기초"></label>
+                <label>순서<input name="order" inputmode="numeric" value="1000"></label>
+            </div>
+            <datalist id="faq-groups"><option th:each="g : ${groups}" th:value="${g.id}" th:text="${g.title}"></option></datalist>
+            <label>질문<input name="question" required maxlength="200"></label>
+            <label>답<textarea name="answer" required maxlength="4000" rows="5"></textarea></label>
+            <div class="actions"><button class="primary" type="submit">추가</button></div>
+        </form>
+    </section>
+    <section class="panel spaced" th:each="g : ${groups}"><div class="panel-head"><h2 th:text="${g.title}"></h2><span class="panel-note mono" th:text="${g.id}"></span></div>
+        <details class="faq-edit" th:each="f : ${g.items}" th:id="${f.id}"><summary><strong th:text="${f.question}"></strong> <span class="badge" th:unless="${f.enabled}">숨김</span></summary>
+            <form class="stack-form" th:action="@{/admin/faq/{id}(id=${f.id})}" method="post">
+                <div class="row">
+                    <label>묶음 ID<input name="groupId" required th:value="${f.groupId}"></label>
+                    <label>묶음 이름<input name="groupTitle" required th:value="${f.groupTitle}"></label>
+                    <label>순서<input name="order" inputmode="numeric" th:value="${f.order}"></label>
+                </div>
+                <label>질문<input name="question" required maxlength="200" th:value="${f.question}"></label>
+                <label>답<textarea name="answer" required maxlength="4000" rows="6" th:text="${f.answer}"></textarea></label>
+                <label class="check"><input type="checkbox" name="enabled" value="true" th:checked="${f.enabled}"> 서비스에 보이기</label>
+                <div class="actions"><small class="muted" th:text="${f.id + ' · ' + (f.updatedAt != null ? #temporals.format(f.updatedAt, 'yyyy.MM.dd HH:mm') : '') + ' · ' + f.admin}"></small><button class="primary" type="submit">저장</button></div>
+            </form>
+            <form th:action="@{/admin/faq/{id}/delete(id=${f.id})}" method="post" class="confirm" data-confirm="이 질문을 삭제할까요? 잠시 숨기려면 '서비스에 보이기'를 끄세요."><button class="danger" type="submit">삭제</button></form>
+        </details>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

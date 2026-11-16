@@ -36,18 +36,27 @@ public record AnnouncementCommentResponse(
         @Schema(description = "수정 일시", example = "2026-10-30T12:30:00")
         LocalDateTime updateDt,
         @Schema(description = "작성자 프로필 캐릭터 키. 고르지 않았으면 null(닉네임 첫 글자로 표시)", example = "toad")
-        String profileIcon
+        String profileIcon,
+        @Schema(description = "운영팀이 쓴 글이면 true(관리자 사이트에서 운영팀 계정으로 작성)", example = "false")
+        boolean official,
+        @Schema(description = "운영팀이 공고 이야기 맨 위에 고정한 원글이면 true", example = "false")
+        boolean pinned
 ) {
     /** JPQL 생성자 표현식용(프로필 캐릭터는 TB_USER_PROFILE에서 따로 채운다). */
     public AnnouncementCommentResponse(Long commentSeq, String announcementType, String houseManageNo, String pblancNo, Long parentCommentSeq,
             String content, Integer recommend, Integer oppose, String deleteYn, Long createUserSeq, String userNicName,
             LocalDateTime regDt, Long updateUserSeq, LocalDateTime updateDt) {
         this(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend, oppose, deleteYn,
-                createUserSeq, userNicName, regDt, updateUserSeq, updateDt, null);
+                createUserSeq, userNicName, regDt, updateUserSeq, updateDt, null, false, false);
     }
 
     public AnnouncementCommentResponse withProfileIcon(String icon) {
         return new AnnouncementCommentResponse(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend,
-                oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, icon);
+                oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, icon, official, pinned);
+    }
+
+    public AnnouncementCommentResponse withOfficial(boolean value, boolean pin) {
+        return new AnnouncementCommentResponse(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend,
+                oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, profileIcon, value, value && pin && parentCommentSeq == null);
     }
 }

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('서비스 설정')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>서비스 설정</h1>
+        <p class="muted">배포 없이 바꾸는 운영 값입니다. 저장하면 1분 안에 서비스에 적용됩니다. 비워 저장하면 서버 환경변수 기본값으로 돌아갑니다.</p></div></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">설정 테이블이 없습니다. database.sql 27번과 관리자 계정 권한을 적용하세요. 지금은 환경변수 값으로 동작합니다.</div>
+    <div class="notice-box" th:unless="${apiConfigured}">API 내부 토큰(ADMIN_API_TOKEN)이 없어 푸시 발송·인증 메일 다시 보내기·탈퇴 대행은 쓸 수 없습니다. 관리자와 API의 .env.prod에 같은 값(32자 이상)을 넣으세요.</div>
+    <section class="panel">
+        <div class="table-wrap stack"><table><thead><tr><th>설정</th><th>지금 값</th><th>바꾸기</th></tr></thead><tbody>
+            <tr th:each="i : ${items}"><td class="cell-title"><strong th:text="${i.def.label}"></strong><small th:text="${i.def.group + ' · ' + i.def.help}"></small></td>
+                <td data-label="지금 값"><span th:text="${i.value != null ? (i.def.bool ? (i.value == 'true' ? '켬' : '끔') : i.value) : '기본값(환경변수)'}"></span>
+                    <small th:if="${i.updatedAt != null}" th:text="${#temporals.format(i.updatedAt, 'yyyy.MM.dd HH:mm') + ' · ' + i.admin}"></small></td>
+                <td class="cell-actions"><form th:action="@{/admin/settings}" method="post" class="inline-setting">
+                    <input type="hidden" name="key" th:value="${i.def.key}">
+                    <select th:if="${i.def.bool}" name="value" th:attr="aria-label=${i.def.label}"><option value="">기본값</option><option value="true" th:selected="${i.value == 'true'}">켬</option><option value="false" th:selected="${i.value == 'false'}">끔</option></select>
+                    <input th:unless="${i.def.bool}" name="value" inputmode="numeric" th:value="${i.value}" th:attr="aria-label=${i.def.label},placeholder=${i.def.min + '~' + (i.def.max > 100000000 ? '' : i.def.max)}">
+                    <button class="secondary" type="submit">저장</button></form></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

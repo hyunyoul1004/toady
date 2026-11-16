@@ -75,7 +75,10 @@ public class DataRetentionJob {
                         + " AND NOT EXISTS (SELECT 1 FROM TB_DM_MESSAGE M WHERE M.THREAD_SEQ=TB_DM_THREAD.THREAD_SEQ)",
                         List.of(Timestamp.valueOf(now.minusDays(180)), Timestamp.valueOf(now.minusDays(1)))),
                 // 처리가 끝난 신고는 1년 보관한다(대기 중인 신고는 지우지 않는다).
-                new Target("TB_USER_REPORT", "STATUS <> 'OPEN' AND HANDLED_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))));
+                new Target("TB_USER_REPORT", "STATUS <> 'OPEN' AND HANDLED_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
+                // 관리자 작업 기록·검색어 통계는 1년 보관한다(database.sql 26·27번, 개인정보처리방침 2번).
+                new Target("TB_ADMIN_AUDIT", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
+                new Target("TB_SEARCH_STAT", "STAT_DATE < ?", List.of(java.sql.Date.valueOf(now.toLocalDate().minusDays(365)))));
     }
 
     /** 테이블별 삭제 행 수를 돌려준다. 실패한 테이블은 -1이다. */

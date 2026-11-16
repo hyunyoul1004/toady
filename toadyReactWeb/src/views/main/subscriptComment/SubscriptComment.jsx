@@ -155,7 +155,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       }
     });
 
-    return rootItems;
+    // 운영팀이 고정한 원글을 맨 위에 둔다(나머지 순서는 그대로).
+    return [...rootItems.filter(item => item.pinned), ...rootItems.filter(item => !item.pinned)];
   }, [commentsRes]);
 
   const totalCommentCount = commentsRes?.data?.totalElements ?? commentsRes?.data?.subscriptCommentList?.length ?? 0;
@@ -394,6 +395,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
                 <Typography component="span" className="story-author-name" sx={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', lineHeight: 1.2 }}>
                   {row.userNicName || '익명'}
                 </Typography>
+                {row.official && <Chip component="span" label="운영팀" size="small" color="primary" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 800 }} />}
+                {row.pinned && !isChild && <Chip component="span" label="고정" size="small" variant="outlined" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700 }} />}
                 {isAuthor && (
                   <Chip
                     component="span"

@@ -71,6 +71,9 @@ public class AdminJobService {
     static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
     static LocalDate today() { return LocalDate.now(ZONE); }
     static LocalDateTime now() { return LocalDateTime.now(ZONE); }
+    /** 청약홈이 공고를 모집공고일보다 먼저 등록해 두는 경우가 있어, 오늘 이후 이 일수까지의 모집공고일도 수집할 수 있게 한다. */
+    static final int FUTURE_DAYS = 7;
+    static LocalDate latestDate() { return today().plusDays(FUTURE_DAYS); }
 
     /**
      * 실행 이력을 먼저 저장한 뒤 작업 ID를 반환한다. 반환 성공은 수집 완료가 아니라 접수 완료를 뜻한다.
@@ -79,8 +82,8 @@ public class AdminJobService {
      */
     public String submit(JobKind kind, LocalDate start, LocalDate end, String user, String source) {
         if (kind == null || start == null || end == null || start.isAfter(end)
-                || start.isBefore(earliestDate()) || end.isAfter(today())) {
-            throw new IllegalArgumentException("2017년 1월 1일부터 오늘까지의 올바른 모집공고일 범위를 선택하세요.");
+                || start.isBefore(earliestDate()) || end.isAfter(latestDate())) {
+            throw new IllegalArgumentException("2017년 1월 1일부터 오늘 이후 " + FUTURE_DAYS + "일까지의 올바른 모집공고일 범위를 선택하세요.");
         }
         // 수동 실행은 공고마다 외부 API를 여러 번 부른다. 너무 긴 기간은 공공데이터 일일 한도를 다 써 정규 수집까지 막으므로 나눠 실행하게 한다.
         if ("MANUAL".equals(source) && ChronoUnit.DAYS.between(start, end) >= MANUAL_MAX_DAYS) {

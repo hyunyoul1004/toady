@@ -308,6 +308,9 @@ public class NeighborhoodResearchService {
     }
     /** 오늘 국토부를 부른 횟수(운영 확인용). */
     public long molitCallsToday() { return dailyBudget.used(); }
+    /** 관리자 설정 한도와 DB 계수기를 연결한다(재시작해도 하루 사용량을 이어서 센다). 테스트에서 직접 만들면 연결하지 않는다. */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void connectSharedBudget(com.toady.web.app.operation.AppSettings settings, com.toady.web.app.operation.DailyCounter counter) { dailyBudget.connect(settings, counter); }
     /** 차단기가 열려 있는지(화면 안내·테스트용). */
     public boolean molitPaused() { return System.currentTimeMillis()<molitPausedUntil; }
     static final class ProviderPaused extends IllegalStateException { ProviderPaused() { super("Provider paused after rejection"); } }

@@ -44,6 +44,10 @@ toady:
     rolling-limit: ${GMAIL_ROLLING_LIMIT:400}
     auth-reserve: ${GMAIL_AUTH_RESERVE:100}
     signup-limit: ${GMAIL_SIGNUP_LIMIT:0}
+  api:
+    # 메일·푸시 발송처럼 API에서만 할 수 있는 일을 부탁하는 내부 주소와 토큰(API의 ADMIN_API_TOKEN과 같은 값, 32자 이상).
+    base-url: ${API_BASE_URL:http://toadyWebApi:8080}
+    token: ${ADMIN_API_TOKEN:}
   scheduler:
     # 같은 docker-compose 네트워크의 스케줄러 내부 주소. 토큰이 없으면 수집 화면은 조회 안내만 보여 준다.
     base-url: ${SCHEDULER_BASE_URL:http://toadyScheduler:8082}

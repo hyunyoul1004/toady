@@ -129,7 +129,7 @@ public class PublicAreaPage {
     public ResponseEntity<String> index() { return PublicHtml.cached("areas", this::renderIndex); }
     private ResponseEntity<String> renderIndex() {
         StringBuilder links = new StringBuilder();
-        for (var area : LivingAreas.ALL) links.append("<a href='").append(esc(domain + "/areas/" + area.slug())).append("'><strong>")
+        for (var area : LivingAreas.all()) links.append("<a href='").append(esc(domain + "/areas/" + area.slug())).append("'><strong>")
             .append(esc(area.label())).append(" 청약</strong><span class='muted'>").append(esc(area.description())).append("</span></a>");
         String title = "생활권별 청약 일정 · TOADY";
         String description = "운정·동탄·다산·검단·위례·광교 등 생활권 이름으로 아파트 청약 일정과 분양가, 경쟁률을 찾아보세요.";
@@ -145,7 +145,7 @@ public class PublicAreaPage {
     @GetMapping("/api/v1/public/area-summaries")
     public ResponseEntity<List<AreaSummary>> areaSummaries() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        List<AreaSummary> body = PublicHtml.load(areaSummaryCache, today.toString(), () -> LivingAreas.ALL.stream().map(area -> {
+        List<AreaSummary> body = PublicHtml.load(areaSummaryCache, today.toString(), () -> LivingAreas.all().stream().map(area -> {
             Groups groups = groups(area, today);
             return new AreaSummary(area.slug(), area.label(), area.description(), groups.open().size(), groups.upcoming().size(), groups.month(today));
         }).toList());
@@ -169,7 +169,7 @@ public class PublicAreaPage {
         String description = area.description().split(" · ")[0] + " 아파트 청약 · 접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size()
             + "건 · 분양가·경쟁률·당첨가점과 동네 실거래가를 한 화면에서 확인하세요.";
         StringBuilder others = new StringBuilder();
-        for (var other : LivingAreas.ALL) if (!other.slug().equals(area.slug()))
+        for (var other : LivingAreas.all()) if (!other.slug().equals(area.slug()))
             others.append("<a class='chip' href='").append(esc(domain + "/areas/" + other.slug())).append("'>").append(esc(other.label())).append("</a> ");
         String body = "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><a href='" + esc(domain) + "/areas'>생활권</a><span>›</span><span>" + esc(area.label()) + "</span></nav>"
             + "<section class='card'><span class='chip'>생활권</span><h1>" + esc(area.label()) + " 청약 일정</h1><p class='muted'>" + esc(area.description().split(" · ")[0])

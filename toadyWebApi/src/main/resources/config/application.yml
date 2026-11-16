@@ -98,6 +98,9 @@ toady:
   web:
     domain: ${TOADY_WEB_DOMAIN:https://www.toady.co.kr}
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  admin:
+    # 관리자 사이트가 부르는 내부 API(/internal/admin) 토큰. 관리자의 ADMIN_API_TOKEN과 같아야 하며 32자 이상. 비우면 기능을 끈다.
+    internal-token: ${ADMIN_API_TOKEN:}
   sitemap:
     # 사이트맵에 넣을 공고: 접수 마감(없으면 모집공고일)이 이 일수 이내이거나 앞으로인 공고. 지난 공고 페이지는 그대로 열려 있다.
     recent-days: ${SITEMAP_RECENT_DAYS:365}

@@ -18,6 +18,15 @@ public final class MolitDailyBudget {
     private final Clock clock;
     private LocalDate day;
     private long used;
+    /** 관리자 설정 한도와 DB 계수기(database.sql 27번). 연결되면 재시작해도 이어서 센다. 없으면 메모리로 센다. */
+    private volatile com.toady.web.app.operation.AppSettings settings;
+    private volatile com.toady.web.app.operation.DailyCounter counter;
+    static final String COUNTER_KEY = "molit";
+
+    public void connect(com.toady.web.app.operation.AppSettings settings, com.toady.web.app.operation.DailyCounter counter) {
+        this.settings = settings; this.counter = counter;
+    }
+    long limit() { return settings == null || limit <= 0 ? limit : settings.number(com.toady.web.app.operation.AppSettings.MOLIT_DAILY_LIMIT, limit, 100, 1_000_000); }
 
     public MolitDailyBudget(long limit, Clock clock) { this.limit = limit; this.clock = clock; }
 
@@ -25,16 +34,25 @@ public final class MolitDailyBudget {
 
     /** 한 번 부를 수 있으면 세고 true. background는 미리 계산 작업(남겨 둔 몫까지 쓸 수 있음). */
     public synchronized boolean tryAcquire(boolean background) {
+        long limit = limit();
         if (limit <= 0) return true;
         LocalDate today = LocalDate.now(clock.withZone(KST));
         if (!today.equals(day)) { day = today; used = 0; }
         long cap = background ? limit : (long) Math.floor(limit * USER_SHARE);
+        if (counter != null) {
+            Boolean shared = counter.tryIncrement(COUNTER_KEY, today, cap);
+            if (shared != null) { if (shared) used++; return shared; }
+        }
         if (used >= cap) return false;
         used++;
         return true;
     }
 
     public synchronized long used() {
+        if (counter != null && limit > 0) {
+            Long shared = counter.count(COUNTER_KEY, LocalDate.now(clock.withZone(KST)));
+            if (shared != null) return shared;
+        }
         return day != null && day.equals(LocalDate.now(clock.withZone(KST))) ? used : 0;
     }
 }

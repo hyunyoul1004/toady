@@ -22,6 +22,19 @@ public class MailBudget {
         if(signupLimit<1 || signupLimit>=limit) throw new IllegalArgumentException("가입 메일 상한은 전체 제한보다 작아야 합니다.");
         this.jdbc=jdbc;this.limit=limit;this.reserve=reserve;this.signupLimit=signupLimit;
     }
+    /** 관리자 화면 서비스 설정(database.sql 27번). 값이 없거나 규칙(1~400, 예약량·가입 상한 < 전체)에 맞지 않으면 환경변수 값을 쓴다. */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.toady.web.app.operation.AppSettings settings;
+    int limit() { return settings==null?limit:(int)settings.number(com.toady.web.app.operation.AppSettings.MAIL_LIMIT,limit,1,400); }
+    int reserve(int effectiveLimit) {
+        long value=settings==null?reserve:settings.number(com.toady.web.app.operation.AppSettings.MAIL_AUTH_RESERVE,reserve,0,399);
+        return (int)Math.min(value,effectiveLimit-1);
+    }
+    int signupLimit(int effectiveLimit) {
+        long value=settings==null?signupLimit:settings.number(com.toady.web.app.operation.AppSettings.MAIL_SIGNUP_LIMIT,signupLimit,0,399);
+        if(value==0) value=Math.max(1,effectiveLimit/2);
+        return (int)Math.max(1,Math.min(value,effectiveLimit-1));
+    }
     /** 이전 호출부 호환: true면 일정 알림, false면 인증 메일. 내부 호출은 프록시를 거치지 않으므로 여기에도 트랜잭션을 건다(잠금 유지). */
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public boolean reserve(boolean reminder) { return reserve(reminder?Kind.REMINDER:Kind.AUTH); }
@@ -35,6 +48,7 @@ public class MailBudget {
         LocalDateTime now=LocalDateTime.now(ZoneOffset.UTC);
         Timestamp since=Timestamp.valueOf(now.minusHours(24));
         long used=jdbc.queryForObject("SELECT COUNT(*) FROM TB_MAIL_ATTEMPT WHERE REG_DT>=?",Long.class,since);
+        int limit=limit(), reserve=reserve(limit), signupLimit=signupLimit(limit);
         if(used>=limit) return false;
         // 인증 메일(비밀번호 찾기 등)이 아닌 메일은 종류를 합쳐서도 인증용 예약분을 건드리지 못한다.
         // (일정 알림과 가입 메일이 각자 상한 안이어도 합치면 예약분까지 써 버리는 경우를 막는다)

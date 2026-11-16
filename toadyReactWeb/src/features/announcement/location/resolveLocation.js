@@ -55,6 +55,18 @@ export function siteCandidate(row,address,house) {
 export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
   const address=normalize(detail.hssplyAdres || detail.supplyLocation),house=normalize(detail.houseNm);
   const geocoder=new maps.services.Geocoder(),ok=maps.services.Status.OK;
+  // 운영자가 모집공고문 등으로 확인해 넣은 지번·도로명 주소(관리자 '위치 확인'). 공급 주소와 같은 검증(정확한 지번 일치·같은 시군구)을
+  // 통과할 때만 쓴다. 통과하지 못하면 아래의 공통 판정(공급 주소 → 단지명 후보 → 부지 미확정)으로 그대로 이어진다.
+  const confirmed=normalize(detail.operatorNotice?.locationAddress || '');
+  if(confirmed) {
+    for(const candidate of parcelCandidates(confirmed).slice(0,2)) {
+      const rows=await request(geocoder,'addressSearch',candidate,ok,timeoutMs);
+      const found=rows.find(row=>precise(row,confirmed,candidate) && sameRegion(address || confirmed,row.address?.address_name || row.address_name));
+      if(found) return {status:'ADDRESS',label:'운영자 확인 주소 기준 위치',latitude:Number(found.y),longitude:Number(found.x),address:found.address?.address_name || found.address_name,
+        bcode:found.address?.b_code || '',dong:found.address?.region_3depth_name || '',
+        region:[found.address?.region_1depth_name,found.address?.region_2depth_name].filter(Boolean).join(' '),sourceUrl:''};
+    }
+  }
   const candidates=parcelCandidates(address);
   for(const candidate of candidates.slice(0,3)) {
     const rows=await request(geocoder,'addressSearch',candidate,ok,timeoutMs);

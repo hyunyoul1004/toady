@@ -208,6 +208,12 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(pageData(result), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    @GetMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments/pinned")
+    @Operation(summary = "고정한 운영팀 이야기", description = "공고 이야기 맨 위에 고정한 운영팀 글(최대 3개).")
+    public ResponseEntity<ResData<?>> pinnedComments(@PathVariable String type, @PathVariable String houseManageNo, @PathVariable String pblancNo) {
+        return ResponseEntity.ok(ResData.of(commentService.pinned(AnnouncementType.fromPath(type), houseManageNo, pblancNo), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
+    }
+
     @PostMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments")
     @Secured("ROLE_USER")
     @Operation(

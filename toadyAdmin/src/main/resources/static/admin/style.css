@@ -449,3 +449,13 @@ textarea:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3p
 .meter.warn i { background: var(--amber); }
 .notice-box { padding: 12px 14px; border-radius: 8px; background: var(--amber-soft); color: #6b4b00; margin-bottom: 12px; }
 [hidden] { display: none !important; }
+
+/* 27번 콘텐츠·운영 화면 */
+.inline-setting { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-setting input, .inline-setting select { min-width: 160px; flex: 1; }
+.faq-edit { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+.faq-edit summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.faq-edit[open] summary { margin-bottom: 12px; }
+.faq-edit .stack-form { margin-bottom: 8px; }
+.badge.official { background: #e8f0ff; color: #2952a3; }
+code { font-size: 12px; background: #eef1f3; padding: 1px 5px; border-radius: 4px; }

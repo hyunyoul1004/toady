@@ -46,6 +46,9 @@ class AdminController(
 	private val rules: RuleService,
 	private val overrides: OverrideService,
 	private val mail: MailStatusService,
+	private val memos: com.toady.admin.support.MemberMemoService,
+	private val api: com.toady.admin.support.ApiClient,
+	private val quality: com.toady.admin.announcements.QualityService,
 ) {
 	@GetMapping("/") fun root() = "redirect:/admin/"
 	@GetMapping("/admin/login") fun login() = "admin/login"
@@ -106,6 +109,9 @@ class AdminController(
 		model.addAttribute("override", overrides.get(detail.row.id))
 		model.addAttribute("overrideReady", overrides.available())
 		model.addAttribute("history", audit.forTarget("ANNOUNCEMENT", detail.row.id))
+		model.addAttribute("official", comments.officialIn(detail.row.id))
+		model.addAttribute("locationAddress", quality.confirmedAddresses()[detail.row.id])
+		model.addAttribute("needsLocation", !quality.hasParcel(detail.row.address))
 		return page(model, user, "announcements", "admin/announcement")
 	}
 
@@ -147,6 +153,8 @@ class AdminController(
 		model.addAttribute("sanctionReasons", SanctionService.REASONS)
 		model.addAttribute("sanctionDays", SanctionService.DAYS)
 		model.addAttribute("history", audit.forTarget("MEMBER", seq))
+		model.addAttribute("memos", memos.list(seq)); model.addAttribute("memoReady", memos.available())
+		model.addAttribute("apiConfigured", api.configured)
 		// 개인정보(이메일 등)를 본 기록. 같은 관리자가 연달아 열어도 매번 남긴다.
 		audit.record(user.name, "MEMBER_VIEW", "MEMBER", seq)
 		return page(model, user, "members", "admin/member")
@@ -328,6 +336,8 @@ class AdminController(
 			model.addAttribute("schedulerError", failure.message)
 		}
 		model.addAttribute("todayDate", Kst.today()); model.addAttribute("defaultStart", Kst.today().minusDays(90))
+		// 청약홈이 공고를 모집공고일보다 먼저 등록해 두는 경우가 있어 종료일은 오늘 이후 7일까지 고를 수 있다(스케줄러와 같은 기준).
+		model.addAttribute("latestDate", Kst.today().plusDays(7))
 		return page(model, user, "jobs", "admin/jobs")
 	}
 

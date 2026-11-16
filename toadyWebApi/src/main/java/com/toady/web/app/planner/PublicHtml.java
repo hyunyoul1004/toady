@@ -58,6 +58,7 @@ final class PublicHtml {
     }
     /** 테스트에서 데이터를 바꾼 뒤 새로 그리게 한다. */
     static void clearCache() { PAGES.invalidateAll(); }
+    static void invalidate(String key) { PAGES.invalidate(key); }
 
     /** 공개 JSON 응답: 브라우저·프록시가 maxAge 동안 공용 캐시로 재사용한다. */
     static <T> ResponseEntity<T> publicJson(T body, Duration maxAge) {

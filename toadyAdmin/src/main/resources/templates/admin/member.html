@@ -69,6 +69,29 @@
             </ul>
         </section>
     </div>
+    <section class="panel spaced"><div class="panel-head"><h2>회원 지원</h2><span class="panel-note">메모는 관리자만 보며 탈퇴하면 지웁니다</span></div>
+        <div class="grid-2">
+            <div>
+                <form class="stack-form" th:action="@{/admin/members/{seq}/memo(seq=${m.seq})}" method="post">
+                    <label>문의 대응 메모<textarea name="memo" maxlength="500" rows="3" placeholder="예: 11/16 메일 문의 - 인증 메일 미수신, 스팸함 안내"></textarea></label>
+                    <div class="actions"><button class="secondary" type="submit" th:disabled="${!memoReady}">메모 남기기</button></div>
+                </form>
+                <ul class="audit-list spaced-top" th:unless="${#lists.isEmpty(memos)}"><li th:each="x : ${memos}"><div th:text="${x.memo}"></div><small th:text="${#temporals.format(x.at, 'yyyy.MM.dd HH:mm') + ' · ' + x.admin}"></small></li></ul>
+            </div>
+            <div class="stack-form" th:unless="${m.withdrawn}">
+                <p class="muted" th:unless="${apiConfigured}">API 내부 토큰(ADMIN_API_TOKEN)이 없어 아래 기능을 쓸 수 없습니다.</p>
+                <form th:if="${!m.certified}" th:action="@{/admin/members/{seq}/resend-verification(seq=${m.seq})}" method="post" class="confirm" data-confirm="이 회원에게 가입 인증 메일을 다시 보낼까요? (메일 한도에서 차감)">
+                    <button class="secondary" type="submit" th:disabled="${!apiConfigured}">가입 인증 메일 다시 보내기</button></form>
+                <form th:action="@{/admin/members/{seq}/hide-all(seq=${m.seq})}" method="post" class="confirm" data-confirm="이 회원이 쓴 이야기를 모두 숨길까요? 원글이면 답글도 함께 숨겨집니다.">
+                    <input type="hidden" name="memo" value=""><button class="danger" type="submit">이 회원 이야기 모두 숨기기</button></form>
+                <form class="stack-form" th:action="@{/admin/members/{seq}/withdraw(seq=${m.seq})}" method="post">
+                    <label>회원 요청에 따른 탈퇴 처리<input name="confirm" placeholder="'탈퇴 처리' 입력"></label>
+                    <input name="memo" maxlength="300" placeholder="요청 경로·일시 메모(작업 이력에 남음)" aria-label="탈퇴 처리 메모">
+                    <div class="actions"><button class="danger" type="submit" th:disabled="${!apiConfigured}">탈퇴 처리</button></div>
+                </form>
+            </div>
+        </div>
+    </section>
     <section th:replace="~{admin/fragments :: history(${history})}"></section>
     <footer>TOADY · 관리자 <span>비밀번호·인증 코드·메모는 관리자 화면에서 다루지 않습니다.</span></footer>
 </main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

@@ -29,7 +29,7 @@ public class PushSubscriptions {
 
     public record Row(String hash, String endpoint, String p256dh, String auth, Long userSeq, boolean favorites,
             List<String> favoriteIds, List<String> areas, LocalDateTime registeredAt, LocalDateTime lastDigestAt, LocalDate lastAttemptDate) {
-        WebPushSender.Target target() { return new WebPushSender.Target(endpoint, p256dh, auth); }
+        public WebPushSender.Target target() { return new WebPushSender.Target(endpoint, p256dh, auth); }
     }
     public record Scope(Long userSeq, UUID visitorId, boolean favorites, List<String> favoriteIds, List<String> areas) { }
 
@@ -95,6 +95,11 @@ public class PushSubscriptions {
         else jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_SUCCESS_DT=? WHERE ENDPOINT_HASH=?", Timestamp.valueOf(at), hash);
     }
 
+    /** 관리자 전체 발송·시험 발송용 구독 목록. userSeq가 있으면 그 회원의 브라우저만. */
+    public java.util.List<Row> all(Long userSeq) {
+        return userSeq == null ? jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION ORDER BY REG_DT", (r, n) -> map(r))
+                : jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=? ORDER BY REG_DT", (r, n) -> map(r), userSeq);
+    }
     private static Row map(ResultSet r) throws SQLException {
         long user = r.getLong("USER_SEQ");
         boolean guest = r.wasNull();

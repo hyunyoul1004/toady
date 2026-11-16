@@ -103,7 +103,7 @@ public class ScoreBenchmarks {
 
     private static Map<String, Object> view(List<Item> recentYears, Instant now) {
         List<Map<String, Object>> areas = new ArrayList<>();
-        for (var area : LivingAreas.ALL) {
+        for (var area : LivingAreas.all()) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("slug", area.slug()); entry.put("label", area.label());
             entry.put("items", recentYears.stream().filter(item -> area.slug().equals(item.areaSlug())).limit(PER_AREA).toList());

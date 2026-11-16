@@ -14,7 +14,7 @@ import java.sql.Timestamp;
 import java.time.*;
 import java.util.UUID;
 
-/** 집계용 행동 이벤트. 회원 ID·메모·검색어·쿼리 문자열은 수집하지 않는다. */
+/** 집계용 행동 이벤트. 회원 ID·메모·검색어·쿼리 문자열은 수집하지 않는다(검색어는 방문자와 연결하지 않은 일별 건수만 SiteContentController가 센다). */
 @RestController
 public class UsageEventController {
     private final JdbcTemplate jdbc; private final boolean enabled;

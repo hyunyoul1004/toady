@@ -5,6 +5,7 @@ import { matchesArea } from '@/features/planner/plannerUtils';
 import announcementApi from '@/features/announcement/api/announcementApi';
 import { ALL_REGIONS, FLAT_CITY_OPTIONS, matchesRegions } from '../announcementFilters';
 import { matchesRegionTarget } from '@/features/explore/regionRules';
+import { trackSearch } from '@/features/analytics/trackSearch';
 
 export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions) {
   const { data: livingAreas = [] } = useQuery({ queryKey:['livingAreas'], queryFn:() => apiClient.get('/api/v1/living-areas'), staleTime:3600000 });
@@ -21,10 +22,15 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
       return;
     }
 
+    let settleTimer = null;
     const timer = setTimeout(async () => {
       try {
         const res = await announcementApi.getAnnouncementSuggestions({ keyword, limit: 10 });
-        if (active) setGlobalSuggestions(res.data || []);
+        if (active) {
+          setGlobalSuggestions(res.data || []);
+          // 입력을 2초 더 멈추면 확정된 검색어로 보고 통계에 센다(결과 0건 검색어는 생활권·데이터 보강 근거).
+          settleTimer = setTimeout(() => { if (active) trackSearch(keyword, (res.data || []).length); }, 2000);
+        }
       } catch (err) {
         if (active) setGlobalSuggestions([]);
         console.error('[GlobalSearch] 자동완성 검색 실패:', err);
@@ -34,6 +40,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
     return () => {
       active = false;
       clearTimeout(timer);
+      clearTimeout(settleTimer);
     };
   }, [searchInputValue]);
 

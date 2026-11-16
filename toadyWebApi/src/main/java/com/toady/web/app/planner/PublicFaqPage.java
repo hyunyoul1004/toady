@@ -28,7 +28,8 @@ public class PublicFaqPage {
     public record Faq(String id, String question, String answer) { }
     public record Group(String id, String title, List<Faq> items) { }
 
-    static final List<Group> GROUPS = List.of(
+    /** 코드에 있는 기본 질문. DB(TB_FAQ_ITEM, database.sql 27번)가 비어 있거나 없으면 이 목록을 쓴다. */
+    static final List<Group> BUILT_IN = List.of(
         new Group("basics", "청약 기초", List.of(
             new Faq("rank1", "청약 1순위가 되려면 어떤 조건이 필요한가요?",
                 "청약통장 가입 기간이 수도권은 1년, 비수도권은 6개월 이상이어야 해요. 투기과열지구·조정대상지역(청약과열지역) 공고는 2년 이상이 필요해요. "
@@ -112,6 +113,14 @@ public class PublicFaqPage {
         ))
     );
 
+    /** 지금 쓰는 질문 목록. ContentStore가 1분마다 DB 값으로 바꾼다(관리자 화면에서 편집). */
+    private static volatile List<Group> groups = BUILT_IN;
+    static List<Group> groups() { return groups; }
+    static void replace(List<Group> next) {
+        List<Group> value = next == null || next.isEmpty() ? BUILT_IN : List.copyOf(next);
+        if (!value.equals(groups)) { groups = value; PublicHtml.invalidate("faq"); }
+    }
+
     private static final Pattern LINK = Pattern.compile("\\[([^\\]]+)]\\(((?:/[a-z0-9/_-]*)|(?:https://www\\.applyhome\\.co\\.kr))\\)");
     private final String domain;
     private final ObjectMapper json;
@@ -127,7 +136,7 @@ public class PublicFaqPage {
     /** 앱의 자주 묻는 질문 화면용. 답의 [문구](경로) 표기는 앱이 링크로 바꾼다. */
     @GetMapping("/api/v1/public/faq-items")
     public ResponseEntity<List<Group>> items() {
-        return PublicHtml.publicJson(GROUPS, Duration.ofHours(1));
+        return PublicHtml.publicJson(groups(), Duration.ofMinutes(10));
     }
 
     /** 답을 문단(줄바꿈 기준)별 &lt;p&gt;로 만든다. */
@@ -155,7 +164,7 @@ public class PublicFaqPage {
 
     String jsonLd() {
         List<Map<String, Object>> entities = new ArrayList<>();
-        for (Group group : GROUPS) for (Faq faq : group.items()) {
+        for (Group group : groups()) for (Faq faq : group.items()) {
             Map<String, Object> answer = new LinkedHashMap<>();
             answer.put("@type", "Answer"); answer.put("text", plain(faq.answer()));
             Map<String, Object> question = new LinkedHashMap<>();
@@ -171,15 +180,15 @@ public class PublicFaqPage {
     }
 
     private ResponseEntity<String> render() {
-        int count = GROUPS.stream().mapToInt(group -> group.items().size()).sum();
+        int count = groups().stream().mapToInt(group -> group.items().size()).sum();
         StringBuilder body = new StringBuilder("<nav aria-label='현재 위치'><a href='").append(esc(domain)).append("/'>TOADY</a><span>›</span><a data-app href='").append(esc(domain + "/faq")).append("'>자주 묻는 질문</a></nav>")
             .append("<section class='card'><span class='chip'>청약 자주 묻는 질문 ").append(count).append("개</span><h1>청약, 이것부터 확인하세요</h1>")
             .append("<p class='muted'>1순위 조건, 예치금, 특별공급, 무순위·줍줍, 당첨 후 자금까지 청약을 준비할 때 가장 많이 묻는 질문을 모았어요. 제도는 바뀔 수 있으니 신청 전에는 공식 모집공고를 함께 확인하세요.</p>")
             .append("<div class='chips faq-toc'>");
-        for (Group group : GROUPS) body.append("<a class='chip' href='#").append(group.id()).append("'>").append(esc(group.title())).append("</a>");
+        for (Group group : groups()) body.append("<a class='chip' href='#").append(group.id()).append("'>").append(esc(group.title())).append("</a>");
         body.append("</div><div class='row'><a class='cta' data-app href='").append(esc(domain + "/match")).append("'>내가 넣을 수 있는 청약 찾기</a>")
             .append("<a class='cta secondary' data-app href='").append(esc(domain + "/score")).append("'>내 가점 계산하기</a></div></section>");
-        for (Group group : GROUPS) {
+        for (Group group : groups()) {
             body.append("<section class='card faq' id='").append(group.id()).append("' aria-labelledby='").append(group.id()).append("-title'><h2 id='")
                 .append(group.id()).append("-title'>").append(esc(group.title())).append("</h2>");
             for (Faq faq : group.items())

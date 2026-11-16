@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('위치 확인')}"></head>
+<body><div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar}"></aside>
+<main class="content" id="main">
+    <section class="page-heading"><div><p class="eyebrow">LOCATIONS</p><h1>위치 확인</h1>
+        <p class="muted">최근·예정 공고 중 주소에 지번이나 도로명 번호가 없어(지구·블록 주소) 지도에 정확히 놓지 못하는 공고입니다.
+            모집공고문 등으로 확인한 지번·도로명 주소를 넣으면, 앱이 그 주소를 지도 검색으로 다시 검증한 뒤에만 핀을 놓습니다(검증되지 않으면 지금처럼 '부지 미확정').</p></div>
+        <a class="secondary" th:href="@{/admin/locations(all=${!all})}" th:text="${all ? '확인 필요만 보기' : '확인한 것도 보기'}"></a></section>
+    <div th:replace="~{admin/fragments :: flash}"></div>
+    <div class="alert error" th:unless="${ready}">위치 주소 칸이 없습니다. database.sql 26·27번(TB_ANNOUNCEMENT_OVERRIDE.LOCATION_ADDRESS)을 적용하세요.</div>
+    <section class="panel">
+        <div class="empty" th:if="${#lists.isEmpty(items)}"><span class="empty-icon">✓</span><h3>확인할 공고가 없습니다</h3></div>
+        <div class="table-wrap stack" th:unless="${#lists.isEmpty(items)}"><table><thead><tr><th>공고</th><th>공급 주소</th><th>확인 주소</th></tr></thead><tbody>
+            <tr th:each="p : ${items}"><td class="cell-title"><a class="row-link" th:href="@{${p.adminPath}}"><strong th:text="${p.houseNm}"></strong></a><small th:text="${p.typeLabel + (p.start != null ? ' · 접수 ' + #temporals.format(p.start, 'MM.dd') : '')}"></small></td>
+                <td data-label="공급 주소" th:text="${p.address != null ? p.address : '—'}"></td>
+                <td class="cell-actions"><form th:action="@{/admin/locations}" method="post" class="inline-setting"><input type="hidden" name="id" th:value="${p.id}"><input type="hidden" name="next" th:value="${'/admin/locations?all=' + all}">
+                    <input name="address" maxlength="200" th:value="${p.confirmed}" placeholder="예: 경기도 파주시 동패동 1234-5" aria-label="확인한 주소"><button class="secondary" type="submit">저장</button></form></td></tr>
+        </tbody></table></div>
+    </section>
+    <footer>TOADY · 관리자</footer>
+</main></div><script th:src="@{/admin/admin.js}" defer></script></body></html>

@@ -99,3 +99,13 @@ test('a temporary Kakao search error is a failure to retry, not an unresolved si
   const result = await resolveLocation(empty, { houseNm: '테스트 단지', hssplyAdres: '서울특별시 강남구 역삼동 123-4' }, { timeoutMs: 200 });
   assert.notEqual(result.status, 'ADDRESS', '결과 없음은 그대로 찾지 못함으로 판정한다');
 });
+test('operator-confirmed address is used only when it passes the same parcel and region checks',async()=>{
+ const detail={hssplyAdres:'경기도 파주시 파주운정3지구 주상복합 4블록',houseNm:'블록 단지',operatorNotice:{locationAddress:'경기도 파주시 동패동 400-7'}};
+ const ok=await resolveLocation(maps([row]),detail);
+ assert.equal(ok.status,'ADDRESS');assert.equal(ok.label,'운영자 확인 주소 기준 위치');assert.equal(ok.bcode,'4148012300');
+ // 지도 검색 결과가 확인 주소와 지번이 다르거나 다른 시·군이면 쓰지 않고 공통 판정(부지 미확정)으로 간다.
+ const wrongParcel={...row,address_name:'경기도 파주시 동패동 401',address:{...row.address,address_name:'경기도 파주시 동패동 401'}};
+ assert.equal((await resolveLocation(maps([wrongParcel]),detail)).status,'UNRESOLVED');
+ const otherCity={hssplyAdres:'경기도 구리시 갈매역세권 B-1블록',houseNm:'블록 단지',operatorNotice:{locationAddress:'경기도 파주시 동패동 400-7'}};
+ assert.equal((await resolveLocation(maps([row]),otherCity)).status,'UNRESOLVED','공급 주소와 다른 시·군의 확인 주소는 쓰지 않는다');
+});

@@ -59,7 +59,7 @@ class PublicPagesUnitTest {
         assertEquals("dasan", LivingAreas.match("경기도 남양주시 다산동 1", null).orElseThrow().slug());
         assertEquals("운정", LivingAreas.bySlug("unjeong").orElseThrow().label());
         assertTrue(LivingAreas.bySlug("운정").isEmpty());
-        assertEquals(LivingAreas.ALL.size(), LivingAreas.ALL.stream().map(LivingAreas.Area::slug).distinct().count());
+        assertEquals(LivingAreas.all().size(), LivingAreas.all().stream().map(LivingAreas.Area::slug).distinct().count());
     }
     @Test void calendarFeedFoldsLinesEscapesTextAndKeepsStableIds() {
         var date = LocalDate.of(2026, 12, 1);

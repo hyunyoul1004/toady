@@ -26,6 +26,7 @@ class AuditService(private val jdbc: JdbcTemplate) {
 			"RULE" -> "/admin/moderation"
 			"REPORT" -> "/admin/reports?status=all"
 			"JOB", "SCHEDULE" -> "/admin/jobs"
+			"SETTING" -> "/admin/settings"; "NOTICE" -> "/admin/notices"; "FAQ" -> "/admin/faq"; "AREA" -> "/admin/areas"; "PUSH" -> "/admin/push"
 			else -> null
 		}
 	}
@@ -76,9 +77,15 @@ class AuditService(private val jdbc: JdbcTemplate) {
 			"COMMENT_HIDE" to "이야기 숨김", "COMMENT_RESTORE" to "이야기 되살림", "REPORT_CLOSE" to "신고 처리",
 			"RULE_ADD" to "금칙어 추가", "RULE_TOGGLE" to "금칙어 사용 변경", "RULE_DELETE" to "금칙어 삭제",
 			"ANNOUNCEMENT_OVERRIDE" to "공고 숨김·안내 변경", "VISITOR_EXCLUDE" to "지표 제외 브라우저", "VISITOR_INCLUDE" to "지표 제외 해제",
-			"JOB_START" to "수집 시작", "JOB_CANCEL" to "수집 중지", "JOB_RETRY" to "수집 다시 실행", "SCHEDULE_SAVE" to "자동 수집 일정")
+			"JOB_START" to "수집 시작", "JOB_CANCEL" to "수집 중지", "JOB_RETRY" to "수집 다시 실행", "SCHEDULE_SAVE" to "자동 수집 일정",
+			"SETTING_SAVE" to "서비스 설정 변경", "NOTICE_ADD" to "공지 추가", "NOTICE_TOGGLE" to "공지 노출 변경", "NOTICE_DELETE" to "공지 삭제",
+			"FAQ_ADD" to "질문 추가", "FAQ_UPDATE" to "질문 수정", "FAQ_DELETE" to "질문 삭제", "AREA_ADD" to "생활권 추가", "AREA_UPDATE" to "생활권 수정",
+			"LOCATION_SAVE" to "위치 주소 확인", "RECOLLECT" to "공고 다시 수집", "OFFICIAL_WRITE" to "운영팀 이야기", "OFFICIAL_PIN" to "운영팀 글 고정 변경",
+			"COMMENT_HIDE_ALL" to "회원 이야기 모두 숨김", "PUSH_TEST" to "푸시 시험 발송", "PUSH_BROADCAST" to "푸시 전체 발송",
+			"MEMBER_MEMO" to "회원 메모", "MEMBER_RESEND" to "인증 메일 다시 보내기", "MEMBER_WITHDRAW" to "탈퇴 처리 대행")
 		val TARGETS = linkedMapOf("MEMBER" to "회원", "COMMENT" to "이야기", "REPORT" to "신고", "RULE" to "금칙어", "ANNOUNCEMENT" to "공고",
-			"VISITOR" to "지표 제외", "JOB" to "수집 작업", "SCHEDULE" to "수집 일정")
+			"VISITOR" to "지표 제외", "JOB" to "수집 작업", "SCHEDULE" to "수집 일정", "SETTING" to "서비스 설정", "NOTICE" to "사이트 공지",
+			"FAQ" to "자주 묻는 질문", "AREA" to "생활권", "PUSH" to "푸시")
 		private val log = LoggerFactory.getLogger(AuditService::class.java)
 	}
 }
