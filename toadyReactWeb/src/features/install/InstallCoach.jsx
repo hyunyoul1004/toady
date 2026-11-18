@@ -30,7 +30,7 @@ const COACH = {
       [AddCircleOutlineRounded, '현재 페이지 추가', true], [GraphicEqRounded, '읽어주기']
     ],
     second: <>메뉴에서 <b>‘현재 페이지 추가’</b>를 눌러요</>,
-    third: { text: <><b>‘홈 화면’</b>을 고르고 <b>‘추가’</b>를 눌러요</>, options: [[BookmarkBorderRounded, '북마크'], [AppsRounded, '빠른 실행'], [AddToHomeScreenRounded, '홈 화면', true]] }
+    third: { text: <><b>‘홈 화면’</b>을 누른 다음, 뜨는 창에서 <b>‘추가’</b>를 눌러요</>, options: [[BookmarkBorderRounded, '북마크'], [AppsRounded, '빠른 실행'], [AddToHomeScreenRounded, '홈 화면', true]] }
   },
   chrome: {
     arrow: 'top-right',

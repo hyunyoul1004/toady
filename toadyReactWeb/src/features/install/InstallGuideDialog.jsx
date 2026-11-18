@@ -27,7 +27,7 @@ const ANDROID_STEPS = {
   ],
   samsung: [
     { title: <>화면 맨 아래 오른쪽 끝의 <Key icon={<MoreVertRounded fontSize="inherit" />}>점 세 개</Key>를 눌러요</> },
-    { title: '‘현재 페이지 추가’를 누르고 ‘홈 화면’을 골라요', note: '메뉴 첫 화면에 없으면 ‘도구’ 안에 있어요.' },
+    { title: '‘현재 페이지 추가’를 누른 다음 ‘홈 화면’을 눌러요', note: '메뉴 첫 화면에 없으면 ‘도구’ 안에 있어요.' },
     { title: '‘추가’를 눌러요', note: APP_DRAWER_NOTE }
   ],
   whale: [
