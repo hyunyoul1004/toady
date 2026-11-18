@@ -49,5 +49,8 @@ class MemberVisitsTest {
         assertTrue(UsageEventController.validPair("push_denied", "tool/push"));
         assertTrue(UsageEventController.validPair("push_disable", "tool/push"));
         assertFalse(UsageEventController.validPair("push_disable", "tool/map-radius"));
+        assertTrue(UsageEventController.validPair("app_install", "tool/install-accepted"));
+        assertTrue(UsageEventController.validPair("app_install", "tool/install-guide"));
+        assertFalse(UsageEventController.validPair("app_install", "tool/push"));
     }
 }

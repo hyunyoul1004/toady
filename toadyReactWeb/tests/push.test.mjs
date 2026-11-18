@@ -204,3 +204,18 @@ test('kakao shares carry a source tag so KakaoTalk visits are counted', () => {
   assert.equal(kakaoTagged('https://www.toady.co.kr/announcements/apt/1/1?tabType=rate'), 'https://www.toady.co.kr/announcements/apt/1/1?tabType=rate&src=kakao.com');
   assert.equal(kakaoTagged('not a url'), 'not a url');
 });
+
+test('홈 화면 추가: 이미 앱으로 열었거나 방법이 없는 PC 브라우저에서는 메뉴를 숨긴다', async () => {
+  const { installMode, showInstallEntry } = await import('../src/features/install/installSupport.js');
+  const base = { ios: false, safari: false, inApp: false, standalone: false };
+  assert.equal(installMode({ ...base, standalone: true }, { canPrompt: true }), 'installed');
+  assert.equal(installMode(base, { canPrompt: true }), 'prompt');
+  assert.equal(installMode({ ...base, ios: true, safari: true }), 'ios');
+  assert.equal(installMode({ ...base, ios: true, inApp: true }), 'ios-safari');
+  assert.equal(installMode({ ...base, inApp: true }, { android: true }), 'in-app');
+  assert.equal(installMode(base, { android: true }), 'android');
+  assert.equal(installMode(base), 'none');
+  assert.equal(showInstallEntry('installed'), false);
+  assert.equal(showInstallEntry('none'), false);
+  assert.equal(showInstallEntry('android'), true);
+});

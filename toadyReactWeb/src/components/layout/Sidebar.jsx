@@ -7,6 +7,12 @@
  */
 import React, { useRef } from 'react';
 import { usePushAttention } from '@/features/push/usePushAttention';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { promptInstall, useInstallMode } from '@/features/install/installStore';
+import { showInstallEntry } from '@/features/install/installSupport';
+import InstallGuideDialog from '@/features/install/InstallGuideDialog';
+import { trackAction } from '@/features/analytics/trackAction';
+import AddToHomeScreenRoundedIcon from '@mui/icons-material/AddToHomeScreenRounded';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
@@ -49,6 +55,17 @@ export const DRAWER_WIDTH = 240;
 export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }) {
   const location = useLocation();
   const pushDot = usePushAttention();
+  const installMode = useInstallMode();
+  const [installGuide, setInstallGuide] = useHistoryOverlay('install-guide');
+  // 설치 창을 띄울 수 있으면 누른 순간 바로 띄우고(사용자 동작 안), 아니면 기기별 추가 방법을 보여 준다.
+  const addToHome = () => {
+    if (installMode === 'prompt') { void promptInstall(); return; }
+    trackAction('app_install', 'tool/install-guide');
+    // 모바일 메뉴(히스토리 한 단계)를 먼저 닫고 안내를 연다. 메뉴 위에 겹치지 않고, 뒤로가기 한 번에 안내만 닫힌다.
+    if (!mobileOpen) { setInstallGuide(true); return; }
+    window.addEventListener('popstate', () => setTimeout(() => setInstallGuide(true), 0), { once: true });
+    navigate(-1);
+  };
   const navigate = useNavigate();
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
@@ -178,6 +195,12 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
               </ListItemButton>
             </ListItem>;
           })}
+          {showInstallEntry(installMode) && <ListItem disablePadding sx={{ mb: 0.25 }}>
+            <ListItemButton onClick={addToHome} sx={{ borderRadius: 1.5, py: 0.75, px: 1.5, color: '#475569', '&:hover': { bgcolor: '#f8fafc' } }}>
+              <ListItemIcon sx={{ minWidth: 36, color: '#64748b' }}><AddToHomeScreenRoundedIcon /></ListItemIcon>
+              <ListItemText primary="홈 화면에 추가" secondary="앱처럼 바로 열기" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.86rem' }} secondaryTypographyProps={{ fontSize: '0.72rem' }} />
+            </ListItemButton>
+          </ListItem>}
         </List>
       </Box>
 
@@ -322,6 +345,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
       >
         {drawerContent}
       </Drawer>
+      <InstallGuideDialog open={Boolean(installGuide)} onClose={() => setInstallGuide(false)} mode={installMode} />
     </Box>
   );
 }

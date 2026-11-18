@@ -5,6 +5,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+// 설치 창 이벤트는 페이지를 연 직후 한 번만 오므로 화면보다 먼저 받아 둔다.
+import './features/install/installStore';
 import { loadKakaoMaps } from './config/loadKakaoMaps';
 
 // 전역 CSS 및 폰트 임포트 (필요한 경우)
