@@ -3,6 +3,8 @@
  * @description 데스크톱 월 달력의 일정 묶음 계산(순수 함수, React·별칭 import 없음 → node 테스트 가능)
  * - 같은 날 같은 공고(subscriptSeq)의 특별공급/1순위/2순위 행을 한 줄로 묶는다.
  * - 공고 전체 단계(특 → 1 → 2)를 함께 담아, 칸마다 같은 단지가 반복돼도 어느 단계인지 한눈에 보이게 한다.
+ * - 여러 날 이어지는 접수 기간의 이튿날부터(ongoing 행)는 연한 '접수 중' 줄로 묶는다. 그날 시작·순위 접수가 함께 있으면 보통 줄이다.
+ * 데스크톱(FullCalendar)·모바일 달력이 모두 이 묶음을 써서 칸마다 같은 공고·같은 건수를 보여 준다.
  */
 
 // 공급 유형별 표시 정보(색·이름의 단일 기준). 공급유형 필터 칩·PC 달력·모바일 달력이 모두 이 값을 쓴다.
@@ -44,9 +46,15 @@ export function normalizeScheduleDate(value) {
 const effectiveRceptSe = (row) => row.displayRceptSe || row.rceptSe || '01';
 const byStageOrder = (a, b) => rceptSeMeta(a.rceptSe).order - rceptSeMeta(b.rceptSe).order;
 
+// '접수 중' 줄은 같은 날 시작·순위 접수 줄 뒤에 쌓는다.
+const ONGOING_ORDER = 100;
+
 /**
  * 일정 행 목록 → 날짜·공고별 묶음 목록.
- * 반환 항목: { key, date, subscriptSeq, houseNm, commentCount, stages, allStages, primaryRceptSe, order }
+ * 반환 항목: { key, date, subscriptSeq, houseNm, commentCount, stages, allStages, primaryRceptSe, order, ongoing, endDate }
+ * - ongoing: 그날 행이 모두 '접수 기간 중'(시작일 다음 날부터) 행이면 true
+ * - endDate: '접수 중' 줄이 속한 기간의 마지막 날(행의 periodEnd, 없으면 접수 종료일). 마감 안내에 쓴다.
+ *   예: 특별공급 11.17~18, 1순위 19일이면 11.18 칸의 특별공급 '접수 중' 줄은 '~11.18 마감'.
  * - stages: 그 날짜의 단계들 [{ rceptSe, areaLabels }] (단계 순)
  * - allStages: 같은 목록 안 공고 전체 단계 [{ rceptSe, dates }] (단계 순) — 오늘 칸이 몇 번째 단계인지 표시용
  * 정렬: 날짜 → 그날 첫 단계 순서 → 단지명
@@ -77,10 +85,14 @@ export function groupCalendarSchedules(rows) {
         subscriptSeq: row.subscriptSeq,
         houseNm: row.houseNm || '',
         commentCount: 0,
+        ongoing: true,
+        endDate: null,
         stageMap: new Map()
       });
     }
     const group = groups.get(key);
+    if (!row.ongoing) group.ongoing = false;
+    if (row.ongoing && !group.endDate) group.endDate = normalizeScheduleDate(row.periodEnd || row.rceptEndde);
     if (!group.houseNm && row.houseNm) group.houseNm = row.houseNm;
     group.commentCount = Math.max(group.commentCount, Number(row.subscriptCommentCnt) || 0);
     if (!group.stageMap.has(rceptSe)) group.stageMap.set(rceptSe, new Set());
@@ -98,7 +110,8 @@ export function groupCalendarSchedules(rows) {
       .map(([rceptSe, dates]) => ({ rceptSe, dates: Array.from(dates).sort() }))
       .sort(byStageOrder);
     const primaryRceptSe = stages[0].rceptSe;
-    return { ...group, stages, allStages, primaryRceptSe, order: rceptSeMeta(primaryRceptSe).order };
+    const order = rceptSeMeta(primaryRceptSe).order + (group.ongoing ? ONGOING_ORDER : 0);
+    return { ...group, stages, allStages, primaryRceptSe, order };
   });
 
   return result.sort((a, b) => (
@@ -125,13 +138,48 @@ export function usedRceptSes(groups) {
   return Array.from(used).sort((a, b) => rceptSeMeta(a).order - rceptSeMeta(b).order);
 }
 
-/** 접근성·말줄임 보완용 설명: "단지명 · 1순위(해당지역) · 댓글 3" */
-export function describeGroup(group) {
+/**
+ * 데스크톱 달력 칸이 과하게 길어지지 않게 '접수 중' 줄만 접는다. 한 날짜의 접수 중 줄이 limit개를 넘으면
+ * 앞의 keep개만 남기고 나머지 개수를 folded[날짜]에 담는다(시작·순위 접수 줄은 접지 않는다).
+ * 접힌 줄은 '접수 중 N건 더'를 누르면 여는 날짜 목록(전체 묶음)에서 본다.
+ * 반환: { shown: 달력에 그릴 묶음, folded: { 'YYYY-MM-DD': 접힌 개수 } }
+ */
+export function foldOngoing(groups, limit = 4, keep = 3) {
+  const ongoingByDate = {};
+  (groups || []).forEach((group) => { if (group.ongoing) ongoingByDate[group.date] = (ongoingByDate[group.date] || 0) + 1; });
+  const seen = {};
+  const folded = {};
+  const shown = (groups || []).filter((group) => {
+    if (!group.ongoing || ongoingByDate[group.date] <= limit) return true;
+    seen[group.date] = (seen[group.date] || 0) + 1;
+    if (seen[group.date] <= keep) return true;
+    folded[group.date] = (folded[group.date] || 0) + 1;
+    return false;
+  });
+  return { shown, folded };
+}
+
+/** 범례용: 목록에 '접수 중' 줄이 있는지 */
+export function hasOngoing(groups) {
+  return (groups || []).some((group) => group.ongoing);
+}
+
+/** '2026-11-23' → '11.23' */
+const shortDate = (iso) => (iso ? `${Number(iso.slice(5, 7))}.${iso.slice(8, 10)}` : '');
+
+/** 그날 단계 설명: "1순위(해당지역) · 2순위", '접수 중' 줄이면 "무순위 접수 기간 중(~11.23 마감)" */
+export function describeStages(group) {
   const stages = group.stages.map((stage) => {
     const label = rceptSeMeta(stage.rceptSe).label;
     return stage.areaLabels.length ? `${label}(${stage.areaLabels.join('/')})` : label;
   });
-  const parts = [group.houseNm, ...stages];
+  if (!group.ongoing) return stages.join(' · ');
+  return `${stages.join(' · ')} 접수 기간 중${group.endDate ? `(~${shortDate(group.endDate)} 마감)` : ''}`;
+}
+
+/** 접근성·말줄임 보완용 설명: "단지명 · 1순위(해당지역) · 댓글 3" */
+export function describeGroup(group) {
+  const parts = [group.houseNm, describeStages(group)];
   if (group.commentCount > 0) parts.push(`이야기 ${group.commentCount}`);
   return parts.filter(Boolean).join(' · ');
 }

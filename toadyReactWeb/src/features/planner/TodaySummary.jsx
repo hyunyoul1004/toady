@@ -40,7 +40,7 @@ export default function TodaySummary({ savedCount }) {
     </div>
     <div className="today-summary-grid">
       <Link className="today-tile" to="/this-week?filter=open">
-        <span>오늘 접수</span><strong>{value(numbers.openToday, weeklyReady)}<em>건</em></strong><small>전국 접수 중인 공고</small>
+        <span>오늘 접수</span><strong>{value(numbers.openToday, weeklyReady)}<em>건</em></strong><small>오늘 신청할 수 있는 공고</small>
       </Link>
       <Link className="today-tile" to="/this-week#week-winners">
         <span>이번 주 발표</span><strong>{value(numbers.winners, weeklyReady)}<em>건</em></strong><small>이번 주 청약 일정</small>

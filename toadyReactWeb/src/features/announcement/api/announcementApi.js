@@ -13,6 +13,10 @@ import apiClient from '@/api/client';
 import { modelPrices } from '@/features/planner/researchUtils';
 import { formatDate, formatDateRange } from '@/utils/date.util';
 import { buildAnnouncementQueryParams } from '@/features/announcement/api/announcementParams';
+import { scheduleRows } from '@/features/announcement/applyDays';
+
+/** 서버 통합 검색(AnnouncementSearchService.searchAll)이 한 번에 허용하는 범위: (page+1)×size ≤ 1000. */
+const MAX_LIST_ITEMS = 1000;
 
 /** 공고 유형 → 화면의 접수 구분 코드(rceptSe). 달력 색·필터가 이 코드를 쓴다. */
 const TYPE_TO_RCEPT_SE = {
@@ -138,64 +142,6 @@ function safeParts(parts) {
   return parts;
 }
 
-/** 유효한 날짜면 'YYYY-MM-DD', 아니면 null */
-function toDate(value) {
-  const d = formatDate(value);
-  return d && d !== '-' ? d : null;
-}
-
-/**
- * 순위(1/2순위) 컬럼들을 일정으로 변환.
- * 해당지역/경기/기타지역 접수일이 같으면 1건, 다르면 날짜별로 지역명을 붙여 분리.
- */
-function buildRankSchedules(rceptSe, columns) {
-  const byDate = new Map();
-  columns.forEach(({ label, value }) => {
-    const date = toDate(value);
-    if (!date) return;
-    if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date).push(label);
-  });
-
-  const multi = byDate.size > 1;
-  return Array.from(byDate.entries()).map(([date, labels]) => ({
-    rceptSe,
-    inDate: date,
-    areaLabel: multi ? labels.join('/') : ''
-  }));
-}
-
-/**
- * APT 공고 1건(row) → 특별공급(01) / 1순위(02) / 2순위(03) 일정 목록.
- * 특별공급 전용 컬럼이 없으므로 청약접수 시작일(rceptBgnde)이 1순위 접수일보다 앞서면 특별공급일로 간주.
- */
-function buildAptSchedules(item) {
-  const rank1 = buildRankSchedules('02', [
-    { label: '해당지역', value: item.gnrlRnk1CrspareaRcptde },
-    { label: '경기', value: item.gnrlRnk1EtcGgRcptde },
-    { label: '기타지역', value: item.gnrlRnk1EtcAreaRcptde }
-  ]);
-  const rank2 = buildRankSchedules('03', [
-    { label: '해당지역', value: item.gnrlRnk2CrspareaRcptde },
-    { label: '경기', value: item.gnrlRnk2EtcGgRcptde },
-    { label: '기타지역', value: item.gnrlRnk2EtcAreaRcptde }
-  ]);
-
-  const schedules = [];
-  const rceptBgnde = toDate(item.rceptBgnde);
-  const firstRank1 = rank1.map((s) => s.inDate).sort()[0];
-  if (rceptBgnde && (!firstRank1 || rceptBgnde < firstRank1)) {
-    schedules.push({ rceptSe: '01', inDate: rceptBgnde, areaLabel: '' });
-  }
-  schedules.push(...rank1, ...rank2);
-
-  // 순위 정보가 하나도 없으면 접수시작일로 1건 표시
-  if (schedules.length === 0 && rceptBgnde) {
-    schedules.push({ rceptSe: '02', inDate: rceptBgnde, areaLabel: '' });
-  }
-  return schedules;
-}
-
 /** 공고 API 모음. 각 함수는 apiClient(fetch 기반 공통 클라이언트, 로그인 토큰 자동 첨부)로 요청하고 화면용 모양으로 바꿔 돌려준다. */
 export const announcementApi = {
   /**
@@ -207,18 +153,25 @@ export const announcementApi = {
 
     const res = await apiClient.get('/api/v1/announcements', queryParams);
     const content = [...(res.data?.content || [])];
+    let truncated = false;
     if (params.page == null) {
       // 달력은 고른 기간의 공고가 모두 있어야 하므로, page를 지정하지 않으면 나머지 페이지도 차례로 받아 합친다.
+      // 서버 통합 검색은 (page+1)×size가 MAX_LIST_ITEMS를 넘으면 400으로 거절하므로 그 앞 페이지까지만 받는다.
+      // 넘는 부분(접수 시작일이 오래된 공고)은 빠지지만 달력 전체가 오류가 되지는 않게 하고, truncated로 알린다.
+      const size = Number(queryParams.size) || 100;
       const totalPages = res.data?.totalPages || 1;
-      for (let page = 1; page < totalPages; page += 1) {
+      const lastPage = Math.min(totalPages, Math.floor(MAX_LIST_ITEMS / size));
+      truncated = totalPages > lastPage;
+      if (truncated) console.warn(`공고가 ${MAX_LIST_ITEMS}건을 넘어 접수 시작일이 오래된 일부 공고는 달력에 빠질 수 있습니다.`);
+      for (let page = 1; page < lastPage; page += 1) {
         const next = await apiClient.get('/api/v1/announcements', { ...queryParams, page });
         content.push(...(next.data?.content || []));
       }
     }
 
-    // UI 컴포넌트 호환 매핑
-    // - APT: 한 공고(row)의 특별공급/1순위/2순위 컬럼을 각각의 일정으로 펼침
-    // - 그 외 유형: 청약접수 시작일(rceptBgnde) 기준 1건
+    // UI 컴포넌트 호환 매핑: 공고 한 건(row)을 신청 가능일마다 한 행으로 펼친다(규칙: features/announcement/applyDays.js).
+    // - APT: 특별공급/1순위/2순위 접수일. 순위 날짜가 없으면 접수 기간 전체.
+    // - 그 외 유형: 접수 시작일~종료일의 모든 날. 이튿날부터는 ongoing(달력의 연한 '접수 중' 줄).
     const resultList = content.flatMap((item) => {
       const type = item.type || 'apt';
       const houseManageNo = item.houseManageNo;
@@ -238,21 +191,8 @@ export const announcementApi = {
         subscriptCommentCnt: item.commentCount || 0
       };
 
-      if (type !== 'apt') {
-        const effectiveRceptSe = displayRceptSe || TYPE_TO_RCEPT_SE[type] || '01';
-        return [{
-          ...base,
-          rceptSe: effectiveRceptSe,
-          displayRceptSe: effectiveRceptSe,
-          inDate: formatDate(item.rceptBgnde)
-        }];
-      }
-
-      return buildAptSchedules(item).map((s) => ({
-        ...base,
-        ...s,
-        displayRceptSe: s.rceptSe
-      }));
+      return scheduleRows({ ...item, type }, displayRceptSe || TYPE_TO_RCEPT_SE[type] || '01')
+        .map((row) => ({ ...base, ...row, displayRceptSe: row.rceptSe }));
     });
 
     return {
@@ -260,6 +200,7 @@ export const announcementApi = {
       data: {
         ...res.data,
         resultList,
+        truncated,
         pagination: {
           page: res.data?.page || 0,
           size: res.data?.size || resultList.length,

@@ -7,7 +7,7 @@ const range = { startStr: '2026-10-25', endStr: '2026-12-14' };
 
 test('server params map rceptSe toggles to types and drop client-only search areas', () => {
   assert.deepEqual(buildAnnouncementQueryParams({ ...all, ...range, citys: [{ key: 'area_운정' }] }),
-    { startDate: '2026-10-25', endDate: '2026-12-14', page: 0, size: 100 });
+    { startDate: '2026-10-25', endDate: '2026-12-14', overlap: true, page: 0, size: 100 });
   const unranked = { ...all, rceptSe01: 'N', rceptSe02: 'N', rceptSe03: 'N', rceptSe04: 'N', rceptSe05: 'N', ...range };
   assert.equal(buildAnnouncementQueryParams(unranked).types, 'remaining,optional');
   assert.equal(buildAnnouncementQueryParams({ ...range, types: 'apt', keyword: '운정', regionCode: '41' }).types, 'apt');

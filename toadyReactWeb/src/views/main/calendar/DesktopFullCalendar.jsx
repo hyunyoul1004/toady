@@ -19,15 +19,23 @@ const PLUGINS = [dayGridPlugin, interactionPlugin];
  * @param wrapperRef 부모가 날짜 칸(.fc-daygrid-day)을 찾아 더보기 목록을 붙이려고 넘기는 ref
  * @param events groupCalendarSchedules 결과를 FullCalendar 이벤트 모양으로 바꾼 목록
  * @param onDatesSet 보이는 달이 바뀌면 FullCalendar가 부른다(부모가 월을 Main에 알린다)
+ * @param onDayListOpen '접수 중 N건 더'를 누르면 그 날짜 목록(히스토리와 연결된 팝오버)을 연다
  */
-export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDate, events, legendCodes, onEventOpen, onMoreLinkClick, onDatesSet }) {
+export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDate, events, legendCodes, showOngoingLegend = false, onEventOpen, onMoreLinkClick, onDayListOpen, onDatesSet }) {
   const handleEventClick = (info) => {
     info.jsEvent?.preventDefault();
+    const more = info.event.extendedProps?.more;
+    if (more) { onDayListOpen?.(more.date); return; }
     onEventOpen(info.event.extendedProps?.group?.subscriptSeq);
   };
 
   // 말줄임된 단지명·단계·지역을 마우스 올림(title)과 스크린리더(aria-label)로 확인할 수 있게 한다.
   const handleEventDidMount = (info) => {
+    const more = info.event.extendedProps?.more;
+    if (more) {
+      info.el.setAttribute('aria-label', `접수 기간 중인 공고 ${more.count}건 더 보기`);
+      return;
+    }
     const group = info.event.extendedProps?.group;
     if (!group) return;
     const text = describeGroup(group);
@@ -38,11 +46,13 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
   // 한 줄 렌더링: 단계 뱃지(특·1·2) + 단지명(최대 2줄) + 이야기 수.
   // 'GTX운정중앙역 시티프라디움 3단지/4단지'처럼 앞부분이 같은 이름은 뒤의 단지 번호가 보이도록 2줄까지 펼친다.
   const renderEventContent = (eventInfo) => {
+    const more = eventInfo.event.extendedProps?.more;
+    if (more) return <div className="tc-event-more">접수 중 {more.count}건 더</div>;
     const group = eventInfo.event.extendedProps?.group;
     if (!group) return null;
     const meta = rceptSeMeta(group.primaryRceptSe);
     return (
-      <div className="tc-event" style={{ '--tc-accent': meta.accent }}>
+      <div className={`tc-event${group.ongoing ? ' is-ongoing' : ''}`} style={{ '--tc-accent': meta.accent }}>
         <StageBadges group={group} />
         <span className="tc-title">{group.houseNm}</span>
         {group.commentCount > 0 && <span className="tc-count">{group.commentCount}</span>}
@@ -63,6 +73,13 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
               </li>
             );
           })}
+          {/* 접수 기간이 여러 날인 공고의 이튿날부터 보이는 연한 줄 */}
+          {showOngoingLegend && (
+            <li className="tc-legend-ongoing">
+              <span className="tc-legend-sample" aria-hidden="true" />
+              접수 기간 중(시작일 이후)
+            </li>
+          )}
         </Box>
       )}
       <FullCalendar
@@ -75,7 +92,8 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
         weekends={false}
         firstDay={1}
         height="auto"
-        // 하루 일정을 모두 펼쳐 한눈에 본다(사용자 요청). 같은 단지는 calendarGroup에서 한 줄로 묶여 있어 칸이 과하게 길어지지 않는다.
+        // 시작·순위 접수 줄은 하루 일정을 모두 펼쳐 한눈에 본다(사용자 요청). 같은 단지는 calendarGroup에서 한 줄로 묶는다.
+        // 접수 기간 중 줄은 하루 4개를 넘으면 부모(SubscriptionCalendar)가 '접수 중 N건 더'로 접어 넘긴다(foldOngoing).
         dayMaxEventRows={false}
         moreLinkClick={onMoreLinkClick}
         moreLinkContent={(arg) => `+${arg.num}건 더보기`}

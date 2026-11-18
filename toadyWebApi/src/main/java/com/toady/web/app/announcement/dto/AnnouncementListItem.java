@@ -5,7 +5,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * 여러 공고 유형의 결과를 통합 목록에서 공통으로 표현합니다.
  * 유형마다 엔티티 필드 이름이 달라서 AnnouncementListMapper가 이 한 가지 모양으로 바꾼다.
- * GET /api/v1/announcements(통합 목록) 응답의 content 항목이다. 순위별 접수일은 APT에만 있고 나머지는 null이다.
+ * GET /api/v1/announcements(통합 목록) 응답의 content 항목이다. 특별공급·순위별 접수일은 APT에만 있고 나머지는 null이다.
+ * 그날 신청할 수 있는지는 ApplyDays가 이 필드들로 판정한다(웹 applyDays.js와 같은 규칙).
  */
 @Schema(description = "전체 공고 통합 목록 항목")
 public record AnnouncementListItem(
@@ -33,6 +34,10 @@ public record AnnouncementListItem(
         String rceptBgnde,
         @Schema(description = "청약접수 종료일", example = "2026-10-10")
         String rceptEndde,
+        @Schema(description = "특별공급 접수 시작일(APT만, 나머지 유형은 null)", example = "2026-10-01")
+        String spsplyRceptBgnde,
+        @Schema(description = "특별공급 접수 종료일(APT만, 나머지 유형은 null)", example = "2026-10-01")
+        String spsplyRceptEndde,
         @Schema(description = "1순위 해당지역 접수시작일")
         String gnrlRnk1CrspareaRcptde,
         @Schema(description = "1순위 해당지역 접수종료일")
@@ -67,7 +72,7 @@ public record AnnouncementListItem(
         return new AnnouncementListItem(
                 type, houseManageNo, pblancNo, houseNm,
                 houseSecd, houseSecdNm, regionCode, regionName,
-                hssplyAdres, hssplyZip, rceptBgnde, rceptEndde,
+                hssplyAdres, hssplyZip, rceptBgnde, rceptEndde, spsplyRceptBgnde, spsplyRceptEndde,
                 gnrlRnk1CrspareaRcptde, gnrlRnk1CrspareaEndde, gnrlRnk1EtcGgRcptde, gnrlRnk1EtcGgEndde,
                 gnrlRnk1EtcAreaRcptde, gnrlRnk1EtcAreaEndde, gnrlRnk2CrspareaRcptde, gnrlRnk2CrspareaEndde,
                 gnrlRnk2EtcGgRcptde, gnrlRnk2EtcGgEndde, gnrlRnk2EtcAreaRcptde, gnrlRnk2EtcAreaEndde,

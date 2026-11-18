@@ -2,7 +2,7 @@
  * @file SubscriptionCalendar.jsx
  * @description 청약 일정 달력 컴포넌트(데스크톱: FullCalendar를 지연 로딩, 모바일: MobileApplyhomeCalendar)
  * - 쓰이는 곳: Main.jsx의 캘린더 보기. 공고 목록(subscriptList)은 Main이 조회·필터해서 넘겨준다. 이 컴포넌트는 API를 부르지 않는다.
- * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶는다. 하루 일정은 모두 펼쳐 보여 준다(DesktopFullCalendar의 dayMaxEventRows=false).
+ * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶는다. 접수 기간이 여러 날인 공고는 이튿날부터 연한 '접수 중' 줄로 매일 보인다. 하루 일정은 모두 펼쳐 보여 준다(DesktopFullCalendar의 dayMaxEventRows=false).
  *   '+N건 더보기'를 누르면 FullCalendar 기본 팝오버 대신 히스토리와 연결된 날짜 목록(Popover)을 연다.
  * - 주말(토/일) 제외 (weekends: false)
  * - 날짜 이동 시 onMonthChange로 월을 알리고, 조회 기간은 Main이 계산한다
@@ -31,7 +31,7 @@ import { dayjs } from '@/utils/date.util';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import MobileApplyhomeCalendar from './MobileApplyhomeCalendar';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { groupCalendarSchedules, groupsByDate, usedRceptSes, describeGroup, rceptSeMeta } from './calendarGroup';
+import { groupCalendarSchedules, groupsByDate, usedRceptSes, hasOngoing, foldOngoing, describeGroup, describeStages, rceptSeMeta } from './calendarGroup';
 import StageBadges from './StageBadges';
 import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
 import './SubscriptionCalendar.css';
@@ -72,20 +72,39 @@ export function SubscriptionCalendar(props) {
   const groups = useMemo(() => groupCalendarSchedules(props.subscriptList), [props.subscriptList]);
   const groupMap = useMemo(() => groupsByDate(groups), [groups]);
   const legendCodes = useMemo(() => usedRceptSes(groups), [groups]);
+  const showOngoingLegend = useMemo(() => hasOngoing(groups), [groups]);
 
-  const events = useMemo(() => groups.map((group) => {
+  // '접수 기간 중' 줄(시작일 다음 날부터)은 흰 바탕·옅은 글자로 그려 시작일·순위 접수 줄과 구분한다.
+  // 한 칸의 접수 중 줄이 4개를 넘으면 3개만 그리고 나머지는 '접수 중 N건 더' 한 줄로 접는다(누르면 그날 목록).
+  // 운영 데이터(2026-08-19~11-19 평일 67일)에서 접수 중 줄은 하루 최대 6개, 4개 초과는 3일이었다.
+  const events = useMemo(() => {
+    const { shown, folded } = foldOngoing(groups);
+    const moreEvents = Object.entries(folded).map(([date, count]) => ({
+      id: `${date}|ongoing-more`,
+      title: `접수 중 ${count}건 더`,
+      start: date,
+      allDay: true,
+      backgroundColor: '#ffffff',
+      borderColor: '#ffffff',
+      textColor: '#2563eb',
+      classNames: ['tc-ongoing-more'],
+      extendedProps: { more: { date, count }, order: 1000 }
+    }));
+    return [...shown.map((group) => {
     const meta = rceptSeMeta(group.primaryRceptSe);
     return {
       id: group.key,
       title: group.houseNm,
       start: group.date,
       allDay: true,
-      backgroundColor: meta.tint,
-      borderColor: meta.tint,
-      textColor: meta.text,
+      backgroundColor: group.ongoing ? '#ffffff' : meta.tint,
+      borderColor: group.ongoing ? '#e2e8f0' : meta.tint,
+      textColor: group.ongoing ? '#475569' : meta.text,
+      classNames: group.ongoing ? ['tc-ongoing'] : [],
       extendedProps: { group, order: group.order }
     };
-  }), [groups]);
+    }), ...moreEvents];
+  }, [groups]);
 
   // 날짜별 '더보기' 목록: 히스토리 한 단계로 열어 뒤로가기로 닫히고, 앞으로가기로 다시 열린다.
   const wrapperRef = useRef(null);
@@ -397,8 +416,10 @@ export function SubscriptionCalendar(props) {
               initialDate={currentDate}
               events={events}
               legendCodes={legendCodes}
+              showOngoingLegend={showOngoingLegend}
               onEventOpen={openDetail}
               onMoreLinkClick={handleMoreLinkClick}
+              onDayListOpen={setOverlayDate}
               onDatesSet={handleDatesSet}
             />
           </Suspense>
@@ -437,7 +458,7 @@ export function SubscriptionCalendar(props) {
                           aria-label={`${describeGroup(group)} 상세 보기`}
                           sx={{
                             width: '100%', justifyContent: 'flex-start', textAlign: 'left', gap: 1.2,
-                            px: 1.25, py: 1, borderRadius: 1.5, borderLeft: `3px solid ${meta.accent}`,
+                            px: 1.25, py: 1, borderRadius: 1.5, borderLeft: group.ongoing ? `3px dashed ${meta.accent}` : `3px solid ${meta.accent}`,
                             mb: 0.5, bgcolor: '#ffffff',
                             '&:hover, &.Mui-focusVisible': { bgcolor: meta.tint }
                           }}
@@ -448,10 +469,7 @@ export function SubscriptionCalendar(props) {
                               {group.houseNm}
                             </Typography>
                             <Typography sx={{ fontSize: '0.74rem', color: '#64748b', mt: 0.2 }}>
-                              {group.stages.map((stage) => {
-                                const label = rceptSeMeta(stage.rceptSe).label;
-                                return stage.areaLabels.length ? `${label}(${stage.areaLabels.join('/')})` : label;
-                              }).join(' · ')}
+                              {describeStages(group)}
                             </Typography>
                           </Box>
                           {group.commentCount > 0 && (

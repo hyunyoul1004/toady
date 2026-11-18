@@ -292,7 +292,21 @@ public class AnnouncementSearchService {
             }
 
             // 날짜 조건은 모집공고일이 아닌 청약접수 시작일을 대상으로 적용합니다.
-            if (search.startDate() != null) {
+            // overlap이면 접수 기간(시작일~종료일, 종료일이 없으면 시작일 하루)이 조회 범위와 겹치는 공고를 찾는다.
+            // 시작일은 ApplyDays.MAX_PERIOD_DAYS(400일)까지만 거슬러 올라간다. 종료일이 99991231처럼 잘못 들어온 공고가
+            // 매달 조회돼 페이지·건수를 차지하지 않게 하고, 화면이 신청일로 펼치는 범위(같은 상수)와 맞춘다.
+            if (search.overlap() && search.startDate() != null) {
+                String compactDate = search.startDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+                String earliestStart = search.startDate().minusDays(com.toady.web.app.announcement.ApplyDays.MAX_PERIOD_DAYS)
+                        .format(DateTimeFormatter.BASIC_ISO_DATE);
+                var start = normalizedReceptionStartDate(root, builder);
+                var end = normalizedReceptionEndDate(root, builder);
+                predicates = builder.and(
+                        predicates,
+                        builder.greaterThanOrEqualTo(start, earliestStart),
+                        builder.greaterThanOrEqualTo(builder.coalesce(end, start), compactDate)
+                );
+            } else if (search.startDate() != null) {
                 String compactDate = search.startDate().format(DateTimeFormatter.BASIC_ISO_DATE);
                 predicates = builder.and(
                         predicates,
@@ -335,6 +349,24 @@ public class AnnouncementSearchService {
                 builder.literal("-"),
                 builder.literal("")
         );
+    }
+
+    // 접수 종료일을 "20261010" 꼴로 맞춘 SQL 식. 빈 문자열은 null로 바꿔(nullif) 시작일로 대신할 수 있게 한다.
+    private static <T> Expression<String> normalizedReceptionEndDate(
+            Root<T> root,
+            CriteriaBuilder builder
+    ) {
+        String receptionEndDateField = root.getJavaType() == AptAnnouncementEntity.class
+                ? "rceptEndde"
+                : "subscrptRceptEndde";
+        Expression<String> digits = builder.function(
+                "replace",
+                String.class,
+                root.get(receptionEndDateField),
+                builder.literal("-"),
+                builder.literal("")
+        );
+        return builder.nullif(digits, "");
     }
 
     // 어노테이션으로는 못 거르는 필드 간 검사.

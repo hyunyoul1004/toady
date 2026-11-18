@@ -93,6 +93,20 @@ test('calendar fetches all pages and keeps all 201 announcements', async () => {
   assert.equal(result.data.resultList.length, 201);
 });
 
+test('calendar stops at the server search limit instead of failing', async () => {
+  const pages = [];
+  const h = await harness(async url => {
+    const page = Number(new URL(url, 'http://localhost').searchParams.get('page'));
+    pages.push(page);
+    if (page >= 10) throw new Error('통합 검색은 (page + 1) × size가 1000 이하인 범위에서 조회할 수 있습니다.');
+    return response({ data: { content: Array.from({ length: 100 }, (_, i) => row(page * 100 + i)), page, size: 100, totalPages: 12, totalElements: 1150 } });
+  });
+  const result = await h.api.getAnnouncements({ startStr: '2026-11-01', endStr: '2026-11-30' });
+  assert.deepEqual(pages, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(result.data.truncated, true);
+  assert.equal(new Set(result.data.resultList.map(item => item.subscriptSeq)).size, 1000);
+});
+
 test('explicit page request stays paginated', async () => {
   let calls = 0;
   const h = await harness(async () => {

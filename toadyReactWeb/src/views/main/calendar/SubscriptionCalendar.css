@@ -212,3 +212,48 @@
     display: none;
   }
 }
+
+/* '접수 기간 중' 줄: 여러 날 접수하는 공고의 이튿날부터. 흰 바탕·점선 띠·보통 굵기로 시작일 줄보다 약하게 보이고, 한 줄로만 쓴다. */
+.subscription-calendar-wrapper .fc-daygrid-event.tc-ongoing {
+  font-size: 12px;
+}
+
+.tc-event.is-ongoing {
+  border-left-style: dashed;
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+
+.tc-event.is-ongoing .tc-title {
+  font-weight: 500;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.tc-badge.is-ongoing {
+  background-color: #ffffff;
+  border: 1px solid var(--tc-accent, #94a3b8);
+  color: var(--tc-text, #64748b);
+}
+
+.subscription-calendar-wrapper .tc-legend .tc-legend-sample {
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  border: 1px solid #e2e8f0;
+  border-left: 3px dashed #94a3b8;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+/* '접수 중 N건 더': 하루 접수 중 줄이 많을 때 접힌 나머지. 누르면 그날 목록이 열린다. */
+.tc-event-more {
+  padding: 1px 6px 1px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.subscription-calendar-wrapper .fc-daygrid-event.tc-ongoing-more:hover .tc-event-more {
+  text-decoration: underline;
+}

@@ -31,6 +31,9 @@ public class AnnouncementSearch {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate endDate;
 
+    @Schema(description = "true면 startDate~endDate를 접수 시작일이 아니라 접수 기간(시작일~종료일)과 겹치는지로 본다. 달력이 지난달에 시작해 이번 달까지 접수하는 공고를 함께 받을 때 쓴다.", example = "true")
+    private boolean overlap;
+
     @Schema(description = "조회할 페이지(0부터 시작, 통합 목록은 (page+1)×size 최대 1000)", minimum = "0", example = "0")
     // @Min·@Max: 숫자 범위 검증. 너무 큰 페이지 범위는 서비스가 한 번 더 막는다.
     @Min(0)
@@ -87,6 +90,18 @@ public class AnnouncementSearch {
 
     public void setEndDate(LocalDate endDate) {
         this.endDate = endDate;
+    }
+
+    public boolean overlap() {
+        return overlap;
+    }
+
+    public boolean isOverlap() {
+        return overlap;
+    }
+
+    public void setOverlap(boolean overlap) {
+        this.overlap = overlap;
     }
 
     public int page() {

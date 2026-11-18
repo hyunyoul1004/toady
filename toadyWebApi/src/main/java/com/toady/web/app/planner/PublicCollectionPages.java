@@ -122,12 +122,19 @@ public class PublicCollectionPages {
         return PublicHtml.page(domain, "/weekly", title, description, domain + "/weekly", body);
     }
 
-    /** 앱 '이번 주 청약' 화면용 목록 한 줄. status: OPEN·UPCOMING·CLOSED. */
-    public record WeeklyItem(String id, String type, String houseNm, String houseKind, String address, String start, String end, String status, String region) {
-        static WeeklyItem of(PublicAreaPage.Item item) {
+    /**
+     * 앱 '이번 주 청약' 화면용 목록 한 줄. status: OPEN·UPCOMING·CLOSED(접수 시작일~종료일 기준, '접수 중' 뱃지에 쓴다).
+     * applyToday: 오늘 실제로 신청할 수 있는지(ApplyDays). APT는 특별공급·순위별 접수일에만 true라 접수 기간 중이어도 false일 수 있다.
+     * nextApplyDay: 오늘을 포함해 가장 가까운 신청일(없으면 null). '오늘 접수' 숫자와 달력 오늘 칸이 같은 판정을 쓴다.
+     */
+    public record WeeklyItem(String id, String type, String houseNm, String houseKind, String address, String start, String end, String status, String region,
+                             boolean applyToday, String nextApplyDay) {
+        static WeeklyItem of(PublicAreaPage.Item item, LocalDate today) {
             var source = item.source();
+            LocalDate next = com.toady.web.app.announcement.ApplyDays.next(source, today);
             return new WeeklyItem(item.id(), source.type(), source.houseNm(), source.houseSecdNm(), source.hssplyAdres(),
-                item.start() == null ? null : item.start().toString(), item.end() == null ? null : item.end().toString(), item.status().name(), source.regionName());
+                item.start() == null ? null : item.start().toString(), item.end() == null ? null : item.end().toString(), item.status().name(), source.regionName(),
+                today.equals(next), next == null ? null : next.toString());
         }
     }
     public record WeeklyWinner(String id, String houseNm, String address, String date) { }
@@ -143,9 +150,9 @@ public class PublicCollectionPages {
         WeeklySummary body = PublicHtml.load(weeklyCache, today.toString(), () -> {
             Weekly data = weeklyData(today);
             return new WeeklySummary(data.week().monday().toString(), data.week().sunday().toString(), data.next().monday().toString(), data.next().sunday().toString(), today.toString(),
-                data.current().stream().map(WeeklyItem::of).toList(),
+                data.current().stream().map(item -> WeeklyItem.of(item, today)).toList(),
                 data.winners().stream().map(w -> new WeeklyWinner(w.id(), w.houseNm(), w.address(), w.date() == null ? null : w.date().toString())).toList(),
-                data.nextWeek().stream().map(WeeklyItem::of).toList());
+                data.nextWeek().stream().map(item -> WeeklyItem.of(item, today)).toList());
         });
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
@@ -160,10 +167,11 @@ public class PublicCollectionPages {
     public ResponseEntity<List<WeeklyItem>> activeAnnouncements() {
         LocalDate today = today();
         List<WeeklyItem> body = PublicHtml.load(activeCache, today.toString(), () -> {
-            var groups = PublicAreaPage.classify(startingBetween(today.minusDays(LOOKBACK_DAYS), today.plusDays(60)), today, 0);
+            // 접수 기간이 오늘~60일 뒤와 겹치는 공고 = 접수 중·예정 공고(시작일은 최대 MAX_PERIOD_DAYS일 전까지).
+            var groups = PublicAreaPage.classify(overlapping(today, today.plusDays(60)), today, 0);
             List<WeeklyItem> items = new ArrayList<>();
-            groups.open().forEach(item -> items.add(WeeklyItem.of(item)));
-            groups.upcoming().forEach(item -> items.add(WeeklyItem.of(item)));
+            groups.open().forEach(item -> items.add(WeeklyItem.of(item, today)));
+            groups.upcoming().forEach(item -> items.add(WeeklyItem.of(item, today)));
             return items;
         });
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
@@ -173,8 +181,9 @@ public class PublicCollectionPages {
     /** 이번 주 접수(접수 기간이 이번 주와 겹침)·이번 주 APT 발표·다음 주 접수 시작. HTML과 앱 화면이 함께 쓴다. */
     Weekly weeklyData(LocalDate today) {
         Week week = Week.of(today), next = week.next();
-        // 접수 기간이 긴 공고(공공임대 등)도 이번 주에 열려 있으면 넣도록 시작일을 넉넉히 거슬러 올라가 모든 페이지를 읽는다.
-        List<AnnouncementListItem> found = startingBetween(week.monday().minusDays(LOOKBACK_DAYS), next.sunday());
+        // 접수 기간이 이번 주~다음 주와 겹치는 공고만 읽는다. 접수 기간이 긴 공고(공공임대 등)도 시작일을 최대
+        // ApplyDays.MAX_PERIOD_DAYS(400일)까지 거슬러 올라가 넣는다(달력이 그리는 범위와 같다). 이미 마감된 옛 공고는 읽지 않는다.
+        List<AnnouncementListItem> found = overlapping(week.monday(), next.sunday());
         var thisWeek = PublicAreaPage.classify(found.stream().filter(item -> {
             LocalDate start = PlannerSummary.date(nz(item.rceptBgnde())), end = PlannerSummary.date(nz(item.rceptEndde()));
             return start != null && week.overlaps(start, end);
@@ -185,14 +194,14 @@ public class PublicCollectionPages {
         return new Weekly(week, next, current, winners(week), nextWeek.upcoming());
     }
 
-    static final int LOOKBACK_DAYS = 120, MAX_ITEMS = 1000;
+    static final int MAX_ITEMS = 1000;
     /**
-     * 접수 시작일이 범위 안인 공고를 한 번에 읽는다(내부 호출이라 통합 검색 상한 1000건까지 한 페이지로).
+     * 접수 기간이 from~to와 겹치는 공고를 한 번에 읽는다(내부 호출이라 통합 검색 상한 1000건까지 한 페이지로).
      * 페이지를 나눠 부르면 유형별로 앞부분을 매번 다시 읽어 조회량이 커진다.
      */
-    List<AnnouncementListItem> startingBetween(LocalDate from, LocalDate to) {
+    List<AnnouncementListItem> overlapping(LocalDate from, LocalDate to) {
         AnnouncementSearch query = new AnnouncementSearch();
-        query.setStartDate(from); query.setEndDate(to); query.setSize(MAX_ITEMS); query.setPage(0);
+        query.setStartDate(from); query.setEndDate(to); query.setOverlap(true); query.setSize(MAX_ITEMS); query.setPage(0);
         var result = search.searchAll(query, null);
         if (result.getTotalElements() > MAX_ITEMS)
             LoggerFactory.getLogger(getClass()).warn("이번 주 청약 집계 대상이 {}건을 넘어 일부가 빠질 수 있습니다: {}", MAX_ITEMS, result.getTotalElements());

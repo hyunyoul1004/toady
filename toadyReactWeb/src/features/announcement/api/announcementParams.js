@@ -24,6 +24,9 @@ export function buildAnnouncementQueryParams(params = {}, toDate = value => (val
 
   if (startDate && startDate !== '-') queryParams.startDate = startDate;
   if (endDate && endDate !== '-') queryParams.endDate = endDate;
+  // 달력은 접수 기간 내내 신청 가능일을 그리므로, 시작일이 조회 범위 앞(지난달)이어도 기간이 겹치는 공고를 받는다.
+  // 이 값을 모르는 예전 서버는 무시하고 접수 시작일 기준으로 준다.
+  if (queryParams.startDate || queryParams.endDate) queryParams.overlap = true;
 
   // 2. 주택 유형(types) 매핑
   if (params.types) {

@@ -62,6 +62,7 @@ public class AnnouncementController {
                     types를 생략하면 5개 유형 전체를 조회하고, 특정 유형만 조회하려면 apt처럼 한 개를 전달합니다.
                     여러 유형은 types=apt,urban처럼 콤마로 구분하거나 types=apt&types=urban으로 전달할 수 있습니다.
                     regionCode, keyword, startDate, endDate는 선택 조건이며 날짜 조건은 청약접수 시작일을 기준으로 합니다.
+                    overlap=true를 함께 보내면 접수 기간(시작일~종료일)이 startDate~endDate와 겹치는 공고를 찾습니다(청약 캘린더).
                     목록의 rceptBgnde에는 해당 유형의 청약접수 시작일을 반환합니다.
                     조건을 생략하면 해당 조건 없이 조회합니다.
                     결과는 페이지 단위로 반환하며 page는 0부터 시작하고 size는 1~100입니다.

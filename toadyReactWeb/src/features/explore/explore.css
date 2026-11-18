@@ -72,3 +72,6 @@
 }
 .explore-share{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
 .explore-share span{font-size:13px;color:#475569}
+/* 접수 기간 중이지만 오늘은 신청일이 아닌 공고(APT 순위 접수일 사이) */
+.explore-status.is-between{background:#f8fafc;color:#475569;border:1px dashed #cbd5e1}
+.explore-meta-note{color:#64748b;font-weight:600}

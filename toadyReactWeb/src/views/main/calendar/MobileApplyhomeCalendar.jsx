@@ -4,7 +4,8 @@ import { koreaToday } from '@/features/planner/plannerUtils';
  * @file MobileApplyhomeCalendar.jsx
  * @description 모바일 반응형 청약 달력 컴포넌트
  * - 평일(월~금) 5일제 그리드
- * - 날짜별 건수 표시 (예: 04일 (8건))
+ * - 날짜별 건수 표시 (예: 04일 (8건)). 건수·목록은 데스크톱 달력과 같은 묶음(calendarGroup)이라 같은 날 같은 공고는 1건이다.
+ * - 접수 기간이 여러 날인 공고는 이튿날부터 연한 '접수 기간 중' 줄로 매일 보인다(신청 가능일 규칙: features/announcement/applyDays.js).
  * - 오늘 날짜 기본 선택 및 터치 시 해당 주 바로 아래에 청약 상세 목록 아코디언 카드 노출
  * - 쓰이는 곳: SubscriptionCalendar가 화면 폭 900px 미만일 때 FullCalendar 대신 그린다(FullCalendar 파일을 받지 않는다).
  * - 월 이동 버튼은 부모(SubscriptionCalendar)에 있고, 여기서는 받은 currentDate의 달만 그린다. API는 부르지 않는다.
@@ -16,8 +17,8 @@ import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
 import ButtonBase from '@mui/material/ButtonBase';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
-import { formatDate, dayjs } from '@/utils/date.util';
-import { RCEPT_SE_META } from './calendarGroup';
+import { dayjs } from '@/utils/date.util';
+import { RCEPT_SE_META, groupCalendarSchedules, groupsByDate, describeStages } from './calendarGroup';
 
 // 공급 유형별 뱃지: PC 달력·공급유형 필터와 같은 색(RCEPT_SE_META)을 쓴다. 좁은 화면이라 이름만 짧게 줄인다.
 const SHORT_LABEL = { '07': '임의공급', '08': '재공급', '05': '오피스텔' };
@@ -84,32 +85,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
     }
   };
 
-  // 1. 날짜별 청약 공고 맵 생성
-  const eventsByDate = useMemo(() => {
-    const map = {};
-    if (!subscriptList) return map;
-
-    subscriptList.forEach((item) => {
-      const dateStr = formatDate(item.inDate, 'YYYY-MM-DD');
-      if (!map[dateStr]) {
-        map[dateStr] = [];
-      }
-      const effectiveRceptSe = item.displayRceptSe || item.rceptSe || '01';
-      map[dateStr].push({
-        ...item,
-        effectiveRceptSe,
-        // PC 달력·범례·공급유형 필터와 같은 순서(RCEPT_SE_META.order)
-        order: RCEPT_SE_META[effectiveRceptSe]?.order ?? 99
-      });
-    });
-
-    // 공급 유형 및 가나다 순 정렬
-    Object.keys(map).forEach((key) => {
-      map[key].sort((a, b) => a.order - b.order || (a.houseNm || '').localeCompare(b.houseNm || ''));
-    });
-
-    return map;
-  }, [subscriptList]);
+  // 1. 날짜별 청약 공고 맵: PC 달력과 같은 묶음(같은 날 같은 공고는 한 줄, 단계 순 → '접수 중' 줄 → 가나다 순).
+  const eventsByDate = useMemo(() => groupsByDate(groupCalendarSchedules(subscriptList || [])), [subscriptList]);
 
   // 2. 평일 주차 목록 계산
   const weeks = useMemo(() => {
@@ -349,24 +326,27 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                     {selectedEvents.length > 0 ? (
                       <Box component="ul" sx={{ display: 'flex', flexDirection: 'column', gap: 1, listStyle: 'none', m: 0, p: 0 }}>
                         {selectedEvents.map((item, idx) => {
-                          const styleInfo = RCEPT_SE_STYLE[item.effectiveRceptSe] || {
+                          const styleInfo = RCEPT_SE_STYLE[item.primaryRceptSe] || {
                             label: '공급',
                             bg: '#64748b',
                             color: '#ffffff',
                             border: 'transparent'
                           };
 
-                          const commentTag = item.subscriptCommentCnt > 0 ? ` (${item.subscriptCommentCnt})` : '';
+                          const commentTag = item.commentCount > 0 ? ` (${item.commentCount})` : '';
+                          // 단계가 둘 이상이거나 지역이 갈리거나 '접수 기간 중' 줄이면 그날 단계 설명을 한 줄 더 보여 준다.
+                          const stageText = describeStages(item);
+                          const showStageText = item.ongoing || item.stages.length > 1 || item.stages.some((stage) => stage.areaLabels.length > 0);
 
                           return (
-                            <li key={`${item.subscriptSeq}-${idx}`}>
+                            <li key={item.key}>
                             <ButtonBase
                               onClick={() => {
                                 if (typeof handleOpen === 'function') {
                                   handleOpen(item.subscriptSeq);
                                 }
                               }}
-                              aria-label={`${styleInfo.label} ${item.houseNm}${item.areaLabel ? ` (${item.areaLabel})` : ''}${item.subscriptCommentCnt > 0 ? `, 이야기 ${item.subscriptCommentCnt}개` : ''} 상세 보기`}
+                              aria-label={`${item.houseNm}, ${stageText}${item.commentCount > 0 ? `, 이야기 ${item.commentCount}개` : ''} 상세 보기`}
                               sx={{
                                 width: '100%',
                                 justifyContent: 'flex-start',
@@ -397,9 +377,10 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  bgcolor: styleInfo.bg,
+                                  // '접수 기간 중' 줄은 흰 바탕·점선 테두리로 시작일 줄보다 약하게 보인다.
+                                  bgcolor: item.ongoing ? '#ffffff' : styleInfo.bg,
                                   color: styleInfo.color,
-                                  border: styleInfo.border !== 'transparent' ? `1px solid ${styleInfo.border}` : 'none',
+                                  border: styleInfo.border !== 'transparent' ? `1px ${item.ongoing ? 'dashed' : 'solid'} ${styleInfo.border}` : 'none',
                                   borderRadius: 1,
                                   fontSize: '0.78rem',
                                   fontWeight: 700,
@@ -410,23 +391,28 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                 {styleInfo.label}
                               </Box>
 
-                              {/* 아파트명 */}
-                              <Typography
-                                component="span"
-                                aria-hidden="true"
-                                sx={{
-                                  fontSize: '0.88rem',
-                                  fontWeight: 600,
-                                  color: '#1e293b',
-                                  lineHeight: 1.35,
-                                  flex: 1,
-                                  wordBreak: 'keep-all'
-                                }}
-                              >
-                                {item.houseNm}
-                                {item.areaLabel ? ` (${item.areaLabel})` : ''}
-                                {commentTag}
-                              </Typography>
+                              {/* 아파트명 + (필요할 때) 그날 단계 설명 */}
+                              <Box component="span" aria-hidden="true" sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography
+                                  component="span"
+                                  sx={{
+                                    display: 'block',
+                                    fontSize: '0.88rem',
+                                    fontWeight: item.ongoing ? 500 : 600,
+                                    color: item.ongoing ? '#475569' : '#1e293b',
+                                    lineHeight: 1.35,
+                                    wordBreak: 'keep-all'
+                                  }}
+                                >
+                                  {item.houseNm}
+                                  {commentTag}
+                                </Typography>
+                                {showStageText && (
+                                  <Typography component="span" sx={{ display: 'block', fontSize: '0.74rem', color: '#64748b', mt: 0.2, lineHeight: 1.3 }}>
+                                    {stageText}
+                                  </Typography>
+                                )}
+                              </Box>
                             </ButtonBase>
                             </li>
                           );

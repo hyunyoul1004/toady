@@ -54,6 +54,8 @@ class PlannerIntegrationTest {
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
         com.toady.web.app.planner.PublicPagesCache.clear();
+        // 앱 화면용 JSON 캐시(weekly-summary 등, 10분)도 테스트마다 비운다(앞 테스트의 공고가 남지 않게).
+        events.publishEvent(new com.toady.web.app.planner.HiddenAnnouncements.Changed());
         com.toady.web.app.planner.PublicPagesCache.clear(benchmarks);
         com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
         // 이번 주 청약·지역 요약 등 앱 화면용 캐시도 숨김 변경 때와 같은 방법으로 비운다(앞선 시험의 결과가 남지 않게).
@@ -217,6 +219,40 @@ class PlannerIntegrationTest {
         assertEquals("basics",items.get(0).path("id").asText());
         assertFalse(items.get(0).path("items").get(0).path("question").asText().isBlank());
     }
+    @Test void applyTodayFollowsRankDaysAndCalendarCanAskForOverlappingPeriods() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        // 1순위는 어제, 2순위는 닷새 뒤: 접수 기간 중(OPEN)이지만 오늘은 신청일이 아니다.
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,GNRL_RNK1_CRSPAREA_RCPTDE,GNRL_RNK2_CRSPAREA_RCPTDE) VALUES ('GAP1','N1','순위 사이 단지','경기도 안산시 1',?,?,?,?)",
+                today.minusDays(1).toString(),today.plusDays(5).toString(),today.minusDays(1).toString(),today.plusDays(5).toString());
+        // 열흘 전에 시작해 내일까지 접수하는 무순위: 오늘도 신청할 수 있다.
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('LONG1','N1','긴 무순위 단지','서울특별시 강동구 2',?,?)",
+                today.minusDays(10).toString(),today.plusDays(1).toString());
+        // 300일 전에 시작해 사흘 뒤까지 접수하는 공고는 '오늘 접수'에도 들어가고(예전 120일 한도에서는 빠졌다),
+        // 500일 전에 시작했는데 종료일이 99991231로 들어온 공고는 400일 한도 밖이라 조회하지 않는다.
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('OLD300','N1','오래 접수하는 단지','서울특별시 강동구 3',?,?)",
+                today.minusDays(300).toString(),today.plusDays(3).toString());
+        jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('ANCIENT1','N1','종료일 오류 단지','서울특별시 강동구 4',?,'99991231')",
+                today.minusDays(500).toString());
+        com.toady.web.app.planner.PublicPagesCache.clear();
+        var summary=json.readTree(html(mvc.perform(get("/api/v1/public/weekly-summary")).andExpect(status().isOk())));
+        var byId=new java.util.HashMap<String,com.fasterxml.jackson.databind.JsonNode>(); summary.path("current").forEach(item->byId.put(item.path("id").asText(),item));
+        var gap=byId.get("apt/GAP1/N1");
+        assertNotNull(gap,summary.toString());
+        assertEquals("OPEN",gap.path("status").asText(),"접수중 뱃지 기준(접수 기간)은 그대로다");
+        assertFalse(gap.path("applyToday").asBoolean(),"순위 접수일 사이에는 오늘 신청할 수 없다");
+        assertEquals(today.plusDays(5).toString(),gap.path("nextApplyDay").asText());
+        assertTrue(byId.get("remaining/LONG1/N1").path("applyToday").asBoolean());
+        assertTrue(byId.get("remaining/OLD300/N1").path("applyToday").asBoolean(),"400일 안에 시작한 접수 중 공고는 오늘 접수에 들어간다");
+        assertFalse(byId.containsKey("remaining/ANCIENT1/N1"),"400일보다 먼저 시작한 공고는 종료일이 남아 있어도 넣지 않는다");
+        // 달력 조회: 기본은 접수 시작일 기준, overlap=true면 접수 기간이 조회 범위와 겹치는 공고도 준다(지난달 시작 공고가 이번 달 칸에 보이게).
+        String from=today.toString(), to=today.plusDays(20).toString();
+        String byStart=html(mvc.perform(get("/api/v1/announcements").param("startDate",from).param("endDate",to).param("size","100")).andExpect(status().isOk()));
+        String overlapping=html(mvc.perform(get("/api/v1/announcements").param("startDate",from).param("endDate",to).param("size","100").param("overlap","true")).andExpect(status().isOk()));
+        assertFalse(byStart.contains("LONG1"),byStart);
+        assertTrue(overlapping.contains("LONG1") && overlapping.contains("GAP1") && overlapping.contains("OLD300"),overlapping);
+        assertFalse(overlapping.contains("ANCIENT1"),"기간 겹침 조회도 시작일을 400일까지만 거슬러 올라간다");
+        assertTrue(overlapping.contains("spsplyRceptBgnde"),"목록에 특별공급 접수일을 함께 준다");
+    }
     @Test void unrankedAndWeeklyPagesAreGeneratedFromAnnouncements() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         jdbc.update("INSERT INTO TB_REMNDR_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_RCEPT_BGNDE,SUBSCRPT_RCEPT_ENDDE) VALUES ('R1','N1','<줍줍 단지>','서울특별시 강동구 1',?,?)",today.toString(),today.plusDays(1).toString());
@@ -243,6 +279,8 @@ class PlannerIntegrationTest {
         assertEquals(monday.toString(),summary.path("monday").asText());
         var ids=new java.util.ArrayList<String>(); summary.path("current").forEach(item->ids.add(item.path("id").asText()));
         assertTrue(ids.contains("remaining/R1/N1") && ids.contains("apt/K0/N1"),ids.toString());
+        // '오늘 접수'는 접수 기간이 아니라 그날 신청할 수 있는지(applyToday)로 센다. 무순위는 기간 내내, APT는 순위 접수일에만.
+        summary.path("current").forEach(item->{ if(item.path("id").asText().equals("remaining/R1/N1")){ assertTrue(item.path("applyToday").asBoolean()); assertEquals(today.toString(),item.path("nextApplyDay").asText()); } });
         assertEquals("apt/W1/N1",summary.path("winners").get(0).path("id").asText());
         assertEquals(today.toString(),summary.path("winners").get(0).path("date").asText());
         // 앱 '지역별 청약'은 전국 접수 중·예정 공고를 받아 화면에서 지역으로 묶는다(마감 공고는 넣지 않는다).

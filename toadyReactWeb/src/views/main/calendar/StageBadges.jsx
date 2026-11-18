@@ -8,6 +8,7 @@ import { rceptSeMeta } from './calendarGroup';
 
 /**
  * 공고 전체 단계(특·1·2)를 보여주고 이 칸의 단계만 채워서 강조한다.
+ * '접수 기간 중' 줄(group.ongoing)은 채우지 않고 테두리만 그려 시작일 줄과 구분한다.
  * @param group calendarGroup.groupCalendarSchedules가 만든 묶음(stages: 그날 단계, allStages: 공고 전체 단계)
  * aria-hidden인 이유: 같은 내용을 일정 버튼의 aria-label(describeGroup)로 이미 읽어 주므로 두 번 읽지 않게 한다.
  */
@@ -22,7 +23,7 @@ export function StageBadges({ group, size = 'sm' }) {
         return (
           <span
             key={rceptSe}
-            className={`tc-badge ${active.has(rceptSe) ? 'is-active' : 'is-muted'}`}
+            className={`tc-badge ${active.has(rceptSe) ? (group.ongoing ? 'is-ongoing' : 'is-active') : 'is-muted'}`}
             style={{ '--tc-accent': meta.accent, '--tc-text': meta.text, '--tc-tint': meta.tint }}
           >
             {meta.short}

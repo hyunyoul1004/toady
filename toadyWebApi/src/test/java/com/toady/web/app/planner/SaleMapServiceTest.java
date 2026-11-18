@@ -22,7 +22,7 @@ class SaleMapServiceTest {
     static final LocalDate TODAY = LocalDate.of(2026, 11, 14);
 
     static AnnouncementListItem source(String no, String name, String address, String start, String end) {
-        return new AnnouncementListItem("apt", no, no, name, "01", "APT", "410", "경기", address, "", start, end,
+        return new AnnouncementListItem("apt", no, no, name, "01", "APT", "410", "경기", address, "", start, end, null, null,
             null, null, null, null, null, null, null, null, null, null, null, null, "500", 0);
     }
     static EligibilityFeed.Item item(String id, String name, String address, String status, String moveIn) {

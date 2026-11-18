@@ -9,7 +9,8 @@ import { trackAction } from '@/features/analytics/trackAction';
 import apiClient from '@/api/client';
 import { Main } from '@/views/main/Main';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { byStatus, dayLabel, periodLabel, STATUS_TEXT, TYPE_NAME } from './exploreRules';
+import { byStatus, dayLabel, periodLabel, TYPE_NAME, weeklyStatus } from './exploreRules';
+import { appliesToday } from '@/features/announcement/applyDays';
 import { useInPageDetail } from './useInPageDetail';
 import './explore.css';
 
@@ -18,15 +19,16 @@ const SHOWN_KEY = 'toady.week.shown';
 /** 펼친 개수는 이 탭에서만 기억한다(다른 화면에 갔다가 뒤로 와도 같은 길이로 보여 스크롤 복원이 맞게). */
 const readShown = () => { try { return Math.max(PAGE, Number(sessionStorage.getItem(SHOWN_KEY)) || PAGE); } catch { return PAGE; } };
 
-/** 공고 한 줄 카드. 누르면 이 화면 위에 상세를 연다. */
+/** 공고 한 줄 카드. 누르면 이 화면 위에 상세를 연다. 접수 기간 중이면 오늘 신청일인지(오늘 신청/접수 기간 중)로 나눠 보여 준다. */
 function ItemCard({ item, onOpen }) {
+  const status = weeklyStatus(item);
   return <li><button type="button" className="explore-card" onClick={() => onOpen(item.id)}>
     <span className="explore-card-top">
-      <span className={`explore-status is-${item.status.toLowerCase()}`}>{STATUS_TEXT[item.status]}</span>
+      <span className={`explore-status is-${status.key}`}>{status.text}</span>
       <span className="explore-type">{TYPE_NAME[item.type] || item.houseKind || '공고'}</span>
     </span>
     <strong>{item.houseNm}</strong>
-    <span className="explore-meta">접수 {periodLabel(item.start, item.end)}</span>
+    <span className="explore-meta">접수 {periodLabel(item.start, item.end)}{status.note && <span className="explore-meta-note"> · {status.note}</span>}</span>
     {item.address && <span className="explore-address">{item.address}</span>}
     <ChevronRightRounded className="explore-chevron" />
   </button></li>;
@@ -51,7 +53,7 @@ export default function ThisWeekPage() {
   const weekly = useQuery({ queryKey: ['weeklySummary'], queryFn: () => apiClient.get('/api/v1/public/weekly-summary'), staleTime: 600000, retry: 1 });
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  // '접수 중'만 보기는 주소(?filter=open)에 둬서 상세·다른 화면에 갔다가 돌아와도 유지한다.
+  // '오늘 신청'만 보기는 주소(?filter=open)에 둬서 상세·다른 화면에 갔다가 돌아와도 유지한다(오늘의 요약 '오늘 접수'에서 들어오는 주소).
   const filter = searchParams.get('filter') === 'open' ? 'open' : 'all';
   const setFilter = value => {
     const next = new URLSearchParams(searchParams);
@@ -77,10 +79,11 @@ export default function ThisWeekPage() {
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const data = weekly.data;
   const current = byStatus(data?.current || []);
-  const filtered = filter === 'open' ? current.filter(item => item.status === 'OPEN') : current;
+  // '오늘 신청'은 오늘의 요약 '오늘 접수' 숫자와 같은 판정(appliesToday)이다.
+  const filtered = filter === 'open' ? current.filter(appliesToday) : current;
   const winners = data?.winners || [];
   const nextWeek = data?.nextWeek || [];
-  const openCount = current.filter(item => item.status === 'OPEN').length;
+  const openCount = current.filter(appliesToday).length;
   // 이번 주 모음 공유: 검색·미리보기용 서버 페이지(/weekly) 주소를 보낸다(카톡 미리보기에 요약이 보인다).
   const [shareNote, setShareNote] = useState('');
   const share = async () => {
@@ -117,12 +120,12 @@ export default function ThisWeekPage() {
       : weekly.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => weekly.refetch()}>다시 시도</Button>}>이번 주 청약을 불러오지 못했어요.</Alert>
       : <>
         <Section id="week-current" title="이번 주 접수" count={current.length} empty="이번 주에 접수하는 공고가 없어요.">
-          {/* 접수 중이 일부만 있을 때(또는 이미 접수 중만 보는 중일 때) 전체/접수 중 필터를 보여 준다. */}
+          {/* 오늘 신청 공고가 일부만 있을 때(또는 이미 오늘 신청만 보는 중일 때) 전체/오늘 신청 필터를 보여 준다. */}
           {(filter === 'open' || (openCount > 0 && openCount < current.length)) && <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, value) => { if (value) { setFilter(value); setShown(PAGE); } }} className="explore-filter" aria-label="이번 주 접수 보기">
-            <ToggleButton value="all">전체 {current.length}</ToggleButton><ToggleButton value="open">접수 중 {openCount}</ToggleButton>
+            <ToggleButton value="all">전체 {current.length}</ToggleButton><ToggleButton value="open">오늘 신청 {openCount}</ToggleButton>
           </ToggleButtonGroup>}
           {filtered.length ? <ul className="explore-list">{filtered.slice(0, shown).map(item => <ItemCard key={item.id} item={item} onOpen={detail.open} />)}</ul>
-            : <p className="explore-empty">지금 접수 중인 공고가 없어요. '전체'에서 이번 주 예정·마감 공고를 볼 수 있어요.</p>}
+            : <p className="explore-empty">오늘 신청할 수 있는 공고가 없어요. '전체'에서 이번 주 접수 기간 중·예정·마감 공고를 볼 수 있어요.</p>}
           {filtered.length > shown && <Button fullWidth variant="outlined" className="explore-more" onClick={() => setShown(value => value + PAGE)}>더 보기 ({filtered.length - shown}건)</Button>}
         </Section>
 

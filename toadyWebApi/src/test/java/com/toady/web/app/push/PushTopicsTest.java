@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PushTopicsTest {
     private static AnnouncementListItem item(String region, String address) {
         return new AnnouncementListItem("remaining", "H", "P", "단지", "04", "무순위", "000", region, address, "",
-            "2026-11-20", "2026-11-20", null, null, null, null, null, null, null, null, null, null, null, null, "10", 0);
+            "2026-11-20", "2026-11-20", null, null, null, null, null, null, null, null, null, null, null, null, null, null, "10", 0);
     }
 
     @Test void validSlugsAreLivingAreasOrTopics() {

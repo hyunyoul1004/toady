@@ -46,7 +46,7 @@ public class PublicAreaPage {
     record Groups(List<Item> open, List<Item> upcoming, List<Item> closed) {
         /**
          * 앱에서 처음 보여줄 달: 접수 중·예정 공고 중 가장 이른 접수 시작월, 없으면 이번 달.
-         * 캘린더는 접수 시작일이 그 달 조회 범위에 있는 공고만 가져오므로, 지난달에 시작한 접수 중 공고도 시작월로 연다.
+         * 접수 중 공고가 시작일 줄(진한 줄)로 보이는 달을 열려고 지난달에 시작한 공고도 시작월로 연다(이번 달에는 연한 '접수 중' 줄로 보인다).
          */
         String month(LocalDate today) {
             return Stream.concat(open.stream(), upcoming.stream()).map(Item::start).filter(Objects::nonNull)
