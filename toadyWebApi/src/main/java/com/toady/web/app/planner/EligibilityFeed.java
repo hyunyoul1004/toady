@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 // @RestController: JSON 응답 컨트롤러.
 @RestController
 public class EligibilityFeed {
-    static final int PAST_DAYS = 60, FUTURE_DAYS = 60, MAX_ITEMS = 500;
+    static final int MAX_ITEMS = 500;
     static final List<String> TYPES = List.of("apt", "remaining", "optional");
     private final AnnouncementSearchService search;
     private final JdbcTemplate jdbc;
@@ -87,11 +87,13 @@ public class EligibilityFeed {
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { cache.invalidateAll(); }
 
-    // 오늘 기준 앞뒤 60일 공고를 검색해 접수 중·예정만 남기고, 상세·주택형 정보와 주변 시세 비교 값을 붙인다.
+    // 접수 중·예정 공고(ReceiptWindow: 시작 400일 이내이면서 마감 ≥ 오늘, 또는 180일 안에 시작)를 찾아
+    // 상세·주택형 정보와 주변 시세 비교 값을 붙인다. 지역별 청약·생활권 페이지와 같은 범위다.
     Map<String, Object> load(LocalDate today) {
         AnnouncementSearch query = new AnnouncementSearch();
-        query.setStartDate(today.minusDays(PAST_DAYS));
-        query.setEndDate(today.plusDays(FUTURE_DAYS));
+        query.setStartDate(today);
+        query.setEndDate(com.toady.web.app.announcement.ReceiptWindow.searchEnd(today));
+        query.setOverlap(true);
         query.setSize(MAX_ITEMS);
         var page = search.searchAll(query, TYPES);
         if (page.getTotalElements() > MAX_ITEMS) LoggerFactory.getLogger(EligibilityFeed.class)

@@ -7,16 +7,18 @@ import { koreaToday } from './plannerUtils';
 import { profileComplete, rankFeed } from '@/features/match/eligibilityRules';
 import { useEligibilityProfile } from '@/features/match/eligibilityProfile';
 import { useEligibilityFeed } from '@/features/match/matchShared';
-import { summaryNumbers, todayLabel } from './todaySummaryRules';
+import { summaryNumbers, todayLabel, openTodayText } from './todaySummaryRules';
 import './todaySummary.css';
 
 /**
  * 메인 '오늘의 요약': 오늘 접수 · 이번 주 발표 · 무순위·줍줍 · 내가 넣을 수 있는 공고(진단 전이면 진단 안내).
  * 숫자마다 그 목록으로 바로 간다. 모든 숫자는 달력의 보고 있는 달·검색 조건과 상관없는 전국 기준이다.
  * '오늘 접수'와 '이번 주 발표'는 이번 주 청약 화면과 같은 데이터를 써서 눌렀을 때 건수가 맞는다.
+ * 주말(KST)에는 '오늘 접수' 칸을 '주말 접수 기간 중'으로 바꿔 부른다(openTodayText). 검색·필터가 걸려 있으면(filtered)
+ * 제목 옆에 작게 '전국 기준'을 붙여 필터된 달력 칸 건수와 다른 이유를 알린다.
  * 쓰는 곳: TodayOverview.jsx. 데이터: /api/v1/public/weekly-summary, 자격 진단 피드(useEligibilityFeed), 내 진단 정보(useEligibilityProfile).
  */
-export default function TodaySummary({ savedCount }) {
+export default function TodaySummary({ savedCount, filtered = false }) {
   // queryKey ['weeklySummary']는 이번 주 청약·나의 청약 빈 화면과 같아서 한 번 받은 캐시를 같이 쓴다(10분).
   const weekly = useQuery({ queryKey: ['weeklySummary'], queryFn: () => apiClient.get('/api/v1/public/weekly-summary'), staleTime: 600000, retry: 1 });
   const feed = useEligibilityFeed();
@@ -32,15 +34,16 @@ export default function TodaySummary({ savedCount }) {
   // 불러오는 중이거나 오류면 0 대신 '–'를 보여 준다.
   const value = (number, ready) => (ready ? number : '–');
   const dateText = todayLabel(today);
+  const openText = openTodayText(today);
 
   return <section className="today-summary" aria-labelledby="today-summary-title">
     <div className="today-summary-head">
-      <h2 id="today-summary-title">오늘의 요약 <span>{dateText}</span></h2>
+      <h2 id="today-summary-title">오늘의 요약 <span>{dateText}</span>{filtered && <span className="today-summary-scope" title="검색·필터와 상관없이 전국 공고 기준 숫자예요">전국 기준</span>}</h2>
       <Link to="/my" className="today-summary-saved">나의 청약 <b>{savedCount}</b><ChevronRightRounded fontSize="inherit" /></Link>
     </div>
     <div className="today-summary-grid">
       <Link className="today-tile" to="/this-week?filter=open">
-        <span>오늘 접수</span><strong>{value(numbers.openToday, weeklyReady)}<em>건</em></strong><small>오늘 신청할 수 있는 공고</small>
+        <span>{openText.label}</span><strong>{value(numbers.openToday, weeklyReady)}<em>건</em></strong><small>{openText.note}</small>
       </Link>
       <Link className="today-tile" to="/this-week#week-winners">
         <span>이번 주 발표</span><strong>{value(numbers.winners, weeklyReady)}<em>건</em></strong><small>이번 주 청약 일정</small>

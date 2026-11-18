@@ -31,7 +31,7 @@ import { dayjs } from '@/utils/date.util';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import MobileApplyhomeCalendar from './MobileApplyhomeCalendar';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { groupCalendarSchedules, groupsByDate, usedRceptSes, hasOngoing, foldOngoing, describeGroup, describeStages, rceptSeMeta } from './calendarGroup';
+import { groupCalendarSchedules, groupsByDate, usedRceptSes, hasOngoing, foldOngoing, describeGroup, describeStages, rceptSeMeta, receiptTag } from './calendarGroup';
 import StageBadges from './StageBadges';
 import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
 import './SubscriptionCalendar.css';
@@ -470,6 +470,7 @@ export function SubscriptionCalendar(props) {
                             </Typography>
                             <Typography sx={{ fontSize: '0.74rem', color: '#64748b', mt: 0.2 }}>
                               {describeStages(group)}
+                              {receiptTag(group) && <span className="tc-receipt-text"> · {receiptTag(group)}</span>}
                             </Typography>
                           </Box>
                           {group.commentCount > 0 && (

@@ -1,5 +1,6 @@
 package com.toady.web.app.planner;
 
+import com.toady.web.app.announcement.ReceiptWindow;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.slf4j.Logger;
@@ -56,11 +57,25 @@ public class PublicAnnouncementIndex {
         /** 최신순 정렬 기준: 접수 시작일, 없으면 모집공고일. */
         public LocalDate sortDate() { return start != null ? start : announced; }
         // 접수 시작일이 없으면(일부 임대 공고) 모집공고일로만 예정/마감을 나눈다.
+        // 접수 중 판정은 ReceiptWindow(시작 400일 이내이면서 마감 ≥ 오늘)와 같다. 시작 뒤 400일이 지나면 마감으로 본다.
         public Status status(LocalDate today) {
             if (start == null) return announced != null && announced.isAfter(today) ? Status.UPCOMING : Status.CLOSED;
             if (start.isAfter(today)) return Status.UPCOMING;
-            return (end == null ? start : end).isBefore(today) ? Status.CLOSED : Status.OPEN;
+            return ReceiptWindow.open(start, end, today) ? Status.OPEN : Status.CLOSED;
         }
+        /**
+         * 접수 중·예정 목록과 건수에 넣는지. 접수 예정은 ReceiptWindow.UPCOMING_DAYS(180일) 안에 시작하는 공고만 센다
+         * (앱 active-announcements·생활권·줍줍 페이지와 같은 범위). 시작일이 없으면 모집공고일로 본다.
+         */
+        public boolean active(LocalDate today) {
+            if (start == null) return ReceiptWindow.upcoming(announced, today);
+            return ReceiptWindow.active(start, end, today);
+        }
+        /**
+         * 지역별 청약 목록·건수·사이트맵에 넣는지: 접수 중·예정(active) 또는 마감. 180일보다 먼 접수 예정 공고는
+         * 어느 목록에도 보이지 않으므로 '최근 1년 공고' 수·시·군·구 칩·지역 사이트맵에서도 뺀다(빈 지역 페이지가 남지 않게).
+         */
+        public boolean listed(LocalDate today) { return active(today) || status(today) == Status.CLOSED; }
         public String typeLabel() { return LABELS.getOrDefault(type, ""); }
     }
 
@@ -147,11 +162,11 @@ public class PublicAnnouncementIndex {
     private static LocalDate date(String value) { return value == null ? null : PlannerSummary.date(value.trim()); }
     private static String nz(String value) { return value == null ? "" : value; }
 
-    /** 같은 지역 공고: 접수 중·예정(시작일 순) 다음 지난 공고(최신순). */
+    /** 같은 지역 공고: 접수 중·예정(시작일 순, Entry.active) 다음 나머지 공고(최신순). */
     public static List<Entry> ordered(List<Entry> entries, LocalDate today) {
         Comparator<Entry> newest = Comparator.comparing(Entry::sortDate, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Entry::id);
         List<Entry> active = new ArrayList<>(), past = new ArrayList<>();
-        for (Entry entry : entries) (entry.status(today) == Status.CLOSED ? past : active).add(entry);
+        for (Entry entry : entries) (entry.active(today) ? active : past).add(entry);
         active.sort(Comparator.comparing(Entry::sortDate, Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Entry::id));
         past.sort(newest);
         active.addAll(past);

@@ -4,7 +4,7 @@ import { Alert, Button, InputAdornment, MenuItem, Skeleton, TextField, ToggleBut
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import apiClient from '@/api/client';
-import { compareToRange, fmt } from './scoreRules';
+import { compareToRange, fmt, regionCountText, unknownRegionText } from './scoreRules';
 import ScoreRangeBar from './ScoreRangeBar';
 
 // 필터(지역·기간·정렬)는 localStorage에 둬서 다음 방문에도 이어진다. 검색어는 아래 sessionStorage(이 탭에서만).
@@ -45,7 +45,8 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
     setFilter(next); setShown(PAGE);
     try { localStorage.setItem(FILTER_KEY, JSON.stringify(next)); } catch { /* 저장소가 막혀도 이번 화면에서는 동작한다 */ }
   };
-  const regions = useQuery({ queryKey: ['scoreRegions'], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/regions'), staleTime: 3600000, retry: 1 });
+  // 드롭다운 숫자는 아래 결과의 '공개 N건'과 같은 기간(filter.years)으로 센다(자료가 적어 결과가 기간을 넓힌 경우는 안내가 따로 나온다). 기간을 바꾸면 다시 조회하고, 오는 동안 이전 목록을 유지한다.
+  const regions = useQuery({ queryKey: ['scoreRegions', filter.years], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/regions', { years: filter.years }), staleTime: 3600000, retry: 1, placeholderData: keepPreviousData });
   // 글자를 칠 때마다 요청하지 않도록 입력이 300ms 멈춘 뒤의 검색어만 조회 키에 쓴다.
   const [debouncedKeyword, setDebouncedKeyword] = useState(initial.keyword.trim());
   useEffect(() => {
@@ -76,12 +77,12 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
       <div className="score-filter-row">
         <TextField select size="small" label="시·도" value={filter.area ? '' : filter.sido} onChange={event => update({ sido: event.target.value, district: '', area: '' })} SelectProps={{ displayEmpty: true }} InputLabelProps={{ shrink: true }}>
           <MenuItem value="">전국</MenuItem>
-          {sidoList.map(item => <MenuItem key={item.sido} value={item.sido}>{item.sido} <em className="score-count">{item.count}</em></MenuItem>)}
+          {sidoList.map(item => <MenuItem key={item.sido} value={item.sido}>{item.sido} <em className="score-count">{regionCountText(item, filter.years)}</em></MenuItem>)}
         </TextField>
         <TextField select size="small" label="시·군·구" value={filter.area ? '' : filter.district} disabled={!filter.sido || filter.area !== '' || districts.length === 0}
           onChange={event => update({ district: event.target.value, area: '' })} SelectProps={{ displayEmpty: true }} InputLabelProps={{ shrink: true }}>
           <MenuItem value="">전체</MenuItem>
-          {districts.map(item => <MenuItem key={item.name} value={item.name}>{item.name} <em className="score-count">{item.count}</em></MenuItem>)}
+          {districts.map(item => <MenuItem key={item.name} value={item.name}>{item.name} <em className="score-count">{regionCountText(item, filter.years)}</em></MenuItem>)}
         </TextField>
         <TextField size="small" label="단지명·주소 검색" placeholder="2글자 이상" value={keyword} onChange={event => { setKeyword(event.target.value); setShown(PAGE); }}
           InputLabelProps={{ shrink: true }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment> }} />
@@ -108,6 +109,7 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
       : <div className={search.isFetching ? 'score-bench-body is-fetching' : 'score-bench-body'}>
         <div className="score-summary" aria-live="polite">
           <strong>{data.scope}</strong><span>{yearsText(data.years)}</span><span>공개 {data.total.toLocaleString('ko-KR')}건</span>
+          {unknownRegionText(data, filter) && <span title={filter.sido ? '시·군·구별 건수의 합보다 많을 수 있어요' : '시·도별 건수의 합보다 많을 수 있어요'}>{unknownRegionText(data, filter)}</span>}
           {data.stats.medianLow !== null && <span>최저 당첨가점 중간값 <b>{fmt(data.stats.medianLow)}점</b></span>}
           {above !== null && data.total > 0 && <span>내 점수 이상 <b>{above}건</b>{data.total > items.length ? ` (상위 ${items.length}건 중)` : ''}</span>}
         </div>

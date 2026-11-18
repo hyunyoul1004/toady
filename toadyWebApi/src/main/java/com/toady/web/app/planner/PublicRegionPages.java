@@ -49,23 +49,21 @@ public class PublicRegionPages {
     public ResponseEntity<String> index() { return PublicHtml.cached("regions", this::renderIndex); }
     private ResponseEntity<String> renderIndex() {
         LocalDate today = index.today();
-        var all = index.recent();
+        // 목록에 보이는 공고(Entry.listed)만 센다. 180일보다 먼 예정 공고는 건수·칩에서도 뺀다.
+        var all = index.recent().stream().filter(e -> e.listed(today)).toList();
         var sidos = bySido(all);
-        int active = (int) all.stream().filter(e -> e.status(today) != PublicAnnouncementIndex.Status.CLOSED).count();
+        int active = (int) all.stream().filter(e -> e.active(today)).count();
         StringBuilder body = new StringBuilder(PublicHtml.breadcrumb(List.of(new PublicHtml.Crumb("TOADY", domain + "/"), new PublicHtml.Crumb("지역별 청약", null))))
-            .append("<section class='card'><span class='chip'>최근 1년 · 매일 업데이트</span><h1>지역별 청약 일정</h1><p class='muted'>시·도와 시·군·구별로 최근 1년 동안 나온 청약 공고와 접수 중·예정 공고를 모았어요. 지금 접수 중이거나 예정된 공고는 ")
-            .append(active).append("건이에요.</p></section>");
+            .append("<section class='card'><span class='chip'>접수 중·예정 ").append(active).append("건 · 매일 업데이트</span><h1>지역별 청약 일정</h1><p class='muted'>지금 접수 중이거나 곧 접수하는 공고(앞으로 180일)가 있는 지역과 최근 1년 동안 나온 청약 공고를 시·도와 시·군·구별로 모았어요. ")
+            .append("지역 옆 숫자는 접수 중·예정 건수예요.</p></section>");
         List<PublicHtml.Crumb> listed = new ArrayList<>();
         for (var sido : sidos.entrySet()) {
             if (sido.getValue().isEmpty()) continue;
-            long open = sido.getValue().stream().filter(e -> e.status(today) != PublicAnnouncementIndex.Status.CLOSED).count();
             listed.add(new PublicHtml.Crumb(sido.getKey().name() + " 청약", domain + sido.getKey().path()));
+            // 앱 지역별 청약 카드와 같은 숫자(접수 중·예정)를 앞에 두고, 최근 1년 건수는 이름을 붙여 따로 적는다.
             body.append("<section class='card'><h2><a href='").append(esc(domain + sido.getKey().path())).append("'>").append(esc(sido.getKey().name())).append(" 청약</a> <span class='muted'>")
-                .append(sido.getValue().size()).append("건").append(open > 0 ? " · 접수 중·예정 " + open + "건" : "").append("</span></h2><div class='chips'>");
-            for (Group district : districts(sido.getKey(), sido.getValue()))
-                body.append("<a class='chip' href='").append(esc(domain + district.region().path())).append("'>").append(esc(district.region().district()))
-                    .append(" ").append(district.entries().size()).append("</a>");
-            body.append("</div></section>");
+                .append(esc(activeCounts(sido.getValue(), today))).append(" · 최근 1년 ").append(sido.getValue().size()).append("건</span></h2>")
+                .append(districtChips(sido.getKey(), sido.getValue(), today)).append("</section>");
         }
         if (listed.isEmpty()) body.append("<section class='card'><p class='empty'>최근 1년 안에 나온 공고가 없어요.</p></section>");
         body.append(livingAreas()).append(PublicHtml.explore(domain, "/regions"))
@@ -103,13 +101,14 @@ public class PublicRegionPages {
     // 지역 한 곳의 페이지: 접수 중·예정은 1쪽에만, 지난 공고는 20건씩 쪽을 나눈다. 쪽마다 canonical·prev/next 링크를 단다.
     private ResponseEntity<String> render(Regions.Region region, int page) {
         LocalDate today = index.today();
-        List<PublicAnnouncementIndex.Entry> entries = index.recent().stream().filter(e -> e.region() != null && e.region().sido().equals(region.sido())
+        List<PublicAnnouncementIndex.Entry> entries = index.recent().stream().filter(e -> e.listed(today) && e.region() != null && e.region().sido().equals(region.sido())
             && (region.district() == null || region.district().equals(e.region().district()))).toList();
         // 시·도는 공고가 없어도 페이지를 둔다(지역 목록 고정). 다만 내용이 빈 페이지가 색인되지 않게 noindex를 붙이고 사이트맵에서도 뺀다.
         // 공고가 없는 시·군·구는 알 수 없는 주소로 본다.
         if (entries.isEmpty() && region.district() != null) return notFound();
         List<PublicAnnouncementIndex.Entry> ordered = PublicAnnouncementIndex.ordered(entries, today);
-        List<PublicAnnouncementIndex.Entry> active = ordered.stream().filter(e -> e.status(today) != PublicAnnouncementIndex.Status.CLOSED).toList();
+        List<PublicAnnouncementIndex.Entry> active = ordered.stream().filter(e -> e.active(today)).toList();
+        // 180일보다 먼 접수 예정 공고는 접수 중·예정 건수(ReceiptWindow)에도, '지난 공고'에도 넣지 않는다.
         List<PublicAnnouncementIndex.Entry> past = ordered.stream().filter(e -> e.status(today) == PublicAnnouncementIndex.Status.CLOSED).toList();
         int pages = Math.max(1, (past.size() + PAGE_SIZE - 1) / PAGE_SIZE);
         if (page > pages) return notFound();
@@ -130,13 +129,8 @@ public class PublicRegionPages {
             .append("</strong><span>접수 예정</span></div><div><strong>").append(entries.size()).append("</strong><span>최근 1년 공고</span></div></div>")
             .append("<a class='cta' data-app href='").append(esc(domain + "/?search=" + Regions.segment(label))).append("'>").append(esc(label)).append(" 청약 캘린더 열기</a></section>");
         if (region.district() == null) {
-            List<Group> districts = districts(region.sido(), entries);
-            if (!districts.isEmpty()) {
-                body.append("<section class='card'><h2>시·군·구별 청약</h2><div class='chips'>");
-                for (Group district : districts) body.append("<a class='chip' href='").append(esc(domain + district.region().path())).append("'>")
-                    .append(esc(district.region().district())).append(" ").append(district.entries().size()).append("</a>");
-                body.append("</div></section>");
-            }
+            if (!districts(region.sido(), entries).isEmpty())
+                body.append("<section class='card'><h2>시·군·구별 청약</h2><p class='muted'>숫자는 접수 중·예정 건수예요.</p>").append(districtChips(region.sido(), entries, today)).append("</section>");
         }
         if (page == 1) {
             body.append(list("접수 중·예정", active, "지금 " + label + "에서 접수 중이거나 예정된 공고가 없어요. 새 공고는 매일 반영됩니다.", today));
@@ -165,6 +159,25 @@ public class PublicRegionPages {
             + (page > 1 ? "<link rel='prev' href='" + esc(domain + region.path() + (page == 2 ? "" : "?page=" + (page - 1))) + "'>" : "")
             + (page < pages ? "<link rel='next' href='" + esc(domain + region.path() + "?page=" + (page + 1)) + "'>" : "");
         return PublicHtml.page(domain, "", title, description, canonical, body.toString(), head);
+    }
+    /** '접수 중 3 · 예정 6'(앱 지역별 청약 카드와 같은 숫자·문구). */
+    static String activeCounts(List<PublicAnnouncementIndex.Entry> entries, LocalDate today) {
+        long open = entries.stream().filter(e -> e.status(today) == PublicAnnouncementIndex.Status.OPEN).count();
+        long active = entries.stream().filter(e -> e.active(today)).count();
+        return "접수 중 " + open + " · 예정 " + (active - open);
+    }
+    /**
+     * 시·군·구 칩. 숫자는 앱 칩과 같은 접수 중·예정 건수이고, 지난 공고만 있는 곳은 숫자 없이 이름만 둔다(검색 봇이 지난 공고 페이지에도 닿게).
+     * 순서는 공고가 많은 순(districts)이다.
+     */
+    private String districtChips(Regions.Sido sido, List<PublicAnnouncementIndex.Entry> entries, LocalDate today) {
+        StringBuilder out = new StringBuilder("<div class='chips'>");
+        for (Group district : districts(sido, entries)) {
+            long active = district.entries().stream().filter(e -> e.active(today)).count();
+            out.append("<a class='chip' href='").append(esc(domain + district.region().path())).append("'>").append(esc(district.region().district()))
+                .append(active > 0 ? " " + active : "").append("</a>");
+        }
+        return out.append("</div>").toString();
     }
     private static <T> List<T> concat(List<T> a, List<T> b) { List<T> out = new ArrayList<>(a); out.addAll(b); return out; }
 

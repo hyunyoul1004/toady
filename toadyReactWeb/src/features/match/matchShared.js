@@ -3,7 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
-import { daysUntil } from '@/features/planner/plannerUtils';
+import { openReceiptText, receiptState } from '@/features/announcement/receiptState';
 import { formatManwon } from '@/features/planner/researchUtils';
 import { RCEPT_SE_META } from '@/views/main/calendar/calendarGroup';
 
@@ -17,13 +17,16 @@ export function useEligibilityFeed(enabled = true) {
     staleTime: 600000, retry: 1, enabled });
 }
 
-/** 카드의 접수 상태 문구: 접수 중이면 마감까지, 예정이면 시작까지. */
+/**
+ * 카드의 접수 상태 문구: 접수 중이면 마감까지(먼 미래 마감은 '상시 접수'), 예정이면 시작까지.
+ * 상세 상태 칩·관심 공고 카드와 같은 receiptState(시작 후 400일 상한)를 쓴다. 날짜가 없으면 서버 status로 대신한다.
+ */
 export function receiptBadge(item, today) {
-  if (item.status === 'OPEN') {
-    const left = daysUntil(item.end, today);
-    return { tone: 'open', text: left === 0 ? '오늘 마감' : left > 0 ? `접수 중 · D-${left}` : '접수 중' };
-  }
-  const left = daysUntil(item.start, today);
+  const receipt = receiptState(item.start, item.end, today);
+  const state = receipt.state === 'unknown' ? (item.status === 'OPEN' ? 'open' : 'upcoming') : receipt.state;
+  if (state === 'open') return { tone: 'open', text: openReceiptText(receipt) || '접수 중' };
+  if (state === 'closed') return { tone: 'closed', text: '접수 종료' };
+  const left = receipt.daysToStart;
   return { tone: 'upcoming', text: left === 1 ? '내일 접수' : left > 0 ? `접수 D-${left}` : '접수 예정' };
 }
 

@@ -3,6 +3,8 @@
  * 쓰는 곳: FavoriteCard.jsx, ResearchPanel.jsx(normalizeStage).
  */
 import { daysUntil } from './plannerUtils.js';
+import { openReceiptText, receiptState } from '../announcement/receiptState.js';
+import { LH_APPLY_URL, receiptPlaceName } from '../announcement/receiptChannel.js';
 import { formatCompetitionRate } from '../../utils/rate.util.js';
 
 /** 관심 공고의 청약 진행 단계. 서버(TB_FAVORITE.STAGE)와 같은 번호를 쓴다. */
@@ -41,12 +43,16 @@ export function resultFacts(result, myScore) {
  * action: { label, href(외부) | to(앱 경로) | tab(공고 상세 탭) }
  */
 export function nextStep(stage, summary = {}, today, result) {
-  const start = daysUntil(summary.startDate, today), end = daysUntil(summary.endDate, today), winner = daysUntil(summary.winnerDate, today);
+  const start = daysUntil(summary.startDate, today), winner = daysUntil(summary.winnerDate, today);
   const contract = (summary.events || []).find(event => event.label === '계약 시작')?.date;
   if (stage <= 1) {
     if (start !== null && start > 0) return { tone: 'info', text: `접수 D-${start} (${md(summary.startDate)}) · 신청 전 체크리스트를 확인하세요`, action: stage === 0 ? { label: '신청 예정으로', stage: 1 } : null };
-    if (end !== null && end >= 0) return { tone: 'urgent', text: end === 0 ? '오늘 접수 마감이에요 · 청약홈에서 신청하세요' : `접수 중 · 마감 D-${end} · 청약홈에서 신청하세요`, action: { label: '청약홈', href: APPLYHOME_URL } };
-    if (end !== null) return { tone: 'info', text: '접수가 끝났어요. 신청했다면 ‘신청 완료’로 바꾸면 발표와 결과를 챙겨 드려요.', action: { label: '신청 완료로', stage: 2 } };
+    // 접수 중·종료는 목록·달력과 같은 기준(receiptState: 시작 후 400일 상한, 먼 미래 마감은 상시 접수)으로 본다.
+    const receipt = receiptState(summary.startDate, summary.endDate, today);
+    // 신청처: LH청약플러스 접수 공고(receiptChannel 'LH')는 청약홈 대신 LH청약플러스로 안내한다.
+    const place = receiptPlaceName(summary.receiptChannel), placeUrl = summary.receiptChannel === 'LH' ? LH_APPLY_URL : APPLYHOME_URL;
+    if (receipt.state === 'open') return { tone: 'urgent', text: receipt.daysLeft === 0 ? `오늘 접수 마감이에요 · ${place}에서 신청하세요` : `${receipt.always ? openReceiptText(receipt) : `접수 중 · 마감 D-${receipt.daysLeft}`} · ${place}에서 신청하세요`, action: { label: place, href: placeUrl } };
+    if (receipt.state === 'closed') return { tone: 'info', text: '접수가 끝났어요. 신청했다면 ‘신청 완료’로 바꾸면 발표와 결과를 챙겨 드려요.', action: { label: '신청 완료로', stage: 2 } };
     return { tone: 'info', text: '일정이 정해지면 알려 드릴게요.' };
   }
   if (stage === 2) {

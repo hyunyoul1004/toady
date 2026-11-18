@@ -32,16 +32,28 @@ public class PlannerService {
         catch(BadSqlGrammarException missing) { return false; }
         return true;
     }
-    /** 내 관심 공고를 최근 저장 순으로. 원본 공고가 지워졌으면 '원본을 찾을 수 없는 공고'로 채워 목록에서 빠지지 않게 한다. */
+    /** 운영자가 숨긴 공고. 관심 공고 목록(화면·메일 알림·캘린더)에서 뺀다. 빈이 없으면(일부 테스트) 숨김 없이 동작한다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    HiddenAnnouncements hidden;
+    /** TB_FAVORITE(유형 경로값 'apt' 형식)에서 숨긴 공고를 빼는 조건. */
+    private HiddenAnnouncements.SqlFilter notHidden() {
+        return hidden==null?HiddenAnnouncements.SqlFilter.NONE:hidden.notHiddenSql("ANNOUNCEMENT_TYPE","HOUSE_MANAGE_NO","PBLANC_NO",HiddenAnnouncements.TypeFormat.PATH);
+    }
+    /**
+     * 내 관심 공고를 최근 저장 순으로. 원본 공고가 지워졌으면 '원본을 찾을 수 없는 공고'로 채워 목록에서 빠지지 않게 한다.
+     * 운영자가 숨긴 공고는 뺀다(내 정보 요약의 관심 공고 수 AccountService.summary와 같은 조건).
+     */
     public List<Favorite> list(long user) {
         boolean withStage=stageColumn();
-        return jdbc.query("SELECT * FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", (r,n)-> {
+        var notHidden=notHidden();
+        return jdbc.query("SELECT * FROM TB_FAVORITE WHERE USER_SEQ=?"+notHidden.sql()+" ORDER BY REG_DT DESC", (r,n)-> {
             String type=r.getString("ANNOUNCEMENT_TYPE"),house=r.getString("HOUSE_MANAGE_NO"),notice=r.getString("PBLANC_NO");
             PlannerSummary.Summary summary;
             try { summary=summaries.get(type,house,notice); }
             catch(EntityNotFoundException e) { summary=PlannerSummary.Summary.missing(type+"/"+house+"/"+notice); }
             return new Favorite(summary.id(),r.getString("NOTE"),r.getInt("CHECKLIST"),r.getBoolean("EMAIL_ENABLED"),withStage?r.getInt("STAGE"):0,summary);
-        },user);
+        },notHidden.with(user));
     }
     /** stage가 null이면 기존 단계를 그대로 둔다(단계 기능 이전 화면·클라이언트 호환). */
     // @Transactional: 메서드 안의 SQL을 하나의 트랜잭션으로 묶는다. 중간에 예외가 나면 모두 되돌린다.
@@ -58,7 +70,9 @@ public class PlannerService {
             jdbc.update("UPDATE TB_FAVORITE SET NOTE=?,CHECKLIST=?,EMAIL_ENABLED=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",note,checklist,email,user,type,house,notice);
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         } else {
-            if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?",Integer.class,user)>=50) throw new PlannerLimitException("관심 공고는 50개까지 저장할 수 있어요. 지난 공고를 정리한 뒤 다시 저장해 주세요.");
+            // 50개 한도는 화면에 보이는 관심 공고(숨긴 공고 제외, list와 같은 조건)로 센다.
+            var visible=notHidden();
+            if(jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?"+visible.sql(),Integer.class,visible.with(user))>=50) throw new PlannerLimitException("관심 공고는 50개까지 저장할 수 있어요. 지난 공고를 정리한 뒤 다시 저장해 주세요.");
             jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,CHECKLIST,EMAIL_ENABLED,REG_DT) VALUES (?,?,?,?,?,?,?,?)",user,type,house,notice,note,checklist,email,Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul"))));
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         }

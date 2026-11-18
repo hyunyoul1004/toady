@@ -8,7 +8,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Box from '@mui/material/Box';
 
-import { describeGroup, rceptSeMeta } from './calendarGroup';
+import { describeGroup, rceptSeMeta, receiptTag } from './calendarGroup';
 import StageBadges from './StageBadges';
 
 const PLUGINS = [dayGridPlugin, interactionPlugin];
@@ -43,7 +43,7 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
     info.el.setAttribute('aria-label', `${text} 상세 보기`);
   };
 
-  // 한 줄 렌더링: 단계 뱃지(특·1·2) + 단지명(최대 2줄) + 이야기 수.
+  // 한 줄 렌더링: 단계 뱃지(특·1·2) + 단지명(최대 2줄) + (LH청약플러스 접수면) 'LH' + 이야기 수.
   // 'GTX운정중앙역 시티프라디움 3단지/4단지'처럼 앞부분이 같은 이름은 뒤의 단지 번호가 보이도록 2줄까지 펼친다.
   const renderEventContent = (eventInfo) => {
     const more = eventInfo.event.extendedProps?.more;
@@ -55,6 +55,7 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
       <div className={`tc-event${group.ongoing ? ' is-ongoing' : ''}`} style={{ '--tc-accent': meta.accent }}>
         <StageBadges group={group} />
         <span className="tc-title">{group.houseNm}</span>
+        {receiptTag(group) && <span className="tc-receipt" aria-hidden="true">LH</span>}
         {group.commentCount > 0 && <span className="tc-count">{group.commentCount}</span>}
       </div>
     );

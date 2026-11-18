@@ -51,7 +51,8 @@ const ONGOING_ORDER = 100;
 
 /**
  * 일정 행 목록 → 날짜·공고별 묶음 목록.
- * 반환 항목: { key, date, subscriptSeq, houseNm, commentCount, stages, allStages, primaryRceptSe, order, ongoing, endDate }
+ * 반환 항목: { key, date, subscriptSeq, houseNm, commentCount, stages, allStages, primaryRceptSe, order, ongoing, endDate, receiptChannel }
+ * - receiptChannel: 접수처. LH청약플러스 접수면 'LH'(행의 receiptChannel, receiptChannel.js), 청약홈이면 null
  * - ongoing: 그날 행이 모두 '접수 기간 중'(시작일 다음 날부터) 행이면 true
  * - endDate: '접수 중' 줄이 속한 기간의 마지막 날(행의 periodEnd, 없으면 접수 종료일). 마감 안내에 쓴다.
  *   예: 특별공급 11.17~18, 1순위 19일이면 11.18 칸의 특별공급 '접수 중' 줄은 '~11.18 마감'.
@@ -87,13 +88,19 @@ export function groupCalendarSchedules(rows) {
         commentCount: 0,
         ongoing: true,
         endDate: null,
+        receiptChannel: null,
         stageMap: new Map()
       });
     }
     const group = groups.get(key);
     if (!row.ongoing) group.ongoing = false;
-    if (row.ongoing && !group.endDate) group.endDate = normalizeScheduleDate(row.periodEnd || row.rceptEndde);
+    // 같은 날 특별공급·순위 접수 기간이 함께 이어지면 가장 늦은 마감일을 쓴다(먼저 끝나는 기간의 마감일을 전체 마감처럼 보이지 않게).
+    if (row.ongoing) {
+      const end = normalizeScheduleDate(row.periodEnd || row.rceptEndde);
+      if (end && (!group.endDate || end > group.endDate)) group.endDate = end;
+    }
     if (!group.houseNm && row.houseNm) group.houseNm = row.houseNm;
+    if (row.receiptChannel === 'LH') group.receiptChannel = 'LH';
     group.commentCount = Math.max(group.commentCount, Number(row.subscriptCommentCnt) || 0);
     if (!group.stageMap.has(rceptSe)) group.stageMap.set(rceptSe, new Set());
     if (row.areaLabel) {
@@ -177,9 +184,15 @@ export function describeStages(group) {
   return `${stages.join(' · ')} 접수 기간 중${group.endDate ? `(~${shortDate(group.endDate)} 마감)` : ''}`;
 }
 
-/** 접근성·말줄임 보완용 설명: "단지명 · 1순위(해당지역) · 댓글 3" */
+/** 달력 줄에 붙이는 접수처 표시. LH청약플러스 접수면 'LH 접수', 청약홈이면 ''. */
+export function receiptTag(group) {
+  return group?.receiptChannel === 'LH' ? 'LH 접수' : '';
+}
+
+/** 접근성·말줄임 보완용 설명: "단지명 · 1순위(해당지역) · LH청약플러스 접수 · 댓글 3" */
 export function describeGroup(group) {
   const parts = [group.houseNm, describeStages(group)];
+  if (group.receiptChannel === 'LH') parts.push('LH청약플러스 접수');
   if (group.commentCount > 0) parts.push(`이야기 ${group.commentCount}`);
   return parts.filter(Boolean).join(' · ');
 }

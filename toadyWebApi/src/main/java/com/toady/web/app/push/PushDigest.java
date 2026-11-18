@@ -9,6 +9,7 @@ import com.toady.web.app.planner.PlannerService;
 import com.toady.web.app.planner.PlannerSummary;
 import com.toady.web.app.planner.PriceGapStore;
 import com.toady.web.app.planner.PublicAreaPage;
+import com.toady.web.app.planner.PublicCollectionPages;
 import com.toady.web.app.user.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
@@ -47,25 +48,29 @@ public class PushDigest {
     private static final Logger log = LoggerFactory.getLogger(PushDigest.class);
     /** 생활권 새 공고 기록을 처음 만들 때 기존 공고를 '새 공고'로 보내지 않기 위한 기준 시각. */
     static final LocalDateTime BASELINE = LocalDateTime.of(2000, 1, 1, 0, 0);
+    /** 처음 보는 공고를 '새 공고'로 볼 접수 시작일 범위(예전 생활권·줍줍 접수 중 판정 범위와 같은 45일). 이보다 오래전에 시작한 공고는 기존 공고로 기록한다. */
+    static final int NEW_LOOKBACK_DAYS = 45;
 
     private final PushSubscriptions store; private final WebPushSender sender; private final JdbcTemplate jdbc;
     private final PlannerService planner; private final PlannerSummary summaries; private final PublicAreaPage areas;
     private final UserRepository users; private final ObjectMapper mapper; private final Clock clock;
     private final AnnouncementResults results;
     private final PriceGapStore gapStore;
+    /** 주간 브리핑 숫자를 '이번 주 청약' 화면의 '다음 주 접수 시작'과 같은 계산(weeklyData)으로 내기 위해 쓴다. */
+    private final PublicCollectionPages collections;
 
     // @Autowired: 스프링이 쓸 생성자. 아래 Clock을 받는 생성자는 테스트에서 시각을 고정할 때 쓴다
     @Autowired
     public PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
             PublicAreaPage areas, UserRepository users, ObjectMapper mapper, AnnouncementResults results,
-            PriceGapStore gapStore) {
-        this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, gapStore, Clock.system(PushSubscriptions.KST));
+            PriceGapStore gapStore, PublicCollectionPages collections) {
+        this(store, sender, jdbc, planner, summaries, areas, users, mapper, results, gapStore, collections, Clock.system(PushSubscriptions.KST));
     }
     PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
             PublicAreaPage areas, UserRepository users, ObjectMapper mapper, AnnouncementResults results,
-            PriceGapStore gapStore, Clock clock) {
+            PriceGapStore gapStore, PublicCollectionPages collections, Clock clock) {
         this.store = store; this.sender = sender; this.jdbc = jdbc; this.planner = planner; this.summaries = summaries;
-        this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.gapStore = gapStore; this.clock = clock;
+        this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.gapStore = gapStore; this.collections = collections; this.clock = clock;
     }
 
     /** 운영자가 숨긴 공고. 빈이 없으면(일부 테스트) 아무것도 숨기지 않는다. */
@@ -273,10 +278,11 @@ public class PushDigest {
                 lines.forEach(line -> already.add(line.announcementId()));
                 for (String slug : row.areas()) {
                     // 주간 브리핑: 일요일 저녁 묶음에만 다음 주(월~일) 접수 시작 공고 수를 넣는다.
+                    // 숫자는 '이번 주 청약' 화면의 '다음 주 접수 시작'과 같은 계산이고, 누르면 그 구역(#week-next)으로 연다.
                     if (PushTopics.WEEKLY.equals(slug)) {
                         if (today.getDayOfWeek() != DayOfWeek.SUNDAY) continue;
                         if (week[0] == null) {
-                            try { week[0] = areas.startingCounts(today.plusDays(1), today.plusDays(7)); }
+                            try { week[0] = collections.nextWeekCounts(today); }
                             catch (RuntimeException failure) { log.warn("주간 브리핑 집계 실패: error={}", failure.getClass().getSimpleName()); week[0] = new PublicAreaPage.WeekCounts(0, 0, 0); }
                         }
                         if (week[0].total() > 0) lines.add(new PushMessage.Line("WEEKLY", null, weeklyText(week[0]), "이번 주 청약", slug, "이번 주 청약"));
@@ -359,13 +365,13 @@ public class PushDigest {
             return "새 공고 · " + ("비슷".equals(value.text()) ? label + "와 비슷" : label + " 대비 " + value.text()) + "(참고)";
         }).orElse("새 공고");
     }
-    /** 주간 브리핑 한 줄 요약(예: 접수 시작 5건 · 아파트 3건 · 무순위·줍줍 2건). */
+    /** 주간 브리핑 한 줄 요약(예: 다음 주 접수 시작 5건 · 아파트 3건 · 무순위·줍줍 2건). */
     static String weeklyText(PublicAreaPage.WeekCounts counts) {
         List<String> parts = new ArrayList<>();
         if (counts.apt() > 0) parts.add("아파트 " + counts.apt() + "건");
         if (counts.unranked() > 0) parts.add("무순위·줍줍 " + counts.unranked() + "건");
         if (counts.others() > 0) parts.add("기타 " + counts.others() + "건");
-        return "접수 시작 " + counts.total() + "건 · " + String.join(" · ", parts);
+        return "다음 주 접수 시작 " + counts.total() + "건 · " + String.join(" · ", parts);
     }
 
     /** 결과 알림은 접수 시작 뒤부터 마감 후 이 기간 안의 공고만 보낸다(오래된 공고를 새로 저장했을 때 지난 결과를 새 소식처럼 보내지 않는다). */
@@ -475,7 +481,11 @@ public class PushDigest {
             String id = item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo();
             LocalDateTime at = known.get(id);
             if (at == null) {
-                try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(firstSeen)); at = firstSeen; }
+                // 처음 보는 공고라도 접수를 시작한 지 NEW_LOOKBACK_DAYS가 지났으면 기존 공고로 기록한다(새 공고로 보내지 않는다).
+                // 접수 중 범위가 시작 400일까지로 넓어지며 처음 목록에 들어오는 장기 접수 공고(임대 등)가 한꺼번에 '새 공고'로 나가지 않게 한다.
+                LocalDate start = startDate(item.rceptBgnde());
+                LocalDateTime seenAt = start != null && start.isBefore(now.toLocalDate().minusDays(NEW_LOOKBACK_DAYS)) ? BASELINE : firstSeen;
+                try { jdbc.update("INSERT INTO TB_PUSH_AREA_SEEN (AREA_SLUG,ANNOUNCEMENT_ID,FIRST_SEEN_DT) VALUES (?,?,?)", slug, id, Timestamp.valueOf(seenAt)); at = seenAt; }
                 catch (DuplicateKeyException raced) { at = BASELINE; }
                 known.put(id, at);
             }
@@ -483,6 +493,14 @@ public class PushDigest {
         }
         markSeen(slug, result.stream().map(Seen::id).toList(), now);
         return result;
+    }
+
+    /** '2026-11-17'·'20261117' 같은 접수 시작일의 앞 8자리 숫자를 날짜로 읽는다. 읽을 수 없으면 null. */
+    static LocalDate startDate(String value) {
+        String digits = value == null ? "" : value.replaceAll("\\D", "");
+        if (digits.length() < 8) return null;
+        try { return LocalDate.parse(digits.substring(0, 8), java.time.format.DateTimeFormatter.BASIC_ISO_DATE); }
+        catch (java.time.format.DateTimeParseException invalid) { return null; }
     }
 
     /** 0이면 아직 확인 전, 1이면 LAST_SEEN_DT 컬럼 있음, -1이면 없음(database.sql 15번 미적용). */

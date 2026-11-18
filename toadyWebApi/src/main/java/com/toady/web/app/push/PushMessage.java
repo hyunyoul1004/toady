@@ -112,7 +112,7 @@ public record PushMessage(String title, String body, String url, String tag, Lis
                 return Optional.of(new PushMessage(only.areaLabel() + " 새 청약 공고",
                     "‘" + name(only.houseNm()) + "’ 공고가 올라왔어요." + gap + " 눌러서 일정과 분양가를 확인하세요.", detailUrl(only.announcementId()), tag, List.of()));
             }
-            return Optional.of(new PushMessage("이번 주 청약 브리핑", weekly.get(0).houseNm() + ". 눌러서 이번 주 일정을 확인하세요.", PushTopics.WEEKLY_URL, tag, List.of()));
+            return Optional.of(new PushMessage("이번 주 청약 브리핑", weekly.get(0).houseNm() + ". 눌러서 다음 주 일정을 확인하세요.", PushTopics.WEEKLY_URL, tag, List.of()));
         }
         List<String> parts = new ArrayList<>();
         if (!favorites.isEmpty()) parts.add("내일 일정 " + favorites.size() + "건 · " + name(favorites.get(0).houseNm()) + " " + favorites.get(0).label() + (favorites.size() > 1 ? " 외 " + (favorites.size() - 1) + "건" : ""));

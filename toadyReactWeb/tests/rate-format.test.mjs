@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUnit, parseRate, formatRate, formatCount, hasDistinctValues, normalizeRateRows, summarizeRates, remainingTypeLabel, resultLabel, secondRankPending, secondRankPossible, secondRankWindow, unitShortage } from '../src/views/main/subscriptRate/rateFormat.js';
+import { formatUnit, parseRate, formatRate, formatCount, hasDistinctValues, normalizeRateRows, rowSupplyText, summarizeRates, countAptUnits, remainingTypeLabel, resultLabel, secondRankPending, secondRankPossible, secondRankWindow, unitShortage } from '../src/views/main/subscriptRate/rateFormat.js';
 
 test('house types drop padded zeros and keep the suffix letter',()=>{
   assert.equal(formatUnit('074.0000A'),'74㎡ · A');
@@ -165,4 +165,60 @@ test('only units that may open rank 2 drop the closed suffix', () => {
   assert.equal(secondRankPossible([{ suplyHshldco: '10', reqCnt: '4', cmpetRate: '(△6)' }, { suplyHshldco: '10', reqCnt: '7', cmpetRate: '1.2' }]), true);
   // 합계가 공급에 못 미쳐도 열릴 수 있다.
   assert.equal(secondRankPossible([{ suplyHshldco: '152', reqCnt: '40', cmpetRate: '(△112)' }, { suplyHshldco: '152', reqCnt: '31', cmpetRate: '(△81)' }]), true);
+});
+
+test('머리글 주택형 수는 순위·지역 행이 아니라 주택형 단위로 센다', () => {
+  const rows=[
+    {houseTy:'084.9000A',subscrptRankCode:'1',resideSenm:'해당지역',suplyHshldco:'40',reqCnt:'500',cmpetRate:'12.5'},
+    {houseTy:'084.9000A',subscrptRankCode:'1',resideSenm:'기타경기',suplyHshldco:'40',reqCnt:'20',cmpetRate:'-'},
+    {houseTy:'084.9000A',subscrptRankCode:'1',resideSenm:'기타지역',suplyHshldco:'40',reqCnt:'10',cmpetRate:'-'},
+    {houseTy:'084.9000A',subscrptRankCode:'2',resideSenm:'해당지역',suplyHshldco:'40',reqCnt:'2',cmpetRate:'-'}
+  ];
+  assert.equal(summarizeRates('apt',rows).unitCount,1);
+  assert.equal(countAptUnits(rows),1);
+  assert.equal(countAptUnits([{houseTy:'059'},{houseTy:'084'},{modelNo:'03'}]),3);
+  assert.equal(countAptUnits([]),0);
+});
+
+// 운영 응답(urban/2026950088) 형태: 주택형마다 거주자우선·기타 두 줄이 같은 주택형 공급(suplyHshldco)을 되풀이한다.
+test('urban summary counts repeated house-type supply once and sums applications per row',()=>{
+  const rows=[
+    {modelNo:'01',houseTy:'24A',suplyHshldco:'160',residntPriorAt:'Y',residentPriorSenm:'거주자우선',reqCnt:'9',cmpetRate:'(△23)'},
+    {modelNo:'01',houseTy:'24A',suplyHshldco:'160',residntPriorAt:'N',residentPriorSenm:'기타',reqCnt:'10',cmpetRate:'(△141)'},
+    {modelNo:'15',houseTy:'46A',suplyHshldco:'2',residntPriorAt:'Y',residentPriorSenm:'거주자우선',reqCnt:'4',cmpetRate:'4.00'},
+    {modelNo:'15',houseTy:'46A',suplyHshldco:'2',residntPriorAt:'N',residentPriorSenm:'기타',reqCnt:'1',cmpetRate:'4.00'},
+    // 거주자우선 줄만 미달이고 기타 줄 접수로 채워진 주택형은 미달이 아니다(두 줄 합계 3 ≥ 공급 2).
+    {modelNo:'16',houseTy:'46B',suplyHshldco:'2',residntPriorAt:'Y',residentPriorSenm:'거주자우선',reqCnt:'0',cmpetRate:'(△1)'},
+    {modelNo:'16',houseTy:'46B',suplyHshldco:'2',residntPriorAt:'N',residentPriorSenm:'기타',reqCnt:'3',cmpetRate:'1.50'}
+  ];
+  const summary=summarizeRates('urban',rows);
+  assert.equal(summary.supplyTotal,164);
+  assert.equal(summary.appTotal,27);
+  assert.equal(summary.unitCount,3);
+  assert.equal(summary.shortageCount,1);
+  const table=normalizeRateRows('urban',rows);
+  assert.deepEqual(table.groups.map(group=>[group.unitKey,group.sharedSupply,group.supply,group.rows.length]),[['24A',true,160,2],['46A',true,2,2],['46B',true,2,2]]);
+  assert.deepEqual(table.groups[0].rows.map((row,index)=>rowSupplyText(table.groups[0],index)),['160','〃']);
+});
+
+// 운영 응답(public-rental/2026850055) 형태: 공급 유형별 배정(spsplyKndHshldco)을 합하면 주택형 공급(suplyHshldco)이다.
+test('public-rental summary sums per-kind allocations instead of the repeated unit supply',()=>{
+  const rows=[
+    {modelNo:'01',houseTy:'49',suplyHshldco:'115',spsplyKndNm:'일반공급',spsplyKndHshldco:'0',reqCnt:'0',cmpetRate:'-'},
+    {modelNo:'01',houseTy:'49',suplyHshldco:'115',spsplyKndNm:'고령자',spsplyKndHshldco:'70',reqCnt:'4',cmpetRate:'(△66)'},
+    {modelNo:'01',houseTy:'49',suplyHshldco:'115',spsplyKndNm:'청년',spsplyKndHshldco:'45',reqCnt:'18',cmpetRate:'(△27)'},
+    {modelNo:'02',houseTy:'59B',suplyHshldco:'37',spsplyKndNm:'고령자',spsplyKndHshldco:'23',reqCnt:'4',cmpetRate:'(△19)'},
+    {modelNo:'02',houseTy:'59B',suplyHshldco:'37',spsplyKndNm:'청년',spsplyKndHshldco:'14',reqCnt:'18',cmpetRate:'1.29'}
+  ];
+  const summary=summarizeRates('public-rental',rows);
+  assert.equal(summary.supplyTotal,152);
+  assert.equal(summary.appTotal,44);
+  assert.equal(summary.shortageCount,2);
+  const table=normalizeRateRows('public-rental',rows);
+  assert.deepEqual(table.groups.map(group=>group.supply),[115,37]);
+  assert.deepEqual(table.groups[0].rows.map((row,index)=>rowSupplyText(table.groups[0],index)),['0','70','45']);
+  // 배정이 비어 주택형 공급만 되풀이하는 응답이면 한 번만 센다.
+  const bare=summarizeRates('public-rental',[{houseTy:'59',suplyHshldco:'30',spsplyKndNm:'일반',reqCnt:'10'},{houseTy:'59',suplyHshldco:'30',spsplyKndNm:'청년',reqCnt:'5'}]);
+  assert.equal(bare.supplyTotal,30);
+  assert.equal(bare.appTotal,15);
 });

@@ -1,7 +1,16 @@
 /**
- * 시·도(정식 이름) → 실제 시·군·구 이름(일반구 제외). 서버 Regions.java의 DISTRICTS와 같은 목록이어야 한다(tests/match.test.mjs가 대조).
- * 지역별 청약 주소(/regions/{시·도}/{시·군·구})를 서버와 같은 기준으로 받기 위해 쓴다.
+ * 시·도 목록과 시·도(정식 이름) → 실제 시·군·구 이름(일반구 제외). 서버 Regions.java의 ALL·ALIASES·DISTRICTS와 같은 목록이어야 한다(tests/match.test.mjs가 대조).
+ * 웹의 지역 판정(regionRules.js regionOf, 지역별 청약·캘린더 지역 검색·공급지역 체크박스)은 이 파일 하나만 본다.
+ * 검색창 자동완성 목록(Citys.js)은 동·지구 이름을 보여 주는 용도이고 지역 판정에는 쓰지 않는다.
  */
+/** 정식 이름·줄임말(서버 Regions.ALL과 같은 순서). */
+export const SIDOS = [
+  ['서울특별시', '서울'], ['부산광역시', '부산'], ['대구광역시', '대구'], ['인천광역시', '인천'], ['광주광역시', '광주'], ['대전광역시', '대전'],
+  ['울산광역시', '울산'], ['세종특별자치시', '세종'], ['경기도', '경기'], ['강원특별자치도', '강원'], ['충청북도', '충북'], ['충청남도', '충남'],
+  ['전북특별자치도', '전북'], ['전라남도', '전남'], ['경상북도', '경북'], ['경상남도', '경남'], ['제주특별자치도', '제주'],
+].map(([name, shortName]) => ({ name, shortName }));
+/** 예전 이름·흔한 표기 → 줄임말(서버 Regions.ALIASES와 같은 목록). '광주시'는 경기 광주시와 헷갈리므로 넣지 않는다. */
+export const SIDO_ALIASES = { 서울시: '서울', 부산시: '부산', 대구시: '대구', 인천시: '인천', 대전시: '대전', 울산시: '울산', 세종시: '세종', 강원도: '강원', 전라북도: '전북', 제주도: '제주' };
 const SPACED = {
   '서울특별시': '종로구 중구 용산구 성동구 광진구 동대문구 중랑구 성북구 강북구 도봉구 노원구 은평구 서대문구 마포구 양천구 강서구 구로구 금천구 영등포구 동작구 관악구 서초구 강남구 송파구 강동구',
   '부산광역시': '중구 서구 동구 영도구 부산진구 동래구 남구 북구 해운대구 사하구 금정구 강서구 연제구 수영구 사상구 기장군',
@@ -22,5 +31,15 @@ const SPACED = {
   '제주특별자치도': '제주시 서귀포시',
 };
 export const DISTRICTS = Object.fromEntries(Object.entries(SPACED).map(([city, names]) => [city, names ? names.split(' ') : []]));
+/** '수원특례시' → '수원시'(서버 Regions.canonical과 같은 규칙). 특례시는 행정구역상 시라서 '시'로 맞춘다. */
+export function canonicalDistrict(token) {
+  const text = String(token ?? '').trim();
+  return text.length > 3 && text.endsWith('특례시') ? `${text.slice(0, -3)}시` : text;
+}
+/** 그 시·도의 실제 시·군·구 이름(특례시 표기 포함)이면 정식 이름, 아니면 null(서버 Regions.district). */
+export function districtOf(cityName, token) {
+  const text = canonicalDistrict(token);
+  return text && (DISTRICTS[cityName] || []).includes(text) ? text : null;
+}
 /** 그 시·도의 실제 시·군·구 이름인지. */
-export const isDistrictOf = (cityName, name) => (DISTRICTS[cityName] || []).includes(name);
+export const isDistrictOf = (cityName, name) => districtOf(cityName, name) === name;

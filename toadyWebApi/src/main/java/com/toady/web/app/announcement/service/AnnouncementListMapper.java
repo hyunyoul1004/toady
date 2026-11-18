@@ -1,13 +1,14 @@
 package com.toady.web.app.announcement.service;
 
 import com.toady.web.app.announcement.AnnouncementType;
+import com.toady.web.app.announcement.ReceiptChannel;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.entity.*;
 
 /**
  * 외부 데이터 유형별 필드 차이를 통합 목록 계약으로 변환합니다.
  * 예: 접수 시작일이 APT는 rceptBgnde, 나머지는 subscrptRceptBgnde. 특별공급·순위별 접수일은 APT에만 있어 다른 유형은 null.
- * 댓글 수는 0으로 두고, 나중에 AnnouncementCommentCountService가 채운다. 호출: AnnouncementSearchService.searchAll.
+ * APT는 접수처(receiptChannel, LH청약플러스 접수면 "LH")를 ReceiptChannel로 판정해 넣는다. 댓글 수는 0으로 두고, 나중에 AnnouncementCommentCountService가 채운다. 호출: AnnouncementSearchService.searchAll.
  * 상태가 없는 변환 함수 모음이라 빈이 아닌 static 메서드로 두었다.
  */
 final class AnnouncementListMapper {
@@ -28,7 +29,8 @@ final class AnnouncementListMapper {
                 item.getGnrlRnk2CrspareaRcptde(), item.getGnrlRnk2CrspareaEndde(),
                 item.getGnrlRnk2EtcGgRcptde(), item.getGnrlRnk2EtcGgEndde(),
                 item.getGnrlRnk2EtcAreaRcptde(), item.getGnrlRnk2EtcAreaEndde(),
-                item.getTotSuplyHshldco(), 0L
+                item.getTotSuplyHshldco(), 0L,
+                ReceiptChannel.of(item.getBsnsMbyNm(), item.getHmpgAdres(), item.getSpsplyRceptBgnde())
         );
     }
 

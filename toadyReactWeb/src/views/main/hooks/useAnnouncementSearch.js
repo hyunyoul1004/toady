@@ -154,11 +154,11 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
             return houseNm.includes(targetApt);
           }
 
-          // C. 구/군 검색인 경우 (예: '파주시' 또는 '경기도 파주시')
+          // C. 구/군 검색인 경우 (예: '경기도 파주시')
           // D. 시/도 검색인 경우 (예: '경기도')
-          // C·D. 구/군·시/도 검색: 같은 시·도 안에서 낱말 단위로 비교한다('남구'가 '강남구'에 걸리지 않게).
-          // 주소가 줄임말·옛 이름이어도 지역별 청약 건수와 같은 규칙(regionOf)으로 묶는다. 단지명에 지역 이름 전체가 들어간 경우도 찾는다.
-          if (target.cityName) return matchesRegionTarget(item, target) || houseNm.includes(target.label);
+          // C·D. 지역 검색은 지역 판정(regionOf, 서버 Regions.of와 같은 규칙)만 쓴다. 지역별 청약 건수와 같은 공고가 보이게
+          // 단지명 글자로는 맞추지 않는다(단지명 검색은 B·자유 입력이 따로 맡는다).
+          if (target.cityName) return matchesRegionTarget(item, target);
           const query = target.label || '';
           return supplyLoc.includes(query) || hssplyAdres.includes(query) || houseNm.includes(query);
         })

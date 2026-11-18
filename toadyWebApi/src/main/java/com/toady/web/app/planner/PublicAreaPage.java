@@ -2,6 +2,7 @@ package com.toady.web.app.planner;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.toady.web.app.announcement.ReceiptWindow;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.announcement.dto.AnnouncementSearch;
 import com.toady.web.app.announcement.service.AnnouncementSearchService;
@@ -30,7 +31,8 @@ import static com.toady.web.app.planner.PublicHtml.esc;
 // @RestController: HTML 문자열과 JSON을 응답하는 컨트롤러.
 @RestController
 public class PublicAreaPage {
-    static final int PAST_DAYS = 180, FUTURE_DAYS = 180;
+    /** 생활권 페이지의 '최근 마감' 범위(접수 시작일 기준). 접수 중·예정 범위는 ReceiptWindow 하나를 쓴다. */
+    static final int PAST_DAYS = 180;
     private final AnnouncementSearchService search;
     private final String domain;
     private final ScoreBenchmarks benchmarks;
@@ -58,8 +60,7 @@ public class PublicAreaPage {
 
     /** 생활권 공개 페이지와 같은 기준의 접수 중·예정 공고. 웹 푸시의 생활권 새 공고 판정에 쓴다. */
     public List<AnnouncementListItem> active(LivingAreas.Area area, LocalDate today) {
-        Groups groups = groups(area.label(), null, today, 45);
-        return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+        return activeOnly(area.label(), null, today);
     }
 
     /**
@@ -87,44 +88,54 @@ public class PublicAreaPage {
         return first != null && !first.isAfter(today) && !last.isBefore(today.minusDays(days));
     }
 
-    /** 주간 브리핑 집계: 기간 안에 접수를 시작하는 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). */
+    /** 주간 브리핑 집계: 다음 주 접수를 시작하는 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). 계산은 PublicCollectionPages.nextWeekCounts. */
     public record WeekCounts(int apt, int unranked, int others) { public int total() { return apt + unranked + others; } }
-    public WeekCounts startingCounts(LocalDate from, LocalDate to) {
-        AnnouncementSearch query = new AnnouncementSearch();
-        query.setStartDate(from); query.setEndDate(to); query.setSize(500);
-        int apt = 0, unranked = 0, others = 0;
-        for (AnnouncementListItem item : search.searchAll(query, null).getContent()) {
-            LocalDate start = PlannerSummary.date(item.rceptBgnde() == null ? "" : item.rceptBgnde());
-            if (start == null || start.isBefore(from) || start.isAfter(to)) continue;
-            if ("apt".equals(item.type())) apt++;
-            else if (PublicCollectionPages.UNRANKED_TYPES.contains(item.type())) unranked++;
-            else others++;
-        }
-        return new WeekCounts(apt, unranked, others);
-    }
 
     /** 무순위·잔여세대·임의공급의 접수 중·예정 공고. 웹 푸시의 '줍줍' 새 공고 판정에 쓴다. */
     public List<AnnouncementListItem> activeUnranked(LocalDate today) {
-        Groups groups = groups(null, PublicCollectionPages.UNRANKED_TYPES, today, 45);
-        return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+        return activeOnly(null, PublicCollectionPages.UNRANKED_TYPES, today);
     }
 
     /** 생활권·무순위 등 공개 목록이 같은 접수 상태 기준(접수 중/예정/마감)을 쓰도록 한곳에서 나눈다. */
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) { return groups(keyword, types, today, pastDays, 12); }
-    /** closedLimit: 최근 마감을 몇 건까지 남길지. 건수 통계를 내는 화면은 자르지 않고 받은 뒤 목록만 줄인다. */
+    /**
+     * closedLimit: 최근 마감을 몇 건까지 남길지. 건수 통계를 내는 화면은 자르지 않고 받은 뒤 목록만 줄인다.
+     * 접수 중·예정은 ReceiptWindow 범위(시작 400일 이내이면서 마감 ≥ 오늘, 또는 180일 안에 시작)로 따로 읽고,
+     * 최근 마감은 접수 시작일이 pastDays 안인 공고에서 고른다. 그래서 pastDays가 짧은 곳(푸시 45일 등)도 오래 열린 공고를 빠뜨리지 않는다.
+     */
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays, int closedLimit) {
-        var page = search(keyword, types, today.minusDays(pastDays), today.plusDays(FUTURE_DAYS));
-        if (page.getTotalElements() <= SEARCH_LIMIT) return classify(page.getContent(), today, closedLimit);
-        // 결과는 접수 시작일 최신순으로 잘리므로 넘치면 앞쪽(접수 예정)이 자리를 차지해 오래전에 시작한 접수 중 공고가 빠질 수 있다.
-        // 이미 시작한 공고와 앞으로 시작할 공고를 나눠 다시 읽어, 접수 예정 건수 때문에 접수 중 공고가 밀려나지 않게 한다.
-        var started = search(keyword, types, today.minusDays(pastDays), today);
-        var future = search(keyword, types, today.plusDays(1), today.plusDays(FUTURE_DAYS));
-        if (started.getTotalElements() > SEARCH_LIMIT || future.getTotalElements() > SEARCH_LIMIT)
-            log.warn("공개 목록 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, started={}, upcoming={}", SEARCH_LIMIT, keyword, types,
-                started.getTotalElements(), future.getTotalElements());
-        List<AnnouncementListItem> merged = new ArrayList<>(future.getContent());
-        merged.addAll(started.getContent());
+        var active = activeSearch(keyword, types, today);
+        var recent = search(keyword, types, today.minusDays(pastDays), today);
+        if (active.getTotalElements() > SEARCH_LIMIT || recent.getTotalElements() > SEARCH_LIMIT)
+            log.warn("공개 목록 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, active={}, recent={}", SEARCH_LIMIT, keyword, types,
+                active.getTotalElements(), recent.getTotalElements());
+        List<AnnouncementListItem> merged = new ArrayList<>(active.getContent());
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        merged.forEach(item -> seen.add(item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo()));
+        for (AnnouncementListItem item : recent.getContent())
+            if (seen.add(item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo())) merged.add(item);
         return classify(merged, today, closedLimit);
+    }
+    /**
+     * 접수 중·예정 공고만(최근 마감은 읽지 않는다). 웹 푸시가 실행마다 생활권 전체를 돌며 부르므로 조회를 한 번(유형별)으로 줄인다.
+     * 판정은 groups와 같은 classify(ReceiptWindow)다.
+     */
+    List<AnnouncementListItem> activeOnly(String keyword, List<String> types, LocalDate today) {
+        var active = activeSearch(keyword, types, today);
+        if (active.getTotalElements() > SEARCH_LIMIT)
+            log.warn("접수 중·예정 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, active={}", SEARCH_LIMIT, keyword, types, active.getTotalElements());
+        Groups groups = classify(active.getContent(), today, 0);
+        return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
+    }
+    /** 접수 중·예정 후보: 접수 기간이 오늘~오늘+UPCOMING_DAYS와 겹치는 공고(시작일은 최대 400일 전까지, AnnouncementSearchService overlap). */
+    private org.springframework.data.domain.Page<AnnouncementListItem> activeSearch(String keyword, List<String> types, LocalDate today) {
+        AnnouncementSearch query = new AnnouncementSearch();
+        query.setKeyword(keyword);
+        query.setStartDate(today);
+        query.setEndDate(ReceiptWindow.searchEnd(today));
+        query.setOverlap(true);
+        query.setSize(SEARCH_LIMIT);
+        return search.searchAll(query, types);
     }
     /** 접수 시작일이 from~to인 공고를 통합 검색 한 페이지(최대 SEARCH_LIMIT건)로 읽는다. */
     private org.springframework.data.domain.Page<AnnouncementListItem> search(String keyword, List<String> types, LocalDate from, LocalDate to) {
@@ -149,9 +160,9 @@ public class PublicAreaPage {
             LocalDate start = PlannerSummary.date(source.rceptBgnde() == null ? "" : source.rceptBgnde());
             LocalDate end = PlannerSummary.date(source.rceptEndde() == null ? "" : source.rceptEndde());
             if (start == null) continue;
-            LocalDate last = end == null ? start : end;
-            if (start.isAfter(today)) upcoming.add(new Item(source, start, end, Status.UPCOMING));
-            else if (!last.isBefore(today)) open.add(new Item(source, start, end, Status.OPEN));
+            // 접수 중·예정 판정은 ReceiptWindow 하나로 한다. 180일보다 먼 예정 공고는 어느 목록에도 넣지 않는다.
+            if (start.isAfter(today)) { if (ReceiptWindow.upcoming(start, today)) upcoming.add(new Item(source, start, end, Status.UPCOMING)); }
+            else if (ReceiptWindow.open(start, end, today)) open.add(new Item(source, start, end, Status.OPEN));
             else closed.add(new Item(source, start, end, Status.CLOSED));
         }
         Comparator<Item> byStart = Comparator.comparing(Item::start);

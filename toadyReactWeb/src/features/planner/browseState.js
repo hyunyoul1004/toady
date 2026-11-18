@@ -47,9 +47,20 @@ export function calendarSelection(month,eventDates,today=koreaToday(),previous='
   return dates[0] || fallback;
 }
 
-/** 고른 달(YYYY-MM)에 일정(inDate)이 있는 공고를 공고 단위로 한 번씩. 목록 보기의 건수·목록이 쓴다. */
-export function uniqueInMonth(items = [], month = '') {
-  return [...new Map(items.filter(x => String(x.inDate || '').startsWith(month)).map(x => [x.subscriptSeq, x])).values()];
+// 'YYYY-MM-DD'(또는 'YYYYMMDD')가 토·일요일인지. 기기 시간대와 무관하게 UTC로 계산한다.
+const isWeekend = value => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  if (digits.length !== 8) return false;
+  const day = new Date(Date.UTC(Number(digits.slice(0, 4)), Number(digits.slice(4, 6)) - 1, Number(digits.slice(6, 8)))).getUTCDay();
+  return day === 0 || day === 6;
+};
+/**
+ * 고른 달(YYYY-MM)에 일정(inDate)이 있는 공고를 공고 단위로 한 번씩. 목록 보기의 건수·목록이 쓴다.
+ * weekdaysOnly: 달력(데스크톱·모바일 모두 평일 칸만 그림)에 보이는 공고만 센다. 주말에만 일정이 있는 공고는 달력에 없으므로 빼고 센다.
+ */
+export function uniqueInMonth(items = [], month = '', { weekdaysOnly = false } = {}) {
+  const inMonth = items.filter(x => String(x.inDate || '').startsWith(month) && !(weekdaysOnly && isWeekend(x.inDate)));
+  return [...new Map(inMonth.map(x => [x.subscriptSeq, x])).values()];
 }
 
 const SUPPLY_CODES = ['01', '02', '03', '04', '05', '06', '07', '08'];

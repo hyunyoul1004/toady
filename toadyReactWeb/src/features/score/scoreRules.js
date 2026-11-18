@@ -211,3 +211,22 @@ export function periodPickUpdate(result, value, dirty, lastPicked) {
   if (dirty && result.error && value !== undefined && value !== null && value !== '' && value === lastPicked) return null;
   return undefined;
 }
+
+/**
+ * 공개 당첨가점 지역 드롭다운 건수(ScoreBenchmarkSearch): 고른 기간(years) 건수. 기간 안에 0건이지만 전체 기간에는 있는 지역은 '0 · 전체 기간 N'으로 함께 보여 준다
+ * (고르면 검색이 기간을 넓혀 그 N건을 보여 주므로 0과 결과가 달라 보이지 않게).
+ */
+export function regionCountText(item, years) {
+  const count = Number(item?.count) || 0;
+  const all = Number(item?.allCount);
+  return years !== 0 && count === 0 && all > 0 ? `0 · 전체 기간 ${all}` : String(count);
+}
+/**
+ * 시·도(전국 검색)나 시·군·구(시·도 검색)를 주소로 정하지 못한 공고가 결과에 들어 있을 때 안내 문구(서버 search의 unknownRegion). 없으면 ''.
+ * 이 공고는 한 단계 아래 지역을 고르면 나오지 않아 전국 건수가 시·도 합보다 많을 수 있다.
+ */
+export function unknownRegionText(data, filter = {}) {
+  const count = Number(data?.unknownRegion) || 0;
+  if (!count) return '';
+  return filter.sido ? `시·군·구 미확인 ${count}건 포함` : `지역 미확인 ${count}건 포함`;
+}

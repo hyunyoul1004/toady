@@ -81,3 +81,26 @@ test('목록 보기 건수는 고른 달의 일정만, 공고 단위로 한 번�
   ];
   assert.deepEqual(uniqueInMonth(items, '2026-11').map(x => x.subscriptSeq), ['a']);
 });
+
+test('달력 보기의 조회 건수는 평일 칸에 보이는 공고만 센다(주말에만 일정이 있는 공고는 달력에 없다)', async () => {
+  const { uniqueInMonth } = await import('../src/features/planner/browseState.js');
+  const items = [
+    { subscriptSeq: 'weekday', inDate: '2026-11-20' }, { subscriptSeq: 'weekday', inDate: '2026-11-21' },
+    { subscriptSeq: 'weekendOnly', inDate: '2026-11-21' }, { subscriptSeq: 'weekendOnly', inDate: '2026-11-22' }
+  ];
+  assert.deepEqual(uniqueInMonth(items, '2026-11', { weekdaysOnly: true }).map(x => x.subscriptSeq), ['weekday']);
+  assert.deepEqual(uniqueInMonth(items, '2026-11').map(x => x.subscriptSeq), ['weekday', 'weekendOnly'], '목록 보기는 주말 일정 공고도 보여 준다');
+});
+
+test('날짜 칸 건수는 그날 공고 수다: 같은 공고의 두 줄(특별공급·1순위, 지역별 날짜)은 1건(모바일·데스크톱 팝오버 같은 묶음)', async () => {
+  const { groupCalendarSchedules, groupsByDate, foldOngoing } = await import('../src/views/main/calendar/calendarGroup.js');
+  const rows = [
+    { subscriptSeq: 'a', inDate: '2026-11-20', rceptSe: '01' }, { subscriptSeq: 'a', inDate: '2026-11-20', rceptSe: '02', areaLabel: '해당지역' },
+    { subscriptSeq: 'a', inDate: '2026-11-20', rceptSe: '02', areaLabel: '기타지역' }, { subscriptSeq: 'b', inDate: '2026-11-20', rceptSe: '06', ongoing: true }
+  ];
+  const byDate = groupsByDate(groupCalendarSchedules(rows));
+  assert.equal(byDate['2026-11-20'].length, 2);
+  // 데스크톱 칸은 접수 중 줄을 접어도 접은 줄 수를 더하면 그날 공고 수와 같다.
+  const { shown, folded } = foldOngoing(groupCalendarSchedules(rows));
+  assert.equal(shown.filter(group => group.date === '2026-11-20').length + (folded['2026-11-20'] || 0), 2);
+});

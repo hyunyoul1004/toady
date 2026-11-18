@@ -72,6 +72,18 @@ class PlannerIntegrationTest {
     }
     static String feedToken(String body) { var matcher=java.util.regex.Pattern.compile("/calendar/([A-Za-z0-9_-]{43})\\.ics").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
     /** 관심 공고 삭제도 저장과 같은 경로 값 검사(@Pattern)를 거친다. */
+    /** 관심 공고 50개 한도는 화면에 보이는 관심 공고로 센다(숨긴 공고는 목록에 없으니 한도도 차지하지 않는다). */
+    @Test void favoriteLimitIgnoresHiddenAnnouncements() throws Exception {
+        UserEntity account=user("limit-hidden@example.test");
+        for(int i=0;i<50;i++) jdbc.update("INSERT INTO TB_FAVORITE (USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,NOTE,CHECKLIST,EMAIL_ENABLED,REG_DT) VALUES (?,'apt',?,'N1','',0,FALSE,CURRENT_TIMESTAMP)",account.getUserSeq(),"LIM"+i);
+        assertThrows(PlannerLimitException.class,()->planner.save(account.getUserSeq(),"apt","P1","N1","",0,false,null));
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','LIM0','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        reloadOverrides();
+        try {
+            planner.save(account.getUserSeq(),"apt","P1","N1","",0,false,null);
+            assertEquals(50,planner.list(account.getUserSeq()).size(),"숨긴 1건을 뺀 49건 + 새로 저장한 1건");
+        } finally { jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides(); }
+    }
     @Test void favoriteDeleteValidatesPathLikeSave() throws Exception {
         user("delete-check@example.test");String auth=token("delete-check@example.test");
         mvc.perform(delete("/api/v1/me/favorites/house/P1/N1").header("Authorization",auth)).andExpect(status().isBadRequest());
@@ -163,6 +175,11 @@ class PlannerIntegrationTest {
         var regions=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/regions")).andExpect(status().isOk())));
         assertEquals("경기",regions.get(0).path("sido").asText());
         assertEquals("파주시",regions.get(0).path("districts").get(0).path("name").asText());
+        assertEquals(2,regions.get(0).path("districts").get(0).path("count").asInt(),"years가 없으면 전체 기간 건수");
+        var recentRegions=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/regions").param("years","3")).andExpect(status().isOk())));
+        assertEquals(1,recentRegions.get(0).path("districts").get(0).path("count").asInt(),"드롭다운 숫자도 검색과 같은 최근 3년 기준");
+        var recentFound=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/search").param("sido","경기").param("district","파주시").param("years","3")).andExpect(status().isOk())));
+        assertEquals(3,recentFound.path("requestedYears").asInt());
         com.toady.web.app.planner.PublicPagesCache.clear(benchmarks); com.toady.web.app.planner.PublicPagesCache.clear();
         String area=html(mvc.perform(get("/api/v1/public/areas/unjeong")).andExpect(status().isOk()));
         assertTrue(area.contains("운정 최근 공개 당첨가점") && area.contains("최저 47점 · 최고 74점") && area.contains("/announcements/apt/S1/N1'"),area);
@@ -279,6 +296,13 @@ class PlannerIntegrationTest {
         assertEquals(monday.toString(),summary.path("monday").asText());
         var ids=new java.util.ArrayList<String>(); summary.path("current").forEach(item->ids.add(item.path("id").asText()));
         assertTrue(ids.contains("remaining/R1/N1") && ids.contains("apt/K0/N1"),ids.toString());
+        // 큰 숫자는 접수 중·예정, 전체 일정은 상태별로 나눈다. 앱(counts)과 HTML이 같은 weeklyData에서 센다.
+        var counts=summary.path("counts");
+        assertEquals(ids.size(),counts.path("total").asInt());
+        assertEquals(counts.path("total").asInt(),counts.path("open").asInt()+counts.path("upcoming").asInt()+counts.path("closed").asInt());
+        assertTrue(counts.path("open").asInt()>=1,"오늘 시작한 무순위는 접수 중");
+        int activeCount=counts.path("open").asInt()+counts.path("upcoming").asInt();
+        assertTrue(many.contains("<strong>"+activeCount+"</strong><span>접수 중·예정</span>") && many.contains("이번 주 일정 "+ids.size()+"건 · 접수 중 "+counts.path("open").asInt()),many);
         // '오늘 접수'는 접수 기간이 아니라 그날 신청할 수 있는지(applyToday)로 센다. 무순위는 기간 내내, APT는 순위 접수일에만.
         summary.path("current").forEach(item->{ if(item.path("id").asText().equals("remaining/R1/N1")){ assertTrue(item.path("applyToday").asBoolean()); assertEquals(today.toString(),item.path("nextApplyDay").asText()); } });
         assertEquals("apt/W1/N1",summary.path("winners").get(0).path("id").asText());
@@ -315,6 +339,7 @@ class PlannerIntegrationTest {
         String index=html(mvc.perform(get("/api/v1/public/regions")).andExpect(status().isOk()));
         assertTrue(index.contains("/regions/"+enc("경기도")+"'") && index.contains("/regions/"+enc("경기도")+"/"+enc("파주시")+"'"),index);
         assertTrue(index.contains("/regions/"+enc("경기도")+"/"+enc("광주시")) && !index.contains("/regions/"+enc("광주광역시")),"경기 광주시를 광주광역시로 보지 않는다");
+        assertTrue(index.contains("경기도 청약</a> <span class='muted'>접수 중 ") && index.contains("· 최근 1년 "),"앱 지역 카드와 같은 접수 중·예정 숫자를 앞에 두고 1년 건수는 이름을 붙인다");
         assertTrue(index.contains("\"BreadcrumbList\"") && index.contains("\"ItemList\""));
 
         String paju=html(mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","파주시")).andExpect(status().isOk()));
@@ -622,6 +647,9 @@ class PlannerIntegrationTest {
         mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png")).andExpect(status().isGone());
         String ics=mvc.perform(get("/api/v1/public/calendar/"+feed+".ics")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         assertFalse(ics.contains("운정 테스트"),"숨긴 공고는 구독 캘린더에 넣지 않는다");
+        assertTrue(planner.list(account.getUserSeq()).isEmpty(),"숨긴 공고는 관심 공고 목록에서도 빠진다");
+        var mine=json.readTree(html(mvc.perform(get("/api/v1/me/favorites").header("Authorization",auth)).andExpect(status().isOk())));
+        assertEquals(0,mine.path("data").size(),"나의 청약 화면 목록도 같은 기준");
         var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr",unsubscribe);
         reminder.useHidden(hiddenAnnouncements);
         reminder.send();

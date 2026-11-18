@@ -2,16 +2,23 @@ package com.toady.web.app.planner;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 공급 주소에서 시·도와 시·군·구를 정하는 공통 규칙. 지역별 공개 페이지(/regions/...)·공고 페이지 빵부스러기·당첨가점 지역 묶음이 함께 쓴다.
  * 주소 첫 낱말이 정확한 시·도 이름(또는 줄임말)일 때만 인정하고, '광주시 오포읍'처럼 시·도 없이 시·군으로 시작하면 공급지역명(청약홈 분류)으로 시·도를 정한다.
  * 시·군·구는 시·도 다음 낱말이 그 시·도의 실제 시·군·구 이름(DISTRICTS)일 때만 쓴다(수원시 영통구는 수원시).
  * '검단신도시', '진주혁신도시', '평택고덕국제화지구'처럼 '시·구'로 끝나는 지구·신도시 이름은 시·군·구로 보지 않고 시·도에만 둔다.
+ * '화성특례시'처럼 특례시 표기는 행정구역 이름(화성시)으로 바꿔 본다(수원·고양·용인·창원·화성 모두 같은 규칙).
+ * 웹(toadyReactWeb features/explore/regionRules.js regionOf·districts.js)도 같은 규칙이고, 같은 주소 샘플(test/resources/region-samples.tsv)로 양쪽 결과를 대조한다.
+ * '전남광주통합특별시 북구'처럼 통합특별시 표기는 다음 낱말(시·군·구)로 옛 시·도(광주광역시/전라남도)를 정한다.
+ * 첫 낱말이 지구·사업 이름이고 괄호 안에 정식 주소가 있으면 괄호 안 주소로 다시 판정한다.
  * 단지별 예외 규칙은 두지 않는다.
  * 스프링 빈이 아닌 정적 도우미 클래스다. PublicAnnouncementIndex, PublicRegionPages, PublicAnnouncementPage, PublicAreaPage, ScoreBenchmarks 등이 부른다.
  */
@@ -29,7 +36,7 @@ public final class Regions {
         public String path() { return district == null ? sido.path() : sido.path() + "/" + segment(district); }
     }
 
-    /** 앱 지역 목록(Citys.js)과 같은 순서·이름. */
+    /** 웹 지역 판정 목록(districts.js SIDOS)과 같은 순서·이름. */
     public static final List<Sido> ALL = List.of(
         new Sido("서울특별시", "서울"), new Sido("부산광역시", "부산"), new Sido("대구광역시", "대구"), new Sido("인천광역시", "인천"),
         new Sido("광주광역시", "광주"), new Sido("대전광역시", "대전"), new Sido("울산광역시", "울산"), new Sido("세종특별자치시", "세종"),
@@ -65,10 +72,16 @@ public final class Regions {
         Map.entry("제주", names("제주시 서귀포시")));
     private static Set<String> names(String spaced) { return Set.of(spaced.split(" ")); }
 
-    /** 그 시·도의 실제 시·군·구 이름이면 그대로, 아니면 빈 값. 공개 주소의 시·군·구 부분 확인에도 쓴다. */
+    /** '수원특례시' → '수원시'. 특례시는 행정구역상 시라서 시·군·구 이름은 '시'로 맞춘다. 다른 낱말은 그대로. */
+    static String canonical(String token) {
+        String text = token == null ? "" : token.trim();
+        return text.length() > 3 && text.endsWith("특례시") ? text.substring(0, text.length() - 3) + "시" : text;
+    }
+
+    /** 그 시·도의 실제 시·군·구 이름(특례시 표기 포함)이면 정식 이름, 아니면 빈 값. 공개 주소의 시·군·구 부분 확인에도 쓴다. */
     public static Optional<String> district(Sido sido, String token) {
         if (sido == null || token == null) return Optional.empty();
-        String text = token.trim();
+        String text = canonical(token);
         return DISTRICTS.getOrDefault(sido.shortName(), Set.of()).contains(text) ? Optional.of(text) : Optional.empty();
     }
 
@@ -98,16 +111,72 @@ public final class Regions {
 
     /** 주소만으로 판정한다(공급지역명이 없을 때). */
     public static Optional<Region> of(String address) { return of(address, null); }
-    /** 주소와 공급지역명(청약홈 SUBSCRPT_AREA_CODE_NM)으로 시·도/시·군·구를 정한다. 확인할 수 없으면 비운다. */
+    /**
+     * 주소와 공급지역명(청약홈 SUBSCRPT_AREA_CODE_NM)으로 시·도/시·군·구를 정한다. 확인할 수 없으면 비운다.
+     * 순서: ① 주소 첫 낱말(시·도 또는 통합특별시) ② 첫 낱말이 지구·사업 이름이면 괄호 안 정식 주소
+     * ('김포 풍무역세권 C5블록 (경기도 김포시 …)') ③ 공급지역명 + 첫 낱말을 시·군으로.
+     */
     public static Optional<Region> of(String address, String regionName) {
-        String[] tokens = address == null ? new String[0] : address.replaceAll("\\([^)]*\\)", " ").trim().split("\\s+");
-        String head = tokens.length == 0 ? "" : tokens[0];
-        Optional<Sido> sido = strict(head);
-        if (sido.isPresent()) return Optional.of(new Region(sido.get(), tokens.length > 1 ? district(sido.get(), tokens[1]).orElse(null) : null));
+        String text = address == null ? "" : address;
+        String[] outside = words(text.replaceAll("\\([^)]*\\)", " "));
+        Optional<Region> found = headed(outside, regionName);
+        // 시·도까지만 정해졌으면('인천 검단신도시 AB13블록 (인천광역시 서구 …)') 괄호 안 정식 주소에서 같은 시·도의 시·군·구를 찾는다.
+        if (found.isPresent() && found.get().district() != null) return found;
+        Matcher inner = PARENTHESES.matcher(text);
+        while (inner.find()) {
+            Optional<Region> nested = headed(words(inner.group(1)), regionName);
+            if (nested.isEmpty()) continue;
+            if (found.isEmpty()) return nested;
+            if (nested.get().sido().equals(found.get().sido()) && nested.get().district() != null) return nested;
+        }
+        if (found.isPresent()) return found;
         // 주소가 시·군으로 시작하면(예: '광주시 오포읍') 공급지역명으로 시·도를 정하고 첫 낱말을 시·군·구로 쓴다.
+        String head = outside[0];
+        // 통합특별시인데 옛 시·도를 못 정했으면 다른 시·도로 확정하지 않는다(공급지역명이 통합 대상이 아니면 미확인).
+        if (!merged(head).isEmpty()) return Optional.empty();
         Optional<Sido> fromRegion = regionName == null ? Optional.empty() : loose(regionName.trim().split("\\s+")[0]);
         return fromRegion.map(value -> new Region(value, district(value, head).orElse(null)));
     }
+    private static final Pattern PARENTHESES = Pattern.compile("\\(([^)]*)\\)");
+    private static String[] words(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        return trimmed.isEmpty() ? new String[] { "" } : trimmed.split("\\s+");
+    }
+    /** 첫 낱말이 시·도(또는 통합특별시)인 주소만 판정한다. 아니면 빈 값. */
+    private static Optional<Region> headed(String[] tokens, String regionName) {
+        String head = tokens[0];
+        String next = tokens.length > 1 ? tokens[1] : null;
+        Optional<Sido> sido = strict(head);
+        if (sido.isPresent()) return Optional.of(new Region(sido.get(), district(sido.get(), next).orElse(null)));
+        List<Sido> merged = merged(head);
+        if (merged.isEmpty()) return Optional.empty();
+        // 통합특별시: 다음 낱말이 어느 옛 시·도의 시·군·구인지로 정한다(광주 자치구와 전남 시·군은 이름이 겹치지 않는다).
+        for (Sido candidate : merged) {
+            Optional<String> name = district(candidate, next);
+            if (name.isPresent()) return Optional.of(new Region(candidate, name.get()));
+        }
+        Optional<Sido> fromRegion = regionName == null ? Optional.empty() : loose(regionName.trim().split("\\s+")[0]);
+        return fromRegion.filter(merged::contains).map(value -> new Region(value, null));
+    }
+    /**
+     * '전남광주통합특별시'처럼 시·도 줄임말을 이어 붙인 통합특별시 이름 → 옛 시·도 목록(전남, 광주). 아니면 빈 목록.
+     * 지역별 청약·검색은 옛 시·도 단위 그대로 쓴다(공급지역명·지난 공고와 묶이도록).
+     */
+    static List<Sido> merged(String token) {
+        String text = token == null ? "" : token.trim();
+        if (!text.endsWith(MERGED_SUFFIX)) return List.of();
+        String rest = text.substring(0, text.length() - MERGED_SUFFIX.length());
+        List<Sido> found = new ArrayList<>();
+        while (!rest.isEmpty()) {
+            String part = rest;
+            Optional<Sido> next = ALL.stream().filter(sido -> part.startsWith(sido.shortName())).findFirst();
+            if (next.isEmpty()) return List.of();
+            found.add(next.get());
+            rest = rest.substring(next.get().shortName().length());
+        }
+        return found.size() >= 2 ? List.copyOf(found) : List.of();
+    }
+    private static final String MERGED_SUFFIX = "통합특별시";
     /** 주소 경로 한 조각(UTF-8 퍼센트 인코딩, 공백은 %20). */
     static String segment(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20"); }
 }

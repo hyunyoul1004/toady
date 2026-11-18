@@ -8,6 +8,8 @@
  */
 import Citys from './Citys.js';
 import { RCEPT_SE_META } from './calendar/calendarGroup.js';
+import { DISTRICTS } from '../../features/explore/districts.js';
+import { regionOf, sidoShortName } from '../../features/explore/regionRules.js';
 
 // 청약홈 표준 공급지역 코드 (SUBSCRPT_AREA_CODE) 정의
 export const REGION_SEOUL = { code: '100', name: '서울', matchNames: ['서울', '서울특별시'] };
@@ -37,18 +39,26 @@ export const REGION_PROVINCE = [
 export const ALL_REGIONS = [REGION_SEOUL, ...REGION_METRO, ...REGION_PROVINCE];
 
 /**
- * 공고가 선택한 공급지역에 속하는지. 공급지역 코드가 있으면 코드로만 판정한다.
- * 주소 글자 비교는 '경기도 광주시'를 광주광역시로 오인하므로 코드가 없을 때만, 주소의 첫 낱말(시·도, '서울시' 같은 줄임 포함)로만 비교한다.
+ * 공고가 선택한 공급지역(시·도)에 속하는지. 지역별 청약·캘린더 지역 검색과 같은 시·도 판정(regionOf: 주소 첫 낱말, 아니면 공급지역명)을 먼저 쓴다.
+ * 체크박스는 시·도 단위라 판정한 시·도의 줄임말이 체크박스 이름(name)과 같은지만 본다.
+ * 판정할 수 없는 공고만 청약홈 공급지역 코드로, 코드도 없으면 주소 첫 낱말로 비교한다('경기도 광주시'를 광주광역시로 오인하지 않게 글자 포함은 쓰지 않는다).
  */
 export function matchesRegions(item, selectedRegions) {
+  const found = regionOf(item.hssplyAdres, item.regionName);
+  const short = found ? sidoShortName(found.cityName) : null;
+  if (short) return selectedRegions.some((reg) => reg.name === short);
   const code = item.regionCode ? String(item.regionCode).trim() : '';
   const sido = String(item.supplyLocation || '').trim().split(/\s+/)[0] || '';
   return selectedRegions.some((reg) => (code ? code === reg.code : reg.matchNames.some((name) => sido.startsWith(name))));
 }
 
 // Citys.js의 계층형 데이터를 Autocomplete용 플랫(flat) 리스트로 변환 (시/도 + 시/군/구)
+// Citys에 없는 실제 시·군·구(districts.js, 지역 판정 기준 목록. 예: 고양시·도봉구·인천 제물포구, 일반구가 있는 시의 시 전체)도 동·읍·면 없이 넣는다.
+// 그래야 지역별 청약 칩(/?search=경기도 고양시)이 글자 검색이 아니라 지역 검색이 된다.
 export const FLAT_CITY_OPTIONS = Citys.flatMap((c) => {
-  const districtList = c.districts || [];
+  const listed = new Set((c.districts || []).map((d) => d.districtName));
+  const districtList = [...(c.districts || []), ...(DISTRICTS[c.cityName] || []).filter((name) => !listed.has(name)).map((name) => ({ districtName: name, towns: [] }))]
+    .sort((a, b) => a.districtName.localeCompare(b.districtName, 'ko'));
   // 시/도 전체 항목: 하위 구/군 목록을 괄호 예시로 요약 표시 (예: "강남구, 강동구, 강북구 외 20개")
   const districtNamesPreview = districtList.slice(0, 3).map((d) => d.districtName).join(', ');
   const moreCount = districtList.length > 3 ? ` 외 ${districtList.length - 3}개` : '';

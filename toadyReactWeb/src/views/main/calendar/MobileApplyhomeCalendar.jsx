@@ -18,7 +18,7 @@ import Collapse from '@mui/material/Collapse';
 import ButtonBase from '@mui/material/ButtonBase';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import { dayjs } from '@/utils/date.util';
-import { RCEPT_SE_META, groupCalendarSchedules, groupsByDate, describeStages } from './calendarGroup';
+import { RCEPT_SE_META, groupCalendarSchedules, groupsByDate, describeStages, receiptTag } from './calendarGroup';
 
 // 공급 유형별 뱃지: PC 달력·공급유형 필터와 같은 색(RCEPT_SE_META)을 쓴다. 좁은 화면이라 이름만 짧게 줄인다.
 const SHORT_LABEL = { '07': '임의공급', '08': '재공급', '05': '오피스텔' };
@@ -336,7 +336,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                           const commentTag = item.commentCount > 0 ? ` (${item.commentCount})` : '';
                           // 단계가 둘 이상이거나 지역이 갈리거나 '접수 기간 중' 줄이면 그날 단계 설명을 한 줄 더 보여 준다.
                           const stageText = describeStages(item);
-                          const showStageText = item.ongoing || item.stages.length > 1 || item.stages.some((stage) => stage.areaLabels.length > 0);
+                          const showStageText = item.ongoing || item.stages.length > 1 || item.stages.some((stage) => stage.areaLabels.length > 0) || Boolean(receiptTag(item));
 
                           return (
                             <li key={item.key}>
@@ -346,7 +346,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                   handleOpen(item.subscriptSeq);
                                 }
                               }}
-                              aria-label={`${item.houseNm}, ${stageText}${item.commentCount > 0 ? `, 이야기 ${item.commentCount}개` : ''} 상세 보기`}
+                              aria-label={`${item.houseNm}, ${stageText}${receiptTag(item) ? ', LH청약플러스 접수' : ''}${item.commentCount > 0 ? `, 이야기 ${item.commentCount}개` : ''} 상세 보기`}
                               sx={{
                                 width: '100%',
                                 justifyContent: 'flex-start',
@@ -410,6 +410,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                 {showStageText && (
                                   <Typography component="span" sx={{ display: 'block', fontSize: '0.74rem', color: '#64748b', mt: 0.2, lineHeight: 1.3 }}>
                                     {stageText}
+                                    {receiptTag(item) && <Box component="span" sx={{ ml: 0.6, px: 0.5, py: '1px', borderRadius: 0.75, bgcolor: '#e8f1fb', color: '#1d4f8a', fontSize: '0.68rem', fontWeight: 700 }}>{receiptTag(item)}</Box>}
                                   </Typography>
                                 )}
                               </Box>

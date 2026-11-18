@@ -195,7 +195,10 @@ function ReceivedReplies() {
   // 공고 상세의 이야기 탭으로 가서 그 답글로 이동한다. state.detailOverlay는 '사이트 안에서 연 상세' 표시라 닫기가 뒤로가기로 동작한다.
   // 캘린더 목록이 아닌 이 화면에서 열었으므로 detailFromOther도 남겨, 캘린더 탭을 다시 누르면 내 정보가 아닌 캘린더가 나오게 한다.
   const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: detailLinkState('detailOverlay', '/', location.pathname) });
-  const fresh = items.filter(item => item.isNew).length;
+  // 새 답글 수는 서버의 unread(상한 없음, 메뉴 배지와 같은 값)를 쓴다. 목록은 최근 20건만 오므로 isNew를 세면 20건을 넘을 때 어긋난다.
+  // 훅의 unread는 '봤음' 기록 즉시 0이 되지만 이 화면에서는 표시를 남기므로 응답 값을 그대로 쓴다. 값이 없는 옛 응답이면 목록에서 센다.
+  const serverUnread = Number(replies.data?.unread);
+  const fresh = Number.isFinite(serverUnread) && replies.data?.unread != null ? serverUnread : items.filter(item => item.isNew).length;
   return <section className="account-card account-replies" aria-labelledby="account-replies-title">
     <div className="account-stories-head"><h2 id="account-replies-title"><ForumOutlined fontSize="small" />받은 답글{fresh > 0 && <span className="account-new-count">새 답글 {fresh}</span>}</h2></div>
     {replies.isError && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => replies.refetch()}>다시 시도</Button>}>답글을 불러오지 못했어요.</Alert>}

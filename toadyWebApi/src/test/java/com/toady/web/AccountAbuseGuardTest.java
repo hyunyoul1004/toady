@@ -136,7 +136,10 @@ class AccountAbuseGuardTest {
         assertEquals(0, after.get("unread").asInt(), "배지 수에서도 빠진다");
         JsonNode since = call(get("/api/v1/me/account/replies").param("after", "0"), token, null).get("data");
         assertEquals(0, since.get("unread").asInt(), "마지막으로 본 번호 기준 새 답글 수에서도 빠진다");
-        assertEquals(0, call(get("/api/v1/me/account/comments"), token, null).at("/data/items/0/replyCount").asInt(), "내 이야기별 답글 수에서도 빠진다");
+        JsonNode story = call(get("/api/v1/me/account/comments"), token, null).at("/data/items/0");
+        // 답글 수는 공고 이야기 탭의 '답글 달기 (N)'과 같은 수(이야기 탭도 차단한 회원의 답글을 접어 둘 뿐 수에는 넣는다).
+        assertEquals(1, story.get("replyCount").asInt(), "내 이야기별 답글 수는 이야기 탭과 같은 기준");
+        assertTrue(story.get("lastReplySeq").isNull(), "차단한 회원의 답글은 '새 답글' 표시에 쓰지 않는다");
 
         // 차단당한 쪽(다른 회원)이 받은 답글은 그대로다: 기존 차단 정책처럼 차단한 사람 쪽에서만 숨긴다
         jdbc.update(insert, null, "남의 이야기", other);

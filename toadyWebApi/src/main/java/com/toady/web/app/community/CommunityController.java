@@ -1,5 +1,6 @@
 package com.toady.web.app.community;
 
+import com.toady.web.app.planner.HiddenAnnouncements;
 import com.toady.web.app.community.Community.Member;
 import com.toady.web.app.community.Community.Result;
 import com.toady.web.app.user.service.ProfileIcons;
@@ -35,6 +36,10 @@ public class CommunityController {
     private final SafetyService safety;
     private final DmService dm;
     private final ProfileIcons icons;
+    /** 운영자가 숨긴 공고. 프로필의 남긴 이야기 수에서 뺀다. 빈이 없으면 숨김 없이 센다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    HiddenAnnouncements hidden;
 
     public CommunityController(Community community, SafetyService safety, DmService dm, ProfileIcons icons) {
         this.community = community; this.safety = safety; this.dm = dm; this.icons = icons;
@@ -56,7 +61,10 @@ public class CommunityController {
         view.put("profileIcon", member.withdrawn() ? null : icons.of(userSeq));
         view.put("joinedMonth", member.withdrawn() || member.joinedAt() == null ? null
                 : member.joinedAt().getYear() + "-" + String.format("%02d", member.joinedAt().getMonthValue()));
-        view.put("stories", member.withdrawn() ? 0 : community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq));
+        // 남긴 이야기 수는 운영자가 숨긴 공고의 이야기를 뺀다(내 정보의 내 이야기 수와 같은 조건).
+        var notHidden = hidden == null ? HiddenAnnouncements.SqlFilter.NONE
+                : hidden.notHiddenSql("ANNOUNCEMENT_TYPE", "HOUSE_MANAGE_NO", "PBLANC_NO", HiddenAnnouncements.TypeFormat.NAME);
+        view.put("stories", member.withdrawn() ? 0 : community.count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'" + notHidden.sql(), notHidden.with(userSeq)));
         view.put("ready", community.ready());
         if (viewer != null) {
             long me = viewer.getUserSeq();

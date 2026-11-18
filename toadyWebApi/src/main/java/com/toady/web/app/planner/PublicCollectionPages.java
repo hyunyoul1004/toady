@@ -51,12 +51,19 @@ public class PublicCollectionPages {
     private LocalDate today() { return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))); }
     private String nav(String label) { return "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>" + esc(label) + "</span></nav>"; }
 
+    /** 줍줍 페이지 '최근 마감': 마감 후 며칠까지 세는지와 목록에 보이는 건수(숫자 칸은 전체를, 목록은 최근 순 일부를 보여 준다). */
+    static final int ZUPZUP_CLOSED_DAYS = 60, ZUPZUP_SHOWN_CLOSED = 12;
+    /** '최근 마감 · 최근 2개월 114건 중' + section이 붙이는 '12건'. 숫자 칸(최근 마감 114)과 목록 건수(12건)가 왜 다른지 제목에 밝힌다. */
+    static String closedHeading(int total, int shown) {
+        String range = "최근 " + (ZUPZUP_CLOSED_DAYS / 30) + "개월";
+        return total > shown ? "최근 마감 · " + range + " " + total + "건 중" : "최근 마감 · " + range;
+    }
     // 무순위·줍줍 모음 HTML. 접수 중·예정·최근 마감(60일) 공고를 보여 준다. 5분 페이지 캐시.
     @GetMapping(value = "/api/v1/public/zupzup", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> zupzup() { return PublicHtml.cached("zupzup", this::renderZupzup); }
     private ResponseEntity<String> renderZupzup() {
         LocalDate today = today();
-        var groups = areas.groups(null, UNRANKED_TYPES, today, 60, Integer.MAX_VALUE);
+        var groups = areas.groups(null, UNRANKED_TYPES, today, ZUPZUP_CLOSED_DAYS, Integer.MAX_VALUE);
         String title = "무순위·줍줍 청약 일정" + (groups.open().isEmpty() ? "" : " · 접수 중 " + groups.open().size() + "건") + " · TOADY";
         String description = "APT 무순위·잔여세대와 임의공급(줍줍) 청약 일정 · 접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size()
             + "건 · 공급금액·위치·동네 실거래가를 한 화면에서 확인하세요.";
@@ -68,7 +75,8 @@ public class PublicCollectionPages {
             + (groups.open().isEmpty() && groups.upcoming().isEmpty()
                 ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 접수 중이거나 예정된 무순위·임의공급 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : areas.section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : areas.section("접수 예정", groups.upcoming(), "")))
-            + areas.section("최근 마감", groups.closed().subList(0, Math.min(12, groups.closed().size())), "최근 2개월 안에 마감된 공고가 없습니다.")
+            + areas.section(closedHeading(groups.closed().size(), ZUPZUP_SHOWN_CLOSED), groups.closed().subList(0, Math.min(ZUPZUP_SHOWN_CLOSED, groups.closed().size())),
+                "최근 2개월 안에 마감된 공고가 없습니다.")
             + "<section class='card'><h2>신청 전에 확인하세요</h2><ul>"
             + "<li><strong>신청 자격</strong><span class='muted'>2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역 요건은 공고마다 달라요.</span></li>"
             + "<li><strong>재당첨 제한</strong><span class='muted'>당첨되면 다른 청약의 재당첨 제한·당첨자 관리 대상이 될 수 있어요.</span></li>"
@@ -99,8 +107,9 @@ public class PublicCollectionPages {
         List<PublicAreaPage.Item> current = data.current();
         List<Winner> winners = data.winners();
         List<PublicAreaPage.Item> nextStarts = data.nextWeek();
-        String title = "이번 주 청약 일정 (" + week.label() + ") · 접수 " + current.size() + "건 · TOADY";
-        String description = week.label() + " 청약 접수 " + current.size() + "건, 당첨자 발표 " + winners.size() + "건, 다음 주 접수 시작 " + nextStarts.size()
+        WeekStatus status = data.status();
+        String title = "이번 주 청약 일정 (" + week.label() + ") · 접수 중·예정 " + status.active() + "건 · TOADY";
+        String description = week.label() + " 청약 " + status.summary() + ", 당첨자 발표 " + winners.size() + "건, 다음 주 접수 시작 " + nextStarts.size()
             + "건 · 아파트·오피스텔·무순위·공공임대 일정을 한 번에 확인하세요.";
         StringBuilder winnerList = new StringBuilder("<section class='card list'><h2>이번 주 당첨자 발표 <span class='muted'>").append(winners.size()).append("건</span></h2>");
         if (winners.isEmpty()) winnerList.append("<p class='empty'>이번 주 발표 예정인 아파트 공고가 없어요.</p>");
@@ -110,11 +119,12 @@ public class PublicCollectionPages {
         winnerList.append("</section>");
         String body = nav("이번 주 청약")
             + "<section class='card'><span class='chip'>" + esc(week.label()) + "</span><h1>이번 주 청약 일정</h1>"
-            + "<p class='muted'>이번 주 접수하는 공고와 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영됩니다.</p>"
-            + "<div class='stats'><div><strong>" + current.size() + "</strong><span>이번 주 접수</span></div><div><strong>" + winners.size()
+            + "<p class='muted'>이번 주 접수 일정(이번 주 마감 포함)과 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영됩니다.</p>"
+            + "<div class='stats'><div><strong>" + status.active() + "</strong><span>접수 중·예정</span></div><div><strong>" + winners.size()
             + "</strong><span>당첨자 발표</span></div><div><strong>" + nextStarts.size() + "</strong><span>다음 주 시작</span></div></div>"
+            + "<p class='muted'>" + esc(status.breakdown()) + "</p>"
             + "<a class='cta' data-app href='" + esc(domain + "/?focus=all&month=" + today.toString().substring(0, 7)) + "'>청약 캘린더에서 보기</a></section>"
-            + areas.section("이번 주 접수", current, "이번 주 접수하는 공고가 없어요.")
+            + areas.section(WEEK_SECTION, current, "이번 주 접수하는 공고가 없어요.")
             + winnerList
             + areas.section("다음 주 접수 시작 (" + next.label() + ")", nextStarts, "다음 주에 접수를 시작하는 공고가 아직 없어요.")
             + PublicHtml.explore(domain, "/weekly")
@@ -138,8 +148,9 @@ public class PublicCollectionPages {
         }
     }
     public record WeeklyWinner(String id, String houseNm, String address, String date) { }
+    /** counts: 이번 주 접수 일정(current)의 접수 중·예정·마감 건수. 앱 화면과 서버 HTML(/weekly·/home)이 같은 숫자를 쓴다. */
     public record WeeklySummary(String monday, String sunday, String nextMonday, String nextSunday, String today,
-                                List<WeeklyItem> current, List<WeeklyWinner> winners, List<WeeklyItem> nextWeek) { }
+                                List<WeeklyItem> current, List<WeeklyWinner> winners, List<WeeklyItem> nextWeek, WeekStatus counts) { }
     private final Cache<String, WeeklySummary> weeklyCache = CacheBuilder.newBuilder()
         .maximumSize(4).expireAfterWrite(Duration.ofMinutes(10)).build();
 
@@ -152,7 +163,7 @@ public class PublicCollectionPages {
             return new WeeklySummary(data.week().monday().toString(), data.week().sunday().toString(), data.next().monday().toString(), data.next().sunday().toString(), today.toString(),
                 data.current().stream().map(item -> WeeklyItem.of(item, today)).toList(),
                 data.winners().stream().map(w -> new WeeklyWinner(w.id(), w.houseNm(), w.address(), w.date() == null ? null : w.date().toString())).toList(),
-                data.nextWeek().stream().map(item -> WeeklyItem.of(item, today)).toList());
+                data.nextWeek().stream().map(item -> WeeklyItem.of(item, today)).toList(), data.status());
         });
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
@@ -167,8 +178,9 @@ public class PublicCollectionPages {
     public ResponseEntity<List<WeeklyItem>> activeAnnouncements() {
         LocalDate today = today();
         List<WeeklyItem> body = PublicHtml.load(activeCache, today.toString(), () -> {
-            // 접수 기간이 오늘~60일 뒤와 겹치는 공고 = 접수 중·예정 공고(시작일은 최대 MAX_PERIOD_DAYS일 전까지).
-            var groups = PublicAreaPage.classify(overlapping(today, today.plusDays(60)), today, 0);
+            // 접수 중·예정 공고: 접수 기간이 오늘~ReceiptWindow.UPCOMING_DAYS(180일) 뒤와 겹치는 공고(시작일은 최대 400일 전까지).
+            // /regions·생활권·줍줍 페이지와 같은 범위다.
+            var groups = PublicAreaPage.classify(overlapping(today, com.toady.web.app.announcement.ReceiptWindow.searchEnd(today)), today, 0);
             List<WeeklyItem> items = new ArrayList<>();
             groups.open().forEach(item -> items.add(WeeklyItem.of(item, today)));
             groups.upcoming().forEach(item -> items.add(WeeklyItem.of(item, today)));
@@ -177,7 +189,27 @@ public class PublicCollectionPages {
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
-    record Weekly(Week week, Week next, List<PublicAreaPage.Item> current, List<Winner> winners, List<PublicAreaPage.Item> nextWeek) { }
+    /** 이번 주 접수 일정 구역 제목(/weekly·/home 같은 이름). */
+    static final String WEEK_SECTION = "이번 주 접수 일정";
+    /**
+     * 이번 주 접수 일정(접수 기간이 이번 주와 겹치는 공고) total건의 상태별 건수. 이번 주 초에 이미 마감된 공고도 total에 들어가므로
+     * 큰 숫자는 active(접수 중+예정)를 쓰고, total은 '이번 주 일정 25건 · 접수 중 6 · 예정 2 · 마감 17'처럼 나눠 보여 준다.
+     */
+    public record WeekStatus(int total, int open, int upcoming, int closed) {
+        static WeekStatus of(List<PublicAreaPage.Item> items) {
+            int open = 0, upcoming = 0, closed = 0;
+            for (PublicAreaPage.Item item : items) switch (item.status()) { case OPEN -> open++; case UPCOMING -> upcoming++; default -> closed++; }
+            return new WeekStatus(items.size(), open, upcoming, closed);
+        }
+        public int active() { return open + upcoming; }
+        /** '이번 주 일정 25건 · 접수 중 6 · 예정 2 · 마감 17'. */
+        String breakdown() { return "이번 주 일정 " + total + "건 · 접수 중 " + open + " · 예정 " + upcoming + " · 마감 " + closed; }
+        /** 설명 문구용: '접수 중·예정 8건(이번 주 일정 25건 중 마감 17건)'. */
+        String summary() { return "접수 중·예정 " + active() + "건(이번 주 일정 " + total + "건 중 마감 " + closed + "건)"; }
+    }
+    record Weekly(Week week, Week next, List<PublicAreaPage.Item> current, List<Winner> winners, List<PublicAreaPage.Item> nextWeek) {
+        WeekStatus status() { return WeekStatus.of(current); }
+    }
     /** 이번 주 접수(접수 기간이 이번 주와 겹침)·이번 주 APT 발표·다음 주 접수 시작. HTML과 앱 화면이 함께 쓴다. */
     Weekly weeklyData(LocalDate today) {
         Week week = Week.of(today), next = week.next();
@@ -190,8 +222,24 @@ public class PublicCollectionPages {
         }).toList(), today, Integer.MAX_VALUE);
         var nextWeek = PublicAreaPage.classify(found.stream().filter(item -> next.contains(PlannerSummary.date(nz(item.rceptBgnde())))).toList(), today, Integer.MAX_VALUE);
         List<PublicAreaPage.Item> current = new ArrayList<>(thisWeek.open()); current.addAll(thisWeek.upcoming()); current.addAll(thisWeek.closed());
-        current.sort(Comparator.comparing(PublicAreaPage.Item::start));
+        // 접수 중 → 예정 → 이번 주 마감 순(앱 byStatus와 같은 묶음), 같은 상태 안에서는 접수 시작일 순.
+        current.sort(Comparator.comparing(PublicAreaPage.Item::status).thenComparing(PublicAreaPage.Item::start));
         return new Weekly(week, next, current, winners(week), nextWeek.upcoming());
+    }
+
+    /**
+     * 다음 주(월~일) 접수 시작 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). '이번 주 청약' 화면의 '다음 주 접수 시작'(weeklyData.nextWeek)을
+     * 그대로 센다. 일요일 주간 브리핑 푸시(PushDigest)가 쓰며, 알림 숫자와 눌렀을 때 보이는 숫자가 같도록 계산을 여기 하나로 둔다.
+     */
+    public PublicAreaPage.WeekCounts nextWeekCounts(LocalDate today) {
+        int apt = 0, unranked = 0, others = 0;
+        for (PublicAreaPage.Item item : weeklyData(today).nextWeek()) {
+            String type = item.source().type();
+            if ("apt".equals(type)) apt++;
+            else if (UNRANKED_TYPES.contains(type)) unranked++;
+            else others++;
+        }
+        return new PublicAreaPage.WeekCounts(apt, unranked, others);
     }
 
     static final int MAX_ITEMS = 1000;
@@ -227,7 +275,7 @@ public class PublicCollectionPages {
     }
     private static String stats(PublicAreaPage.Groups groups) {
         return "<div class='stats'><div><strong>" + groups.open().size() + "</strong><span>접수 중</span></div><div><strong>" + groups.upcoming().size()
-            + "</strong><span>접수 예정</span></div><div><strong>" + groups.closed().size() + "</strong><span>최근 마감</span></div></div>";
+            + "</strong><span>접수 예정</span></div><div><strong>" + groups.closed().size() + "</strong><span>최근 2개월 마감</span></div></div>";
     }
     private static String dayName(LocalDate date) { return date == null ? "" : "(" + "월화수목금토일".charAt(date.getDayOfWeek().getValue() - 1) + ")"; }
     private static String nz(String value) { return value == null ? "" : value; }

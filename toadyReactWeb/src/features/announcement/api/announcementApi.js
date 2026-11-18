@@ -14,6 +14,8 @@ import { modelPrices } from '@/features/planner/researchUtils';
 import { formatDate, formatDateRange } from '@/utils/date.util';
 import { buildAnnouncementQueryParams } from '@/features/announcement/api/announcementParams';
 import { scheduleRows } from '@/features/announcement/applyDays';
+import { receiptChannel, receiptPlaceName } from '@/features/announcement/receiptChannel';
+import { recruitHouseholds, supplyScale } from '@/features/announcement/supplyScale';
 
 /** 서버 통합 검색(AnnouncementSearchService.searchAll)이 한 번에 허용하는 범위: (page+1)×size ≤ 1000. */
 const MAX_LIST_ITEMS = 1000;
@@ -188,7 +190,9 @@ export const announcementApi = {
         subscriptSeq,
         supplyLocation: item.hssplyAdres || item.regionName || (item.regionCode ? `지역 ${item.regionCode}` : '기타'),
         hssplyAdres: item.hssplyAdres || '',
-        subscriptCommentCnt: item.commentCount || 0
+        subscriptCommentCnt: item.commentCount || 0,
+        // 접수처: LH청약플러스 접수면 'LH'(서버 receiptChannel, 예전 서버면 null). 달력 줄에 작은 'LH 접수' 표시를 붙인다.
+        receiptChannel: receiptChannel(item)
       };
 
       return scheduleRows({ ...item, type }, displayRceptSe || TYPE_TO_RCEPT_SE[type] || '01')
@@ -229,6 +233,12 @@ export const announcementApi = {
     const models = detailRes.data?.models || [];
     const commentCount = detailRes.data?.commentCount || 0;
     const rceptSe = TYPE_TO_RCEPT_SE[type] || '01';
+    // 접수처(청약홈 / LH청약플러스)와 공급 규모(전체 vs 이번 모집)는 공통 규칙(receiptChannel.js·supplyScale.js)으로 정한다.
+    const channel = receiptChannel({ ...anno, type });
+    const placeOfReception = `${receiptPlaceName(channel)} (인터넷)`;
+    // 이번 모집 세대(주택형 일반+특별 합)는 APT만 계산한다. 다른 유형은 주택형 필드 의미가 달라 전체 공급 세대만 쓴다.
+    const recruit = type === 'apt' ? recruitHouseholds(models) : null;
+    const scale = supplyScale({ total: anno.totSuplyHshldco, recruit });
 
     // 상세 화면이 쓰는 필드 모양으로 맞춘다. 값이 없을 때 대신 쓸 필드 이름을 || 로 이어 둔 것이 많다.
     const subscriptDetail = {
@@ -244,7 +254,9 @@ export const announcementApi = {
       supplyLocation: anno.hssplyAdres || anno.hssplyHshldco || anno.hssply_adres || anno.subscrptAreaCodeNm || '-',
       unitPrices: modelPrices(models,type),
       priceSummary: type === 'apt' ? models.filter(m => m.lttotTopAmount).slice(0,5).map(m => `${m.houseTy || m.modelNo}: ${m.lttotTopAmount}만원 (최고가)`).join(' / ') : '',
-      supplyScale: anno.totSuplyHshldco ? `${anno.totSuplyHshldco} 세대` : '-',
+      receiptChannel: channel,
+      recruitHouseholds: recruit,
+      supplyScale: scale.value ? scale.text : '-',
       developer: anno.bsnsMbyNm || anno.developer || '-',
       contractor: anno.cnstrctEntrpsNm || anno.contractor || '-',
       businessPhoneNumber: anno.mdhsTelno || anno.businessPhoneNumber || '-',
@@ -256,13 +268,13 @@ export const announcementApi = {
       subscriptDate: formatDateRange(anno.rceptBgnde || anno.subscrptRceptBgnde, anno.rceptEndde || anno.subscrptRceptEndde),
       specialPriorityArea: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
       specialOtherAreas: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
-      specialPlaceOfReception: '청약홈 (인터넷)',
+      specialPlaceOfReception: placeOfReception,
       onePriorityArea: formatDateRange(anno.gnrlRnk1CrspareaRcptde, anno.gnrlRnk1CrspareaEndde),
       oneOtherAreas: formatDateRange(anno.gnrlRnk1EtcAreaRcptde, anno.gnrlRnk1EtcAreaEndde),
-      onePlaceOfReception: '청약홈 (인터넷)',
+      onePlaceOfReception: placeOfReception,
       twoPriorityArea: formatDateRange(anno.gnrlRnk2CrspareaRcptde, anno.gnrlRnk2CrspareaEndde),
       twoOtherAreas: formatDateRange(anno.gnrlRnk2EtcAreaRcptde, anno.gnrlRnk2EtcAreaEndde),
-      twoPlaceOfReception: '청약홈 (인터넷)',
+      twoPlaceOfReception: placeOfReception,
       winnerAnnouncementDate: formatDate(anno.przwnerPresnatnDe),
       contractDate: formatDateRange(anno.cntrctCnclsBgnde, anno.cntrctCnclsEndde),
       housingDivision: anno.houseSecdNm || anno.houseSecd || '-',

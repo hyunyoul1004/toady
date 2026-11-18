@@ -174,6 +174,32 @@ class PublicPagesUnitTest {
         assertEquals("경기", regions.get(0).get("sido"));
         assertEquals(4L, regions.get(0).get("count"));
     }
+    @Test void scoreSearchCountsAnnouncementsWithoutRegionAndShowsAllPeriodCounts() {
+        var today = LocalDate.of(2026, 11, 12);
+        var items = ScoreBenchmarks.items(List.of(
+            new String[]{"A", "1", "파주 최근", "경기도 파주시 1", "2026-05-01", "50", "70"},
+            new String[]{"B", "1", "고양 7년 전", "경기도 고양시 덕양구 1", "2019-03-01", "30", "55"},
+            new String[]{"C", "1", "경기 지구", "경기도 어느신도시 A1블록", "2026-04-01", "45", "60"},
+            new String[]{"D", "1", "주소 미상", "어느 개발지구 B2블록", "2026-03-01", "40", "50"}));
+        // 전국 4건 중 1건은 시·도를 모른다 → 시·도 합(3건)보다 1건 많다는 것을 알린다.
+        assertEquals(1L, ScoreBenchmarks.search(items, today, null, null, null, 0, null, "recent").get("unknownRegion"));
+        assertEquals(1L, ScoreBenchmarks.search(items, today, "경기", null, null, 0, null, "recent").get("unknownRegion"), "경기 3건 중 시·군·구 미확인 1건");
+        assertEquals(0L, ScoreBenchmarks.search(items, today, "경기", "파주시", null, 0, null, "recent").get("unknownRegion"));
+        assertNull(ScoreBenchmarks.search(items, today, null, null, "unjeong", 0, null, "recent").get("unknownRegion"), "생활권 검색은 지역 단계가 없다");
+        var regions = ScoreBenchmarks.regions(items, today, 3);
+        assertEquals(2L, regions.get(0).get("count")); assertEquals(3L, regions.get(0).get("allCount"));
+        @SuppressWarnings("unchecked") var districts = (List<java.util.Map<String, Object>>) regions.get(0).get("districts");
+        var goyang = districts.stream().filter(d -> "고양시".equals(d.get("name"))).findFirst().orElseThrow();
+        assertEquals(0L, goyang.get("count"), "최근 3년에는 0건"); assertEquals(1L, goyang.get("allCount"), "전체 기간 건수를 함께 준다");
+    }
+    @Test void weekStatusSplitsTheWeeklyScheduleIntoOpenUpcomingAndClosed() {
+        var status = new PublicCollectionPages.WeekStatus(25, 6, 2, 17);
+        assertEquals(8, status.active());
+        assertEquals("이번 주 일정 25건 · 접수 중 6 · 예정 2 · 마감 17", status.breakdown());
+        assertEquals("접수 중·예정 8건(이번 주 일정 25건 중 마감 17건)", status.summary());
+        assertEquals("최근 마감 · 최근 2개월 114건 중", PublicCollectionPages.closedHeading(114, 12), "목록 건수(12건)는 section이 붙인다");
+        assertEquals("최근 마감 · 최근 2개월", PublicCollectionPages.closedHeading(5, 12), "다 보이면 일부라고 적지 않는다");
+    }
     @Test void ratePollLimitsNewVotersPerNetworkButAllowsChangingAVote() {
         var poll = new RatePoll(null, null, java.time.Clock.systemUTC());
         for (int i = 0; i < RatePoll.VOTERS_PER_IP; i++) assertTrue(poll.voterAllowed("ip", "apt/A/1", "v" + i));

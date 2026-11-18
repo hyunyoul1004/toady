@@ -40,7 +40,7 @@ export default function RegionsPage() {
     <header className="explore-hero">
       <span className="explore-eyebrow">{active.data ? `접수 중·예정 ${items.length}건` : '전국'}</span>
       <h1>지역별 청약</h1>
-      <p>지금 접수 중이거나 곧 접수하는 공고가 있는 지역이에요(앞으로 60일). 지역을 누르면 청약 캘린더에서 그 지역 공고가 있는 가장 가까운 달부터 보여 드려요.</p>
+      <p>지금 접수 중이거나 곧 접수하는 공고가 있는 지역이에요(앞으로 180일). 지역 옆 숫자는 접수 중·예정 건수예요. 지역을 누르면 청약 캘린더에서 그 지역 공고가 있는 가장 가까운 달부터 보여 드려요.</p>
     </header>
 
     {/* 시·도별 카드: 누르면 캘린더에서 그 지역으로 검색한다. */}
@@ -51,11 +51,12 @@ export default function RegionsPage() {
         : cities.length ? <ul className="explore-area-grid">{cities.map(city => <li key={city.cityName} className="explore-region">
           <Link className="explore-region-head" to={searchLink(city.cityName, null, city.month)}>
             <span className="explore-area-name"><PlaceOutlined />{city.cityName}</span>
-            <span className="explore-area-counts"><b className={city.open ? 'is-on' : ''}>접수 중 {city.open}</b><b>전체 {city.total}</b></span>
+            <span className="explore-area-counts"><b className={city.open ? 'is-on' : ''}>접수 중 {city.open}</b><b>예정 {city.total - city.open}</b></span>
             <ChevronRightRounded className="explore-chevron" />
           </Link>
           {city.districts.length > 0 && <div className="explore-region-districts">
-            {city.districts.slice(0, DISTRICTS_SHOWN).map(district => <Link key={district.districtName} to={searchLink(city.cityName, district.districtName, district.month)}>
+            {city.districts.slice(0, DISTRICTS_SHOWN).map(district => <Link key={district.districtName} to={searchLink(city.cityName, district.districtName, district.month)}
+              aria-label={`${district.districtName} 접수 중 ${district.open}건, 예정 ${district.total - district.open}건`}>
               {district.districtName} <b>{district.total}</b>
             </Link>)}
             {city.districts.length > DISTRICTS_SHOWN && <Link to={searchLink(city.cityName, null, city.month)} className="is-more">외 {city.districts.length - DISTRICTS_SHOWN}곳</Link>}

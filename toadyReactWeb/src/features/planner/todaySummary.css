@@ -3,6 +3,7 @@
 .today-summary-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .today-summary-head h2{margin:0;font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
 .today-summary-head h2 span{margin-left:6px;font-size:12.5px;font-weight:600;color:#64748b}
+.today-summary-head h2 .today-summary-scope{margin-left:6px;padding:1px 6px;border-radius:999px;background:#eef2f7;font-size:11px;font-weight:700;color:#475569;vertical-align:1px}
 .today-summary-saved{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;font-weight:700;color:#475569;text-decoration:none;border:1px solid #e2e8f0;border-radius:999px;padding:4px 8px 4px 11px;white-space:nowrap}
 .today-summary-saved b{color:#2563eb}
 .today-summary-saved:hover{border-color:#cbd5e1;background:#f8fafc}

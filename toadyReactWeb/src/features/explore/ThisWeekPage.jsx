@@ -9,7 +9,7 @@ import { trackAction } from '@/features/analytics/trackAction';
 import apiClient from '@/api/client';
 import { Main } from '@/views/main/Main';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
-import { byStatus, dayLabel, periodLabel, TYPE_NAME, weeklyStatus } from './exploreRules';
+import { byStatus, dayLabel, periodLabel, TYPE_NAME, weekBreakdown, weekCounts, weeklyStatus } from './exploreRules';
 import { appliesToday } from '@/features/announcement/applyDays';
 import { useInPageDetail } from './useInPageDetail';
 import './explore.css';
@@ -84,10 +84,12 @@ export default function ThisWeekPage() {
   const winners = data?.winners || [];
   const nextWeek = data?.nextWeek || [];
   const openCount = current.filter(appliesToday).length;
+  // 큰 숫자·공유 문구는 서버가 센 접수 중·예정 건수(/weekly HTML과 같은 숫자). 이번 주 마감 공고까지 센 전체 일정 수는 아래 줄에 나눠 보여 준다.
+  const counts = weekCounts(data);
   // 이번 주 모음 공유: 검색·미리보기용 서버 페이지(/weekly) 주소를 보낸다(카톡 미리보기에 요약이 보인다).
   const [shareNote, setShareNote] = useState('');
   const share = async () => {
-    const result = await shareLink({ title: '이번 주 청약 · TOADY', text: weeklyShareText({ current: current.length, winners: winners.length, nextWeek: nextWeek.length }), url: 'https://www.toady.co.kr/weekly' });
+    const result = await shareLink({ title: '이번 주 청약 · TOADY', text: weeklyShareText({ current: counts.active, winners: winners.length, nextWeek: nextWeek.length }), url: 'https://www.toady.co.kr/weekly' });
     if (result === 'shared' || result === 'copied') trackAction('share', 'tool/weekly');
     setShareNote(result === 'copied' ? '공유 문구와 링크를 복사했어요.' : result === 'failed' ? '공유하지 못했어요. 주소창의 링크를 복사해 주세요.' : '');
   };
@@ -106,12 +108,13 @@ export default function ThisWeekPage() {
     <header className="explore-hero">
       <span className="explore-eyebrow">{data ? `${dayLabel(data.monday)} ~ ${dayLabel(data.sunday)}` : '이번 주'}</span>
       <h1>이번 주 청약</h1>
-      <p>이번 주 접수하는 공고와 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영돼요.</p>
+      <p>이번 주 접수 일정(이번 주 마감 포함)과 당첨자 발표, 다음 주에 시작하는 공고를 모았어요. 매일 새 공고가 반영돼요.</p>
       <div className="explore-stats">
-        <button type="button" onClick={() => jump('week-current')}><strong>{data ? current.length : '–'}</strong><span>이번 주 접수</span></button>
+        <button type="button" onClick={() => jump('week-current')}><strong>{data ? counts.active : '–'}</strong><span>접수 중·예정</span></button>
         <button type="button" onClick={() => jump('week-winners')}><strong>{data ? winners.length : '–'}</strong><span>당첨자 발표</span></button>
         <button type="button" onClick={() => jump('week-next')}><strong>{data ? nextWeek.length : '–'}</strong><span>다음 주 시작</span></button>
       </div>
+      {data && <p className="explore-breakdown">{weekBreakdown(counts)}</p>}
       {data && <div className="explore-share"><Button size="small" variant="outlined" startIcon={<IosShareRounded />} onClick={share}>이번 주 청약 공유하기</Button>
         {shareNote && <span role="status">{shareNote}</span>}</div>}
     </header>
@@ -119,7 +122,7 @@ export default function ThisWeekPage() {
     {weekly.isLoading ? <div className="explore-loading"><Skeleton variant="rounded" height={120} /><Skeleton variant="rounded" height={120} /></div>
       : weekly.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => weekly.refetch()}>다시 시도</Button>}>이번 주 청약을 불러오지 못했어요.</Alert>
       : <>
-        <Section id="week-current" title="이번 주 접수" count={current.length} empty="이번 주에 접수하는 공고가 없어요.">
+        <Section id="week-current" title="이번 주 접수 일정" count={current.length} empty="이번 주에 접수하는 공고가 없어요.">
           {/* 오늘 신청 공고가 일부만 있을 때(또는 이미 오늘 신청만 보는 중일 때) 전체/오늘 신청 필터를 보여 준다. */}
           {(filter === 'open' || (openCount > 0 && openCount < current.length)) && <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, value) => { if (value) { setFilter(value); setShown(PAGE); } }} className="explore-filter" aria-label="이번 주 접수 보기">
             <ToggleButton value="all">전체 {current.length}</ToggleButton><ToggleButton value="open">오늘 신청 {openCount}</ToggleButton>

@@ -24,6 +24,7 @@ import apiClient from '@/api/client';
 import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
 import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview';
+import { browseFiltered } from '@/features/planner/todaySummaryRules';
 import AreaSubscribe from '@/features/planner/AreaSubscribe';
 import ServiceIntro from '@/features/intro/ServiceIntro';
 import '@/features/planner/planner.css';
@@ -265,8 +266,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     if (detailOnly) return;
     if (!route.sido) { if (location.pathname === '/') appliedRegion.current = null; return; }
     if (!regionTarget) { navigate('/regions', { replace:true }); return; }
-    // 시·군·구로 확인되지 않는 조각(지구·신도시 이름)은 시·도 주소로 바꾼다(서버 공개 페이지는 이 주소를 404로 둔다).
-    if (route.district && !regionTarget.districtName) { navigate(regionPath(regionTarget) + location.search, { replace:true, state:location.state }); return; }
+    // 시·군·구로 확인되지 않는 조각(지구·신도시 이름)은 시·도 주소로, '화성특례시'처럼 다른 표기는 정식 이름 주소로 바꾼다(서버 공개 페이지는 지구 이름 주소를 404로 둔다).
+    if (route.district && regionTarget.districtName !== route.district) { navigate(regionPath(regionTarget) + location.search, { replace:true, state:location.state }); return; }
     if (appliedRegion.current === regionKey) return;
     appliedRegion.current = regionKey;
     resetForEntry();
@@ -529,7 +530,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
         <AreaSubscribe targets={paramInfo.citys} />
         <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} isError={isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode}
-          searchTargets={paramInfo.citys} onApplyAreas={targets => setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets(targets) }))} />
+          searchTargets={paramInfo.citys} onApplyAreas={targets => setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets(targets) }))}
+          filtered={browseFiltered({ paramInfo, selectedRegionCount: selectedRegions.length, totalRegionCount: ALL_REGIONS.length })} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
           {isListError && <Alert severity="error" sx={{ mb: 2 }}

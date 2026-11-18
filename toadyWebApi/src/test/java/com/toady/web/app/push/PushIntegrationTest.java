@@ -63,7 +63,7 @@ class PushIntegrationTest {
 
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired ObjectMapper json; @Autowired UserRepository users;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
-    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas; @Autowired com.toady.web.app.planner.AnnouncementResults results; @Autowired com.toady.web.app.planner.PriceGapStore gapStore;
+    @Autowired PushSubscriptions store; @Autowired WebPushSender sender; @Autowired PlannerService planner; @Autowired PlannerSummary summaries; @Autowired PublicAreaPage areas; @Autowired com.toady.web.app.planner.PublicCollectionPages collections; @Autowired com.toady.web.app.planner.AnnouncementResults results; @Autowired com.toady.web.app.planner.PriceGapStore gapStore;
     @MockitoBean EmailUtilService mail;
 
     KeyPair browser; byte[] auth = new byte[16];
@@ -105,7 +105,7 @@ class PushIntegrationTest {
         return json.readTree(new String(padded, 0, padded.length - 1, StandardCharsets.UTF_8));
     }
     PushDigest digest(String kst) {
-        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, gapStore, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
+        return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, gapStore, collections, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
     }
 
     @Test void subscribeLookupTestSendAndUnsubscribe() throws Exception {
@@ -268,11 +268,31 @@ class PushIntegrationTest {
         assertEquals(1, digest("2026-11-15T18:00").run().sent());
         JsonNode weekly = decrypt(SENT.get(0).body());
         assertEquals("이번 주 청약 브리핑", weekly.path("title").asText(), weekly.toString());
-        assertTrue(weekly.path("body").asText().contains("접수 시작 2건 · 아파트 1건 · 무순위·줍줍 1건"), weekly.toString());
-        assertEquals("/this-week", weekly.path("url").asText());
+        assertTrue(weekly.path("body").asText().contains("다음 주 접수 시작 2건 · 아파트 1건 · 무순위·줍줍 1건"), weekly.toString());
+        assertEquals("/this-week#week-next", weekly.path("url").asText(), "누르면 같은 숫자가 보이는 '다음 주 접수 시작' 구역으로 연다");
+        // 화면(weekly-summary)의 '다음 주 접수 시작'과 같은 계산이다(일요일 기준 다음 주 = 내일~7일 뒤).
+        assertEquals(2, collections.nextWeekCounts(LocalDate.parse("2026-11-15")).total());
         // 일요일이 아니면 주간 브리핑을 넣지 않는다.
         SENT.clear();
         assertEquals(0, digest("2026-11-16T18:00").run().sent());
+    }
+
+    @Test void longOpenAnnouncementsEnteringTheWiderWindowAreNotSentAsNew() throws Exception {
+        // 기록을 시작한 생활권(11일). 그 뒤 접수 중 범위(시작 400일 이내)가 넓어지며 처음 목록에 들어온 장기 접수 공고와 진짜 새 공고.
+        assertEquals(0, digest("2026-11-11T18:00").run().sent());
+        String endpoint = "https://fcm.googleapis.com/fcm/send/long-open";
+        mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint, "favorites", false, "areas", List.of("unjeong")))).andExpect(status().isOk());
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('L1','N1','운정 장기 접수','경기도 파주시 야당동 5','2026-06-01','9999-12-31')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('F1','N1','운정 새 단지','경기도 파주시 야당동 6','2026-11-25','2026-11-26')");
+        // 생활권 접수 중·예정 목록(activeOnly)은 오래 열린 공고도 넣는다.
+        var active = areas.active(com.toady.web.app.planner.LivingAreas.bySlug("unjeong").orElseThrow(), LocalDate.parse("2026-11-12")).stream().map(item -> item.houseManageNo()).toList();
+        assertTrue(active.contains("L1") && active.contains("F1"), active.toString());
+        SENT.clear();
+        assertEquals(1, digest("2026-11-12T18:00").run().sent());
+        JsonNode message = decrypt(SENT.get(0).body());
+        assertTrue(message.path("body").asText().contains("운정 새 단지") && !message.toString().contains("장기 접수"), "접수 시작 45일이 지난 공고는 처음 봐도 새 공고로 보내지 않는다: " + message);
+        assertEquals(java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), jdbc.queryForObject("SELECT FIRST_SEEN_DT FROM TB_PUSH_AREA_SEEN WHERE AREA_SLUG='unjeong' AND ANNOUNCEMENT_ID='apt/L1/N1'", java.sql.Timestamp.class));
     }
 
     @Test void lateSubscriberToIdleAreaDoesNotReceiveOldAnnouncementsAsNew() throws Exception {

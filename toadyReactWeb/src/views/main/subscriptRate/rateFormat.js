@@ -106,13 +106,30 @@ function categoryOf(type,row) {
 }
 
 /**
+ * 행의 공급 세대가 주택형 전체 값을 줄마다 되풀이한 것인지(true), 그 줄만의 배정인지(false).
+ * - 오피스텔·도시형: 주택형마다 거주자우선·기타 두 줄이 오고, 두 줄 모두 주택형 전체 suplyHshldco를 가진다
+ *   (기타 줄의 미달 표기는 주택형 전체 공급에서 두 줄 접수를 뺀 값이다).
+ * - 공공지원 민간임대: 공급 유형(일반·신혼부부·청년 등)별 배정(spsplyKndHshldco)이 있으면 그 줄의 몫이고 합하면 주택형 공급이다.
+ *   배정이 비면 주택형 전체 suplyHshldco를 되풀이한 것으로 본다.
+ * - 잔여세대·임의공급·취소후재공급: 주택형마다 한 줄이라 줄 값이 그 줄의 공급이다.
+ */
+function sharesUnitSupply(type,row) {
+  if(type==='urban')return true;
+  if(type==='public-rental')return isBlank(row.spsplyKndHshldco);
+  return false;
+}
+
+/**
  * APT 이외 공고 행을 표·카드가 함께 쓰는 형태로 맞춘다.
- * @returns {{rows:Array, showCategory:boolean, categoryLabel:string, extras:Array<{label:string,key:string}>}}
+ * groups: 주택형(unitKey)별 묶음(처음 나온 순서). supply는 주택형 공급 세대(되풀이한 값은 한 번, 줄별 배정은 합),
+ * sharedSupply면 줄마다 같은 공급을 다시 보이지 않고 주택형에 한 번만 보인다. 요약 띠(summarizeRates)·표·모바일 카드·이미지 저장이 이 값을 함께 쓴다.
+ * @returns {{rows:Array, groups:Array, showCategory:boolean, categoryLabel:string, extras:Array<{label:string,key:string}>}}
  */
 export function normalizeRateRows(type,list=[]) {
   const isCancel=type==='cancel-resupply';
   const rows=list.map((row,index)=>{
-    const supply=isCancel?row.normalHshldco:type==='public-rental'?(row.spsplyKndHshldco ?? row.suplyHshldco):row.suplyHshldco;
+    const sharedSupply=sharesUnitSupply(type,row);
+    const supply=isCancel?row.normalHshldco:type==='public-rental' && !sharedSupply?row.spsplyKndHshldco:row.suplyHshldco;
     const applications=isCancel?row.normalReqCnt:row.reqCnt;
     const rate=parseRate(isCancel?row.normalCmpetRate:row.cmpetRate,applications);
     const extras=isCancel?CANCEL_EXTRA_RATES.map(([label,key,reqKey])=>({label,key,rate:parseRate(row[key],row[reqKey])})):[];
@@ -122,6 +139,7 @@ export function normalizeRateRows(type,list=[]) {
       unit:formatUnit(row.houseTy,row.modelNo),
       category:categoryOf(type,row),
       supply:toCount(supply),
+      sharedSupply,
       applications:toCount(applications),
       rate,
       extras
@@ -131,7 +149,43 @@ export function normalizeRateRows(type,list=[]) {
     .filter(([,key])=>list.some(row=>!isBlank(row[key]) && Number(row[key])!==0))
     .map(([label,key])=>({label,key})):[];
   const categoryLabel=type==='urban'?'공급 구분':type==='public-rental'?'공급 유형':type==='remaining'?'공고 구분':'구분';
-  return {rows,showCategory:hasDistinctValues(rows.map(row=>row.category)),categoryLabel,extras};
+  return {rows,groups:groupRateRows(rows),showCategory:hasDistinctValues(rows.map(row=>row.category)),categoryLabel,extras};
+}
+
+/** 정규화한 행을 주택형별로 묶고 주택형 공급 세대를 정한다(값이 하나도 없으면 null). */
+function groupRateRows(rows) {
+  const groups=new Map();
+  rows.forEach(row=>{
+    if(!groups.has(row.unitKey))groups.set(row.unitKey,{unitKey:row.unitKey,unit:row.unit,rows:[]});
+    groups.get(row.unitKey).rows.push(row);
+  });
+  return [...groups.values()].map(group=>{
+    const sharedSupply=group.rows.every(row=>row.sharedSupply);
+    // 줄별 배정 주택형에 배정이 빈 줄(주택형 전체 값을 되풀이)이 섞이면 그 줄은 합에 넣지 않는다.
+    const values=group.rows.filter(row=>sharedSupply || !row.sharedSupply).map(row=>row.supply).filter(value=>value!=null);
+    const supply=!values.length?null:sharedSupply?Math.max(...values):values.reduce((sum,value)=>sum+value,0);
+    const applications=group.rows.some(row=>row.applications!=null)?group.rows.reduce((sum,row)=>sum+(row.applications || 0),0):null;
+    return {...group,sharedSupply,supply,applications};
+  });
+}
+
+/** 같은 주택형 둘째 줄부터 되풀이한 공급 대신 쓰는 표시(이미지 저장처럼 칸을 합칠 수 없는 곳). */
+export const SAME_SUPPLY_MARK='〃';
+
+/** 줄의 공급 세대 문구: 줄별 배정이면 그 값, 주택형 공급을 되풀이한 줄이면 주택형 첫 줄에만 값을 두고 나머지는 SAME_SUPPLY_MARK. */
+export function rowSupplyText(group,index) {
+  if(!group.sharedSupply)return formatCount(group.rows[index]?.supply);
+  return index===0?formatCount(group.supply):SAME_SUPPLY_MARK;
+}
+
+/**
+ * 주택형이 미달인지. 공급을 되풀이한 주택형(오피스텔·도시형)은 거주자우선 줄만 모자라도 기타 줄 접수로 채워지므로
+ * 두 줄 접수 합계를 주택형 공급과 비교하고(공급을 모르면 마지막 줄 미달 표기), 줄별 배정 주택형은 미달 줄이 하나라도 있으면 미달이다.
+ */
+function groupShortage(group) {
+  if(group.sharedSupply && group.supply!=null && group.supply>0 && group.applications!=null)return group.applications<group.supply;
+  if(group.sharedSupply)return group.rows.at(-1).rate.kind==='shortage';
+  return group.rows.some(row=>row.rate.kind==='shortage');
 }
 
 /** APT 순위 코드를 문구로 */
@@ -145,10 +199,16 @@ export function rankLabel(code) {
 /**
  * 경쟁률 요약을 공통 방식으로 계산한다.
  * - 최고 경쟁률: 숫자 경쟁률 중 최댓값과 해당 주택형(APT는 순위·지역 포함)
- * - 미달 주택형: APT는 표의 청약 결과와 같은 기준(unitShortage: 주택형 단위 접수 합계 vs 공급 세대수), 그 외는 행에 미달 표기가 있는 경우
- * - 공급·접수 합계: 공급은 주택형(APT) 또는 행 단위 합, 접수는 행 합. 값이 하나도 없으면 null
+ * - 미달 주택형: APT는 표의 청약 결과와 같은 기준(unitShortage: 주택형 단위 접수 합계 vs 공급 세대수), 그 외는 groupShortage
+ * - 공급·접수 합계: 공급은 주택형마다 한 번(APT는 주택형 행, 그 외는 normalizeRateRows의 groups), 접수는 행 합. 값이 하나도 없으면 null
  * 결과를 보장하는 해석(마감·당첨 가능성)은 하지 않는다.
  */
+/** APT 경쟁률·특별공급 행의 주택형 키. 요약 띠와 머리글 칩이 같은 기준으로 주택형을 센다. */
+export const aptUnitKey=row=>String(row.houseTy || row.modelNo || '기타');
+
+/** 행 목록의 주택형 수(같은 주택형의 순위·지역 행은 하나로 센다). */
+export const countAptUnits=(list=[])=>new Set(list.map(aptUnitKey)).size;
+
 export function summarizeRates(type,list=[]) {
   if(!list.length)return null;
   let top=null;
@@ -160,7 +220,7 @@ export function summarizeRates(type,list=[]) {
   if(type==='apt') {
     const groups=new Map();
     list.forEach(row=>{
-      const key=String(row.houseTy || row.modelNo || '기타');
+      const key=aptUnitKey(row);
       if(!groups.has(key))groups.set(key,{row,ranks:new Map()});
       const rank=rankLabel(row.subscrptRankCode);
       const ranks=groups.get(key).ranks;
@@ -180,15 +240,18 @@ export function summarizeRates(type,list=[]) {
     });
   } else {
     // 구분 값이 모든 행에서 같으면(예: 코드 01만 존재) 요약 문구에도 붙이지 않는다.
-    const {rows,showCategory}=normalizeRateRows(type,list);
-    rows.forEach(row=>{
-      units.add(row.unitKey);
-      supplyTotal=add(supplyTotal,row.supply);
-      appTotal=add(appTotal,row.applications);
-      if(row.rate.kind==='shortage')shortageUnits.add(row.unitKey);
-      if(row.rate.kind==='rate' && (!top || row.rate.value>top.value)) {
-        top={value:row.rate.value,text:row.rate.text,unit:row.unit,context:showCategory?row.category:''};
-      }
+    // 공급은 주택형마다 한 번(groups의 supply), 접수는 줄마다 다른 사람의 신청이라 줄 합계.
+    const {groups,showCategory}=normalizeRateRows(type,list);
+    groups.forEach(group=>{
+      units.add(group.unitKey);
+      supplyTotal=add(supplyTotal,group.supply);
+      appTotal=add(appTotal,group.applications);
+      if(groupShortage(group))shortageUnits.add(group.unitKey);
+      group.rows.forEach(row=>{
+        if(row.rate.kind==='rate' && (!top || row.rate.value>top.value)) {
+          top={value:row.rate.value,text:row.rate.text,unit:row.unit,context:showCategory?row.category:''};
+        }
+      });
     });
   }
 

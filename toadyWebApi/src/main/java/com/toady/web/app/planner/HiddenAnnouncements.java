@@ -102,6 +102,39 @@ public class HiddenAnnouncements {
         events.publishEvent(new Changed());
     }
 
+    /** SQL 조건 조각과 그 자리표시자(?) 값. sql은 비어 있거나 ' AND NOT (...)' 꼴이다. */
+    public record SqlFilter(String sql, List<Object> args) {
+        public static final SqlFilter NONE = new SqlFilter("", List.of());
+        /** base 인자 뒤에 이 조건의 인자를 붙인다. */
+        public Object[] with(Object... base) {
+            List<Object> all = new java.util.ArrayList<>(Arrays.asList(base));
+            all.addAll(args);
+            return all.toArray();
+        }
+    }
+    /** 공고 유형 컬럼의 값 형식: 'APT'·'PUBLIC_RENTAL'(댓글 테이블) 또는 'apt'·'public-rental'(관심 공고 TB_FAVORITE). */
+    public enum TypeFormat { NAME, PATH }
+
+    /**
+     * 회원 화면의 숫자·목록(관심 공고 수, 내 이야기 수, 받은 답글 등)을 SQL에서 셀 때 숨긴 공고를 빼는 조건.
+     * 페이지를 나누는 목록도 숫자와 목록이 어긋나지 않게 SQL에서 거른다. 숨긴 공고는 운영자가 고른 몇 건뿐이라 조건이 길어지지 않는다.
+     * typeColumn·houseColumn·noticeColumn은 호출하는 코드의 고정 컬럼 이름만 넣는다(사용자 입력을 넣지 않는다).
+     */
+    public SqlFilter notHiddenSql(String typeColumn, String houseColumn, String noticeColumn, TypeFormat format) {
+        if (overrides == null) return SqlFilter.NONE;
+        List<String> clauses = new java.util.ArrayList<>();
+        List<Object> args = new java.util.ArrayList<>();
+        for (AnnouncementType type : AnnouncementType.values()) {
+            String value = format == TypeFormat.PATH ? type.name().toLowerCase(Locale.ROOT).replace('_', '-') : type.name();
+            for (String[] key : overrides.hiddenOf(type.name())) {
+                clauses.add("(" + typeColumn + "=? AND " + houseColumn + "=? AND " + noticeColumn + "=?)");
+                args.add(value); args.add(key[0]); args.add(key[1]);
+            }
+        }
+        if (clauses.isEmpty()) return SqlFilter.NONE;
+        return new SqlFilter(" AND NOT (" + String.join(" OR ", clauses) + ")", List.copyOf(args));
+    }
+
     /** 목록에서 숨긴 공고를 뺀다. idOf: 항목의 공개 id('apt/H/N'). */
     public <T> List<T> visible(List<T> items, java.util.function.Function<T, String> idOf) {
         if (overrides == null) return items;

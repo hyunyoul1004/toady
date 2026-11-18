@@ -1,6 +1,7 @@
 import { summaryOf, normalizeScheduleEvents } from '../../planner/plannerUtils.js';
 import { unitLabel, formatManwon } from '../../planner/researchUtils.js';
-import { formatCount, normalizeRateRows, parseRate, rankLabel, specialApplicants } from '../../../views/main/subscriptRate/rateFormat.js';
+import { detailSupplyScale } from '../supplyScale.js';
+import { formatCount, normalizeRateRows, parseRate, rankLabel, rowSupplyText, specialApplicants } from '../../../views/main/subscriptRate/rateFormat.js';
 
 /**
  * 이미지 저장(ImageExportButton)에 넣을 표 데이터를 만든다. 표 하나는 { title, note?, columns, weights?, rows } 모양이다.
@@ -17,7 +18,7 @@ const score=value=>validScore(value)?`${Number(value)}점`:'미공개';
 export function detailImageSections(detail) {
   const summary=summaryOf(detail);
   return [
-    {title:'공고 기본 정보',columns:['항목','공개 내용'],weights:[1,4],rows:[['공급 위치',summary.address],['주택 구분',summary.housingType],['공급 세대수',summary.supply?`${summary.supply}세대`:'미제공'],['모집공고일',detail.applicationDate],['입주 예정',detail.upcomingMonth],['시행사',detail.developer],['시공사',detail.contractor],['문의',detail.businessPhoneNumber]].map(row=>row.map(text))},
+    {title:'공고 기본 정보',columns:['항목','공개 내용'],weights:[1,4],rows:[['공급 위치',summary.address],['주택 구분',summary.housingType],['공급 세대수',detailSupplyScale(detail).text],['모집공고일',detail.applicationDate],['입주 예정',detail.upcomingMonth],['시행사',detail.developer],['시공사',detail.contractor],['문의',detail.businessPhoneNumber]].map(row=>row.map(text))},
     {title:'청약 일정',columns:['날짜','일정'],weights:[1,3],rows:normalizeScheduleEvents(summary.events).map(event=>[event.date,event.label])},
     {title:'주택형·공급금액',note:'각 주택형의 최고 공급금액입니다. 층·타입별 가격과 옵션은 모집공고를 확인하세요.',columns:['전용면적·주택형','일반공급','특별공급','최고 공급금액'],weights:[2,1,1,2],rows:(detail.unitPrices || []).map(unit=>[unit.label,`${count(unit.general)}세대`,`${count(unit.special)}세대`,formatManwon(unit.amountManwon)])}
   ].filter(section=>section.rows.length);
@@ -34,11 +35,12 @@ export function competitionImageSections(type, rates=[], scores=[], special=[]) 
     const table=normalizeRateRows(type,rates);
     const isCancel=type==='cancel-resupply';
     columns=['주택형',...(table.showCategory?[table.categoryLabel]:[]),isCancel?'일반공급 세대':'공급 세대',isCancel?'일반공급 접수':'접수 건수',isCancel?'일반공급 경쟁률':'경쟁률',...table.extras.map(extra=>`${extra.label} 경쟁률`)];
-    rows=table.rows.map(row=>[row.unit,...(table.showCategory?[row.category || '-']:[]),formatCount(row.supply),formatCount(row.applications),row.rate.text,
-      ...table.extras.map(extra=>row.extras.find(item=>item.key===extra.key)?.rate.text)]);
+    // 오피스텔·도시형처럼 주택형 공급을 줄마다 되풀이하는 응답은 첫 줄에만 공급을 쓴다(rowSupplyText, 화면 표·카드와 같은 묶음).
+    rows=table.groups.flatMap(group=>group.rows.map((row,index)=>[row.unit,...(table.showCategory?[row.category || '-']:[]),rowSupplyText(group,index),formatCount(row.applications),row.rate.text,
+      ...table.extras.map(extra=>row.extras.find(item=>item.key===extra.key)?.rate.text)]));
   }
   return [
-    {title:'청약 경쟁률',note:'공급 세대수는 행별 표시값이며 중복 합산하지 않습니다. — 는 공개되지 않은 값입니다.',columns,rows:rows.map(row=>row.map(text))},
+    {title:'청약 경쟁률',note:type==='apt'?'공급 세대수는 행별 표시값이며 중복 합산하지 않습니다. — 는 공개되지 않은 값입니다.':'공급 세대수는 주택형마다 한 번만 적습니다(〃는 위 줄과 같은 주택형 공급). — 는 공개되지 않은 값입니다.',columns,rows:rows.map(row=>row.map(text))},
     ...(type==='apt'?[{title:'당첨가점',note:'주택형·거주지역별 공개 점수입니다. 미공개 점수는 0점으로 표시하지 않습니다.',columns:['주택형','지역','최저 가점','최고 가점','평균 가점'],rows:scores.map(row=>[unitLabel(row.houseTy,row.modelNo),row.resideSenm || text(row.resideSecd),score(row.lwetScore),score(row.topScore),score(row.avrgScore)])},
     {title:'특별공급 신청현황',columns:['주택형','배정 세대','다자녀 해당','다자녀 경기','다자녀 기타','신혼부부 접수','생애최초 접수'],rows:special.map(row=>[unitLabel(row.houseTy,row.modelNo),count(row.spsplyHshldco),count(row.crspareaMnychCnt),count(row.ctprvnMnychCnt),count(row.etcAreaMnychCnt),count(specialApplicants(row,'NwwdsNmtw')),count(specialApplicants(row,'LfeFrst'))])}]:[])
   ].filter(section=>section.rows.length);

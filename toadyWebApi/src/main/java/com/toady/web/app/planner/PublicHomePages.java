@@ -38,10 +38,10 @@ public class PublicHomePages {
             .append(esc(PublicHtml.shortDate(winner.date(), today))).append("</span>").append(esc(winner.houseNm())).append("</strong><span class='muted'>").append(esc(winner.address())).append("</span></a>");
         winners.append("</section>");
         String body = "<section class='card'><span class='chip'>" + esc(week.week().label()) + "</span><h1>TOADY 두껍아 · 청약 일정과 분양 정보를 한 화면에서</h1>"
-            + "<p class='muted'>청약홈 공고 일정, 분양가, 경쟁률·당첨가점, 위치와 동네 실거래가를 한곳에서 확인하는 청약 정보 서비스예요. 이번 주 접수 " + week.current().size()
-            + "건, 당첨자 발표 " + week.winners().size() + "건이 있어요.</p>"
+            + "<p class='muted'>청약홈 공고 일정, 분양가, 경쟁률·당첨가점, 위치와 동네 실거래가를 한곳에서 확인하는 청약 정보 서비스예요. 이번 주 " + week.status().summary()
+            + ", 당첨자 발표 " + week.winners().size() + "건이 있어요.</p>"
             + "<div class='row'><a class='cta' data-app href='" + esc(domain + "/") + "'>청약 캘린더 열기</a><a class='cta secondary' data-app href='" + esc(domain + "/match") + "'>내가 넣을 수 있는 청약 찾기</a></div></section>"
-            + areas.section("이번 주 접수", week.current(), "이번 주 접수하는 공고가 없어요.")
+            + areas.section(PublicCollectionPages.WEEK_SECTION, week.current(), "이번 주 접수하는 공고가 없어요.")
             + winners
             + areas.section("다음 주 접수 시작 (" + week.next().label() + ")", week.nextWeek(), "다음 주에 접수를 시작하는 공고가 아직 없어요.")
             + regionChips(today)
@@ -55,22 +55,23 @@ public class PublicHomePages {
         List<PublicHtml.Crumb> items = new ArrayList<>();
         for (var item : week.current()) items.add(new PublicHtml.Crumb(item.source().houseNm(), domain + "/announcements/" + item.id()));
         return PublicHtml.page(domain, "/", "TOADY 두껍아 - 청약 일정, 분양 정보 및 부동산 커뮤니티",
-            "이번 주 청약 접수 " + week.current().size() + "건·당첨자 발표 " + week.winners().size() + "건 · 전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률, 당첨가점을 한 화면에서 확인하세요.",
-            domain + "/", body, PublicHtml.jsonLd(site) + PublicHtml.itemListLd("이번 주 청약 접수", items));
+            "이번 주 청약 접수 중·예정 " + week.status().active() + "건·당첨자 발표 " + week.winners().size() + "건 · 전국 아파트, 오피스텔, 무순위(줍줍) 청약 일정, 분양가, 경쟁률, 당첨가점을 한 화면에서 확인하세요.",
+            domain + "/", body, PublicHtml.jsonLd(site) + PublicHtml.itemListLd("이번 주 청약 접수 일정", items));
     }
     /** 접수 중·예정 공고가 있는 시·도(많은 순)와 그 안의 시·군·구 몇 곳. 지역 공개 페이지로 잇는다. */
     String regionChips(LocalDate today) {
         List<PublicAnnouncementIndex.Entry> all;
-        try { all = index.recent(); } catch (RuntimeException unavailable) { return ""; }
+        // 지역별 청약 페이지와 같이 목록에 보이는 공고(Entry.listed)만 쓴다.
+        try { all = index.recent().stream().filter(e -> e.listed(today)).toList(); } catch (RuntimeException unavailable) { return ""; }
         var bySido = PublicRegionPages.bySido(all);
         StringBuilder out = new StringBuilder("<section class='card'><h2>지역별 청약</h2><div class='chips'>");
         bySido.entrySet().stream().filter(e -> !e.getValue().isEmpty())
-            .sorted(Comparator.comparingLong((Map.Entry<Regions.Sido, List<PublicAnnouncementIndex.Entry>> e) -> -e.getValue().stream().filter(x -> x.status(today) != PublicAnnouncementIndex.Status.CLOSED).count())
+            .sorted(Comparator.comparingLong((Map.Entry<Regions.Sido, List<PublicAnnouncementIndex.Entry>> e) -> -e.getValue().stream().filter(x -> x.active(today)).count())
                 .thenComparingInt(e -> Regions.ALL.indexOf(e.getKey())))
             .forEach(e -> out.append("<a class='chip' href='").append(esc(domain + e.getKey().path())).append("'>").append(esc(e.getKey().shortName())).append("</a>"));
         out.append("</div><div class='chips' style='margin-top:10px'>");
         bySido.forEach((sido, entries) -> PublicRegionPages.districts(sido, entries).stream()
-            .filter(group -> group.entries().stream().anyMatch(x -> x.status(today) != PublicAnnouncementIndex.Status.CLOSED)).limit(3)
+            .filter(group -> group.entries().stream().anyMatch(x -> x.active(today))).limit(3)
             .forEach(group -> out.append("<a class='chip' href='").append(esc(domain + group.region().path())).append("'>").append(esc(group.region().shortLabel())).append("</a>")));
         return out.append("</div><a class='cta secondary' href='").append(esc(domain + "/regions")).append("'>지역별 청약 전체 보기</a></section>").toString();
     }
@@ -111,7 +112,7 @@ public class PublicHomePages {
         LocalDate today = index.today();
         List<PublicAnnouncementIndex.Entry> active;
         try {
-            active = PublicAnnouncementIndex.ordered(index.recent().stream().filter(e -> e.status(today) != PublicAnnouncementIndex.Status.CLOSED)
+            active = PublicAnnouncementIndex.ordered(index.recent().stream().filter(e -> e.active(today))
                 .filter(e -> e.type().equals("apt") || PublicCollectionPages.UNRANKED_TYPES.contains(e.type())).toList(), today);
         } catch (RuntimeException unavailable) { active = List.of(); }
         StringBuilder list = new StringBuilder("<section class='card list'><h2>지금 접수 중·예정인 아파트·무순위 공고 <span class='muted'>").append(active.size()).append("건</span></h2>");

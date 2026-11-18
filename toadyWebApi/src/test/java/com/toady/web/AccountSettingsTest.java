@@ -36,6 +36,7 @@ class AccountSettingsTest {
     @Autowired PasswordEncoder encoder;
     @Autowired UserService users;
     @Autowired SimpleUserDetailsService details;
+    @Autowired com.toady.web.app.operation.AnnouncementOverrides overrides;
     final ObjectMapper json = new ObjectMapper();
     long seq;
     /** 요청 제한(같은 IP 10분에 10번)이 테스트끼리 섞이지 않게 테스트마다 다른 주소를 쓴다. */
@@ -47,6 +48,9 @@ class AccountSettingsTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT, ANNOUNCEMENT_TYPE VARCHAR(20), HOUSE_MANAGE_NO VARCHAR(40), PBLANC_NO VARCHAR(40), EMAIL_ENABLED BOOLEAN)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (USER_SEQ BIGINT, FEED_TOKEN VARCHAR(64))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (USER_SEQ BIGINT PRIMARY KEY, PROFILE_ICON VARCHAR(30) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE VARCHAR(20) NOT NULL, HOUSE_MANAGE_NO VARCHAR(40) NOT NULL, PBLANC_NO VARCHAR(40) NOT NULL,"
+                + " HIDDEN_YN VARCHAR(1) DEFAULT 'N' NOT NULL, NOTICE VARCHAR(500), ADMIN_NAME VARCHAR(100) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL, PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO))");
+        jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides();
         jdbc.update("DELETE FROM TB_USER_PROFILE"); jdbc.update("DELETE FROM TB_LTTOT_PBLANC_COMMENT");
         jdbc.update("DELETE FROM TB_FAVORITE"); jdbc.update("DELETE FROM TB_CALENDAR_FEED");
         jdbc.update("DELETE FROM TB_CERTIFY"); jdbc.update("DELETE FROM TB_USER");
@@ -56,6 +60,10 @@ class AccountSettingsTest {
         jdbc.update("INSERT INTO TB_FAVORITE VALUES (?, 'apt', 'H1', 'P1', TRUE)", seq);
         jdbc.update("INSERT INTO TB_CALENDAR_FEED VALUES (?, 'feed-token')", seq);
     }
+
+    void reloadOverrides() { org.springframework.test.util.ReflectionTestUtils.invokeMethod(overrides, "refresh"); }
+    // 숨김 행이 다른 테스트 클래스(같은 스프링 컨텍스트·DB)에 남지 않게 지운다.
+    @org.junit.jupiter.api.AfterEach void clearOverrides() { jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides(); }
 
     String login(String email) { return users.generatorToken((CustomUserDetails) details.loadUserByUsername(email)); }
     JsonNode call(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String token, Object body) throws Exception {
@@ -194,8 +202,45 @@ class AccountSettingsTest {
         JsonNode stories = call(get("/api/v1/me/account/comments"), token, null).get("data").get("items");
         JsonNode story = null;
         for (JsonNode item : stories) if (item.get("commentSeq").asLong() == mine) story = item;
-        assertEquals(2, story.get("replyCount").asInt(), "내 이야기의 답글 수(지운 답글·내 답글 제외)");
+        assertEquals(3, story.get("replyCount").asInt(), "내 이야기의 답글 수는 이야기 탭 '답글 달기 (N)'과 같이 지우지 않은 답글 전체(내 답글 포함)");
+        long secondReply = jdbc.queryForObject("SELECT MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT WHERE CONTENT='두 번째 답글'", Long.class);
+        assertEquals(secondReply, story.get("lastReplySeq").asLong(), "새 답글 표시는 다른 회원의 답글로만 판정한다");
         assertEquals(401, status(get("/api/v1/me/account/replies"), null));
+    }
+
+    @Test void hiddenAnnouncementsAreLeftOutOfMyCountsAndLists() throws Exception {
+        String token = login("me@example.test");
+        long other = jdbc.queryForObject("SELECT USER_SEQ FROM TB_USER WHERE USER_EMAIL='other@example.test'", Long.class);
+        String insert = "INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,PARENT_COMMENT_SEQ,CONTENT,RECOMMEND,OPPOSE,DELETE_YN,CREATE_USER_SEQ,REG_DT) VALUES (?,?,?,?,?,0,0,'N',?,CURRENT_TIMESTAMP)";
+        jdbc.update(insert, "APT", "H1", "P1", null, "숨길 공고 이야기", seq);
+        long hiddenStory = jdbc.queryForObject("SELECT MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT", Long.class);
+        jdbc.update(insert, "APT", "H1", "P1", hiddenStory, "숨길 공고 답글", other);
+        jdbc.update(insert, "PUBLIC_RENTAL", "R1", "N1", null, "보이는 이야기", seq);
+        long shownStory = jdbc.queryForObject("SELECT MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT", Long.class);
+        jdbc.update(insert, "PUBLIC_RENTAL", "R1", "N1", shownStory, "보이는 답글", other);
+        jdbc.update("INSERT INTO TB_FAVORITE VALUES (?, 'public-rental', 'R1', 'N1', FALSE)", seq);
+
+        JsonNode before = call(get("/api/v1/me/account"), token, null).get("data");
+        assertEquals(2, before.get("favorites").asInt());
+        assertEquals(2, before.get("comments").asInt());
+        assertEquals(2, call(get("/api/v1/me/account/replies"), token, null).get("data").get("unread").asInt());
+
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','H1','P1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        reloadOverrides();
+        JsonNode summary = call(get("/api/v1/me/account"), token, null).get("data");
+        assertEquals(1, summary.get("favorites").asInt(), "숨긴 공고는 관심 공고 수에서 빠진다");
+        assertEquals(0, summary.get("emailAlerts").asInt());
+        assertEquals(1, summary.get("comments").asInt(), "숨긴 공고의 이야기는 내 이야기 수에서 빠진다");
+        JsonNode comments = call(get("/api/v1/me/account/comments"), token, null).get("data");
+        assertEquals(1, comments.get("total").asInt());
+        assertEquals(1, comments.get("items").size());
+        assertEquals("public-rental/R1/N1", comments.get("items").get(0).get("announcementId").asText());
+        JsonNode replies = call(get("/api/v1/me/account/replies"), token, null).get("data");
+        assertEquals(1, replies.get("unread").asInt(), "새 답글 수(배지)도 같은 기준");
+        assertEquals(1, replies.get("items").size());
+        assertEquals("보이는 답글", replies.get("items").get(0).get("content").asText());
+        JsonNode profile = call(get("/api/v1/members/" + seq), token, null).get("data");
+        assertEquals(1, profile.get("stories").asInt(), "프로필의 남긴 이야기 수도 같은 기준");
     }
 
     String claim(String jwt, String key) throws Exception {

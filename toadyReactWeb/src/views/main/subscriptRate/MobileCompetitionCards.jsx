@@ -83,14 +83,20 @@ export function MobileCompetitionCards({groups}) {
   </section>)}</div>;
 }
 
-/** APT 외 공고(오피스텔·임대·잔여세대 등)의 모바일 카드. normalizeRateRows 결과를 그대로 받는다. */
+/**
+ * APT 외 공고(오피스텔·임대·잔여세대 등)의 모바일 카드. normalizeRateRows 결과를 그대로 받아 주택형마다 카드 하나를 그린다.
+ * 머리글의 공급은 주택형 공급(group.supply, 요약 띠와 같은 값)이고, 줄(거주자우선·기타, 공급 유형 등)마다 접수·경쟁률을 나눠 보인다.
+ * 줄별 배정이 있는 주택형(민간임대 공급 유형)은 줄에 배정 세대를 함께 적는다.
+ */
 export function MobileRateRowCards({table}) {
-  const {rows,showCategory,extras}=table;
-  return <div className="competition-mobile-cards" aria-label="주택형별 경쟁률 카드">{rows.map(row=><section className="competition-mobile-card" key={row.key}>
-    <header><h3>{row.unit}</h3><span>공급 {formatCount(row.supply)}세대</span></header>
-    {showCategory && row.category && <p className="competition-card-category">{row.category}</p>}
-    <div className="competition-card-stat"><span>접수 {formatCount(row.applications)}건</span><RateValue rate={row.rate}/></div>
-    {extras.length>0 && <dl className="special-supply-counts">{extras.map(extra=>{const item=row.extras.find(value=>value.key===extra.key);return <div key={extra.key}><dt>{extra.label}</dt><dd><RateValue rate={item.rate} compact/></dd></div>;})}</dl>}
+  const {groups,showCategory,extras}=table;
+  return <div className="competition-mobile-cards" aria-label="주택형별 경쟁률 카드">{groups.map(group=><section className="competition-mobile-card" key={group.unitKey}>
+    <header><h3>{group.unit}</h3><span>공급 {formatCount(group.supply)}세대</span></header>
+    {group.rows.map(row=><div key={row.key}>
+      {showCategory && row.category && <p className="competition-card-category">{row.category}{!group.sharedSupply && group.rows.length>1 && ` · 배정 ${formatCount(row.supply)}세대`}</p>}
+      <div className="competition-card-stat"><span>접수 {formatCount(row.applications)}건</span><RateValue rate={row.rate}/></div>
+      {extras.length>0 && <dl className="special-supply-counts">{extras.map(extra=>{const item=row.extras.find(value=>value.key===extra.key);return <div key={extra.key}><dt>{extra.label}</dt><dd><RateValue rate={item.rate} compact/></dd></div>;})}</dl>}
+    </div>)}
   </section>)}</div>;
 }
 

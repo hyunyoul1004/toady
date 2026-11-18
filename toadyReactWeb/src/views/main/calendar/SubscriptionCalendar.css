@@ -136,6 +136,23 @@
   color: #64748b;
 }
 
+/* LH청약플러스에서 접수하는 공고(청약홈 캘린더에는 없음) 표시. 단지명 뒤 작은 글자 */
+.tc-event .tc-receipt {
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #e8f1fb;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1d4f8a;
+}
+
+.tc-receipt-text {
+  color: #1d4f8a;
+  font-weight: 700;
+}
+
 /* 단계 뱃지(특·1·2): 그날 단계는 채움, 같은 공고의 다른 단계는 옅게
    색은 StageBadges가 style로 넣는 CSS 변수(--tc-accent, --tc-text)에서 가져온다. */
 .tc-stages {

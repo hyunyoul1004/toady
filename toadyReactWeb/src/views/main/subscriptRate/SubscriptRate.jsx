@@ -13,7 +13,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
-import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, secondRankPending, secondRankPossible, secondRankWindow, specialApplicants, summarizeRates } from './rateFormat';
+import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, secondRankPending, secondRankPossible, secondRankWindow, specialApplicants, summarizeRates, countAptUnits } from './rateFormat';
 import { koreaToday } from '@/features/planner/plannerUtils';
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import Button from '@mui/material/Button';
@@ -447,7 +447,7 @@ export function SubscriptRate({ subscriptDetail }) {
     }
 
     // 오피스텔·공공지원 민간임대·취소후재공급·잔여세대·임의공급을 같은 정규화 결과로 그린다.
-    const { rows, showCategory, categoryLabel, extras } = nonAptTable;
+    const { groups, showCategory, categoryLabel, extras } = nonAptTable;
     if (isSmallScreen) return <MobileRateRowCards table={nonAptTable} />;
     const isCancel = type === 'cancel-resupply';
 
@@ -471,11 +471,14 @@ export function SubscriptRate({ subscriptDetail }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {/* 주택형별 묶음(groups): 주택형 칸은 합치고, 주택형 공급을 줄마다 되풀이하는 응답(오피스텔·도시형 거주자우선·기타)은 공급 칸도 합친다. */}
+            {groups.flatMap((group) => group.rows.map((row, index) => (
               <TableRow key={row.key} hover>
-                <TableCell align="center" sx={{ ...gridCellStyle, fontWeight: 700, whiteSpace: 'nowrap' }}>{row.unit}</TableCell>
+                {index === 0 && <TableCell align="center" rowSpan={group.rows.length} sx={{ ...gridCellStyle, fontWeight: 700, whiteSpace: 'nowrap' }}>{row.unit}</TableCell>}
                 {showCategory && <TableCell align="center" sx={gridCellStyle}>{row.category || '-'}</TableCell>}
-                <TableCell align="center" sx={gridCellStyle}>{formatCount(row.supply)}</TableCell>
+                {group.sharedSupply
+                  ? index === 0 && <TableCell align="center" rowSpan={group.rows.length} sx={gridCellStyle}>{formatCount(group.supply)}</TableCell>
+                  : <TableCell align="center" sx={gridCellStyle}>{formatCount(row.supply)}</TableCell>}
                 <TableCell align="center" sx={gridCellStyle}>{formatCount(row.applications)}</TableCell>
                 <TableCell align="center" sx={{ ...gridCellStyle, ...(extras.length ? {} : { borderRight: 0 }) }}>
                   <RateValue rate={row.rate} />
@@ -486,7 +489,7 @@ export function SubscriptRate({ subscriptDetail }) {
                   </TableCell>
                 ))}
               </TableRow>
-            ))}
+            )))}
           </TableBody>
         </Table>
       </ScrollTable>
@@ -505,9 +508,10 @@ export function SubscriptRate({ subscriptDetail }) {
             <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
               청약 경쟁률 및 당첨가점
             </Typography>
-            {competitionList.length > 0 && (
+            {/* 행 수(순위·지역별)가 아니라 요약 띠와 같은 계산(summarizeRates)의 주택형 수. '건'은 띠의 접수 건수와 섞여 쓰지 않는다. */}
+            {rateSummary?.unitCount > 0 && (
               <Chip
-                label={`${competitionList.length}건`}
+                label={`주택형 ${rateSummary.unitCount}개`}
                 size="small"
                 sx={{ height: 20, fontSize: '0.72rem', fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb' }}
               />
@@ -544,7 +548,7 @@ export function SubscriptRate({ subscriptDetail }) {
               </Typography>
               {specialList.length > 0 && (
                 <Chip
-                  label={`${specialList.length}건`}
+                  label={`주택형 ${countAptUnits(specialList)}개`}
                   size="small"
                   sx={{ height: 20, fontSize: '0.72rem', fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb' }}
                 />

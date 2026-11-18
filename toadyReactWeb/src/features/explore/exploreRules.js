@@ -40,3 +40,19 @@ export function byStatus(items = []) {
   const rank = item => (order[item.status] ?? 4) + (item.status === 'OPEN' && !appliesToday(item) ? 1 : 0);
   return [...items].sort((a, b) => rank(a) - rank(b) || String(a.start).localeCompare(String(b.start)));
 }
+
+/**
+ * 이번 주 접수 일정 건수(서버 weekly-summary counts = PublicCollectionPages.WeekStatus, /weekly·/home HTML과 같은 숫자).
+ * 접수 기간이 이번 주와 겹치는 공고라 이번 주 초에 이미 마감된 공고도 total에 들어간다. 큰 숫자는 active(접수 중+예정)를 쓴다.
+ * 예전 캐시처럼 counts가 없으면 목록의 status로 같은 방식으로 센다.
+ */
+export function weekCounts(data) {
+  const counts = data?.counts;
+  if (counts && Number.isFinite(counts.total)) return { ...counts, active: counts.open + counts.upcoming };
+  const items = data?.current || [];
+  const count = status => items.filter(item => item.status === status).length;
+  const open = count('OPEN'), upcoming = count('UPCOMING');
+  return { total: items.length, open, upcoming, closed: items.length - open - upcoming, active: open + upcoming };
+}
+/** '이번 주 일정 25건 · 접수 중 6 · 예정 2 · 마감 17'(서버 WeekStatus.breakdown과 같은 문구). */
+export const weekBreakdown = counts => `이번 주 일정 ${counts.total}건 · 접수 중 ${counts.open} · 예정 ${counts.upcoming} · 마감 ${counts.closed}`;

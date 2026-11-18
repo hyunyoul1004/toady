@@ -1,10 +1,12 @@
 import NoticeDocuments from '@/features/announcement/NoticeDocuments';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
-import { Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
+import { Alert, Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { trackAction } from '@/features/analytics/trackAction';
 import { normalizeScheduleEvents, summaryOf } from '@/features/planner/plannerUtils';
+import { receiptChannel, LH_APPLY_URL, LH_APPLY_NAME } from '@/features/announcement/receiptChannel';
+import { detailSupplyScale } from '@/features/announcement/supplyScale';
 
 // 공고 원문 주소가 http/https일 때만 쓴다(javascript: 같은 주소를 iframe·링크에 넣지 않게). 잘못된 값이면 ''.
 function officialUrl(value) {
@@ -17,6 +19,8 @@ function officialUrl(value) {
  * part='schedule'은 일정·기본 정보, part='original'은 공고문 파일·원문 확인(상세 맨 아래)만 그린다. 생략하면 둘 다.
  * - 쓰이는 곳: Main.jsx에서 ResearchPanel 안(schedule)과 아래(after, original)에 한 번씩 넣는다.
  * - 데이터: Main이 받은 상세 응답(mainDetail)을 그대로 받는다. 직접 API를 부르지 않는다(공고문 파일은 NoticeDocuments가 조회).
+ * - LH청약플러스에서 접수하는 공고(receiptChannel.js)면 일정 위에 실제 접수처 안내와 바로가기를 보여 준다.
+ * - 공급 세대수는 detailSupplyScale(이미지 저장·요약 칸과 같은 계산)로 '이번 모집 N세대 (전체 M세대)'처럼 나눠 보여 준다.
  * - 원문 보기 팝업은 useHistoryOverlay('official-notice')로 열어 히스토리 한 칸이 된다. 휴대폰 뒤로가기로 팝업만 닫힌다.
  */
 export default function AnnouncementNotice({ mainDetail, part }) {
@@ -28,14 +32,19 @@ export default function AnnouncementNotice({ mainDetail, part }) {
   const summary=summaryOf(detail);
   const events=normalizeScheduleEvents(summary.events);
   const url=officialUrl(detail.pblancUrl) || officialUrl(detail.recruitmentNoticeFileUrl);
-  const facts=[['공급 위치',summary.address],['주택 구분',detail.housingDivision],['모집공고일',detail.applicationDate],
+  const lh=receiptChannel(detail)==='LH';
+  const scale=detailSupplyScale(detail);
+  const facts=[['공급 위치',summary.address],['주택 구분',detail.housingDivision],['공급 세대수',scale.value?scale.text:''],['모집공고일',detail.applicationDate],
     ['입주 예정',detail.upcomingMonth],['시행사',detail.developer],['시공사',detail.contractor],['문의',detail.businessPhoneNumber]];
   return <div className="announcement-info">
-    {showSchedule && <><section aria-labelledby="announcement-schedule-title">
+    {showSchedule && <>{lh && <Alert severity="info" variant="outlined" sx={{mb:1.5,alignItems:'center','& .MuiAlert-message':{flex:1}}} action={<Button size="small" href={LH_APPLY_URL} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewRounded/>}>{LH_APPLY_NAME}</Button>}>
+      <strong>{LH_APPLY_NAME}에서 접수해요.</strong> 이 공고는 청약홈이 아닌 LH청약플러스에서 신청을 받아 청약홈 청약 캘린더에는 나오지 않아요. 순위별 접수 기간 안에 신청하세요.
+    </Alert>}
+    <section aria-labelledby="announcement-schedule-title">
       <h3 id="announcement-schedule-title">청약 일정</h3>
       {events.length ? <ol className="announcement-schedule">{events.map(event=><li key={event.date}><time dateTime={event.date}>{event.date}</time><span>{event.label}</span></li>)}</ol>:<p className="research-explanation">공개된 접수 일정이 없습니다. 모집공고 원문을 확인해 주세요.</p>}
     </section>
-    <section aria-labelledby="announcement-facts-title"><h3 id="announcement-facts-title">공고 기본 정보</h3><dl className="announcement-facts">{facts.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value && value!=='-'?value:'미제공'}</dd></div>)}</dl></section></>}
+    <section aria-labelledby="announcement-facts-title"><h3 id="announcement-facts-title">공고 기본 정보</h3><dl className="announcement-facts">{facts.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value && value!=='-'?value:'미제공'}{label==='공급 세대수' && scale.note && <small className="announcement-fact-note">{scale.note}</small>}</dd></div>)}</dl></section></>}
     {showOriginal && <><NoticeDocuments id={detail.subscriptSeq}/>
     <section className="announcement-eligibility" aria-labelledby="announcement-eligibility-title"><h3 id="announcement-eligibility-title">신청 전 확인해 주세요</h3><p>거주지역·무주택 여부·청약통장·재당첨 제한 등 신청 자격은 공급 유형과 공고에 따라 달라집니다. 정확한 자격과 제출 서류는 모집공고 원문에서 확인하세요.</p>{url && <Button variant="outlined" endIcon={<OpenInNewRounded/>} onClick={()=>{trackAction('official_click',detail.subscriptSeq);setOriginalOpen(true);}}>모집공고 원문 확인</Button>}</section>
     <Dialog open={Boolean(originalOpen)} onClose={()=>setOriginalOpen(false)} fullWidth maxWidth="md" aria-labelledby="official-notice-title" PaperProps={{sx:{height:'min(780px, 88dvh)',maxHeight:'88dvh',m:{xs:1,sm:3},width:{xs:'calc(100% - 16px)',sm:'100%'},borderRadius:2}}}>

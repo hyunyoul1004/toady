@@ -2,6 +2,7 @@
  * 나의 청약·캘린더에서 같이 쓰는 순수 함수 모음(날짜, 일정 정리, .ics 파일, 생활권 판정).
  * 쓰는 곳: planner 폴더 전체, explore/RegionsPage, intro/ServiceIntro, views/main(검색·달력) 등.
  */
+import { receiptChannel } from '../announcement/receiptChannel.js';
 /** 준비 체크리스트 항목. 체크 상태는 비트로 저장한다(1번 항목=1, 2번=2, 3번=4 …). 서버 checklist 값은 0~31. */
 export const CHECKS = ['모집공고 원문 확인', '신청 유형·자격 확인', '청약통장 확인', '계약금 등 자금 계획', '신청 일정 확인'];
 /** 관심 공고 ID 형식: 유형/주택관리번호/공고번호. 서버 주소 규칙과 같다. */
@@ -63,7 +64,9 @@ export function summaryOf(detail = {}) {
   return { id: detail.subscriptSeq, houseNm: detail.houseNm || '공고', address: detail.hssplyAdres || detail.supplyLocation || '',
     housingType: detail.houseSecdNm || detail.housingDivision || '', supply: detail.totSuplyHshldco || '',
     startDate: isoDate(detail.rceptBgnde || detail.subscrptRceptBgnde), endDate: isoDate(detail.rceptEndde || detail.subscrptRceptEndde),
-    winnerDate: isoDate(detail.przwnerPresnatnDe), priceSummary: detail.priceSummary || '', events: fields.flatMap(([label,...keys]) => {
+    winnerDate: isoDate(detail.przwnerPresnatnDe), priceSummary: detail.priceSummary || '',
+    // 접수처: LH청약플러스에서 받는 공고면 'LH'(관심 공고 카드의 신청 안내·링크가 청약홈 대신 LH청약플러스를 가리킨다).
+    receiptChannel: receiptChannel(detail), events: fields.flatMap(([label,...keys]) => {
       const date = isoDate(keys.map(key => detail[key]).find(Boolean)); return date ? [{ label, date }] : [];
     }), unavailable: false };
 }

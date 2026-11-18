@@ -19,7 +19,9 @@ import ApartmentRounded from '@mui/icons-material/ApartmentRounded';
 import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
-import { summaryOf, downloadCalendar, koreaToday, daysUntil } from './plannerUtils';
+import { summaryOf, downloadCalendar, koreaToday } from './plannerUtils';
+import { receiptState } from '@/features/announcement/receiptState';
+import { detailSupplyScale } from '@/features/announcement/supplyScale';
 import { formatManwon, tradeComparison } from './researchUtils';
 import { usePlanner } from './usePlanner';
 import { normalizeStage } from './stageRules';
@@ -122,12 +124,15 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
   const units=detail.unitPrices || [];
   const supply=Number(summary.supply);
   const hasSupply=Number.isFinite(supply) && supply>0;
+  // 전체 세대와 이번 모집 세대(주택형 합)가 다르면 이번 모집 세대를 크게, 전체 세대를 아래에 적는다(상세 기본 정보·이미지 저장과 같은 계산).
+  const scale=detailSupplyScale(detail);
   const amounts=units.map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
   const min=amounts.length?Math.min(...amounts):null,max=amounts.length?Math.max(...amounts):null;
   // 실거래 면적 필터 버튼용: 주택형 면적을 반올림해 중복을 빼고 6개까지.
   const areas=[...new Set(units.map(unit=>Math.round(unit.area)).filter(Number.isFinite))].slice(0,6);
-  const closing=daysUntil(summary.endDate,today),start=daysUntil(summary.startDate,today);
-  const status=start>0?`접수 D-${start}`:closing>=0 && closing!==null?'접수 중':summary.endDate?'접수 종료':'일정 확인';
+  // 목록·달력과 같은 접수 기준(시작 후 400일 상한, 먼 미래 마감은 상시 접수). 관심 공고 카드·맞춤 청약 배지도 같은 함수를 쓴다.
+  const receipt=receiptState(summary.startDate,summary.endDate,today);
+  const status={upcoming:`접수 D-${receipt.daysToStart}`,open:receipt.always?'상시 접수':'접수 중',closed:'접수 종료'}[receipt.state] || '일정 확인';
   const trades=research.trades.data;
   // 조회할 수 없는 상태에서 면적 필터를 보여주면 동작하지 않는 컨트롤이 되므로 조회 가능한 경우에만 노출한다.
   const tradesQueryable=research.capabilities.data?.tradesEnabled===true && !research.location.error;
@@ -138,7 +143,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
     <div className="research-metrics">
       <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
       <div className="research-metric"><span><EventAvailableOutlined />당첨자 발표</span><strong>{shortDate(summary.winnerDate)}</strong><small>{summary.winnerDate?`${summary.winnerDate.slice(0,4)}년`:'일정 미제공'} · 공식 발표 기준</small></div>
-      <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{hasSupply?supply.toLocaleString('ko-KR'):'미제공'}{hasSupply && <em>세대</em>}</strong><small>{summary.housingType || '모집공고 기준'}</small></div>
+      <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{scale.split?scale.value.toLocaleString('ko-KR'):hasSupply?supply.toLocaleString('ko-KR'):'미제공'}{(scale.split||hasSupply) && <em>세대</em>}</strong><small>{scale.split?scale.short:(summary.housingType || '모집공고 기준')}</small></div>
     </div>
     {showTabs && <ResearchTabs value={tab} onChange={setTab}/>}
     <div className="research-tab-content" role="tabpanel" aria-label={tab==='info'?'청약 정보':'같은 법정동의 실제 매매 거래'}>

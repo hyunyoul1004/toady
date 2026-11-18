@@ -11,7 +11,8 @@ import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
-import { CHECKS, daysUntil, downloadCalendar, koreaToday } from './plannerUtils';
+import { CHECKS, downloadCalendar, koreaToday } from './plannerUtils';
+import { receiptState } from '@/features/announcement/receiptState';
 import { STAGES, nextStep, normalizeStage, resultFacts } from './stageRules';
 import { gapBadge } from '@/features/match/priceGapRules';
 
@@ -48,8 +49,10 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
   const completed = CHECKS.filter((_,i) => checks & (1<<i)).length;
   // 서버 값과 입력 값이 다르면 저장하지 않은 변경이 있는 것.
   const dirty = note !== (item.note || '') || checks !== (item.checklist || 0) || email !== Boolean(item.emailEnabled);
-  const deadline = daysUntil(s.endDate,today);
-  const status = s.unavailable ? '원본 확인 필요' : s.startDate && s.startDate > today ? '접수 예정' : deadline != null && deadline >= 0 ? '접수 중' : s.endDate ? '접수 종료' : '일정 미제공';
+  // 상세 상태 칩·맞춤 청약 배지와 같은 접수 기준(receiptState). 접수 중 칩만 강조 색을 쓴다.
+  const receipt = receiptState(s.startDate,s.endDate,today);
+  const status = s.unavailable ? '원본 확인 필요' : { upcoming:'접수 예정', open:receipt.always?'상시 접수':'접수 중', closed:'접수 종료' }[receipt.state] || '일정 미제공';
+  const receiving = !s.unavailable && receipt.state==='open';
   const [stage,setStageValue] = useState(normalizeStage(item.stage));
   useEffect(() => { setStageValue(normalizeStage(item.stage)); },[item.stage]);
   // 단계는 누르는 즉시 저장한다(메모·체크리스트의 저장 전 변경과 섞지 않도록 저장된 값과 함께 보낸다).
@@ -67,7 +70,7 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
   async function save() { setBusy(true);try {await planner.save({...item,note,checklist:checks,emailEnabled:email});report('준비 노트를 저장했습니다.',false);}catch(e){report(e.message,true);}finally{setBusy(false);} }
   async function remove() { setBusy(true);try {await planner.remove(item.id);report('관심 공고를 해제했습니다.',false);}catch(e){report(e.message,true);setBusy(false);}setConfirm(false); }
   return <article className={`planner-favorite-card ${selected?'is-selected':''}`}>
-    <div className="planner-favorite-top"><div className="planner-card-tags"><Chip size="small" label={status} color={status==='접수 중'?'primary':'default'} variant="outlined" />{s.housingType && <span>{s.housingType}</span>}{item.emailEnabled && planner.remindersEnabled && <span className="planner-mail-indicator"><NotificationsNoneRounded fontSize="inherit" /> 알림 켜짐</span>}</div><IconButton ref={menuButtonRef} aria-label={`${s.houseNm} 더 보기`} onClick={e=>setMenu(e.currentTarget)} size="small"><MoreHorizRounded /></IconButton></div>
+    <div className="planner-favorite-top"><div className="planner-card-tags"><Chip size="small" label={status} color={receiving?'primary':'default'} variant="outlined" />{s.housingType && <span>{s.housingType}</span>}{item.emailEnabled && planner.remindersEnabled && <span className="planner-mail-indicator"><NotificationsNoneRounded fontSize="inherit" /> 알림 켜짐</span>}</div><IconButton ref={menuButtonRef} aria-label={`${s.houseNm} 더 보기`} onClick={e=>setMenu(e.currentTarget)} size="small"><MoreHorizRounded /></IconButton></div>
     <h3>{s.unavailable?s.houseNm:<Link to={`/my?subscriptSeq=${encodeURIComponent(item.id)}`} state={{plannerDetail:true}}>{s.houseNm}</Link>}</h3>
     <div className="planner-address"><LocationOnOutlined fontSize="inherit" /><span>{s.address || '주소 미제공'}</span></div>
     <div className="planner-card-dates"><div><span>청약 접수</span><strong>{s.startDate?.slice(5).replace('-','.') || '미제공'}<em>—</em>{s.endDate?.slice(5).replace('-','.') || '미제공'}</strong></div><div><span>당첨자 발표</span><strong>{s.winnerDate || '미제공'}</strong></div></div>

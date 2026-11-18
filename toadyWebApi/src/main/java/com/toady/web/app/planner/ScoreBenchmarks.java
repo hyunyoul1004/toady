@@ -56,9 +56,15 @@ public class ScoreBenchmarks {
         return ok(body);
     }
 
-    /** 공개 당첨가점이 있는 시·도와 시·군·구 목록(전체 기간 건수). */
+    /**
+     * 공개 당첨가점이 있는 시·도와 시·군·구 목록. 건수는 검색 결과의 '공개 N건'과 같은 기준이 되도록 years(3·5·0=전체) 기간만 센다.
+     * 목록 자체는 전체 기간 기준이라 최근 자료가 없는 지역도 0건으로 남는다(고르면 검색이 기간을 넓혀 준다).
+     * 응답 캐시(Cache-Control)는 주소에 years가 들어가 기간별로 따로 잡힌다.
+     */
     @GetMapping("/api/v1/public/score-benchmarks/regions")
-    public ResponseEntity<List<Map<String, Object>>> regions() { return ok(regions(all())); }
+    public ResponseEntity<List<Map<String, Object>>> regions(@RequestParam(defaultValue = "0") int years) {
+        return ok(regions(all(), today(clock.instant()), years));
+    }
 
     /**
      * 지역(시·도·시·군·구) 또는 생활권으로 공고를 찾는다. 결과가 적으면 기간을 넓히고, 시·군·구에 아예 없으면 같은 시·도를 제안한다.
@@ -132,19 +138,32 @@ public class ScoreBenchmarks {
         return body;
     }
 
-    static List<Map<String, Object>> regions(List<Item> all) {
-        Map<String, Map<String, Long>> grouped = new TreeMap<>(Comparator.comparingInt(ScoreBenchmarks::sidoOrder));
+    /** 전체 기간 건수(기존 호출 호환). */
+    static List<Map<String, Object>> regions(List<Item> all) { return regions(all, LocalDate.now(ZoneId.of("Asia/Seoul")), 0); }
+
+    /**
+     * 시·도·시·군·구 목록은 all 전체에서, 건수(count)는 years 기간(search의 requestedYears와 같은 해석) 안의 공고만 센다.
+     * allCount는 전체 기간 건수다. 기간 안에 0건인 지역을 드롭다운에서 '0 (전체 기간 N)'처럼 보여 줘 결과(기간을 넓혀 찾음)와 헷갈리지 않게 한다.
+     */
+    static List<Map<String, Object>> regions(List<Item> all, LocalDate today, int years) {
+        int requested = years == 5 || years == 0 ? years : 3;
+        LocalDate from = requested == 0 ? null : today.minusYears(requested);
+        // 시·도 → 시·군·구('' = 시·군·구 미확인) → [기간 안 건수, 전체 기간 건수]
+        Map<String, Map<String, long[]>> grouped = new TreeMap<>(Comparator.comparingInt(ScoreBenchmarks::sidoOrder));
         for (Item item : all) {
             if (item.sido() == null) continue;
-            grouped.computeIfAbsent(item.sido(), key -> new TreeMap<>()).merge(item.district() == null ? "" : item.district(), 1L, Long::sum);
+            long[] counts = grouped.computeIfAbsent(item.sido(), key -> new TreeMap<>()).computeIfAbsent(item.district() == null ? "" : item.district(), key -> new long[2]);
+            if (from == null || !LocalDate.parse(item.receiptDate()).isBefore(from)) counts[0]++;
+            counts[1]++;
         }
         List<Map<String, Object>> out = new ArrayList<>();
         grouped.forEach((sido, districts) -> {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("sido", sido);
-            entry.put("count", districts.values().stream().mapToLong(Long::longValue).sum());
+            entry.put("count", districts.values().stream().mapToLong(c -> c[0]).sum());
+            entry.put("allCount", districts.values().stream().mapToLong(c -> c[1]).sum());
             entry.put("districts", districts.entrySet().stream().filter(e -> !e.getKey().isEmpty())
-                .map(e -> Map.<String, Object>of("name", e.getKey(), "count", e.getValue())).toList());
+                .map(e -> Map.<String, Object>of("name", e.getKey(), "count", e.getValue()[0], "allCount", e.getValue()[1])).toList());
             out.add(entry);
         });
         return out;
@@ -182,6 +201,13 @@ public class ScoreBenchmarks {
         body.put("years", applied);
         body.put("expanded", applied != requested);
         body.put("total", matched.size());
+        // 주소로 시·도(전국 검색일 때)나 시·군·구(시·도 검색일 때)를 정하지 못한 공고 수. 이 공고는 아래 단계(시·도·시·군·구)를 골라 찾으면 나오지 않아
+        // 전국 건수가 시·도 합보다, 시·도 건수가 시·군·구 합보다 많을 수 있다. 화면이 '지역 미확인 N건 포함'으로 알린다.
+        if (areaMatch.isEmpty()) {
+            long unknown = blank(sido) ? matched.stream().filter(item -> item.sido() == null).count()
+                : blank(district) ? matched.stream().filter(item -> item.district() == null).count() : 0;
+            body.put("unknownRegion", unknown);
+        }
         body.put("stats", stats);
         body.put("items", matched.stream().limit(MAX_ITEMS).toList());
         // 시·군·구에 공개 자료가 전혀 없으면 같은 시·도 전체를 제안한다.

@@ -1,6 +1,7 @@
 package com.toady.web.app.user.service;
 
 import com.toady.web.app.community.Community;
+import com.toady.web.app.planner.HiddenAnnouncements;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.constants.ResultCode;
@@ -70,6 +71,21 @@ public class AccountService {
         return community.ready() ? " AND " + column + " NOT IN (SELECT BLOCKED_USER_SEQ FROM TB_USER_BLOCK WHERE USER_SEQ=?)" : "";
     }
 
+    /** 운영자가 숨긴 공고. 관심 공고 수, 내 이야기 수·목록, 받은 답글(목록·새 답글 수)에서 뺀다. 빈이 없으면 숨김 없이 동작한다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다(생성자를 늘리지 않는다).
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    HiddenAnnouncements hidden;
+    /** 댓글 테이블(유형 이름 'APT' 형식) 컬럼 기준 숨김 제외 조건. prefix는 테이블 별칭('c.' 등, 없으면 ""). */
+    private HiddenAnnouncements.SqlFilter notHiddenComment(String prefix) {
+        return hidden == null ? HiddenAnnouncements.SqlFilter.NONE
+                : hidden.notHiddenSql(prefix + "ANNOUNCEMENT_TYPE", prefix + "HOUSE_MANAGE_NO", prefix + "PBLANC_NO", HiddenAnnouncements.TypeFormat.NAME);
+    }
+    /** 관심 공고 테이블(유형 경로값 'apt' 형식) 기준 숨김 제외 조건. */
+    private HiddenAnnouncements.SqlFilter notHiddenFavorite() {
+        return hidden == null ? HiddenAnnouncements.SqlFilter.NONE
+                : hidden.notHiddenSql("ANNOUNCEMENT_TYPE", "HOUSE_MANAGE_NO", "PBLANC_NO", HiddenAnnouncements.TypeFormat.PATH);
+    }
+
     /** 공고 유형(댓글 테이블의 enum 이름) → 화면 주소의 유형과 상세 테이블 */
     private static final Map<String, String[]> TYPES = Map.of(
             "APT", new String[]{"apt", "TB_APT_LTTOT_PBLANC_DETAIL"},
@@ -108,17 +124,19 @@ public class AccountService {
 
     /**
      * 내가 쓴 이야기(삭제하지 않은 것) 최신순 10개씩. 공고 이름과, 화면에서 그 공고의 이야기 탭으로 갈 수 있는 정보를 함께 준다.
+     * 운영자가 숨긴 공고의 이야기는 수와 목록 모두에서 뺀다(요약 숫자 summary.comments와 같은 조건).
      */
     // @Transactional(readOnly = true): 읽기 전용 트랜잭션. 변경 감지를 하지 않아 가볍고, 여러 SELECT가 같은 연결에서 실행된다
     @Transactional(readOnly = true)
     public Map<String, Object> myComments(long userSeq, int page) {
         int safePage = Math.max(0, Math.min(page, 1000));
-        Long total = count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq);
+        var notHidden = notHiddenComment("");
+        Long total = count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'" + notHidden.sql(), notHidden.with(userSeq));
         List<Map<String, Object>> items = new ArrayList<>();
         if (total != null && total > 0) {
             // LIMIT ? OFFSET ?: page번째 10개. 테이블 이름은 TYPES의 고정 값만 쓰므로 문자열로 붙여도 SQL 주입 걱정이 없다
             jdbc.query("SELECT COMMENT_SEQ, ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, PARENT_COMMENT_SEQ, CONTENT, REG_DT, UPDATE_DT"
-                            + " FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N' ORDER BY COMMENT_SEQ DESC LIMIT ? OFFSET ?",
+                            + " FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'" + notHidden.sql() + " ORDER BY COMMENT_SEQ DESC LIMIT ? OFFSET ?",
                     rs -> {
                         String[] type = TYPES.get(rs.getString("ANNOUNCEMENT_TYPE"));
                         if (type == null) return;
@@ -132,7 +150,7 @@ public class AccountService {
                         item.put("edited", rs.getTimestamp("UPDATE_DT") != null);
                         item.put("detailTable", type[1]);
                         items.add(item);
-                    }, userSeq, MY_COMMENTS_PAGE, safePage * MY_COMMENTS_PAGE);
+                    }, with(with(notHidden.with(userSeq), MY_COMMENTS_PAGE), safePage * MY_COMMENTS_PAGE));
             // 공고 이름은 유형별 상세 테이블에서 한 번씩 읽는다(공고가 지워졌으면 이름 없이 둔다).
             for (Map<String, Object> item : items) {
                 String table = (String) item.remove("detailTable");
@@ -152,23 +170,30 @@ public class AccountService {
         return view;
     }
 
-    /** 내 이야기마다 다른 회원이 단 답글 수와 마지막 답글 번호(지운 답글·내 답글·내가 차단한 회원의 답글은 세지 않는다). */
+    /**
+     * 내 이야기마다 답글 수(replyCount)와 다른 회원의 마지막 답글 번호(lastReplySeq).
+     * replyCount는 공고 이야기 탭의 '답글 달기 (N)'과 같은 기준이다: 지우지 않은 답글 전체(내 답글, 내가 차단한 회원의 답글 포함.
+     * 이야기 탭은 차단한 회원의 답글을 접어 두지만 수에는 넣는다).
+     * lastReplySeq는 '새 답글' 표시에만 쓰므로 내 답글과 내가 차단한 회원의 답글은 빼고 고른다(받은 답글 목록과 같은 기준).
+     */
     private void attachReplyCounts(long userSeq, List<Map<String, Object>> items) {
         List<Object> seqs = items.stream().filter(item -> !Boolean.TRUE.equals(item.get("reply"))).map(item -> item.get("commentSeq")).collect(java.util.stream.Collectors.toList());
         items.forEach(item -> { item.put("replyCount", 0L); item.put("lastReplySeq", null); });
         if (seqs.isEmpty()) return;
-        Map<Long, long[]> counts = new java.util.HashMap<>();
+        Map<Long, Object[]> counts = new java.util.HashMap<>();
         String marks = String.join(",", java.util.Collections.nCopies(seqs.size(), "?"));
-        List<Object> args = new ArrayList<>(seqs); args.add(userSeq);
         String notBlocked = notBlockedAuthor("CREATE_USER_SEQ");
+        List<Object> args = new ArrayList<>();
+        args.add(userSeq);
         if (!notBlocked.isEmpty()) args.add(userSeq);
+        args.addAll(seqs);
         try {
-            jdbc.query("SELECT PARENT_COMMENT_SEQ, COUNT(*), MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ IN (" + marks + ")"
-                    + " AND DELETE_YN='N' AND CREATE_USER_SEQ<>?" + notBlocked + " GROUP BY PARENT_COMMENT_SEQ",
-                    rs -> { counts.put(rs.getLong(1), new long[]{rs.getLong(2), rs.getLong(3)}); }, args.toArray());
+            jdbc.query("SELECT PARENT_COMMENT_SEQ, COUNT(*), MAX(CASE WHEN CREATE_USER_SEQ<>?" + notBlocked + " THEN COMMENT_SEQ END)"
+                    + " FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ IN (" + marks + ") AND DELETE_YN='N' GROUP BY PARENT_COMMENT_SEQ",
+                    rs -> { long last = rs.getLong(3); Long lastSeq = rs.wasNull() ? null : last; counts.put(rs.getLong(1), new Object[]{rs.getLong(2), lastSeq}); }, args.toArray());
         } catch (DataAccessException missing) { return; }
         items.forEach(item -> {
-            long[] found = counts.get((Long) item.get("commentSeq"));
+            Object[] found = counts.get((Long) item.get("commentSeq"));
             if (found != null) { item.put("replyCount", found[0]); item.put("lastReplySeq", found[1]); }
         });
     }
@@ -178,6 +203,7 @@ public class AccountService {
      * 내 이야기에 다른 회원이 단 답글 최신순 20개와 새 답글 수.
      * afterSeq(이 기기에서 마지막으로 본 답글 번호)보다 큰 답글이 새 답글이다. 처음(afterSeq 없음)에는 최근 7일 답글을 새 답글로 본다.
      * 번호로 비교하므로 서버·DB 시간대와 관계없이 순서가 맞다.
+     * 운영자가 숨긴 공고에 달린 답글은 목록과 새 답글 수(메뉴 배지) 모두에서 뺀다.
      */
     @Transactional(readOnly = true)
     public Map<String, Object> replies(long userSeq, Long afterSeq) {
@@ -188,9 +214,10 @@ public class AccountService {
         try {
             // 내가 차단한 회원의 답글은 목록과 새 답글 수(배지) 모두에서 뺀다(같은 from을 써서 두 숫자가 어긋나지 않게).
             String notBlocked = notBlockedAuthor("c.CREATE_USER_SEQ");
-            Object[] base = notBlocked.isEmpty() ? new Object[]{userSeq, userSeq} : new Object[]{userSeq, userSeq, userSeq};
+            var notHidden = notHiddenComment("p.");
+            Object[] base = notHidden.with(notBlocked.isEmpty() ? new Object[]{userSeq, userSeq} : new Object[]{userSeq, userSeq, userSeq});
             String from = " FROM TB_LTTOT_PBLANC_COMMENT c JOIN TB_LTTOT_PBLANC_COMMENT p ON p.COMMENT_SEQ=c.PARENT_COMMENT_SEQ"
-                    + " WHERE p.CREATE_USER_SEQ=? AND p.DELETE_YN='N' AND c.DELETE_YN='N' AND c.CREATE_USER_SEQ<>?" + notBlocked;
+                    + " WHERE p.CREATE_USER_SEQ=? AND p.DELETE_YN='N' AND c.DELETE_YN='N' AND c.CREATE_USER_SEQ<>?" + notBlocked + notHidden.sql();
             Long counted = afterSeq != null
                     ? jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.COMMENT_SEQ>?", Long.class, with(base, afterSeq))
                     : jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.REG_DT>=?", Long.class, with(base, weekAgo));
@@ -250,7 +277,7 @@ public class AccountService {
         return flat.length() > max ? flat.substring(0, max) + "…" : flat;
     }
 
-    /** 내 정보 화면의 요약. 관심 공고·이야기·알림 구독 수는 테이블이 없으면 null(화면은 '—'). */
+    /** 내 정보 화면의 요약. 관심 공고·이야기·알림 구독 수는 테이블이 없으면 null(화면은 '—'). 관심 공고·이야기 수는 숨긴 공고를 뺀다(목록과 같은 조건). */
     @Transactional(readOnly = true)
     public Map<String, Object> summary(long userSeq) {
         UserEntity user = users.findById(userSeq).orElseThrow();
@@ -258,9 +285,11 @@ public class AccountService {
         view.put("email", user.getUserEmail());
         view.put("nickname", user.getUserNicName());
         view.put("createdAt", user.getCreateDt());
-        view.put("favorites", count("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?", userSeq));
-        view.put("emailAlerts", count("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE", userSeq));
-        view.put("comments", count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq));
+        var favorite = notHiddenFavorite();
+        var comment = notHiddenComment("");
+        view.put("favorites", count("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=?" + favorite.sql(), favorite.with(userSeq)));
+        view.put("emailAlerts", count("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND EMAIL_ENABLED=TRUE" + favorite.sql(), favorite.with(userSeq)));
+        view.put("comments", count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'" + comment.sql(), comment.with(userSeq)));
         view.put("pushDevices", count("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=?", userSeq));
         view.put("calendarFeed", count("SELECT COUNT(*) FROM TB_CALENDAR_FEED WHERE USER_SEQ=?", userSeq));
         view.put("profileIcon", profileIcons.of(userSeq));
@@ -419,8 +448,8 @@ public class AccountService {
     }
 
     // 개수 하나를 읽는다. 테이블이 없는 등 오류면 null(화면에는 '—')
-    private Long count(String sql, long userSeq) {
-        try { return jdbc.queryForObject(sql, Long.class, userSeq); }
+    private Long count(String sql, Object... args) {
+        try { return jdbc.queryForObject(sql, Long.class, args); }
         catch (DataAccessException missing) { return null; }
     }
 

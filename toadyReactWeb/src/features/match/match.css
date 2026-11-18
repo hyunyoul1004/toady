@@ -60,6 +60,7 @@
 .match-receipt,.match-type{font-size:11.5px;font-weight:800;border-radius:6px;padding:2px 7px}
 .match-receipt.is-open{background:#fee2e2;color:#b91c1c}
 .match-receipt.is-upcoming{background:#eef4ff;color:#1d4ed8}
+.match-receipt.is-closed{background:#f1f5f9;color:#64748b}
 .match-type{background:#f5f3ff;color:#6d28d9}
 .match-verdict{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px}
 .match-verdict.is-ok{background:var(--m-ok-bg);color:var(--m-ok)}

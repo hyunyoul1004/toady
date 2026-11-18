@@ -235,7 +235,7 @@ export default function MatchPage({ tab = 'match' }) {
           </div>
           {shown.length ? <ul className="match-list">{shown.map(({ item, result }) => <FeedCard key={item.id} item={item} result={result} today={today} onOpen={openDetail} />)}</ul>
             : <div className="match-empty">
-              <p>{ranked.length ? '조건에 맞는 접수 중·예정 공고가 지금은 없어요.' : '지금 접수 중이거나 60일 안에 접수하는 아파트 공고가 없어요.'}</p>
+              <p>{ranked.length ? '조건에 맞는 접수 중·예정 공고가 지금은 없어요.' : '지금 접수 중이거나 180일 안에 접수하는 아파트 공고가 없어요.'}</p>
               <div>{filter !== 'all' && ranked.length > 0 && <Button size="small" onClick={() => setFilter('all')}>전체 공고 보기</Button>}
                 <Button size="small" component={Link} to="/match/zupzup">무순위·줍줍 보기</Button></div>
             </div>}

@@ -262,7 +262,7 @@ test('지역별 청약: 주소를 검색 목록과 같은 시·도/시·군·구
   const { regionOf, groupByRegion, searchLabel } = await import('../src/features/explore/regionRules.js');
   assert.deepEqual(regionOf('경기도 파주시 동패동 1'), { cityName: '경기도', districtName: '파주시' });
   assert.deepEqual(regionOf('서울시 강동구 고덕동'), { cityName: '서울특별시', districtName: '강동구' }, '줄임말 시·도');
-  assert.deepEqual(regionOf('경상남도 창원시 성산구 상남동'), { cityName: '경상남도', districtName: '창원시 성산구' }, '긴 이름을 먼저');
+  assert.deepEqual(regionOf('경상남도 창원시 성산구 상남동'), { cityName: '경상남도', districtName: '창원시' }, '일반구가 있는 시는 시 단위(서버와 같음)');
   assert.deepEqual(regionOf('충북 청주시 흥덕구 1'), regionOf('충청북도 청주시 흥덕구 1'));
   assert.deepEqual(regionOf('세종특별자치시 산울동 1'), { cityName: '세종특별자치시', districtName: null }, '시·도와 같은 이름의 구분은 시·도로만');
   assert.deepEqual(regionOf('고덕강일지구 3블록', '서울'), { cityName: '서울특별시', districtName: null }, '주소에 시·도가 없으면 공급지역명');
@@ -295,6 +295,63 @@ test('캘린더 지역 검색: 같은 이름의 구·글자 포함으로 다른 
   assert.equal(matchesRegionTarget({ hssplyAdres: '서울특별시 중구 신당동 1' }, incheonJunggu), false, '다른 시·도의 같은 이름 구');
   assert.equal(matchesRegionTarget({ hssplyAdres: '경기 파주시 동패동 1' }, { cityName: '경기도' }), true, '줄임말 시·도');
   assert.equal(matchesRegionTarget({ hssplyAdres: '파주운정3지구 A1블록', regionName: '경기' }, { cityName: '경기도', districtName: '파주시' }), false, '주소에 구·시가 없으면 단정하지 않는다');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '파주운정3지구 A1블록', regionName: '경기' }, { cityName: '경기도' }), true, '시·도 검색에는 보인다(서버 시·도 페이지와 같음)');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '알 수 없음', regionName: '' }, { cityName: '경기도' }), false, '시·도를 모르면 글자로 추정하지 않는다');
+  // 검색 목록의 일반구 항목은 그 구 주소만.
+  const sangdang = { cityName: '충청북도', districtName: '청주시 상당구' };
+  assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 청주시 상당구 용암동 1', regionName: '충북' }, sangdang), true);
+  assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 청주시 흥덕구 1', regionName: '충북' }, sangdang), false);
+});
+
+test('캘린더 지역 검색은 지역 판정만 쓴다: 단지명에 지역 이름이 들어 있어도 다른 지역 공고는 빠진다', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/views/main/hooks/useAnnouncementSearch.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /matchesRegionTarget\(item, target\) \|\|/, '지역 검색에 단지명 글자 비교를 더하지 않는다');
+  const { matchesRegionTarget, regionTargetOf, groupByRegion } = await import('../src/features/explore/regionRules.js');
+  const target = regionTargetOf('경기도', '고양시');
+  const items = [
+    { hssplyAdres: '경기도 고양시 덕양구 지축동 1', regionName: '경기', houseNm: '지축 A' },
+    { hssplyAdres: '서울특별시 은평구 진관동 1', regionName: '서울', houseNm: '경기도 고양시 인근 B' }
+  ];
+  assert.deepEqual(items.filter(item => matchesRegionTarget(item, target)).map(item => item.houseNm), ['지축 A']);
+  // 지역별 청약 칩 건수와 캘린더 검색 결과가 같은 공고다.
+  const chip = groupByRegion(items.map(item => ({ address: item.hssplyAdres, region: item.regionName }))).cities.find(city => city.cityName === '경기도').districts[0];
+  assert.deepEqual([chip.districtName, chip.total], ['고양시', 1]);
+});
+
+test('지역 판정은 서버 Regions.of와 같은 샘플에서 같은 결과(toadyWebApi/src/test/resources/region-samples.tsv)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { regionOf } = await import('../src/features/explore/regionRules.js');
+  const text = await readFile(new URL('../../toadyWebApi/src/test/resources/region-samples.tsv', import.meta.url), 'utf8');
+  const rows = text.split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#')).map(line => line.split('\t'));
+  assert.ok(rows.length >= 40, '샘플 파일을 읽어야 한다');
+  const value = cell => (cell === '-' ? null : cell);
+  for (const row of rows) {
+    assert.equal(row.length, 4, row.join(' | '));
+    const found = regionOf(value(row[0]), value(row[1]));
+    assert.deepEqual(found && [found.cityName, found.districtName], value(row[2]) ? [row[2], value(row[3])] : null, `${row[0]} / ${row[1]}`);
+  }
+});
+
+test('통합특별시 표기는 다음 낱말로 옛 시·도를 정한다(서버 Regions.merged와 같은 규칙)', async () => {
+  const { mergedSidos } = await import('../src/features/explore/regionRules.js');
+  const { DISTRICTS } = await import('../src/features/explore/districts.js');
+  assert.deepEqual(mergedSidos('전남광주통합특별시').map(sido => sido.name), ['전라남도', '광주광역시']);
+  assert.deepEqual(mergedSidos('광주특별시'), []);
+  assert.deepEqual(mergedSidos('서울특별시'), []);
+  assert.equal(DISTRICTS['전라남도'].some(name => DISTRICTS['광주광역시'].includes(name)), false, '광주 자치구와 전남 시·군 이름이 겹치지 않아야 한다');
+});
+
+test('특례시 표기는 같은 시로: 수원·고양·용인·창원·화성(서버 Regions.canonical과 같은 규칙)', async () => {
+  const { canonicalDistrict, districtOf } = await import('../src/features/explore/districts.js');
+  const { regionOf, regionTargetOf, groupByRegion } = await import('../src/features/explore/regionRules.js');
+  for (const name of ['수원', '고양', '용인', '창원', '화성']) assert.equal(canonicalDistrict(`${name}특례시`), `${name}시`);
+  assert.equal(canonicalDistrict('서귀포시'), '서귀포시');
+  assert.equal(districtOf('경기도', '특례시'), null);
+  assert.deepEqual(regionOf('경기도 화성특례시 효행구 봉담읍 1', '경기'), { cityName: '경기도', districtName: '화성시' });
+  assert.equal(regionTargetOf('경기도', '화성특례시').key, '경기도 화성시', '공개 주소 조각도 정식 이름으로');
+  const { cities } = groupByRegion([{ address: '경기도 화성특례시 효행구 1' }, { address: '경기도 화성시 동탄2지구 1' }]);
+  assert.deepEqual(cities[0].districts.map(item => [item.districtName, item.total]), [['화성시', 2]], '시·도 건수와 칩 합이 같다');
 });
 
 test('토지임대부 공고는 일반 매매가와 비교하지 않는다(서버 PriceGapRules.landLease와 같은 규칙)', async () => {
@@ -339,6 +396,16 @@ test('지역 주소의 시·군·구 목록은 서버(Regions.java)와 같고, �
   const shortOf = Object.fromEntries([...java.matchAll(/new Sido\("([^"]+)", "([^"]+)"\)/g)].map(m => [m[1], m[2]]));
   const server = Object.fromEntries([...java.matchAll(/Map\.entry\("([^"]+)", names\("([^"]+)"\)\)/g)].map(m => [m[1], m[2].split(' ').sort()]));
   for (const [city, names] of Object.entries(DISTRICTS)) assert.deepEqual([...names].sort(), server[shortOf[city]] || [], city);
+  // 시·도 목록·예전 이름도 서버와 같다.
+  const { SIDOS, SIDO_ALIASES } = await import('../src/features/explore/districts.js');
+  assert.deepEqual(SIDOS.map(sido => [sido.name, sido.shortName]), Object.entries(shortOf));
+  const serverAliases = Object.fromEntries([...java.matchAll(/Map\.entry\("([^"]+)", "([^"]+)"\)/g)].map(m => [m[1], m[2]]));
+  assert.deepEqual(SIDO_ALIASES, serverAliases);
+  // 검색 목록에는 Citys에 없던 실제 시·군·구도 지역 검색 항목으로 있다(지역별 청약 칩 링크가 글자 검색이 되지 않게).
+  const { FLAT_CITY_OPTIONS } = await import('../src/views/main/announcementFilters.js');
+  for (const [city, names] of Object.entries(DISTRICTS)) for (const name of names) {
+    assert.ok(FLAT_CITY_OPTIONS.some(option => option.type === 'district' && option.label === `${city} ${name}`), `${city} ${name}`);
+  }
   // 목록에 없는 이름(다른 시·도의 시, 지구 이름)은 시·도만 남긴다.
   assert.equal(regionTargetOf('서울특별시', '파주시').type, 'city');
   assert.equal(regionTargetOf('인천광역시', '검단신도시').type, 'city');
@@ -372,4 +439,25 @@ test('저장값의 출생 연도도 진단 화면과 같은 범위로 확인한�
   assert.equal(normalizeProfile({ birthYear: '19' }).birthYear, null);
   assert.equal(normalizeProfile({ birthYear: 1990.5 }).birthYear, null);
   assert.equal(normalizeProfile({ birthYear: null }).birthYear, null);
+});
+
+test('이번 주 청약 큰 숫자는 접수 중·예정, 전체 일정은 상태별로 나눈다(서버 WeekStatus와 같은 숫자)', async () => {
+  const { weekCounts, weekBreakdown } = await import('../src/features/explore/exploreRules.js');
+  const server = weekCounts({ counts: { total: 25, open: 6, upcoming: 2, closed: 17 }, current: [] });
+  assert.equal(server.active, 8, '서버가 센 값을 그대로 쓴다');
+  assert.equal(weekBreakdown(server), '이번 주 일정 25건 · 접수 중 6 · 예정 2 · 마감 17');
+  const local = weekCounts({ current: [{ status: 'OPEN' }, { status: 'CLOSED' }, { status: 'UPCOMING' }, { status: 'CLOSED' }] });
+  assert.deepEqual(local, { total: 4, open: 1, upcoming: 1, closed: 2, active: 2 }, 'counts가 없는 예전 응답은 목록 상태로 센다');
+});
+
+test('가점 비교: 기간 안 0건 지역은 전체 기간 건수를, 지역 미확인 공고는 건수를 함께 알린다', async () => {
+  const { regionCountText, unknownRegionText } = await import('../src/features/score/scoreRules.js');
+  assert.equal(regionCountText({ count: 0, allCount: 4 }, 3), '0 · 전체 기간 4');
+  assert.equal(regionCountText({ count: 2, allCount: 4 }, 3), '2');
+  assert.equal(regionCountText({ count: 4, allCount: 4 }, 0), '4');
+  assert.equal(regionCountText({ count: 0 }, 3), '0', '예전 응답(allCount 없음)');
+  assert.equal(unknownRegionText({ unknownRegion: 7 }, {}), '지역 미확인 7건 포함');
+  assert.equal(unknownRegionText({ unknownRegion: 3 }, { sido: '경기' }), '시·군·구 미확인 3건 포함');
+  assert.equal(unknownRegionText({ unknownRegion: 0 }, {}), '');
+  assert.equal(unknownRegionText({}, {}), '');
 });

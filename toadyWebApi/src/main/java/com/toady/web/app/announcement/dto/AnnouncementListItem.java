@@ -65,8 +65,29 @@ public record AnnouncementListItem(
         @Schema(description = "공급규모")
         String totalSupplyHouseholds,
         @Schema(description = "삭제되지 않은 댓글과 답글 수")
-        long commentCount
+        long commentCount,
+        @Schema(description = "접수처. LH청약플러스에서 접수하는 공고면 LH, 청약홈 접수면 null(ReceiptChannel)", example = "LH", nullable = true)
+        String receiptChannel
 ) {
+    /** 접수처 없이 만드는 예전 모양(청약홈 접수). APT가 아닌 유형과 테스트가 쓴다. */
+    public AnnouncementListItem(
+            String type, String houseManageNo, String pblancNo, String houseNm,
+            String houseSecd, String houseSecdNm, String regionCode, String regionName,
+            String hssplyAdres, String hssplyZip, String rceptBgnde, String rceptEndde,
+            String spsplyRceptBgnde, String spsplyRceptEndde,
+            String gnrlRnk1CrspareaRcptde, String gnrlRnk1CrspareaEndde, String gnrlRnk1EtcGgRcptde, String gnrlRnk1EtcGgEndde,
+            String gnrlRnk1EtcAreaRcptde, String gnrlRnk1EtcAreaEndde, String gnrlRnk2CrspareaRcptde, String gnrlRnk2CrspareaEndde,
+            String gnrlRnk2EtcGgRcptde, String gnrlRnk2EtcGgEndde, String gnrlRnk2EtcAreaRcptde, String gnrlRnk2EtcAreaEndde,
+            String totalSupplyHouseholds, long commentCount
+    ) {
+        this(type, houseManageNo, pblancNo, houseNm, houseSecd, houseSecdNm, regionCode, regionName,
+                hssplyAdres, hssplyZip, rceptBgnde, rceptEndde, spsplyRceptBgnde, spsplyRceptEndde,
+                gnrlRnk1CrspareaRcptde, gnrlRnk1CrspareaEndde, gnrlRnk1EtcGgRcptde, gnrlRnk1EtcGgEndde,
+                gnrlRnk1EtcAreaRcptde, gnrlRnk1EtcAreaEndde, gnrlRnk2CrspareaRcptde, gnrlRnk2CrspareaEndde,
+                gnrlRnk2EtcGgRcptde, gnrlRnk2EtcGgEndde, gnrlRnk2EtcAreaRcptde, gnrlRnk2EtcAreaEndde,
+                totalSupplyHouseholds, commentCount, null);
+    }
+
     /** 댓글 수만 채운 새 객체를 돌려준다. AnnouncementCommentCountService가 페이지를 만든 뒤 한 번에 채운다. */
     public AnnouncementListItem withCommentCount(long count) {
         return new AnnouncementListItem(
@@ -76,7 +97,7 @@ public record AnnouncementListItem(
                 gnrlRnk1CrspareaRcptde, gnrlRnk1CrspareaEndde, gnrlRnk1EtcGgRcptde, gnrlRnk1EtcGgEndde,
                 gnrlRnk1EtcAreaRcptde, gnrlRnk1EtcAreaEndde, gnrlRnk2CrspareaRcptde, gnrlRnk2CrspareaEndde,
                 gnrlRnk2EtcGgRcptde, gnrlRnk2EtcGgEndde, gnrlRnk2EtcAreaRcptde, gnrlRnk2EtcAreaEndde,
-                totalSupplyHouseholds, count
+                totalSupplyHouseholds, count, receiptChannel
         );
     }
 }

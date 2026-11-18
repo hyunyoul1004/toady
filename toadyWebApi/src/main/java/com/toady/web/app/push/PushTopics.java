@@ -36,5 +36,6 @@ public final class PushTopics {
     public static boolean valid(String slug) { return LivingAreas.bySlug(slug).isPresent() || bySlug(slug).isPresent() || WEEKLY.equals(slug); }
     /** 알림의 '새 공고 모아보기' 버튼 주소. 구독자는 앱 사용자이므로 서버 공개 페이지가 아닌 앱 화면으로 보낸다(이번 주 화면, 생활권으로 거른 캘린더). */
     public static String url(String slug) { return WEEKLY.equals(slug) ? WEEKLY_URL : bySlug(slug).map(Topic::url).orElse("/?area=" + slug); }
-    public static final String WEEKLY_URL = "/this-week";
+    /** 주간 브리핑을 누르면 여는 곳. 브리핑 숫자가 다음 주 접수 시작 수라서 '이번 주 청약' 화면의 그 구역(id="week-next")으로 바로 내려간다. */
+    public static final String WEEKLY_URL = "/this-week#week-next";
 }

@@ -35,7 +35,7 @@ class PushResultWindowTest {
             for (String id : ids) out.put(id, new AnnouncementResults.Result(id, true, 12.5, "", "", false));
             return out;
         });
-        PushDigest digest = new PushDigest(null, null, jdbc, null, null, null, null, new ObjectMapper(), results, null,
+        PushDigest digest = new PushDigest(null, null, jdbc, null, null, null, null, new ObjectMapper(), results, null, null,
             Clock.fixed(NOW.atZone(KST).toInstant(), KST));
         LocalDate today = NOW.toLocalDate();
         List<PlannerSummary.Summary> favorites = List.of(

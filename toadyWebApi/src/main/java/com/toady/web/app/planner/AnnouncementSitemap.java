@@ -74,7 +74,9 @@ public class AnnouncementSitemap {
     /** 지역별 청약(시·도, 시·군·구) 공개 페이지. 최근 공고가 있는 지역만 알린다. */
     @GetMapping(value="/api/v1/public/sitemaps/regions.xml",produces="application/xml;charset=UTF-8")
     public ResponseEntity<String> regions() {
-        List<PublicAnnouncementIndex.Entry> all=announcements.recent();
+        // 지역 페이지가 실제로 보여 주는 공고(Entry.listed)만으로 지역을 고른다. 180일보다 먼 예정 공고만 있는 시·군·구는 빈 페이지라 알리지 않는다.
+        LocalDate today=announcements.today();
+        List<PublicAnnouncementIndex.Entry> all=announcements.recent().stream().filter(entry -> entry.listed(today)).toList();
         StringBuilder xml=new StringBuilder("<?xml version='1.0' encoding='UTF-8'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
         url(xml,"/regions",latest(all));
         Map<String,List<PublicAnnouncementIndex.Entry>> byPath=new LinkedHashMap<>();

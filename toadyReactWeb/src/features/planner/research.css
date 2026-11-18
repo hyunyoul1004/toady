@@ -81,6 +81,7 @@
 .announcement-facts>div{display:grid;grid-template-columns:85px 1fr;gap:14px;padding:10px 0;font-size:13px;line-height:1.8}
 .announcement-facts dt{color:#6a7d94}
 .announcement-facts dd{margin:0;overflow-wrap:anywhere}
+.announcement-facts dd .announcement-fact-note{display:block;color:#6a7d94;font-size:12px;line-height:1.6}
 .announcement-eligibility{background:#f5f8fc;border:1px solid #e5edf6;border-radius:12px;padding:17px}
 .announcement-eligibility p{font-size:12px;line-height:1.9;color:#5c718b;margin:0 0 14px}
 .announcement-eligibility .MuiButton-root{font-size:12px}
