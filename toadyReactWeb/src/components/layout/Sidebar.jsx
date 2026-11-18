@@ -13,7 +13,7 @@
  * 메뉴 칸을 replace로 바꾸거나 먼저 navigate(-1)로 메뉴를 닫는다. 그러지 않으면 뒤로가기 때 메뉴가 다시 열린다.
  * 메뉴 항목은 NavLink 대신 ListItemButton + navigate를 쓴다. '같은 탭 다시 누르기' 규칙(retapAction)을 적용하기 위해서다.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { usePushAttention } from '@/features/push/usePushAttention';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { promptInstall, useInstallMode } from '@/features/install/installStore';
@@ -89,25 +89,6 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   const installFromGuide = () => {
     promptInstall().then(outcome => { if (outcome === 'accepted') setInstallGuide('done'); });
   };
-  // 삼성 인터넷 등에서 'Chrome으로 열어 바로 설치'로 넘어오면 주소에 install=1이 붙어 있다.
-  // 주소에서 지운 뒤(히스토리를 쌓지 않음) 안내 창을 열고, Chrome이 설치 창을 허락하는 순간 창 안의 버튼이 '설치'로 바뀐다.
-  // 두 단계로 나눈다: ① 주소에서 install=1을 지우고(replace) ② 지운 주소가 화면에 반영된 다음 렌더에서 안내 창을 연다.
-  // 한 번에 하면 안내 창 레이어가 지우기 전 주소로 쌓여, 창이 열린 동안 주소에 install=1이 남는다.
-  const installParam = useRef('idle'); // idle → stripped(지움, 열기 대기) → done
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (installParam.current === 'idle' && params.get('install') === '1') {
-      installParam.current = 'stripped';
-      params.delete('install');
-      const rest = params.toString();
-      navigate(`${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`, { replace: true, state: location.state });
-      return;
-    }
-    if (installParam.current === 'stripped' && params.get('install') !== '1') {
-      installParam.current = 'done';
-      setInstallGuide('guide');
-    }
-  }, [location.search, location.pathname, location.hash, location.state, navigate, setInstallGuide]);
 
   // zustand selector: 필요한 값만 하나씩 꺼낸다. 그 값이 바뀔 때만 사이드바가 다시 그려진다.
   const user = useAuthStore(state => state.user);

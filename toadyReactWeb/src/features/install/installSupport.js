@@ -32,16 +32,3 @@ export function androidBrowser(ua = '') {
   return 'chrome';
 }
 
-/**
- * 안드로이드에서 지금 주소를 Chrome으로 여는 intent 주소. 삼성 인터넷·카카오톡 안 브라우저 등은 사이트가 설치 창을 띄울 수 없어,
- * Chrome으로 옮겨 '설치' 한 번으로 끝나게 한다. install=1을 붙여 Chrome에서 열리자마자 설치 안내를 띄운다.
- * Chrome이 없으면 browser_fallback_url(같은 주소)로 그냥 열린다.
- */
-export function chromeIntentUrl(href) {
-  try {
-    const url = new URL(href);
-    url.searchParams.set('install', '1');
-    const fallback = encodeURIComponent(url.href);
-    return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
-  } catch { return href; }
-}

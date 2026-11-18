@@ -1,0 +1,44 @@
+/* 홈 화면 추가 화살표 안내(InstallCoach). 화면 전체를 어둡게 덮고, 브라우저 메뉴 버튼 쪽 끝을 화살표로 가리킨다. */
+.install-coach{position:fixed;inset:0;z-index:1500;background:rgba(15,23,42,.62);display:flex;flex-direction:column;padding:16px;overflow-y:auto}
+
+/* 화살표: 메뉴 버튼이 있는 화면 끝(삼성 인터넷은 아래 도구 막대 오른쪽 끝, Chrome은 주소창 오른쪽 끝)에 붙여 통통 튀게 한다. */
+.coach-arrow{position:fixed;right:6px;z-index:1;display:flex;flex-direction:column;align-items:flex-end;color:#facc15;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));pointer-events:none}
+.coach-arrow svg{margin-right:2px}
+.coach-arrow.is-bottom-right{bottom:2px;animation:coach-bounce-down 1s ease-in-out infinite}
+.coach-arrow.is-top-right{top:2px;flex-direction:column-reverse;animation:coach-bounce-up 1s ease-in-out infinite}
+.coach-arrow.is-top-right svg{transform:rotate(180deg)}
+/* 화살표 위의 말풍선: 노란 바탕에 굵은 글씨로 눈에 띄게 */
+.coach-arrow-label{display:inline-flex;align-items:center;gap:2px;margin:0 0 2px;padding:5px 10px;border-radius:999px;background:#facc15;color:#422006;font-size:.82rem;font-weight:900;white-space:nowrap}
+.coach-arrow.is-top-right .coach-arrow-label{margin:2px 0 0}
+@keyframes coach-bounce-down{0%,100%{transform:translateY(-8px)}50%{transform:translateY(4px)}}
+@keyframes coach-bounce-up{0%,100%{transform:translateY(8px)}50%{transform:translateY(-4px)}}
+
+/* 안내 카드: 화살표와 겹치지 않게 반대쪽에 둔다. */
+.coach-card{background:#fff;border-radius:16px;padding:16px 16px 14px;max-width:400px;width:100%;margin:auto;box-shadow:0 18px 40px rgba(0,0,0,.3)}
+.coach-card.is-bottom-right{margin-bottom:104px}
+.coach-card.is-top-right{margin-top:104px}
+.coach-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.coach-head strong{font-size:1.02rem;color:#0f172a}
+.coach-close{border:0;background:#f1f5f9;border-radius:999px;width:32px;height:32px;display:grid;place-items:center;color:#475569;cursor:pointer}
+.coach-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.coach-steps>li{display:flex;gap:10px;align-items:flex-start}
+.coach-steps p{margin:3px 0 0;font-size:.92rem;line-height:1.5;color:#1e293b;word-break:keep-all}
+.coach-steps p small{color:#64748b;font-size:.78rem}
+.coach-no{flex-shrink:0;width:24px;height:24px;border-radius:999px;background:#2563eb;color:#fff;font-weight:800;font-size:.8rem;display:grid;place-items:center}
+.coach-key{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:#fef9c3;border:1.5px solid #facc15;vertical-align:middle}
+
+/* 메뉴 그림: 실제 브라우저 메뉴처럼 그리고, 눌러야 할 줄만 노란 테두리가 깜빡인다. */
+.coach-menu{list-style:none;margin:8px 0 0;padding:6px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;max-width:240px}
+.coach-menu li{position:relative;display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:10px;font-size:.84rem;color:#334155}
+.coach-menu li svg{color:#475569}
+.coach-menu li.is-hot{background:#fff;color:#0f172a;font-weight:800;outline:2.5px solid #facc15;animation:coach-pulse 1.2s ease-in-out infinite}
+@keyframes coach-pulse{0%,100%{box-shadow:0 0 0 0 rgba(250,204,21,.55)}50%{box-shadow:0 0 0 7px rgba(250,204,21,0)}}
+.coach-menu.is-options{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;max-width:300px}
+.coach-menu.is-options li{flex-direction:column;gap:2px;padding:6px 4px;text-align:center;font-size:.78rem}
+.coach-finger{position:absolute;right:-6px;bottom:-12px;color:#2563eb;font-size:28px !important;animation:coach-tap 1.2s ease-in-out infinite}
+@keyframes coach-tap{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-3px,-4px) scale(.9)}}
+
+.coach-note{margin:12px 0 0;font-size:.76rem;line-height:1.5;color:#64748b}
+.coach-done{margin-top:12px;width:100%;border:0;border-radius:10px;padding:11px;background:#2563eb;color:#fff;font:inherit;font-weight:800;cursor:pointer}
+
+@media (prefers-reduced-motion: reduce){.coach-arrow,.coach-menu li.is-hot,.coach-finger{animation:none}}
