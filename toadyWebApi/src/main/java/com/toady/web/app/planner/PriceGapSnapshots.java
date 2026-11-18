@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 접수 중·예정 공고의 '주변 시세 대비' 요약을 매일 미리 계산해 TB_PRICE_GAP(database.sql 18번)에 둔다.
  * 맞춤 청약·줍줍 목록 뱃지, 나의 청약 비교표, 공고 공개 페이지, 줍줍 알림이 이 값을 쓴다(화면 상세는 실시간 계산을 그대로 쓴다).
- * 정확한 지번 위치를 확인한 공고만 계산하고, 신뢰도가 '참고'뿐이면 READY로 두지 않는다.
+ * 정확한 지번 위치를 확인한 공고만 계산하고(운영자 확인 주소가 있으면 먼저 쓴다: ConfirmedAddresses), 신뢰도가 '참고'뿐이면 READY로 두지 않는다.
  * 카카오 REST 키나 실거래 키가 없으면 계산하지 않으며, 테이블이 없으면 조회는 빈 결과를 돌려준다.
  * 국토부 실거래는 하루 호출 한도가 있어(MolitDailyBudget) 사용자 요청과 몫을 나눠 쓰고, 한 번에 최대 60건·20분까지만 계산한다.
  * 위치 확인은 AddressLocator(카카오), 시세는 NeighborhoodResearchService(국토부), 비교 규칙은 PriceGapRules가 맡는다.
@@ -44,6 +44,8 @@ import java.util.concurrent.TimeUnit;
 public class PriceGapSnapshots {
     private static final Logger log = LoggerFactory.getLogger(PriceGapSnapshots.class);
     static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180, MAX_MINUTES = 20;
+    /** 공고별로 마지막에 시도한 운영자 확인 주소. 확인 주소가 새로 생기거나 바뀐 경우에만 재시도 기간을 건너뛴다(재시작하면 한 번 더 시도). */
+    private final Map<String, String> triedConfirmed = new java.util.concurrent.ConcurrentHashMap<>();
     private final JdbcTemplate jdbc;
     private final PriceGapStore store;
     private final EligibilityFeed feed;
@@ -53,6 +55,16 @@ public class PriceGapSnapshots {
     // @Autowired(required=false): 트랜잭션 도우미가 있으면 넣는다. 없으면(단위 테스트) 트랜잭션 없이 저장한다.
     // TransactionTemplate은 @Transactional 대신 코드로 트랜잭션 범위를 정할 때 쓴다(같은 클래스 안 호출에도 적용된다).
     @Autowired(required = false) private TransactionTemplate transactions;
+
+    /** 운영자 확인 주소(관리자 '위치 확인'). 공고 상세와 같은 순서(확인 주소 → 공급 주소)로 위치를 정한다. */
+    private ConfirmedAddresses confirmed = ConfirmedAddresses.NONE;
+    /** 운영자가 숨긴 공고. 조회 API가 없는 것처럼 뺀다. 빈이 없으면(단위 테스트) 아무것도 숨기지 않는다. */
+    private HiddenAnnouncements hidden;
+    // @Autowired(required=false) 메서드 주입: 생성자를 늘리지 않고 빈이 있을 때만 넣는다.
+    @Autowired(required = false)
+    void useConfirmed(ConfirmedAddresses confirmed) { this.confirmed = confirmed == null ? ConfirmedAddresses.NONE : confirmed; }
+    @Autowired(required = false)
+    void useHidden(HiddenAnnouncements hidden) { this.hidden = hidden; }
 
     // @Autowired: 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
@@ -67,7 +79,11 @@ public class PriceGapSnapshots {
 
     // @PostMapping + @Valid @RequestBody: 공고 키 목록(최대 50개)을 받아 미리 계산된 비교 요약을 돌려준다.
     @PostMapping("/api/v1/planner/price-gaps")
-    public List<PriceGapStore.Gap> lookup(@Valid @RequestBody Request request) { return List.copyOf(store.forIds(request.ids()).values()); }
+    // 숨긴 공고는 없는 것처럼 빈 결과로 둔다(목록·알림과 같은 기준).
+    public List<PriceGapStore.Gap> lookup(@Valid @RequestBody Request request) {
+        List<String> ids = hidden == null ? request.ids() : request.ids().stream().filter(id -> !hidden.hiddenId(id)).toList();
+        return ids.isEmpty() ? List.of() : List.copyOf(store.forIds(ids).values());
+    }
 
     /** 저녁 묶음 알림 전에 미리 계산한다(기본 17:20). PRICE_GAP_CRON=- 이면 끈다. */
     // @Scheduled(cron): 설정 toady.research.gap-cron 값, 없으면 매일 17:20(한국시간)에 실행한다.
@@ -112,12 +128,17 @@ public class PriceGapSnapshots {
             }
             // 정정 공고로 분양가가 바뀌었으면 기간과 상관없이 다시 계산한다.
             boolean changed = before != null && "READY".equals(before[0]) && !Objects.equals(supplies.get((Integer) before[2]), before[3]);
+            // 위치를 못 찾았던 공고에 운영자 확인 주소가 생겼으면 재시도 기간(7일)을 기다리지 않고 다시 계산한다.
+            String operator = confirmed.of(item.id());
+            // 같은 확인 주소로 이미 한 번 시도해 못 찾았으면 다시 강제하지 않고 원래 재시도 기간을 따른다(매일 카카오 호출 반복 방지).
+            if (before != null && "NO_LOCATION".equals(before[0]) && operator != null && !operator.equals(triedConfirmed.get(item.id()))) changed = true;
+            if (operator != null) triedConfirmed.put(item.id(), operator);
             if (before != null && !changed && fresh((String) before[0], (LocalDateTime) before[1], now)) continue;
             processed++;
             // 아직 보여 주는 READY 값(분양가 그대로·7일 이내)은 이번 재계산이 일시 실패해도 지우지 않고 다음 날 다시 시도한다.
             boolean keep = before != null && "READY".equals(before[0]) && !changed
                 && !((LocalDateTime) before[1]).isBefore(now.minusDays(PriceGapStore.SHOW_DAYS));
-            String status = compute(item, supplies, now, keep);
+            String status = compute(item, operator, supplies, now, keep);
             report.merge(status, 1, Integer::sum);
         }
         jdbc.update("DELETE FROM TB_PRICE_GAP WHERE COMPUTED_DT < ?", Timestamp.valueOf(now.minusDays(KEEP_DAYS)));
@@ -140,13 +161,34 @@ public class PriceGapSnapshots {
         return out;
     }
 
+    /** 실거래를 조회할 면적 수 상한(면적마다 통계를 만들므로 응답·계산 크기를 묶어 둔다). */
+    static final int MAX_AREAS = 8;
+    /** 면적대 기준: 60㎡ 이하는 59㎡, 60~85㎡는 84㎡, 85㎡ 초과는 114㎡에 가까운 면적을 대표로 둔다. */
+    private static final int[][] BANDS = {{0, 60, 59}, {61, 85, 84}, {86, Integer.MAX_VALUE, 114}};
+    /**
+     * 비교할 면적을 고른다. 상한보다 적으면 전부. 많으면 면적대(60 이하·60~85·85 초과)마다 대표 하나를 먼저 넣고
+     * 나머지는 84㎡에 가까운 순으로 채운다. 작은 면적순으로 자르면 소형 주택형이 많은 공고에서 84㎡가 빠지기 때문이다.
+     * 결과는 면적 오름차순.
+     */
+    static List<Integer> comparisonAreas(Collection<Integer> areas, int limit) {
+        List<Integer> all = areas.stream().distinct().sorted().toList();
+        if (all.size() <= limit) return all;
+        LinkedHashSet<Integer> picked = new LinkedHashSet<>();
+        for (int[] band : BANDS)
+            all.stream().filter(area -> area >= band[0] && area <= band[1])
+                .min(Comparator.<Integer>comparingInt(area -> Math.abs(area - band[2])).thenComparingInt(area -> area)).ifPresent(picked::add);
+        all.stream().sorted(Comparator.<Integer>comparingInt(area -> Math.abs(area - 84)).thenComparingInt(area -> area))
+            .forEach(area -> { if (picked.size() < limit) picked.add(area); });
+        return picked.stream().limit(limit).sorted().toList();
+    }
+
     // 공고 하나 계산: 위치 확인 → 면적별 실거래 → 대표 면적 고르기 → 저장. 결과 상태 문자열을 돌려준다.
     // DB 오류는 위로 던져 전체 작업을 멈추고, 외부 API 오류는 이 공고만 UNAVAILABLE로 둔다.
-    private String compute(EligibilityFeed.Item item, Map<Integer, Long> supplies, LocalDateTime now, boolean keepPrevious) {
+    private String compute(EligibilityFeed.Item item, String operatorAddress, Map<Integer, Long> supplies, LocalDateTime now, boolean keepPrevious) {
         try {
-            var location = locator.locate(item.address());
+            var location = locator.locate(item.address(), operatorAddress);
             if (location.isEmpty()) { save(item.id(), "NO_LOCATION", null, null, null, now); return "NO_LOCATION"; }
-            List<BigDecimal> areas = supplies.keySet().stream().limit(8).map(BigDecimal::valueOf).toList();
+            List<BigDecimal> areas = comparisonAreas(supplies.keySet(), MAX_AREAS).stream().map(BigDecimal::valueOf).toList();
             var gap = research.priceGap(location.get().bcode(), location.get().dong(), areas);
             // 응답 시간 한도로 일부 달만 받았으면 한 번 더 부른다. 받은 달은 캐시에 있어 나머지 달만 새 한도 안에서 받는다.
             if (gap.partial()) gap = research.priceGap(location.get().bcode(), location.get().dong(), areas);

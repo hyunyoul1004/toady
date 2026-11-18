@@ -34,8 +34,11 @@ import java.util.regex.Pattern;
 @RestController
 public class SiteContentController {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-    /** 링크는 사이트 안 경로 또는 https 주소만 내보낸다(관리자 입력이라도 javascript: 등은 화면에 넘기지 않는다). */
-    static final Pattern SAFE_LINK = Pattern.compile("^(/[A-Za-z0-9/_?=&%.\\-]*|https://[A-Za-z0-9.\\-]+(/[A-Za-z0-9/_?=&%.\\-#]*)?)$");
+    /**
+     * 링크는 사이트 안 경로 또는 https 주소만 내보낸다(관리자 입력이라도 javascript: 등은 화면에 넘기지 않는다).
+     * '//evil.com'·'/\evil.com'은 브라우저가 다른 사이트 주소로 읽으므로 사이트 안 경로로 보지 않는다(맨 앞 / 뒤에 / 또는 \가 오면 거부).
+     */
+    static final Pattern SAFE_LINK = Pattern.compile("^(/(?![/\\\\])[A-Za-z0-9/_?=&%.\\-]*|https://[A-Za-z0-9.\\-]+(/[A-Za-z0-9/_?=&%.\\-#]*)?)$");
     private final JdbcTemplate jdbc;
     private volatile List<Map<String, Object>> notices = List.of();
     private volatile long loadedAt;

@@ -26,6 +26,11 @@ public class AnnouncementResults {
     static final java.util.regex.Pattern APT_ID = java.util.regex.Pattern.compile("apt/([a-zA-Z0-9_-]{1,40})/([a-zA-Z0-9_-]{1,40})");
     private final JdbcTemplate jdbc;
     public AnnouncementResults(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    /** 운영자가 숨긴 공고. 공개 API가 없는 것처럼 뺀다. 빈이 없으면(단위 테스트) 아무것도 숨기지 않는다. */
+    private HiddenAnnouncements hidden;
+    // @Autowired(required=false) 메서드 주입: 생성자를 늘리지 않고 숨김 확인 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void useHidden(HiddenAnnouncements hidden) { this.hidden = hidden; }
 
     /**
      * ratePublished: 1순위 경쟁률 행이 있음(전 주택형 미달이면 topRate는 null). topRate: 숫자로 공개된 1순위 최고 경쟁률.
@@ -40,7 +45,11 @@ public class AnnouncementResults {
 
     // @PostMapping + @RequestBody: 본문 JSON의 ids(최대 50개)를 받는다. @Valid로 형식을 검사한다.
     @PostMapping("/api/v1/planner/results")
-    public List<Result> results(@Valid @RequestBody Request request) { return List.copyOf(forIds(request.ids()).values()); }
+    // 숨긴 공고는 결과 목록에서 뺀다(없는 공고와 같은 모양). 푸시 등 내부 호출(forIds)은 각자 숨김을 거른다.
+    public List<Result> results(@Valid @RequestBody Request request) {
+        List<String> ids = hidden == null ? request.ids() : request.ids().stream().filter(id -> !hidden.hiddenId(id)).toList();
+        return List.copyOf(forIds(ids).values());
+    }
 
     /** APT 공고 ID만 골라 결과를 돌려준다. 결과가 하나도 공개되지 않은 공고도 빈 결과로 넣는다. */
     public Map<String, Result> forIds(Collection<String> ids) {

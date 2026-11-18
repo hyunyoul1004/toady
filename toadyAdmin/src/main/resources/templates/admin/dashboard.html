@@ -82,10 +82,10 @@
             <li th:each="step : ${funnel.steps}"><div><strong th:text="${step.label}"></strong></div><span class="bar"><i th:style="${'width:' + (step.percent < 1 and step.visitors > 0 ? 1 : step.percent) + '%'}"></i></span><em th:text="${#numbers.formatInteger(step.visitors,1,'COMMA') + '명 · ' + step.percent + '%'}"></em></li>
         </ul>
         <p class="hint lead">
-            <span th:text="${'신규 방문자의 재방문(첫 방문 7~13일 뒤): ' + (funnel.returnRate != null ? funnel.returnRate + '%' : '—') + ' (' + funnel.returnBase + '명 중)'}"></span><br>
+            <span th:text="${'신규 방문자의 재방문(첫 방문이 13~27일 전인 사람 중 7~13일 뒤 다시 옴): ' + (funnel.returnRate != null ? funnel.returnRate + '%' : '—') + ' (' + funnel.returnBase + '명 중)'}"></span><br>
             <span th:text="${'첫 주에 알림 켠 사람 ' + (funnel.alertReturnRate != null ? funnel.alertReturnRate + '%' : '—') + ' (' + funnel.alertBase + '명) · 켜지 않은 사람 ' + (funnel.otherReturnRate != null ? funnel.otherReturnRate + '%' : '—') + ' (' + funnel.otherBase + '명)'}"></span>
         </p>
-        <p class="hint">신규 방문자: 첫 방문 전 28일 동안 방문이 없고 첫 방문이 7~27일 전인 방문자. 알림은 첫 방문 7일 안에 켠 경우만 셉니다. 관심이 많은 사람이 알림을 켜기도 하므로, 두 비율의 차이는 알림 효과를 가늠하는 참고값입니다.</p>
+        <p class="hint">신규 방문자: 첫 방문 전 28일 동안 방문이 없고 첫 방문이 13~27일 전인 방문자(재방문 판정 기간 7~13일이 끝난 사람만 셉니다). 알림은 첫 방문 7일 안에 켠 경우만 셉니다. 관심이 많은 사람이 알림을 켜기도 하므로, 두 비율의 차이는 알림 효과를 가늠하는 참고값입니다.</p>
         </th:block>
     </section>
     <section class="panel spaced"><div class="panel-head"><h2>유입 경로 · 최근 28일</h2><span class="panel-note" th:text="${'세션 ' + report.sourceSessions + '개 · 검색 ' + report.searchPercent + '%'}"></span></div>
@@ -97,16 +97,17 @@
     </section>
     </th:block>
 
-    <!-- 내 방문 제외: admin.js가 이 브라우저의 방문자 ID(localStorage)를 읽어 숨은 입력칸에 넣는다. -->
+    <!-- 내 방문 제외: 관리자(admin.toady.co.kr)는 사이트(www)의 브라우저 저장소를 읽을 수 없으므로,
+         사이트의 /my-visitor-id 화면에서 복사한 방문자 ID를 붙여 넣어 등록한다. admin.js가 형식·등록 여부를 미리 알려 준다. -->
     <section class="panel spaced" id="exclusions"><div class="panel-head"><h2>내 방문 제외</h2><span class="panel-note">운영자 브라우저를 지표에서 뺍니다(과거 기록 포함)</span></div>
         <div class="alert notice" th:unless="${exclusionReady}">제외 목록 테이블이 없습니다. database.sql 20번과 관리자 DB 권한(19번)을 적용하면 사용할 수 있습니다.</div>
-        <p class="hint lead">방문자는 브라우저마다 따로 셉니다. 내가 쓰는 기기·브라우저(PC 크롬, 휴대폰 사파리 등)에서 각각 관리자 화면을 열고 한 번씩 등록하세요.</p>
+        <p class="hint lead">방문자는 브라우저마다 따로 셉니다. 내가 쓰는 기기·브라우저(PC 크롬, 휴대폰 사파리 등)에서 각각 <a th:href="${siteUrl + '/my-visitor-id'}" target="_blank" rel="noopener">www.toady.co.kr/my-visitor-id</a>를 열어 방문자 ID를 복사한 뒤 여기에 붙여 넣으세요.</p>
         <form class="exclude-box" th:action="@{/admin/exclusions}" method="post" th:if="${exclusionReady}">
-            <input type="hidden" name="visitorId" id="this-visitor" value="">
-            <label>이 브라우저 이름<input name="label" maxlength="50" placeholder="예: 맥북 크롬"></label>
-            <button class="primary" type="submit" id="exclude-button">이 브라우저를 내 방문으로 등록</button>
+            <label>방문자 ID<input name="visitorId" id="this-visitor" required maxlength="60" autocomplete="off" spellcheck="false" placeholder="www.toady.co.kr/my-visitor-id에서 복사해 붙여 넣으세요" pattern="\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\s*" title="www.toady.co.kr/my-visitor-id에 나오는 36자리 방문자 ID"></label>
+            <label>브라우저 이름<input name="label" maxlength="50" placeholder="예: 맥북 크롬"></label>
+            <button class="primary" type="submit" id="exclude-button">내 방문으로 등록</button>
         </form>
-        <p class="hint" id="this-visitor-state"></p>
+        <p class="hint" id="this-visitor-state" aria-live="polite"></p>
         <div class="table-wrap stack" th:unless="${#lists.isEmpty(exclusions)}"><table><thead><tr><th>이름</th><th>방문자 ID</th><th>등록</th><th></th></tr></thead><tbody>
             <tr th:each="e : ${exclusions}" th:attr="data-visitor=${e.visitorId}"><td class="cell-title"><strong th:text="${e.label}"></strong></td><td class="mono" data-label="방문자 ID" th:text="${#strings.substring(e.visitorId,0,8) + '…'}"></td>
                 <td data-label="등록" th:text="${e.registeredAt != null ? #temporals.format(e.registeredAt, 'yyyy.MM.dd') : ''}"></td>

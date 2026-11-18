@@ -1,5 +1,6 @@
 package com.toady.web.app.user.service;
 
+import com.toady.web.app.community.Community;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.constants.ResultCode;
@@ -53,10 +54,20 @@ public class AccountService {
     private final JdbcTemplate jdbc;
     private final ProfileIcons profileIcons;
     private final WithdrawnSanctions withdrawnSanctions;
+    private final Community community;
 
-    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc, ProfileIcons profileIcons, WithdrawnSanctions withdrawnSanctions) {
+    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc, ProfileIcons profileIcons, WithdrawnSanctions withdrawnSanctions, Community community) {
         this.users = users; this.userService = userService; this.details = details; this.encoder = encoder; this.jdbc = jdbc; this.profileIcons = profileIcons;
-        this.withdrawnSanctions = withdrawnSanctions;
+        this.withdrawnSanctions = withdrawnSanctions; this.community = community;
+    }
+
+    /**
+     * 내가 차단한 회원의 답글을 빼는 조건(쪽지 안 읽은 수와 같은 기준: 내가 차단한 쪽의 글만 숨긴다, DmService.NOT_BLOCKED_SENDER).
+     * 받은 답글 목록·새 답글 수(메뉴 배지)·내 이야기별 답글 수가 같은 조건을 써서 숫자가 어긋나지 않게 한다.
+     * 차단 테이블(database.sql 25번)이 없으면 빈 조건을 돌려준다. column은 답글 작성자 컬럼, 자리표시자(?) 하나에 내 회원 번호를 넣는다.
+     */
+    private String notBlockedAuthor(String column) {
+        return community.ready() ? " AND " + column + " NOT IN (SELECT BLOCKED_USER_SEQ FROM TB_USER_BLOCK WHERE USER_SEQ=?)" : "";
     }
 
     /** 공고 유형(댓글 테이블의 enum 이름) → 화면 주소의 유형과 상세 테이블 */
@@ -141,7 +152,7 @@ public class AccountService {
         return view;
     }
 
-    /** 내 이야기마다 다른 회원이 단 답글 수와 마지막 답글 번호(지운 답글·내 답글은 세지 않는다). */
+    /** 내 이야기마다 다른 회원이 단 답글 수와 마지막 답글 번호(지운 답글·내 답글·내가 차단한 회원의 답글은 세지 않는다). */
     private void attachReplyCounts(long userSeq, List<Map<String, Object>> items) {
         List<Object> seqs = items.stream().filter(item -> !Boolean.TRUE.equals(item.get("reply"))).map(item -> item.get("commentSeq")).collect(java.util.stream.Collectors.toList());
         items.forEach(item -> { item.put("replyCount", 0L); item.put("lastReplySeq", null); });
@@ -149,9 +160,11 @@ public class AccountService {
         Map<Long, long[]> counts = new java.util.HashMap<>();
         String marks = String.join(",", java.util.Collections.nCopies(seqs.size(), "?"));
         List<Object> args = new ArrayList<>(seqs); args.add(userSeq);
+        String notBlocked = notBlockedAuthor("CREATE_USER_SEQ");
+        if (!notBlocked.isEmpty()) args.add(userSeq);
         try {
             jdbc.query("SELECT PARENT_COMMENT_SEQ, COUNT(*), MAX(COMMENT_SEQ) FROM TB_LTTOT_PBLANC_COMMENT WHERE PARENT_COMMENT_SEQ IN (" + marks + ")"
-                    + " AND DELETE_YN='N' AND CREATE_USER_SEQ<>? GROUP BY PARENT_COMMENT_SEQ",
+                    + " AND DELETE_YN='N' AND CREATE_USER_SEQ<>?" + notBlocked + " GROUP BY PARENT_COMMENT_SEQ",
                     rs -> { counts.put(rs.getLong(1), new long[]{rs.getLong(2), rs.getLong(3)}); }, args.toArray());
         } catch (DataAccessException missing) { return; }
         items.forEach(item -> {
@@ -173,14 +186,17 @@ public class AccountService {
         List<Long> authors = new ArrayList<>();
         long unread = 0;
         try {
+            // 내가 차단한 회원의 답글은 목록과 새 답글 수(배지) 모두에서 뺀다(같은 from을 써서 두 숫자가 어긋나지 않게).
+            String notBlocked = notBlockedAuthor("c.CREATE_USER_SEQ");
+            Object[] base = notBlocked.isEmpty() ? new Object[]{userSeq, userSeq} : new Object[]{userSeq, userSeq, userSeq};
             String from = " FROM TB_LTTOT_PBLANC_COMMENT c JOIN TB_LTTOT_PBLANC_COMMENT p ON p.COMMENT_SEQ=c.PARENT_COMMENT_SEQ"
-                    + " WHERE p.CREATE_USER_SEQ=? AND p.DELETE_YN='N' AND c.DELETE_YN='N' AND c.CREATE_USER_SEQ<>?";
+                    + " WHERE p.CREATE_USER_SEQ=? AND p.DELETE_YN='N' AND c.DELETE_YN='N' AND c.CREATE_USER_SEQ<>?" + notBlocked;
             Long counted = afterSeq != null
-                    ? jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.COMMENT_SEQ>?", Long.class, userSeq, userSeq, afterSeq)
-                    : jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.REG_DT>=?", Long.class, userSeq, userSeq, weekAgo);
+                    ? jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.COMMENT_SEQ>?", Long.class, with(base, afterSeq))
+                    : jdbc.queryForObject("SELECT COUNT(*)" + from + " AND c.REG_DT>=?", Long.class, with(base, weekAgo));
             unread = counted == null ? 0 : counted;
             jdbc.query("SELECT c.COMMENT_SEQ, c.PARENT_COMMENT_SEQ, c.ANNOUNCEMENT_TYPE, c.HOUSE_MANAGE_NO, c.PBLANC_NO, c.CONTENT, c.REG_DT, c.CREATE_USER_SEQ, u.USER_NIC_NAME, p.CONTENT AS PARENT_CONTENT"
-                            + from.replace(" WHERE", " LEFT JOIN TB_USER u ON u.USER_SEQ=c.CREATE_USER_SEQ WHERE") + " ORDER BY c.COMMENT_SEQ DESC LIMIT ?",
+                            + from.replaceFirst(" WHERE", " LEFT JOIN TB_USER u ON u.USER_SEQ=c.CREATE_USER_SEQ WHERE") + " ORDER BY c.COMMENT_SEQ DESC LIMIT ?",
                     rs -> {
                         String[] type = TYPES.get(rs.getString("ANNOUNCEMENT_TYPE"));
                         if (type == null) return;
@@ -198,7 +214,7 @@ public class AccountService {
                         item.put("detailTable", type[1]);
                         authors.add(rs.getLong("CREATE_USER_SEQ"));
                         items.add(item);
-                    }, userSeq, userSeq, REPLY_LIMIT);
+                    }, with(base, REPLY_LIMIT));
         } catch (DataAccessException missing) {
             log.warn("받은 답글을 읽지 못함: {}", missing.getMostSpecificCause().getMessage());
         }
@@ -218,6 +234,13 @@ public class AccountService {
         view.put("latestSeq", items.isEmpty() ? null : items.get(0).get("commentSeq"));
         view.put("items", items);
         return view;
+    }
+
+    // SQL 인자 배열 뒤에 값 하나를 붙인다
+    private static Object[] with(Object[] base, Object last) {
+        Object[] args = java.util.Arrays.copyOf(base, base.length + 1);
+        args[base.length] = last;
+        return args;
     }
 
     // 줄바꿈·연속 공백을 한 칸으로 줄이고 max자를 넘으면 자른다
@@ -256,6 +279,8 @@ public class AccountService {
         if (!NICKNAME.matcher(nickname).matches()) {
             return Outcome.fail(ResultCode.VALID_ERROR, "닉네임은 한글·영문·숫자로 2~15자까지 쓸 수 있어요(공백·특수문자 제외).");
         }
+        // 운영자·서비스 이름을 흉내 내는 닉네임은 막는다(가입과 같은 규칙, NicknameRules)
+        if (NicknameRules.reserved(nickname)) return Outcome.fail(ResultCode.VALID_ERROR, NicknameRules.RESERVED_MESSAGE);
         UserEntity user = lockedUser(userSeq);
         if (user == null) return gone();
         if (nickname.equals(user.getUserNicName())) return Outcome.fail(ResultCode.VALID_ERROR, "지금 쓰고 있는 닉네임이에요.");

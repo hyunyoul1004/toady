@@ -384,7 +384,7 @@ export default function AccountPage() {
         {editing !== 'withdraw' && <Button size="small" color="error" onClick={() => { setEditing('withdraw'); setNotice(''); }}>탈퇴</Button>}</div>
       {/* 탈퇴가 끝나면 이전 회원의 캐시가 남지 않게 React Query 캐시를 모두 비우고(queryClient.clear) 로그아웃한다. */}
       {editing === 'withdraw' && <WithdrawForm phrase={data?.withdrawPhrase || '탈퇴합니다'} onCancel={() => setEditing(null)}
-        onDone={message => { queryClient.clear(); logout({ server: false }); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
+        onDone={message => { queryClient.clear(); logout({ server: false, clearDrafts: true }); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
     </section>
 
     <PushSettingsDialog open={Boolean(pushOpen)} onClose={() => setPushOpen(false)} loggedIn />

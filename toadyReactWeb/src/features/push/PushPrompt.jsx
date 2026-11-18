@@ -55,11 +55,11 @@ export default function PushPrompt({ overlayId, announcementId, loggedIn, compac
   // 상황별 카드 내용: 캘린더 준비됨 → 방금 켬 → 캘린더만 권함 → 알림 켜기 권함 → 아이폰 홈 화면 추가 안내.
   let content;
   if (calendarDone) content = <><CheckCircleRounded className="push-card-icon ok" /><div className="push-card-text"><strong>캘린더 파일을 준비했어요</strong><span>내려받은 파일을 열어 캘린더에 추가하면 접수·발표 전날 알려 줘요. 받아지지 않으면 기본 브라우저에서 열어 주세요.</span></div></>;
-  else if (justEnabled) content = <><CheckCircleRounded className="push-card-icon ok" /><div className="push-card-text"><strong>알림을 켰어요</strong><span>{compact ? '경쟁률·당첨가점이 나오면 바로, 전날 일정은 하루 한 번 모아서 알려 드릴게요.' : '전날 일정과 새 공고를 하루 한 번 모아서 알려 드릴게요.'}</span></div>
+  else if (justEnabled) content = <><CheckCircleRounded className="push-card-icon ok" /><div className="push-card-text"><strong>알림을 켰어요</strong><span>{compact ? '경쟁률·당첨가점이 나오면 바로, 전날 일정은 저녁에 한 번 모아서 알려 드릴게요.' : '관심 공고 경쟁률·당첨가점은 나오면 바로, 전날 일정과 새 공고는 저녁에 한 번 모아서 알려 드릴게요.'}</span></div>
     <div className="push-card-actions"><Button size="small" disabled={busy} onClick={test}>테스트 알림</Button><Button size="small" onClick={() => setOpen(true)}>설정</Button></div></>;
   else if (calendarOnly) content = <><EventAvailableOutlined className="push-card-icon" /><div className="push-card-text"><strong>이 공고 일정, 캘린더에 넣어 둘까요?</strong><span>{push.permission === 'denied' ? '이 브라우저는 알림이 차단돼 있어요.' : '지금 브라우저에서는 알림을 받을 수 없어요.'} 캘린더에 넣으면 접수·발표 전날 캘린더가 알려 줘요.</span></div>
     <div className="push-card-actions"><Button size="small" variant="contained" disableElevation onClick={addCalendar}>캘린더에 넣기</Button></div></>;
-  else if (mode === 'ready') content = <><NotificationsActiveOutlined className="push-card-icon" /><div className="push-card-text"><strong>{compact ? '경쟁률·당첨가점 나오면 바로 알려 드릴까요?' : '청약 일정을 놓치지 않게 알려 드릴까요?'}</strong><span>{compact ? '결과가 공개되면 바로, 전날 일정은 하루 한 번 모아서 보내 드려요.' : '관심 공고의 전날 일정을 하루 한 번 모아서 보내 드려요.'}</span></div>
+  else if (mode === 'ready') content = <><NotificationsActiveOutlined className="push-card-icon" /><div className="push-card-text"><strong>{compact ? '경쟁률·당첨가점 나오면 바로 알려 드릴까요?' : '청약 일정을 놓치지 않게 알려 드릴까요?'}</strong><span>{compact ? '결과가 공개되면 바로, 전날 일정은 저녁에 한 번 모아서 보내 드려요.' : '관심 공고의 전날 일정은 저녁에 한 번 모아서, 경쟁률·당첨가점은 공개되면 바로 보내 드려요.'}</span></div>
     <div className="push-card-actions"><Button size="small" variant="contained" disableElevation disabled={busy} onClick={enable}>{busy ? '켜는 중…' : '알림 켜기'}</Button>{calendarButton || <Button size="small" onClick={() => setOpen(true)}>자세히</Button>}</div></>;
   else content = <><AddBoxOutlined className="push-card-icon" /><div className="push-card-text"><strong>아이폰은 홈 화면에 추가하면 알림을 받을 수 있어요</strong><span>앱 설치 없이 10초면 돼요. 추가한 아이콘으로 열고 알림을 켜 주세요.</span></div>
     <div className="push-card-actions"><Button size="small" variant="contained" disableElevation onClick={() => setOpen(true)}>방법 보기</Button>{calendarButton}</div></>;
@@ -67,7 +67,7 @@ export default function PushPrompt({ overlayId, announcementId, loggedIn, compac
   return <>
     <aside className={`push-card${compact ? ' compact' : ''}`} aria-label="알림 안내">
       {content}
-      <IconButton className="push-card-close" size="small" aria-label="알림 안내 닫기(다시 보지 않기)" onClick={dismiss}><CloseRounded fontSize="small" /></IconButton>
+      <IconButton className="push-card-close" size="small" aria-label="알림 안내 닫기(30일 동안 보이지 않음)" onClick={dismiss}><CloseRounded fontSize="small" /></IconButton>
       {error && <p className="push-card-error" role="alert">{error}</p>}
     </aside>
     {dialog}

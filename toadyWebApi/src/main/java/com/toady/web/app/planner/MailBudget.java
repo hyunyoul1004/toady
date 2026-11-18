@@ -23,9 +23,9 @@ public class MailBudget {
     public MailBudget(JdbcTemplate jdbc,@Value("${toady.planner.mail-limit:400}") int limit,@Value("${toady.planner.auth-reserve:100}") int reserve,
             @Value("${toady.planner.signup-limit:0}") int signupLimit) {
         if(limit<1 || limit>400 || reserve<0 || reserve>=limit) throw new IllegalArgumentException("메일 제한은 1~400, 인증 예약량은 제한보다 작아야 합니다.");
-        // 0이면 전체 제한의 절반(기본 400 → 200)을 가입 메일 상한으로 쓴다.
-        if(signupLimit==0) signupLimit=Math.max(1,limit/2);
-        if(signupLimit<1 || signupLimit>=limit) throw new IllegalArgumentException("가입 메일 상한은 전체 제한보다 작아야 합니다.");
+        // 0이면 '적용 중인 전체 제한의 절반'이라는 뜻이라 0을 그대로 보관하고 signupLimit(effectiveLimit)에서 계산한다.
+        // (여기서 미리 바꿔 두면 서비스 설정으로 전체 제한만 줄였을 때 절반이 다시 계산되지 않아 관리자 화면 값과 달라진다)
+        if(signupLimit<0 || signupLimit>=limit) throw new IllegalArgumentException("가입 메일 상한은 전체 제한보다 작아야 합니다.");
         this.jdbc=jdbc;this.limit=limit;this.reserve=reserve;this.signupLimit=signupLimit;
     }
     /** 관리자 화면 서비스 설정(database.sql 27번). 값이 없거나 규칙(1~400, 예약량·가입 상한 < 전체)에 맞지 않으면 환경변수 값을 쓴다. */

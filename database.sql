@@ -830,7 +830,7 @@ CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
 -- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_SITE_NOTICE TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_FAQ_ITEM TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, UPDATE ON toady.TB_LIVING_AREA TO 'toady_admin'@'%';
--- GRANT SELECT, INSERT, UPDATE ON toady.TB_APP_SETTING TO 'toady_admin'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_APP_SETTING TO 'toady_admin'@'%';  (DELETE는 값을 비워 기본값으로 되돌릴 때 필요, 이미 적용했다면 34번)
 -- GRANT SELECT ON toady.TB_DAILY_COUNTER TO 'toady_admin'@'%';
 -- GRANT SELECT ON toady.TB_SEARCH_STAT TO 'toady_admin'@'%';
 -- GRANT SELECT, INSERT, UPDATE, DELETE ON toady.TB_COMMENT_OFFICIAL TO 'toady_admin'@'%';
@@ -947,3 +947,11 @@ CREATE TABLE IF NOT EXISTS TB_WITHDRAWN_SANCTION (
 -- TB_USER는 이 파일이 아니라 API(JPA)가 만든 테이블이라 자동 실행하지 않게 주석으로 둔다. 기존 행은 기본값 0이 들어가 기존 토큰은 그대로 유효하다.
 -- ALTER TABLE TB_USER ADD COLUMN IF NOT EXISTS TOKEN_VERSION INT NOT NULL DEFAULT 0 COMMENT '토큰 버전(로그아웃하면 1 증가)';
 -- 앱 계정이 열 단위 권한을 쓰는 경우: GRANT SELECT (TOKEN_VERSION), UPDATE (TOKEN_VERSION) ON toady.TB_USER TO '앱계정'@'%';
+
+-- ============================================================================
+-- 34. 관리자 서비스 설정 기본값 되돌리기 권한 (운영 DB에서 관리 계정으로 한 번 실행)
+-- ============================================================================
+-- 관리자 서비스 설정 화면에서 값을 비워 저장하면 TB_APP_SETTING 행을 지워 환경변수 기본값으로 되돌린다.
+-- 27번 권한에 DELETE가 빠져 있어 이 저장이 실패했다. 27번을 예전 문구대로 적용한 DB에만 아래를 실행한다.
+-- 미적용이면 관리자 화면은 '권한 없음' 안내를 보여 주고 저장 값은 그대로 남는다.
+-- GRANT DELETE ON toady.TB_APP_SETTING TO 'toady_admin'@'%';

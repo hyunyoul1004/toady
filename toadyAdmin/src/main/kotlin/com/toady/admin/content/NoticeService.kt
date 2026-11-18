@@ -54,7 +54,8 @@ class NoticeService(private val jdbc: JdbcTemplate) {
 	fun delete(seq: Long): Boolean = try { jdbc.update("DELETE FROM TB_SITE_NOTICE WHERE NOTICE_SEQ=?", seq) > 0 } catch (missing: DataAccessException) { false }
 
 	// SAFE_LINK: '/'로 시작하는 사이트 안 경로 또는 https 주소만 허용한다(javascript: 같은 위험한 링크 차단).
+	// '//evil.com'·'/\evil.com'은 브라우저가 다른 사이트 주소로 읽으므로 '/' 바로 뒤에 '/'·'\'가 오면 거부한다.
 	companion object {
-		val SAFE_LINK = Regex("^(/[A-Za-z0-9/_?=&%.\\-]*|https://[A-Za-z0-9.\\-]+(/[A-Za-z0-9/_?=&%.\\-#]*)?)$")
+		val SAFE_LINK = Regex("^(/(?![/\\\\])[A-Za-z0-9/_?=&%.\\-]*|https://[A-Za-z0-9.\\-]+(/[A-Za-z0-9/_?=&%.\\-#]*)?)$")
 	}
 }

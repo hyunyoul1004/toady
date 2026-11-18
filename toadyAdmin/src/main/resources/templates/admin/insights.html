@@ -28,6 +28,7 @@
         <section class="panel"><div class="panel-head"><h2>메신저·SNS 유입</h2><span class="panel-note">방문 수(세션)</span></div>
             <p class="muted" th:if="${r.inflow == null or #lists.isEmpty(r.inflow)}">기록이 없습니다.</p>
             <ul class="mini" th:if="${r.inflow != null}"><li th:each="i : ${r.inflow}"><strong th:text="${i.host}"></strong><small th:text="${i.sessions + '회'}"></small></li></ul>
+            <p class="hint">검색 엔진(네이버·다음 검색 등)은 빼고, 운영자 브라우저(대시보드 ‘내 방문 제외’)의 방문·공유도 세지 않습니다.</p>
         </section>
     </div>
     <section class="panel spaced"><div class="panel-head"><h2>단지별 이야기</h2><span class="panel-note" th:if="${r.storyTotals != null}" th:text="${'원글 ' + r.storyTotals.roots + ' · 답글 ' + r.storyTotals.replies + ' · 첫 답글까지 중앙값 ' + (r.storyTotals.firstReplyMinutes != null ? r.storyTotals.firstReplyMinutes + '분' : '—')}"></span></div>

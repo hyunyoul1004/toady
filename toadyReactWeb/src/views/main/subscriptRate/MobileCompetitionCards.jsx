@@ -39,9 +39,9 @@ export function RateSummary({summary}) {
         :<><strong className="rate-summary-value rate-summary-value--muted">숫자 경쟁률 없음</strong><span className="rate-summary-sub">미달·미공개 행만 있어요</span></>}
     </div>
     <div className="rate-summary-item">
-      <span className="rate-summary-label">미달 표시 주택형</span>
+      <span className="rate-summary-label">미달 주택형</span>
       <strong className={`rate-summary-value${shortageCount?' rate-summary-value--short':''}`}>{shortageCount}개<small> / {unitCount}개</small></strong>
-      <span className="rate-summary-sub">{shortageCount?'청약홈에 미달 세대가 표시된 주택형':'공개 자료에 미달 표시 없음'}</span>
+      <span className="rate-summary-sub">{shortageCount?'공개 자료 기준, 접수가 공급에 못 미친 주택형':'공개 자료 기준 미달 없음'}</span>
     </div>
     {hasTotals && <div className="rate-summary-item">
       <span className="rate-summary-label">공급 대비 접수</span>

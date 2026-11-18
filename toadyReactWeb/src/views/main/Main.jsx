@@ -1,6 +1,7 @@
 import { detailCloseSteps, useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useDirectDetailHistory } from '@/hooks/useDirectDetailHistory';
-import { announcementShareUrl, announcementShareImage, shareLabel, scoreShareText } from '@/features/planner/shareUtils';
+import { announcementShareUrl, announcementShareImage, announcementShareText, shareLabel, scoreShareShort, scoreShareText } from '@/features/planner/shareUtils';
+import { shareLink } from '@/utils/share.util';
 import { kakaoShareKey, preloadKakaoShare, shareToKakao } from '@/utils/kakaoShare';
 /**
  * @file Main.jsx
@@ -335,6 +336,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   // 경쟁률 탭을 보고 있는 APT 공고일 때만 가점을 받아, 공유 문구에 넣을 요약(scoreText)을 만든다.
   const { data: shareScores } = useAptScoresQuery(selectedSubscriptSeq, modalOpen && detailTabValue===1 && selectedSubscriptSeq?.startsWith('apt/'));
   const scoreText = detailTabValue===1 ? scoreShareText(shareScores?.data || []) : '';
+  // 링크 공유 문구 끝에 붙이는 짧은 가점 요약(같은 가점 자료에서 만든다).
+  const scoreShort = detailTabValue===1 ? scoreShareShort(shareScores?.data || []) : '';
 
   // 공고 상세 열람 시 검색엔진 메타태그(SEO) 및 OpenGraph/Schema.org 동적 갱신
   useEffect(() => {
@@ -470,41 +473,20 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     else void handleShare();
   };
 
-  // 공고 공유하기 (Web Share API 및 클립보드 복사 폴백)
-  // 휴대폰 공유 창(navigator.share)을 먼저 쓰고, 없거나 실패하면 링크를 복사한다. 사용자가 공유 창을 닫으면(AbortError) 그냥 끝낸다.
-  // 참고: 안쪽의 const location은 공급위치 문자열이며, 라우터의 location과 이름만 같다.
+  // 공고 공유하기 (휴대폰 공유 창, 없거나 실패하면 '문구\n링크' 복사). 사용자가 공유 창을 닫으면 그냥 끝낸다.
+  // 문구는 한 줄('단지명 탭이름 · TOADY', 경쟁률 탭이면 가점 요약을 덧붙임)만 보낸다. 위치·일정은 링크 미리보기 카드가 보여 주므로
+  // 문구에도 넣으면 카카오톡·문자에서 같은 내용이 두 번 보인다. title은 앱마다 붙거나 버려져 문구와 겹치므로 넘기지 않는다.
   const handleShare = async () => {
     closeShareMenu();
     const seq = selectedSubscriptSeq || currentSubscriptDetail?.subscriptSeq || '';
     const tab=['detail','rate','map','comment'][detailTabValue];
-    const shareUrl = announcementShareUrl(seq,tab,window.location.origin);
-    const houseNm = currentSubscriptDetail?.houseNm || '청약 공고';
-    const location = currentSubscriptDetail?.supplyLocation || currentSubscriptDetail?.hssplyAdres || '';
-    const date = currentSubscriptDetail?.subscriptDate || '';
-
-    const shareData = {
-      title: `${houseNm} | ${scoreText?'청약 경쟁률·당첨가점':shareLabel(tab)} · TOADY`,
-      text: `${houseNm}\n${scoreText?scoreText+'\n':''}공급위치: ${location}\n접수일정: ${date}`,
-      url: shareUrl
-    };
-
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-        trackAction('share', seq);
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      trackAction('share', seq);
-      setSnackbar({ open: true, message: '공고 링크가 클립보드에 복사되었습니다.', severity: 'success' });
-    } catch {
-      setSnackbar({ open: true, message: '링크 복사에 실패했습니다.', severity: 'error' });
-    }
+    const result = await shareLink({
+      text: announcementShareText({ houseNm: currentSubscriptDetail?.houseNm, tab, score: scoreShort }),
+      url: announcementShareUrl(seq,tab,window.location.origin)
+    });
+    if (result === 'shared' || result === 'copied') trackAction('share', seq);
+    if (result === 'copied') setSnackbar({ open: true, message: '공유 문구와 링크를 복사했어요.', severity: 'success' });
+    else if (result === 'failed') setSnackbar({ open: true, message: '링크 복사에 실패했습니다.', severity: 'error' });
   };
 
   // 상단 헤더 주소 복사 핸들러

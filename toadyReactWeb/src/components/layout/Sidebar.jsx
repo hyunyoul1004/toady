@@ -52,7 +52,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
 
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
-import { MAIN_NAV, MORE_NAV, isNavActive, retapAction } from './navItems';
+import { MAIN_NAV, MORE_NAV, isNavActive, replaceHomeLink, retapAction } from './navItems';
 import BrandLogo from './BrandLogo';
 
 const MAIN_ICONS = { calendar: <CalendarMonthIcon />, match: <FactCheckOutlinedIcon />, score: <CalculateOutlinedIcon />, my: <BookmarkBorderIcon /> };
@@ -147,7 +147,9 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
           borderBottom: '1px solid #f1f5f9'
         }}
       >
-        <Box component={Link} to="/" replace={mobileOpen} state={{browseView:'calendar'}} aria-label="TOADY 홈으로"
+        {/* 로고: 휴대폰 메뉴(히스토리 층)에서는 메뉴 칸을 바꿔 쓰고, PC에서는 이미 첫 화면(쿼리 없는 '/')이면 바꿔 써서
+            누를 때마다 같은 화면이 히스토리에 쌓이지 않게 한다. 다른 화면에서 누르면 새 칸으로 이동해 뒤로가기로 돌아갈 수 있다. */}
+        <Box component={Link} to="/" replace={mobileOpen || replaceHomeLink(location)} state={{browseView:'calendar'}} aria-label="TOADY 홈으로"
           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 1,color:'inherit',textDecoration:'none' }}
         >
           <BrandLogo size={30} />

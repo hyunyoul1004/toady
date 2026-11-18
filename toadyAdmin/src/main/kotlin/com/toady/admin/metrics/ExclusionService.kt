@@ -35,12 +35,15 @@ class ExclusionService(private val jdbc: JdbcTemplate) {
 		}
 	} catch (missing: DataAccessException) { emptyList() }
 
-	/** 등록 결과: ADDED · EXISTS · INVALID · UNAVAILABLE(테이블 없음) */
+	/**
+	 * 등록 결과: ADDED · EXISTS · INVALID · UNAVAILABLE(테이블 없음).
+	 * 방문자 ID는 관리자가 사이트의 /my-visitor-id 화면에서 복사해 붙여 넣으므로 앞뒤 공백을 지우고 UUID 형식만 받는다.
+	 */
 	fun add(visitorId: String, label: String, admin: String): String {
-		if (!UUID.matches(visitorId)) return "INVALID"
+		val id = normalize(visitorId) ?: return "INVALID"
 		val name = label.trim().ifEmpty { "운영자 브라우저" }.take(50)
 		return try {
-			jdbc.update("INSERT INTO TB_ANALYTICS_EXCLUDED_VISITOR (VISITOR_ID, LABEL, REG_DT) VALUES (?,?,?)", visitorId.lowercase(), name, Timestamp.valueOf(Kst.now()))
+			jdbc.update("INSERT INTO TB_ANALYTICS_EXCLUDED_VISITOR (VISITOR_ID, LABEL, REG_DT) VALUES (?,?,?)", id, name, Timestamp.valueOf(Kst.now()))
 			log.info("지표 제외 브라우저 등록: label={}, admin={}", name, admin)
 			"ADDED"
 		} catch (duplicate: DuplicateKeyException) { "EXISTS" }
@@ -55,6 +58,8 @@ class ExclusionService(private val jdbc: JdbcTemplate) {
 	} catch (missing: DataAccessException) { false }
 
 	companion object {
+		/** 붙여 넣은 방문자 ID를 소문자 UUID로 맞춘다. 형식이 아니면 null. 웹(pageViews.js)이 crypto.randomUUID()로 만든 값과 같은 모양이다. */
+		fun normalize(visitorId: String): String? = visitorId.trim().takeIf { UUID.matches(it) }?.lowercase()
 		private val UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 		private val log = LoggerFactory.getLogger(ExclusionService::class.java)
 	}

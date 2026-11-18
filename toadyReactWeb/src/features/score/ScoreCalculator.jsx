@@ -14,6 +14,7 @@ import { saveMyScore, clearMyScore, useMyScore } from './myScore';
 import ScoreBenchmarkSearch from './ScoreBenchmarkSearch';
 import PeriodByDate from './PeriodByDate';
 import './score.css';
+import { shareLink, toolShareText } from '@/utils/share.util';
 
 // 항목별 도움말 문구.
 const HELP = {
@@ -73,11 +74,11 @@ export default function ScoreCalculator() {
   const share = async () => {
     const url = new URL('/score', window.location.origin);
     selectionToParams(draft).forEach((value, key) => url.searchParams.set(key, value));
-    const data = { title: `내 청약 가점 ${score.total}점 · TOADY`, text: `청약 가점 ${score.total}점 (무주택 ${score.housing} · 부양가족 ${score.dependents} · 통장 ${score.account})`, url: url.href };
-    try {
-      if (navigator.share) { await navigator.share(data); trackAction('share', 'tool/score'); return; }
-      await navigator.clipboard.writeText(url.href); trackAction('share', 'tool/score'); setMessage('결과 링크를 복사했어요.');
-    } catch (error) { if (error?.name !== 'AbortError') setMessage('링크를 복사하지 못했어요.'); }
+    // 공고 공유와 같은 형식: 한 줄 문구 + 링크(복사 시 '문구\n링크'). title은 문구와 겹치므로 넘기지 않는다.
+    const result = await shareLink({ text: toolShareText(`내 청약 가점 ${score.total}점(무주택 ${score.housing} · 부양가족 ${score.dependents} · 통장 ${score.account})`), url: url.href });
+    if (result === 'shared' || result === 'copied') trackAction('share', 'tool/score');
+    if (result === 'copied') setMessage('공유 문구와 링크를 복사했어요.');
+    else if (result === 'failed') setMessage('링크를 복사하지 못했어요.');
   };
   // 공고 상세 열기(경쟁률 탭으로). state.scoreDetail은 '목록에서 연 상세' 표시, overlayLayers는 비워 둔다.
   const openDetail = id => {

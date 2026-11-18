@@ -145,7 +145,7 @@ export function rankLabel(code) {
 /**
  * 경쟁률 요약을 공통 방식으로 계산한다.
  * - 최고 경쟁률: 숫자 경쟁률 중 최댓값과 해당 주택형(APT는 순위·지역 포함)
- * - 미달 주택형: APT는 주택형별 마지막 접수 순위에 미달 표기가 있는 경우, 그 외는 행에 미달 표기가 있는 경우
+ * - 미달 주택형: APT는 표의 청약 결과와 같은 기준(unitShortage: 주택형 단위 접수 합계 vs 공급 세대수), 그 외는 행에 미달 표기가 있는 경우
  * - 공급·접수 합계: 공급은 주택형(APT) 또는 행 단위 합, 접수는 행 합. 값이 하나도 없으면 null
  * 결과를 보장하는 해석(마감·당첨 가능성)은 하지 않는다.
  */
@@ -175,9 +175,8 @@ export function summarizeRates(type,list=[]) {
     groups.forEach(({row,ranks},key)=>{
       units.add(key);
       supplyTotal=add(supplyTotal,toCount(row.suplyHshldco));
-      // Map은 넣은 순서를 지킨다. 마지막 값이 그 주택형에서 가장 나중에 접수한 순위(보통 2순위)다.
-      const lastRows=[...ranks.values()].at(-1) || [];
-      if(lastRows.some(item=>parseRate(item.cmpetRate,item.reqCnt).kind==='shortage'))shortageUnits.add(key);
+      // 미달 주택형은 표의 청약 결과(resultLabel)와 같은 기준으로 센다(unitShortage).
+      if(unitShortage(Object.fromEntries(ranks),row.suplyHshldco))shortageUnits.add(key);
     });
   } else {
     // 구분 값이 모든 행에서 같으면(예: 코드 01만 존재) 요약 문구에도 붙이지 않는다.
@@ -207,17 +206,100 @@ export function summarizeRates(type,list=[]) {
 /**
  * 주택형의 청약 결과 문구. APT 경쟁률 자료에는 결과 이름이 없어 접수 자료로만 판단하며, 확실하지 않으면 단정하지 않는다.
  * - 2순위 행에 접수가 있으면 '2순위 접수'
- * - 1순위 접수가 있고 어느 행에도 미달 표기가 없으면 '1순위 마감'
- * - 1순위에 미달 표기가 있으면 '1순위 미달'
- * - 그 밖에는 '-'
+ * - 1순위 접수가 없으면 '-'
+ * - 공급 세대수를 알면 주택형 단위로 판단한다: 1순위 전체(해당지역 + 기타경기 + 기타지역) 접수 건수가 공급 세대수 이상이면 '1순위 마감',
+ *   모자라면 '1순위 미달'. 해당지역만 미달이어도 기타지역 접수로 채워졌으면 마감이다(행 하나의 미달 표기만 보고 판단하지 않는다).
+ * - 공급 세대수가 없으면 청약홈이 지역 순서대로 남은 세대를 따져 적는 미달 표기를 쓰되, 1순위 마지막 지역 행 기준으로 본다.
+ * 예비입주자 몫은 공고마다 비율이 달라 넣지 않는다. 공급 세대수 이상 접수돼도 예비 몫이 모자라 2순위가 열릴 수 있는데,
+ * 그때는 2순위 행이 생기므로 첫 줄에서 '2순위 접수'로 바뀐다.
+ * @param itemsByRank { '1순위': rows, '2순위': rows }
+ * @param supply 주택형의 일반공급 세대수(suplyHshldco). 비우면 1순위 첫 행의 값을 쓴다.
  */
-export function resultLabel(itemsByRank = {}) {
+export function resultLabel(itemsByRank = {}, supply, { secondRankOpen = false } = {}) {
   const second = itemsByRank['2순위'] || [], first = itemsByRank['1순위'] || [];
   if (second.some(row => toCount(row.reqCnt) > 0)) return '2순위 접수';
   const firstApplied = first.some(row => toCount(row.reqCnt) > 0);
   if (!firstApplied) return '-';
-  if (first.some(row => parseRate(row.cmpetRate, row.reqCnt).kind === 'shortage')) return '1순위 미달';
-  return '1순위 마감\n(청약 접수 종료)'; // 줄바꿈은 CSS white-space:pre-line으로 화면에 그대로 보인다
+  // 2순위 접수일이 지났는데 2순위 자료가 아직 없으면(청약홈이 하루쯤 늦게 줌) 2순위가 열렸을 수 있어 '접수 종료'는 단정하지 않는다.
+  const closed = secondRankOpen ? '1순위 마감' : '1순위 마감\n(청약 접수 종료)'; // 줄바꿈은 CSS white-space:pre-line으로 화면에 그대로 보인다
+  return firstShort(first, supply) ? '1순위 미달' : closed;
+}
+
+/** 주택형의 공급 세대수. 비우면 행의 suplyHshldco를 쓴다. */
+function unitSupply(rows, supply) {
+  return toCount(supply ?? rows.find(row => toCount(row.suplyHshldco) != null)?.suplyHshldco);
+}
+/**
+ * 1순위가 미달인지: 공급 세대수를 알면 1순위 전체(해당+기타) 접수 합계가 그보다 적은지,
+ * 모르면 1순위 마지막 지역 행에 미달 표기가 있는지.
+ */
+function firstShort(first, supply) {
+  const supplyCount = unitSupply(first, supply);
+  if (supplyCount != null && supplyCount > 0) return first.reduce((sum, row) => sum + (toCount(row.reqCnt) || 0), 0) < supplyCount;
+  return parseRate(first.at(-1)?.cmpetRate, first.at(-1)?.reqCnt).kind === 'shortage';
+}
+
+/**
+ * 요약 띠의 '미달 주택형' 판정. 표의 청약 결과(resultLabel)와 같은 기준을 쓴다.
+ * - 2순위 행이 없으면 resultLabel이 '1순위 미달'일 때.
+ * - 2순위 행이 있으면 1·2순위 접수 합계가 공급 세대수에 못 미칠 때(공급 세대수가 없으면 2순위 마지막 행의 미달 표기).
+ */
+export function unitShortage(itemsByRank = {}, supply) {
+  const first = itemsByRank['1순위'] || [], second = itemsByRank['2순위'] || [];
+  if (!second.length) return resultLabel(itemsByRank, supply) === '1순위 미달';
+  const supplyCount = unitSupply([...first, ...second], supply);
+  if (supplyCount != null && supplyCount > 0) return [...first, ...second].reduce((sum, row) => sum + (toCount(row.reqCnt) || 0), 0) < supplyCount;
+  return parseRate(second.at(-1)?.cmpetRate, second.at(-1)?.reqCnt).kind === 'shortage';
+}
+
+/** 청약홈 날짜(YYYYMMDD·YYYY-MM-DD)를 'YYYY-MM-DD'로. 읽을 수 없으면 null. */
+function dayKey(value) {
+  const text = String(value ?? '').trim().replaceAll('-', '').replaceAll('.', '');
+  return /^\d{8}$/.test(text) ? `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}` : null;
+}
+const daysBetween = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+/** 2순위 접수일 필드(청약홈 APT 공고 상세). 지역마다 날짜가 다를 수 있어 가장 이른 날을 본다. */
+const SECOND_RANK_DATES = ['gnrlRnk2CrspareaRcptde', 'gnrlRnk2EtcGgRcptde', 'gnrlRnk2EtcAreaRcptde'];
+/** 2순위 접수일 뒤 이 날수까지만 지연 안내를 보인다. 그 뒤에도 행이 없으면 늦게 올 자료가 아니라고 본다. */
+const SECOND_RANK_NOTICE_DAYS = 7;
+
+/**
+ * 2순위 결과가 아직 안 왔을 수 있는 기간인지: 2순위 접수일(지역 중 가장 이른 날) 하루 전부터 그 뒤 SECOND_RANK_NOTICE_DAYS 이내.
+ * dayBefore=false면 2순위 접수일 당일부터 본다(지연 안내 문구는 접수 전에 띄우지 않는다).
+ * 하루 전부터 보는 것은 1순위 기타지역 결과가 들어온 날 저녁에 '(청약 접수 종료)'를 단정했다가 다음 날 2순위가 열리는 일을 막기 위해서다.
+ * @param detail 공고 상세(2순위 접수일 필드) / today 한국 날짜 'YYYY-MM-DD'
+ */
+export function secondRankWindow(detail, today, { dayBefore = true } = {}) {
+  const start = SECOND_RANK_DATES.map(key => dayKey(detail?.[key])).filter(Boolean).sort()[0];
+  const now = dayKey(today);
+  if (!start || !now) return false;
+  const days = daysBetween(start, now);
+  return days >= (dayBefore ? -1 : 0) && days <= SECOND_RANK_NOTICE_DAYS;
+}
+
+/**
+ * '2순위 결과는 청약홈 공개 후 다음 날쯤 반영됩니다' 안내를 보일지 정한다(APT 경쟁률 표 아래).
+ * 청약홈 공공데이터는 2순위 결과를 하루쯤 늦게 주므로, 2순위 접수 기간 창(secondRankWindow) 안인데 2순위 행이 하나도 없으면 아직 안 온 것일 수 있다.
+ * 1순위에서 넉넉히 마감돼 2순위가 없는 공고와 구분하려고, 1순위 행 중 미달 표기가 하나라도 있거나
+ * 1순위 합계가 공급 세대수에 못 미치는 주택형이 있을 때만 보인다(해당지역 미달을 기타지역 접수로 겨우 채운 경우도 2순위가 열릴 수 있다).
+ * @param detail 공고 상세 / list 경쟁률 행 / today 한국 날짜 'YYYY-MM-DD'
+ */
+export function secondRankPending(detail, list = [], today) {
+  if (!list.length || !secondRankWindow(detail, today, { dayBefore: false })) return false;
+  const groups = new Map();
+  for (const row of list) {
+    if (rankLabel(row.subscrptRankCode) === '2순위') return false;
+    const key = String(row.houseTy || row.modelNo || '기타');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return [...groups.values()].some(rows => secondRankPossible(rows));
+}
+
+/** 2순위가 열릴 수 있는 주택형인지: 1순위 행 중 미달 표기가 있거나 1순위 합계가 공급 세대수에 못 미친다. 안내 문구와 결과 칸이 같은 기준을 쓴다. */
+export function secondRankPossible(first = [], supply) {
+  return first.some(row => parseRate(row.cmpetRate, row.reqCnt).kind === 'shortage') || firstShort(first, supply);
 }
 
 /**

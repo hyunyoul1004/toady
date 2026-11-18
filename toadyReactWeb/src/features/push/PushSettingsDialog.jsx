@@ -55,12 +55,12 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
   else if (!push.enabled) body = <Alert severity="info">알림 기능을 준비 중이에요. 그동안 캘린더 연결로 일정을 받아 보세요.</Alert>;
   else body = <>
     {push.subscribed
-      ? <div className="push-status on"><CheckCircleRounded /><div><strong>이 기기에서 알림을 받고 있어요</strong><span>하루 한 번, 저녁 6시 무렵에 모아서 보내 드려요.</span></div></div>
-      : <p className="push-lead">관심 공고의 <strong>전날 일정</strong>과 고른 생활권의 <strong>새 공고</strong>를 하루 한 번 모아서 알려 드려요.</p>}
+      ? <div className="push-status on"><CheckCircleRounded /><div><strong>이 기기에서 알림을 받고 있어요</strong><span>일정·새 공고는 저녁 6시 무렵 한 번에 모아서, 관심 공고의 경쟁률·당첨가점은 공개되면 바로 보내 드려요(밤 10시~아침 8시 제외).</span></div></div>
+      : <p className="push-lead">관심 공고의 <strong>전날 일정</strong>과 고른 생활권의 <strong>새 공고</strong>는 저녁에 한 번 모아서, 관심 공고의 <strong>경쟁률·당첨가점</strong>은 공개되면 바로 알려 드려요.</p>}
     {push.permission === 'denied' && <Alert severity="warning" sx={{ mb: 2 }}>브라우저에서 TOADY 알림이 차단되어 있어요. 주소창 왼쪽의 사이트 설정에서 알림을 ‘허용’으로 바꾼 뒤 다시 시도해 주세요.</Alert>}
     <section className="push-option">
       <FormControlLabel control={<Switch checked={scope.favorites !== false} disabled={busy} onChange={event => change({ ...scope, favorites: event.target.checked })} />}
-        label={<span><strong>관심 공고 전날 일정</strong><small>{loggedIn ? '계정에 저장한 관심 공고 기준' : '이 브라우저에 저장한 관심 공고 기준'} · 접수·발표·계약일 전날</small></span>} />
+        label={<span><strong>관심 공고 일정·결과</strong><small>{loggedIn ? '계정에 저장한 관심 공고 기준' : '이 브라우저에 저장한 관심 공고 기준'} · 접수·발표·계약일 전날, 경쟁률·당첨가점 공개 즉시</small></span>} />
     </section>
     <section className="push-option">
       <FormControlLabel control={<Switch checked={scope.areas.includes(WEEKLY_BRIEF)} disabled={busy || (!scope.areas.includes(WEEKLY_BRIEF) && scope.areas.length >= 6)} onChange={event => change({ ...scope, areas: withWeekly(scope.areas, event.target.checked) })} />}

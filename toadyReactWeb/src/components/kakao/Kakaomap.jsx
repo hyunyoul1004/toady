@@ -150,7 +150,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     queryFn:()=>apiClient.get('/api/v1/research/nearby',{lat:Number(announced.latitude.toFixed(5)),lng:Number(announced.longitude.toFixed(5))})});
   // 거리 재기·반경의 기준: 지금 지도 가운데 있는 확정 위치(공고 위치 또는 직접 검색한 주소). 검색 후보 위치는 기준으로 쓰지 않는다.
   const origin=precise?{lat:result.latitude,lng:result.longitude}:null;
-  const tools=useMapTools({mapRef,kakaoRef,containerRef:container,mapReady,origin});
+  const tools=useMapTools({mapRef,kakaoRef,containerRef:container,mapReady,origin,resetKey:detail.subscriptSeq || ''});
   // 기능 사용 측정: 거리를 실제로 잰 때(두 지점째)와 반경을 다 그린 때만 센다(켰다 끈 것은 세지 않음).
   const measured=tools.points.length>=2,radiusDone=Boolean(tools.circle && !tools.circle.live);
   useEffect(()=>{if(measured)trackAction('map_tool','tool/map-measure');},[measured]);
@@ -239,9 +239,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     const strong=document.createElement('b');
     const small=document.createElement('small');
     if(supply){strong.textContent=priceMap.filters.mode==='pyeong'?shortPrice(supply.pyeong):shortPrice(supply.amount);small.textContent=priceMap.filters.mode==='pyeong'?(priceMap.filters.unit==='pyeong'?'평당':'3.3㎡당'):saleAreaText(supply,priceMap.filters.unit);}
-    else {strong.textContent='이 공고';small.textContent='분양가 미제공';}
+    // 분양가가 없으면 위 꼬리표('이 공고')와 겹치지 않게 큰 글씨 자리에 단지 이름(길면 줄임)을 둔다.
+    else {const name=String(detail.houseNm || '').trim();strong.textContent=name?(name.length>10?`${name.slice(0,10)}…`:name):'분양 단지';small.textContent='분양가 미제공';}
     button.append(tag,strong,small);
-    button.setAttribute('aria-label',`이 공고 ${detail.houseNm || ''} 분양 ${strong.textContent} ${small.textContent}`);
+    button.setAttribute('aria-label',supply?`이 공고 ${detail.houseNm || ''} 분양 ${strong.textContent} ${small.textContent}`:`이 공고 ${detail.houseNm || ''} · 분양가 미제공`);
     button.addEventListener('click',event=>{event.stopPropagation();if(tools.measuringRef.current)addPointRef.current({lat:announced.latitude,lng:announced.longitude});else selectRef.current(null);});
     saleRef.current=button;
     const overlay=new kakao.maps.CustomOverlay({map,position:new kakao.maps.LatLng(announced.latitude,announced.longitude),content:button,yAnchor:1,clickable:true,zIndex:5});

@@ -29,7 +29,8 @@ import com.toady.web.core.security.RequestLimitFilter;
 
 /**
  * 아파트 공고의 "가장 인기 있는 주택형 1순위 경쟁률" 예상 투표. 접수 마감일까지만 받고,
- * 청약홈 경쟁률이 공개되면 실제 구간을 함께 돌려줘 발표·결과 시점에 다시 볼 이유를 만든다.
+ * 청약홈 경쟁률이 공개되면 투표를 닫고, 1순위 모든 지역(해당·기타)이 반영된 뒤 실제 구간을 돌려줘 발표·결과 시점에 다시 볼 이유를 만든다.
+ * 운영자가 숨긴 공고는 없는 공고처럼 404로 답한다.
  * 방문자 식별자는 익명 측정과 같은 브라우저 무작위 값이며 회원 정보와 연결하지 않는다.
  */
 // @RestController: JSON 응답 컨트롤러. 테이블 TB_RATE_POLL에 방문자별 선택 한 행을 저장한다.
@@ -44,6 +45,12 @@ public class RatePoll {
     @Autowired
     public RatePoll(JdbcTemplate jdbc, PlannerSummary summaries) { this(jdbc, summaries, Clock.system(ZoneId.of("Asia/Seoul"))); }
     RatePoll(JdbcTemplate jdbc, PlannerSummary summaries, Clock clock) { this.jdbc = jdbc; this.summaries = summaries; this.clock = clock; }
+
+    /** 운영자가 숨긴 공고. 없는 공고처럼 404로 답한다. 빈이 없으면(단위 테스트) 아무것도 숨기지 않는다. */
+    private HiddenAnnouncements hidden;
+    // @Autowired(required=false) 메서드 주입: 생성자를 늘리지 않고 숨김 확인 빈이 있을 때만 넣는다.
+    @Autowired(required = false)
+    void useHidden(HiddenAnnouncements hidden) { this.hidden = hidden; }
 
     static final int VOTERS_PER_IP = 20;
     // IP+공고별로 하루 동안 본 방문자 ID 묶음(메모리). 한 IP에서 새 ID로 표를 부풀리는 것을 막는 용도다.
@@ -86,6 +93,7 @@ public class RatePoll {
 
     private LocalDate today() { return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))); }
     private Optional<PlannerSummary.Summary> summary(String house, String notice) {
+        if (hidden != null && hidden.hidden("apt", house, notice)) return Optional.empty();
         try { return Optional.of(summaries.get("apt", house, notice)); } catch (EntityNotFoundException | IllegalArgumentException missing) { return Optional.empty(); }
     }
 
@@ -122,15 +130,47 @@ public class RatePoll {
         return ResponseEntity.ok(view(found.get(), house, notice, vote.visitorId()));
     }
 
+    private static final java.util.regex.Pattern RANK_ONE = java.util.regex.Pattern.compile("1순위 \\(([^)]*)\\)");
+    /**
+     * 1순위 경쟁률이 모든 접수 지역(해당·경기·기타)까지 반영됐는지. 해당지역 결과만 먼저 공개된 날 정답을 확정하면
+     * 다음 날 기타지역 접수로 최고 경쟁률이 바뀔 수 있어서다. 아래 중 하나면 확정한다.
+     * ① 마지막 1순위 접수일(없으면 접수 마감일)의 다음 날 이후 ② 어느 주택형이든 1순위 접수 지역 수만큼 거주 구분 행이 모두 들어옴.
+     * 1순위 지역별 접수일이 없는 공고(옛 자료)는 들어온 결과를 그대로 확정한다.
+     */
+    static boolean rankOneSettled(PlannerSummary.Summary s, Collection<Set<String>> regionsByModel, LocalDate today) {
+        LocalDate lastRankOne = null;
+        Set<String> areas = new LinkedHashSet<>();
+        for (var event : s.events()) {
+            var matcher = RANK_ONE.matcher(event.label() == null ? "" : event.label());
+            if (!matcher.find() || event.date() == null) continue;
+            for (String area : matcher.group(1).replace("지역", "").split("·")) if (!area.isBlank()) areas.add(area.trim());
+            if (lastRankOne == null || event.date().isAfter(lastRankOne)) lastRankOne = event.date();
+        }
+        if (areas.isEmpty()) return true;
+        LocalDate last = lastRankOne != null ? lastRankOne : s.endDate();
+        if (last != null && today.isAfter(last)) return true;
+        return regionsByModel.stream().anyMatch(regions -> regions.size() >= areas.size());
+    }
+
     /** 화면에 줄 투표 상태: 열림 여부, 마감일, 구간별 표 수, 내 선택, 실제 경쟁률과 그 구간. */
     Map<String, Object> view(PlannerSummary.Summary s, String house, String notice, UUID visitorId) {
         String id = "apt/" + house + "/" + notice;
-        List<String> firstRank = jdbc.queryForList("SELECT CMPET_RATE FROM TB_APT_LTTOT_PBLANC_CMPET WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND SUBSCRPT_RANK_CODE='1'", String.class, house, notice);
-        Double actual = topRate(firstRank);
+        List<String> firstRank = new ArrayList<>();
+        Map<String, Set<String>> regionsByModel = new HashMap<>();
+        jdbc.query("SELECT MODEL_NO,RESIDE_SECD,CMPET_RATE FROM TB_APT_LTTOT_PBLANC_CMPET WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND SUBSCRPT_RANK_CODE='1'",
+            (RowCallbackHandler) r -> {
+                firstRank.add(r.getString(3));
+                regionsByModel.computeIfAbsent(String.valueOf(r.getString(1)), key -> new HashSet<>()).add(String.valueOf(r.getString(2)));
+            }, house, notice);
+        Double top = topRate(firstRank);
         // 모든 주택형이 미달(△)로만 공개되면 숫자 경쟁률이 없어도 결과가 나온 것이다. 이때 정답은 '미달'(0번 선택지).
-        boolean allShort = actual == null && firstRank.stream().anyMatch(RatePoll::shortage);
+        boolean allShort = top == null && firstRank.stream().anyMatch(RatePoll::shortage);
+        boolean published = top != null || allShort;
         LocalDate last = s.endDate() != null ? s.endDate() : s.startDate();
-        boolean open = actual == null && !allShort && last != null && !today().isAfter(last);
+        // 결과가 하나라도 나오면(해당지역만이라도) 투표는 닫는다. 정답은 1순위 모든 지역이 반영된 뒤에만 확정한다.
+        boolean open = !published && last != null && !today().isAfter(last);
+        boolean settled = published && rankOneSettled(s, regionsByModel.values(), today());
+        Double actual = settled ? top : null;
         long[] counts = new long[LABELS.size()];
         jdbc.query("SELECT CHOICE,COUNT(*) FROM TB_RATE_POLL WHERE ANNOUNCEMENT_ID=? GROUP BY CHOICE", (RowCallbackHandler) r -> {
             int choice = r.getInt(1); if (choice >= 0 && choice < counts.length) counts[choice] = r.getLong(2);
@@ -144,7 +184,9 @@ public class RatePoll {
         body.put("total", Arrays.stream(counts).sum());
         body.put("myChoice", mine);
         body.put("actualRate", actual);
-        body.put("actualChoice", actual != null ? Integer.valueOf(bucket(actual)) : allShort ? Integer.valueOf(0) : null);
+        body.put("actualChoice", !settled ? null : actual != null ? Integer.valueOf(bucket(actual)) : Integer.valueOf(0));
+        // 해당지역 결과만 나와 정답을 미룬 상태(화면은 '집계 중'으로 보여 줄 수 있다).
+        body.put("settling", published && !settled);
         return body;
     }
 }

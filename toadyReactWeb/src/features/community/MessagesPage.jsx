@@ -24,6 +24,7 @@ import { detailLinkState } from '@/components/layout/navItems';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
+import { draftKey, readDraft, writeDraft } from '@/utils/draftStore';
 import { COMMUNITY_KEY, cardValue, communityApi, mergeMessages, messageTime, reportValue, run, uniqueThreads } from './communityApi';
 import '@/features/account/account.css';
 import './community.css';
@@ -37,9 +38,14 @@ const detailPath = contextId => `/announcements/${contextId}?tabType=comment`;
  * 쪽지 입력. 보낼 수 없으면 이유를 대신 보여 준다.
  * onSend는 { ok, message }를 돌려주는 함수다. 성공하면 입력을 비우고, 실패하면 문구를 보여 주고 글은 남긴다.
  * Ctrl(Mac은 Cmd)+Enter로도 보낼 수 있다.
+ * draftTarget: 초안을 묶을 대상(대화 번호 또는 받는 회원). 쓰는 동안 이 탭에 초안을 둬서,
+ * 로그인이 만료돼 이 화면이 로그인 안내로 바뀌었다가 다시 로그인해도 쓰던 쪽지가 남아 있게 한다.
  */
-function Composer({ canSend, reason, onSend, placeholder, autoFocus }) {
-  const [text, setText] = useState('');
+function Composer({ canSend, reason, onSend, placeholder, autoFocus, draftTarget }) {
+  const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
+  const storageKey = draftKey('dm', userSeq, draftTarget);
+  const [text, setTextState] = useState(() => readDraft(storageKey));
+  const setText = value => { setTextState(value); writeDraft(storageKey, value); };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   if (!canSend) return <Box className="dm-composer is-closed" role="note">{reason || '지금은 쪽지를 보낼 수 없어요.'}</Box>;
@@ -90,6 +96,8 @@ function ThreadView({ threadSeq, onBack }) {
   const [hasOlder, setHasOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [leaveError, setLeaveError] = useState('');
+  // 나가기 요청 중에는 버튼을 막아 연타로 DELETE가 두 번 가지 않게 한다.
+  const [leaveBusy, setLeaveBusy] = useState(false);
   // 화면에 그릴 필요 없는 표시값은 useRef로 둔다. 바꿔도 다시 그리지 않는다.
   // leaving: 나가기 처리 중, listRef: 쪽지 목록 DOM, stick: 맨 아래에 붙어 있는지(새 쪽지가 오면 따라 내려갈지).
   const leaving = useRef(false);
@@ -151,7 +159,10 @@ function ThreadView({ threadSeq, onBack }) {
     return result;
   };
   const leave = async () => {
+    if (leaveBusy) return;
+    setLeaveBusy(true);
     const result = await run(() => communityApi.leave(threadSeq));
+    setLeaveBusy(false);
     if (result.ok) {
       queryClient.invalidateQueries({ queryKey: COMMUNITY_KEY });
       leaving.current = true;
@@ -195,11 +206,11 @@ function ThreadView({ threadSeq, onBack }) {
         </div>;
       })}
     </Box>
-    <Composer canSend={data.canSend} reason={data.message} onSend={send} placeholder={`${data.other.nickname}님에게 쪽지 보내기`} />
-    <Dialog open={Boolean(leaveOpen)} onClose={() => setLeaveOpen(null)} maxWidth="xs" fullWidth>
+    <Composer canSend={data.canSend} reason={data.message} onSend={send} placeholder={`${data.other.nickname}님에게 쪽지 보내기`} draftTarget={`thread-${threadSeq}`} />
+    <Dialog open={Boolean(leaveOpen)} onClose={() => { if (!leaveBusy) setLeaveOpen(null); }} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ fontWeight: 800 }}>이 대화에서 나갈까요?</DialogTitle>
       <DialogContent sx={{ color: '#475569', fontSize: '0.9rem' }}>지금까지의 쪽지가 내 쪽지함에서 사라져요. 상대 쪽지함에는 남아 있고, 상대가 새 쪽지를 보내면 그때부터 다시 보여요.</DialogContent>
-      <DialogActions><Button onClick={() => setLeaveOpen(null)}>취소</Button><Button color="error" onClick={leave}>나가기</Button></DialogActions>
+      <DialogActions><Button disabled={leaveBusy} onClick={() => setLeaveOpen(null)}>취소</Button><Button color="error" disabled={leaveBusy} onClick={leave}>{leaveBusy ? '나가는 중…' : '나가기'}</Button></DialogActions>
     </Dialog>
   </Box>;
 }
@@ -236,7 +247,7 @@ function ComposeView({ toUserSeq, contextId, onBack }) {
         <li>청약통장 매매·분양권 전매 알선은 불법이에요. 이런 쪽지는 신고해 주세요.</li>
       </ul>
     </Box>
-    <Composer canSend={Boolean(data.dm?.canSend)} reason={data.dm?.message} onSend={send} placeholder="예) 운정 ○○ 단지 이야기 보고 연락드려요. 혹시 …" autoFocus />
+    <Composer canSend={Boolean(data.dm?.canSend)} reason={data.dm?.message} onSend={send} placeholder="예) 운정 ○○ 단지 이야기 보고 연락드려요. 혹시 …" autoFocus draftTarget={`to-${toUserSeq}`} />
   </Box>;
 }
 

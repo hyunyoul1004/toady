@@ -27,6 +27,8 @@ const FaqPage = lazy(() => import('@/features/faq/FaqPage'));
 const ThisWeekPage = lazy(() => import('@/features/explore/ThisWeekPage'));
 const RegionsPage = lazy(() => import('@/features/explore/RegionsPage'));
 const LegalPage = lazy(() => import('@/features/legal/LegalPage'));
+// 운영자용 방문자 ID 확인 화면. 메뉴에 없고 주소로만 들어온다(색인·조회 기록 제외).
+const MyVisitorIdPage = lazy(() => import('@/features/analytics/MyVisitorIdPage'));
 const SignUpCertify = lazy(() => import('@/views/signup/SignUpCertify').then(module => ({ default: module.SignUpCertify })));
 
 /** 화면 파일을 내려받는 동안: 레이아웃(메뉴·하단 탭)은 그대로 두고 본문 자리에만 작은 표시를 둔다. */
@@ -139,6 +141,7 @@ export const AppRoutes = () => {
         <Route path="privacy" element={page(<LegalPage kind="privacy" />)} />
         <Route path="terms" element={page(<LegalPage kind="terms" />)} />
         <Route path="certify" element={page(<SignUpCertify />)} />
+        <Route path="my-visitor-id" element={page(<MyVisitorIdPage />)} />
       </Route>
 
       {/* 로그인은 메인 위 팝업으로 연다(회원가입·비밀번호 찾기·로그인 후 처리가 팝업에 연결되어 있음) */}

@@ -13,7 +13,8 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
-import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, specialApplicants, summarizeRates } from './rateFormat';
+import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, secondRankPending, secondRankPossible, secondRankWindow, specialApplicants, summarizeRates } from './rateFormat';
+import { koreaToday } from '@/features/planner/plannerUtils';
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import Button from '@mui/material/Button';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -151,6 +152,13 @@ export function SubscriptRate({ subscriptDetail }) {
   // 요약 띠·APT 외 표는 공고 유형과 무관한 공통 계산(rateFormat.js)을 쓴다.
   const rateSummary = useMemo(() => summarizeRates(type, competitionList), [type, competitionList]);
   const nonAptTable = useMemo(() => (isApt ? null : normalizeRateRows(type, competitionList)), [isApt, type, competitionList]);
+  // 이미지 저장용 표. 렌더마다 다시 만들지 않게 자료가 바뀔 때만 계산한다.
+  const imageSections = useMemo(() => competitionImageSections(type, competitionList, scoresList, specialList), [type, competitionList, scoresList, specialList]);
+  // 2순위 결과 지연 안내(APT). 청약홈 공공데이터가 2순위 결과를 하루쯤 늦게 준다.
+  const today = koreaToday();
+  const showSecondRankDelay = useMemo(() => isApt && secondRankPending(subscriptDetail, competitionList, today), [isApt, subscriptDetail, competitionList, today]);
+  // 2순위 접수일이 지났는데 자료가 아직 없을 수 있는 기간이면 결과 칸에 '접수 종료'를 단정하지 않는다(rateFormat.resultLabel).
+  const secondRankOpenWindow = isApt && secondRankWindow(subscriptDetail, today);
 
   /**
    * APT 경쟁률 및 당첨가점 통합 데이터 매핑
@@ -208,8 +216,9 @@ export function SubscriptRate({ subscriptDetail }) {
       );
 
       // 3) 청약 결과 문구 산출
-      // 접수 건수가 공급 세대수를 넘어도 예비입주자 몫이 모자라 2순위가 열릴 수 있어, 접수 자료로만 판단한다(rateFormat.resultLabel).
-      const resultText = g.subscrptResultNm || resultLabel(g.itemsByRank);
+      // 주택형 단위로 1순위 전체 접수 건수와 공급 세대수를 비교하고, 2순위 접수가 있으면 그쪽을 따른다(rateFormat.resultLabel).
+      // 화면 표와 모바일 카드가 이 resultText를 함께 쓴다.
+      const resultText = g.subscrptResultNm || resultLabel(g.itemsByRank, g.suplyHshldco, { secondRankOpen: secondRankOpenWindow && !g.itemsByRank['2순위'] && secondRankPossible(g.itemsByRank['1순위'], g.suplyHshldco) });
 
       return {
         ...g,
@@ -219,7 +228,7 @@ export function SubscriptRate({ subscriptDetail }) {
         resultText
       };
     });
-  }, [competitionList, scoresList]);
+  }, [competitionList, scoresList, secondRankOpenWindow]);
 
   // APT 청약홈 표준 테이블 렌더링
   // 로딩 → 오류 → 빈 자료 → (휴대폰이면 카드) → 표 순으로 먼저 걸리는 쪽을 돌려준다.
@@ -504,12 +513,17 @@ export function SubscriptRate({ subscriptDetail }) {
               />
             )}
           </Box>
-          <ImageExportButton detail={subscriptDetail} kind="rate" sections={competitionImageSections(type,competitionList,scoresList,specialList)} disabled={isCompLoading || isCompError || (isApt && (isScoresLoading || isScoresError || isSpecialLoading || isSpecialError))} label="경쟁률·가점 이미지 저장"/>
+          <ImageExportButton detail={subscriptDetail} kind="rate" sections={imageSections} disabled={isCompLoading || isCompError || (isApt && (isScoresLoading || isScoresError || isSpecialLoading || isSpecialError))} label="경쟁률·가점 이미지 저장"/>
         </Box>
 
         {/* 표 위 요약 띠(최고 경쟁률·미달 주택형·공급 대비 접수) */}
         {!isCompLoading && !isCompError && <RateSummary summary={rateSummary} />}
         {isApt ? renderAptIntegratedTable() : renderNonAptTable()}
+        {showSecondRankDelay && !isCompLoading && !isCompError && (
+          <Typography component="p" role="note" sx={{ mt: 0.8, fontSize: '0.75rem', color: '#64748b' }}>
+            2순위 결과는 청약홈 공개 후 다음 날쯤 반영됩니다.
+          </Typography>
+        )}
       </Box>
 
       {/* 2. APT 특별공급 신청현황 (APT인 경우만 표시) */}

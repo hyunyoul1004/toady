@@ -95,7 +95,8 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 	/**
 	 * 최근 days일 방문자의 흐름과 신규 방문자의 재방문.
 	 * steps: 방문 → 공고 상세 → 관심 저장 → 알림 켬(이메일·푸시). 같은 방문자를 한 번만 센다.
-	 * 재방문: 첫 방문(그 전 28일 동안 방문 없음)이 7~27일 전인 신규 방문자 중, 첫 방문 7~13일 뒤에 다시 온 비율.
+	 * 재방문: 첫 방문(그 전 28일 동안 방문 없음)이 13~27일 전인 신규 방문자 중, 첫 방문 7~13일 뒤에 다시 온 비율.
+	 *   판정 기간(첫 방문 뒤 RETURN_WINDOW_END일까지)이 오늘까지 다 지난 방문자만 센다. 기간이 남은 방문자를 넣으면 아직 올 수 있는 사람까지 '안 옴'으로 세어 낮게 나온다.
 	 * 알림 비교: 첫 방문 7일 안에 알림을 켠 신규 방문자와 켜지 않은 신규 방문자의 재방문율.
 	 *   (재방문하면서 켠 경우를 빼야 알림 쪽이 부풀지 않는다. 관심이 많은 사람이 알림을 켤 수도 있어 인과는 아니다.)
 	 */
@@ -121,9 +122,10 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		fun pct(n: Int) = if (total == 0L) 0L else n * 100L / total
 		val steps = listOf(Step("방문", total, if (total == 0L) 0 else 100), Step("공고 상세", viewed.size.toLong(), pct(viewed.size)),
 			Step("관심 저장", saved.size.toLong(), pct(saved.size)), Step("알림 켬", alerted.size.toLong(), pct(alerted.size)))
-		// 신규 방문자: 읽은 범위의 첫 방문이 [start, today-7] 안. 그 전 28일은 읽은 범위 안이라 방문이 없었다는 뜻이다.
-		val cohort = visits.filterValues { val first = it.first(); !first.isBefore(start) && !first.isAfter(today.minusDays(7)) }
-		fun returned(dates: NavigableSet<LocalDate>): Boolean { val first = dates.first(); val again = dates.ceiling(first.plusDays(7)); return again != null && !again.isAfter(first.plusDays(13)) }
+		// 신규 방문자: 읽은 범위의 첫 방문이 [start, today-13] 안. 그 전 28일은 읽은 범위 안이라 방문이 없었다는 뜻이다.
+		// 상한을 today-13으로 둬 판정 기간(첫 방문 7~13일 뒤)이 끝난 방문자만 분모에 넣는다.
+		val cohort = visits.filterValues { val first = it.first(); !first.isBefore(start) && !first.isAfter(today.minusDays(RETURN_WINDOW_END)) }
+		fun returned(dates: NavigableSet<LocalDate>): Boolean { val first = dates.first(); val again = dates.ceiling(first.plusDays(RETURN_WINDOW_START)); return again != null && !again.isAfter(first.plusDays(RETURN_WINDOW_END)) }
 		val alertOn = HashMap<String, LocalDate>()
 		jdbc.query("SELECT VISITOR_ID,MIN(VISIT_DATE) FROM TB_USAGE_EVENT WHERE VISIT_DATE BETWEEN ? AND ? AND ACTION_NAME IN ('alert_enable','push_enable')$ex GROUP BY VISITOR_ID",
 			RowCallbackHandler { r -> alertOn[r.getString(1)] = r.getDate(2).toLocalDate() }, start, today)
@@ -322,6 +324,9 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 	}
 
 	companion object {
+		/** 신규 방문자 재방문 판정 기간: 첫 방문 RETURN_WINDOW_START~RETURN_WINDOW_END일 뒤에 다시 오면 재방문. */
+		const val RETURN_WINDOW_START = 7L
+		const val RETURN_WINDOW_END = 13L
 		const val WEEKS = 8
 		/** 재방문 판정에 보는 이전 기간(주). TB_PAGE_VIEW 보관 90일 안에서 모든 주가 같은 기간을 보게 한다. */
 		const val RETURN_WEEKS = 4

@@ -1,19 +1,25 @@
 # robots.txt for TOADY (https://www.toady.co.kr)
+# /my-visitor-id: 운영자용 방문자 ID 화면(색인 제외). 이름을 적은 로봇 그룹은 * 그룹을 대신하므로 그룹마다 적는다.
 User-agent: *
 Allow: /
+Disallow: /my-visitor-id
 
 # 검색엔진 크롤러 명시적 허용
 User-agent: Googlebot
 Allow: /
+Disallow: /my-visitor-id
 
 User-agent: Yeti
 Allow: /
+Disallow: /my-visitor-id
 
 User-agent: Daumoa
 Allow: /
+Disallow: /my-visitor-id
 
 User-agent: Bingbot
 Allow: /
+Disallow: /my-visitor-id
 
 # 사이트맵 경로
 Sitemap: https://www.toady.co.kr/sitemap.xml

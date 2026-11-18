@@ -30,7 +30,9 @@
                 <div><dt>이메일 알림을 켠 관심 공고</dt><dd th:text="${r.alertsOn != null ? r.alertsOn + '개' : '—'}"></dd></div>
                 <div><dt>24시간 한도 · 인증 예비분</dt><dd th:text="${r.limit + '통 · ' + r.reserve + '통'}"></dd></div>
             </dl>
-            <p class="muted">회원은 알림 메일의 '이 메일 그만 받기'로 로그인 없이 수신을 끌 수 있습니다. 한도 값은 API와 같은 환경변수(GMAIL_ROLLING_LIMIT 등)를 읽습니다.</p>
+            <p class="muted">회원은 알림 메일의 '이 메일 그만 받기'로 로그인 없이 수신을 끌 수 있습니다.
+                <span th:if="${r.fromSettings}">한도 값은 <a th:href="@{/admin/settings}">서비스 설정</a>에서 바꾼 값을 따릅니다(비운 항목은 환경변수 기본값).</span>
+                <span th:unless="${r.fromSettings}">한도 값은 API와 같은 환경변수(GMAIL_ROLLING_LIMIT 등) 기본값이며, <a th:href="@{/admin/settings}">서비스 설정</a>에서 바꿀 수 있습니다.</span></p>
         </section>
     </div>
     <footer>TOADY · 관리자</footer>

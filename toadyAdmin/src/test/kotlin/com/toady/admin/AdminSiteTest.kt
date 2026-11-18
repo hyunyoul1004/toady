@@ -37,6 +37,7 @@ class AdminSiteTest {
 	@Autowired lateinit var jdbc: JdbcTemplate
 	@Autowired lateinit var metrics: MetricsService
 	@Autowired lateinit var comments: com.toady.admin.comments.CommentService
+	@Autowired lateinit var insights: com.toady.admin.insights.InsightService
 	private val admin = user("operator").roles("ADMIN")
 
 	@BeforeEach fun setup() {
@@ -278,8 +279,22 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/exclusions").param("visitorId", me).param("label", "맥북 크롬").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(1L, metrics.today().visitors, "등록한 브라우저는 과거 기록까지 빠진다")
 		mvc.perform(post("/admin/exclusions").param("visitorId", "not-a-uuid").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/exclusions").param("visitorId", "11111111-1111-4111-8111-11111111111").with(admin).with(csrf())).andExpect(flash().attributeExists("error"))
 		mvc.perform(post("/admin/exclusions/remove").param("visitorId", me).with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals(2L, metrics.today().visitors)
+	}
+
+	@Test fun pastedVisitorIdFromTheSiteIsTrimmedAndLowercased() {
+		// 관리자 도메인은 사이트(www)의 저장소를 못 읽으므로, 사이트 /my-visitor-id에서 복사한 값을 붙여 넣는다(앞뒤 공백·대문자 섞임).
+		val html = mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(html.contains("www.toady.co.kr/my-visitor-id에서 복사해 붙여 넣으세요") && html.contains("name=\"visitorId\" id=\"this-visitor\""), "붙여 넣기 입력칸과 안내")
+		assertTrue(html.contains("https://www.toady.co.kr/my-visitor-id"), "사이트 방문자 ID 화면 링크")
+		mvc.perform(post("/admin/exclusions").param("visitorId", "  AAAAAAAA-1111-4111-8111-BBBBBBBBBBBB \n").param("label", "휴대폰 사파리").with(admin).with(csrf()))
+			.andExpect(flash().attributeExists("notice"))
+		assertEquals("aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb", jdbc.queryForObject("SELECT VISITOR_ID FROM TB_ANALYTICS_EXCLUDED_VISITOR", String::class.java))
+		assertEquals("aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb", jdbc.queryForObject("SELECT TARGET_ID FROM TB_ADMIN_AUDIT WHERE ACTION='VISITOR_EXCLUDE'", String::class.java))
+		mvc.perform(post("/admin/exclusions").param("visitorId", "aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb").with(admin).with(csrf()))
+			.andExpect(flash().attribute("notice", "이미 제외된 브라우저입니다."))
 	}
 	@Test fun funnelCountsEachVisitorOnceAndComparesNewVisitorsWhoTurnedOnAlertsEarly() {
 		val today = Kst.today()
@@ -288,20 +303,23 @@ class AdminSiteTest {
 		// v2: 20일 전 첫 방문, 다시 오지 않음 → 비교 그룹·재방문 아님
 		// v3: 20일 전 첫 방문, 12일 뒤(8일 전) 다시 와서 그때 알림 켬 → 알림 그룹이 아님(재방문하면서 켬)
 		// v4: 50일 전에도 왔던 기존 방문자 → 신규가 아님 / v5: 오늘 첫 방문 → 아직 판단 못 함
+		// v6: 10일 전 첫 방문, 아직 다시 오지 않음 → 판정 기간(7~13일 뒤)이 3일 남아 분모에서 뺀다(넣으면 재방문율이 낮게 나온다)
+		// v7: 13일 전 첫 방문 → 판정 기간이 오늘 끝나 분모에 넣는다
 		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('f1','v1','s1','/',NULL,?,CURRENT_TIMESTAMP),('f2','v1','s2','/',NULL,?,CURRENT_TIMESTAMP),('f3','v2','s3','/',NULL,?,CURRENT_TIMESTAMP)," +
-			"('f4','v3','s4','/',NULL,?,CURRENT_TIMESTAMP),('f5','v3','s5','/',NULL,?,CURRENT_TIMESTAMP),('f6','v4','s6','/',NULL,?,CURRENT_TIMESTAMP),('f7','v4','s7','/',NULL,?,CURRENT_TIMESTAMP),('f8','v5','s8','/',NULL,?,CURRENT_TIMESTAMP)",
-			d(20), d(10), d(20), d(20), d(8), d(50), d(20), today)
+			"('f4','v3','s4','/',NULL,?,CURRENT_TIMESTAMP),('f5','v3','s5','/',NULL,?,CURRENT_TIMESTAMP),('f6','v4','s6','/',NULL,?,CURRENT_TIMESTAMP),('f7','v4','s7','/',NULL,?,CURRENT_TIMESTAMP),('f8','v5','s8','/',NULL,?,CURRENT_TIMESTAMP)," +
+			"('f9','v6','s9','/',NULL,?,CURRENT_TIMESTAMP),('fa','v7','sa','/',NULL,?,CURRENT_TIMESTAMP)",
+			d(20), d(10), d(20), d(20), d(8), d(50), d(20), today, d(10), d(13))
 		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('g1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP),('g2','v1','favorite_add','apt/H1/P1',?,CURRENT_TIMESTAMP),('g3','v1','push_enable','tool/push',?,CURRENT_TIMESTAMP)," +
 			"('g4','v3','alert_enable','apt/H1/P1',?,CURRENT_TIMESTAMP),('g5','v5','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)",
 			d(20), d(20), d(20), d(8), today)
 		val funnel = metrics.funnel(28, today)
-		assertEquals(listOf(5L, 2L, 1L, 2L), funnel.steps.map { it.visitors }, "최근 28일 방문 5 → 상세 2 → 저장 1 → 알림 2")
-		assertEquals(3L, funnel.returnBase, "신규는 v1·v2·v3 (v4는 기존, v5는 아직)")
-		assertEquals(66L, funnel.returnRate, "v1(10일 뒤)·v3(12일 뒤)만 7~13일 안에 다시 왔다")
+		assertEquals(listOf(7L, 2L, 1L, 2L), funnel.steps.map { it.visitors }, "최근 28일 방문 7 → 상세 2 → 저장 1 → 알림 2")
+		assertEquals(4L, funnel.returnBase, "신규는 v1·v2·v3·v7 (v4는 기존, v5·v6은 판정 기간이 남음)")
+		assertEquals(50L, funnel.returnRate, "v1(10일 뒤)·v3(12일 뒤)만 7~13일 안에 다시 왔다")
 		assertEquals(1L, funnel.alertBase, "첫 주에 알림 켠 신규는 v1뿐(v3는 재방문하면서 켬)")
 		assertEquals(100L, funnel.alertReturnRate)
-		assertEquals(2L, funnel.otherBase)
-		assertEquals(50L, funnel.otherReturnRate)
+		assertEquals(3L, funnel.otherBase)
+		assertEquals(33L, funnel.otherReturnRate)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("방문 → 알림 흐름")))
 	}
 	@Test fun retentionMetricsUseThirtyDayAndFavoriteCycleWindows() {
@@ -354,12 +372,13 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/members/3/sanctions").with(admin).with(csrf()).param("kind", "WARNING").param("reason", "ETC")).andExpect(flash().attributeExists("error"))
 	}
 
-	@Test fun nicknameResetUsesAFreeDefaultNameAndKeepsTheOldOneInTheLog() {
+	@Test fun nicknameResetUsesAFreeDefaultNameWithoutCopyingTheOldOneToTheLog() {
 		jdbc.update("INSERT INTO TB_USER (USER_SEQ,USER_EMAIL,USER_PASSWORD,USER_NIC_NAME,EMAIL_CERTIFY_YN) VALUES (4,'d@example.test','x','회원2','Y')")
 		mvc.perform(post("/admin/members/2/sanctions").with(admin).with(csrf()).param("kind", "NICKNAME_RESET").param("reason", "NICKNAME"))
 			.andExpect(flash().attributeExists("notice"))
 		assertEquals("회원2a", jdbc.queryForObject("SELECT USER_NIC_NAME FROM TB_USER WHERE USER_SEQ=2", String::class.java), "이미 있는 닉네임이면 글자를 붙인다")
-		assertEquals("나래_10%", jdbc.queryForObject("SELECT BEFORE_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='NICKNAME_RESET'", String::class.java))
+		assertEquals("이전 닉네임(6자)", jdbc.queryForObject("SELECT BEFORE_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='NICKNAME_RESET'", String::class.java), "원문 대신 길이만 남긴다")
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_ADMIN_AUDIT WHERE BEFORE_VALUE LIKE '%나래%' OR AFTER_VALUE LIKE '%나래%' OR NOTE LIKE '%나래%'"), "초기화 전 닉네임은 작업 이력 어디에도 없다")
 	}
 
 	@Test fun moderationRulesCanBeAddedTestedPausedAndDeleted() {
@@ -403,6 +422,38 @@ class AdminSiteTest {
 		jdbc.update("INSERT INTO TB_REMINDER_DELIVERY VALUES (1, ?, 'SENT', ?)", com.toady.admin.Kst.today(), now)
 		val mail = mvc.perform(get("/admin/mail").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
 		assertTrue(mail.contains("2 / 400"), "24시간 안의 발송만 센다")
+		// 서비스 설정에서 바꾼 한도·예비분을 메일 현황에도 반영한다.
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.rollingLimit").param("value", "300")).andExpect(flash().attributeExists("notice"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.authReserve").param("value", "50")).andExpect(flash().attributeExists("notice"))
+		val changed = mvc.perform(get("/admin/mail").with(admin)).andExpect(status().isOk).andReturn().response.contentAsString
+		assertTrue(changed.contains("2 / 300") && changed.contains("300통 · 50통") && changed.contains("상한 150"), "설정값과 그에 따른 가입 상한(한도의 절반)")
+		assertTrue(changed.contains("서비스 설정</a>에서 바꾼 값을 따릅니다"))
+	}
+
+	@Test fun mailSettingsRejectAReserveThatIsNotBelowTheLimit() {
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.rollingLimit").param("value", "120")).andExpect(flash().attributeExists("notice"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.authReserve").param("value", "120"))
+			.andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("인증 메일 예비분(120통)")))
+		assertEquals(1L, count("SELECT COUNT(*) FROM TB_APP_SETTING"), "거부한 값은 저장하지 않는다")
+		// 한도를 줄여 기존 예비분(환경변수 기본 100)보다 작거나 같아지는 것도 막는다.
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.rollingLimit").param("value", "100")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.signupLimit").param("value", "130")).andExpect(flash().attributeExists("error"))
+		mvc.perform(post("/admin/settings").with(admin).with(csrf()).param("key", "mail.authReserve").param("value", "60")).andExpect(flash().attributeExists("notice"))
+		assertEquals("60", jdbc.queryForObject("SELECT SETTING_VALUE FROM TB_APP_SETTING WHERE SETTING_KEY='mail.authReserve'", String::class.java))
+	}
+
+	@Test fun resettingASettingWithoutDeletePermissionReturnsAMessageInsteadOf500() {
+		jdbc.update("INSERT INTO TB_APP_SETTING VALUES ('dm.dailyMessages','30','operator',CURRENT_TIMESTAMP)")
+		// 관리자 DB 계정에 DELETE 권한이 없을 때(database.sql 34번 미적용)처럼 DELETE만 실패하게 한다.
+		val noDelete = object : JdbcTemplate(jdbc.dataSource!!) {
+			override fun update(sql: String, vararg args: Any?): Int =
+				if (sql.startsWith("DELETE")) throw org.springframework.dao.PermissionDeniedDataAccessException("DELETE command denied", java.sql.SQLException("denied")) else super.update(sql, *args)
+		}
+		val service = com.toady.admin.content.SettingService(noDelete, 400, 100, 0)
+		val result = service.save("dm.dailyMessages", "", "operator")
+		assertTrue(result.isFailure)
+		assertTrue(result.exceptionOrNull()!!.message!!.contains("database.sql 34번"))
+		assertEquals("30", jdbc.queryForObject("SELECT SETTING_VALUE FROM TB_APP_SETTING WHERE SETTING_KEY='dm.dailyMessages'", String::class.java))
 	}
 
 	@Test fun settingsAreValidatedAndCanReturnToDefaults() {
@@ -421,6 +472,10 @@ class AdminSiteTest {
 		val start = java.time.LocalDateTime.now().withNano(0).toString(); val end = java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()
 		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "점검 안내").param("link", "javascript:alert(1)").param("start", start).param("end", end))
 			.andExpect(flash().attributeExists("error"))
+		for (unsafe in listOf("//evil.example", "/\\evil.example", "///evil.example"))
+			mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "점검 안내").param("link", unsafe).param("start", start).param("end", end))
+				.andExpect(flash().attributeExists("error"))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_SITE_NOTICE"), "다른 사이트로 가는 주소는 사이트 안 경로로 받지 않는다")
 		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "점검 안내").param("link", "/this-week").param("start", end).param("end", start))
 			.andExpect(flash().attributeExists("error"))
 		mvc.perform(post("/admin/notices").with(admin).with(csrf()).param("message", "11월 20일 새벽 점검").param("link", "/this-week").param("level", "WARN").param("start", start).param("end", end))
@@ -488,6 +543,8 @@ class AdminSiteTest {
 	@Test fun memberSupportToolsAndBulkHide() {
 		mvc.perform(post("/admin/members/2/memo").with(admin).with(csrf()).param("memo", "메일 문의: 인증 메일 미수신")).andExpect(flash().attributeExists("notice"))
 		assertTrue(mvc.perform(get("/admin/members/2").with(admin)).andReturn().response.contentAsString.contains("인증 메일 미수신"))
+		assertEquals("메모 추가(길이 16자)", jdbc.queryForObject("SELECT AFTER_VALUE FROM TB_ADMIN_AUDIT WHERE ACTION='MEMBER_MEMO'", String::class.java), "작업 이력에는 메모 본문을 복사하지 않는다")
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_ADMIN_AUDIT WHERE AFTER_VALUE LIKE '%미수신%' OR NOTE LIKE '%미수신%'"))
 		mvc.perform(post("/admin/members/2/hide-all").with(admin).with(csrf())).andExpect(flash().attributeExists("notice"))
 		assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=11", String::class.java))
 		// API 토큰이 없으면 탈퇴 대행·인증 메일은 안내만 한다. 확인 문구가 없으면 시도하지 않는다.
@@ -520,6 +577,18 @@ class AdminSiteTest {
 		assertTrue(html.contains("운정") && html.contains("고덕") && html.contains("역삼 새 단지"), html.take(200))
 	}
 
+	@Test fun messengerInflowSkipsSearchEnginesAndOperatorBrowsers() {
+		val today = com.toady.admin.Kst.today()
+		val me = "33333333-3333-4333-8333-333333333333"
+		jdbc.update("INSERT INTO TB_PAGE_VIEW VALUES ('i1','u1','s1','/','search.naver.com',?,CURRENT_TIMESTAMP),('i2','u2','s2','/','m.search.daum.net',?,CURRENT_TIMESTAMP)," +
+			"('i3','u3','s3','/','m.blog.naver.com',?,CURRENT_TIMESTAMP),('i4','u4','s4','/','talk.kakao.com',?,CURRENT_TIMESTAMP),('i5',?,'s5','/','band.us',?,CURRENT_TIMESTAMP)", today, today, today, today, me, today)
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('j1',?,'share','apt/H1/P1',?,CURRENT_TIMESTAMP),('j2','u4','share','apt/H1/P1',?,CURRENT_TIMESTAMP)", me, today, today)
+		jdbc.update("INSERT INTO TB_ANALYTICS_EXCLUDED_VISITOR VALUES (?,'운영자',CURRENT_TIMESTAMP)", me)
+		val report = insights.report(30, true)
+		assertEquals(setOf("m.blog.naver.com", "talk.kakao.com"), report.inflow!!.map { it.host }.toSet(), "검색 엔진·운영자 방문(band.us)은 빠진다")
+		assertEquals(1L, report.shareTotal, "운영자 공유도 빠진다")
+	}
+
 	private fun count(sql: String): Long = jdbc.queryForObject(sql, Long::class.java) ?: 0
 }
 
@@ -530,6 +599,25 @@ class MetricsRulesTest {
 		assertEquals("dropbox.com", MetricsService.sourceLabel("dropbox.com"), "x.com 같은 짧은 도메인이 부분 문자열로 잡히지 않는다")
 		assertEquals(LocalDate.of(2026, 11, 9), MetricsService.weekStart(LocalDate.of(2026, 11, 15)))
 		assertTrue(MetricsService.Week(LocalDate.MIN, LocalDate.MIN, 3, 0, 0, 1, 0, 0, 0, 0).returningRate == 33L)
+	}
+
+	@Test fun messengerHostsExcludeSearchEngines() {
+		val messenger = { host: String -> com.toady.admin.insights.InsightService.isMessenger(host) }
+		assertTrue(messenger("talk.kakao.com") && messenger("m.blog.naver.com") && messenger("cafe.daum.net") && messenger("band.us"))
+		assertFalse(messenger("search.naver.com") || messenger("m.search.naver.com") || messenger("www.naver.com") || messenger("search.daum.net") || messenger("www.google.com"))
+		assertFalse(messenger("notkakao.com"), "부분 문자열로 잡지 않는다")
+	}
+
+	@Test fun noticeLinksRejectProtocolRelativePaths() {
+		val safe = com.toady.admin.content.NoticeService.SAFE_LINK
+		assertTrue(safe.matches("/") && safe.matches("/this-week") && safe.matches("/announcements/apt/H1/P1") && safe.matches("https://www.toady.co.kr/faq"))
+		assertFalse(safe.matches("//evil.example") || safe.matches("/\\evil.example") || safe.matches("javascript:alert(1)") || safe.matches("http://evil.example"))
+	}
+
+	@Test fun visitorIdsAreNormalizedFromPastedText() {
+		assertEquals("aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb", com.toady.admin.metrics.ExclusionService.normalize(" AAAAAAAA-1111-4111-8111-BBBBBBBBBBBB\t"))
+		assertEquals(null, com.toady.admin.metrics.ExclusionService.normalize("toady.analytics.visitor"))
+		assertEquals(null, com.toady.admin.metrics.ExclusionService.normalize("aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb-extra"))
 	}
 
 

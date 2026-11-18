@@ -28,6 +28,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 import { authApi } from '@/features/auth/api/authApi';
 import { formatServerMessage, isEmail } from '@/utils/text.util';
+import { PASSWORD_RULE_TEXT, passwordProblem } from '@/features/auth/passwordRule';
 
 export const SignUp = (props) => {
   // 이메일은 주소(쿼리)에 넣지 않고 화면 상태로만 넘긴다(방문 기록·유입 로그에 남지 않게).
@@ -101,13 +102,10 @@ export const SignUp = (props) => {
       userEmailFocus.current?.focus();
       return;
     }
-    if (!userPassword) {
-      setValidationInfo((prev) => ({ ...prev, userPasswordCheck: false, userPasswordMsg: '비밀번호를 입력해 주세요.' }));
-      userPasswordFocus.current?.focus();
-      return;
-    }
-    if (userPassword.length < 6) {
-      setValidationInfo((prev) => ({ ...prev, userPasswordCheck: false, userPasswordMsg: '비밀번호는 최소 6자 이상이어야 합니다.' }));
+    // 서버와 같은 규칙(영문 + 숫자 또는 특수문자, 6자 이상)으로 미리 확인해, 보내 본 뒤에야 거절되지 않게 한다.
+    const passwordMsg = passwordProblem(userPassword);
+    if (passwordMsg) {
+      setValidationInfo((prev) => ({ ...prev, userPasswordCheck: false, userPasswordMsg: passwordMsg }));
       userPasswordFocus.current?.focus();
       return;
     }
@@ -265,14 +263,15 @@ export const SignUp = (props) => {
       <Box component="form" onSubmit={handleSubmit} noValidate>
         {/* 닉네임 */}
         <Box sx={{ mb: 1.8 }}>
-          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+          <Typography component="label" htmlFor="signup-nickname" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
             닉네임
           </Typography>
           <TextField
             required
             fullWidth
-            id="userNicName"
+            id="signup-nickname"
             name="userNicName"
+            autoComplete="nickname"
             placeholder="사용하실 닉네임"
             inputRef={userNicNameFocus}
             error={!validationInfo.userNicNameCheck}
@@ -301,13 +300,13 @@ export const SignUp = (props) => {
 
         {/* 이메일 */}
         <Box sx={{ mb: 1.8 }}>
-          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+          <Typography component="label" htmlFor="signup-email" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
             이메일 아이디
           </Typography>
           <TextField
             required
             fullWidth
-            id="userEmail"
+            id="signup-email"
             name="userEmail"
             placeholder="example@email.com"
             autoComplete="email"
@@ -338,7 +337,7 @@ export const SignUp = (props) => {
 
         {/* 비밀번호 */}
         <Box sx={{ mb: 1.8 }}>
-          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+          <Typography component="label" htmlFor="signup-password" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
             비밀번호
           </Typography>
           <TextField
@@ -346,12 +345,12 @@ export const SignUp = (props) => {
             fullWidth
             name="userPassword"
             type={showPassword ? 'text' : 'password'}
-            id="userPassword"
-            placeholder="6자 이상 영문/숫자"
+            id="signup-password"
+            placeholder={PASSWORD_RULE_TEXT}
             autoComplete="new-password"
             inputRef={userPasswordFocus}
             error={!validationInfo.userPasswordCheck}
-            helperText={validationInfo.userPasswordMsg}
+            helperText={validationInfo.userPasswordMsg || PASSWORD_RULE_TEXT}
             onChange={handleChange}
             value={formData.userPassword}
             InputProps={{
@@ -389,7 +388,7 @@ export const SignUp = (props) => {
 
         {/* 비밀번호 확인 */}
         <Box sx={{ mb: 1 }}>
-          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+          <Typography component="label" htmlFor="signup-password-confirm" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
             비밀번호 확인
           </Typography>
           <TextField
@@ -397,7 +396,7 @@ export const SignUp = (props) => {
             fullWidth
             name="userPasswordConfirm"
             type={showConfirmPassword ? 'text' : 'password'}
-            id="userPasswordConfirm"
+            id="signup-password-confirm"
             placeholder="비밀번호를 한 번 더 입력하세요"
             autoComplete="new-password"
             inputRef={userPasswordConfirmFocus}

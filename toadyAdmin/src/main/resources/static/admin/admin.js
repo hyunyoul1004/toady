@@ -33,27 +33,40 @@ if (document.getElementById('history')) {
   setInterval(refresh, 5000);
 }
 
-// 내 방문 제외: 사이트(같은 주소)가 이 브라우저에 저장한 방문자 ID를 읽어 등록 폼에 넣는다. ID는 화면에 다 보여 주지 않는다.
+// 내 방문 제외: 관리자(admin.toady.co.kr)는 사이트(www)의 브라우저 저장소를 읽을 수 없다.
+// 사이트의 /my-visitor-id 화면에서 복사한 방문자 ID를 붙여 넣으면 형식과 이미 등록됐는지를 바로 알려 준다.
+// 형식 검증은 서버(ExclusionService)도 다시 한다.
 (() => {
   const input = document.getElementById('this-visitor');
   const state = document.getElementById('this-visitor-state');
-  if (!state) return;
-  let id = null;
-  try { id = localStorage.getItem('toady.analytics.visitor'); } catch { /* 저장소 차단 */ }
-  const valid = /^[0-9a-f-]{36}$/i.test(id || '');
-  if (input) input.value = valid ? id : '';
-  const listed = valid && document.querySelector(`[data-visitor="${id.toLowerCase()}"]`);
+  if (!input || !state) return;
   const button = document.getElementById('exclude-button');
-  if (!valid) {
-    state.textContent = '이 브라우저에는 아직 사이트 방문 기록이 없습니다. www.toady.co.kr을 한 번 연 뒤 등록하세요.';
-    if (button) button.disabled = true;
-  } else if (listed) {
-    state.textContent = '✓ 이 브라우저는 이미 지표에서 제외되어 있습니다.';
-    listed.classList.add('current');
-    if (button) button.disabled = true;
-  } else {
-    state.textContent = `이 브라우저 방문자 ID: ${id.slice(0, 8)}… (아직 집계에 포함됨)`;
-  }
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const update = () => {
+    document.querySelectorAll('[data-visitor].current').forEach(row => row.classList.remove('current'));
+    const id = input.value.trim().toLowerCase();
+    if (!id) {
+      state.textContent = 'www.toady.co.kr/my-visitor-id에서 방문자 ID를 복사해 붙여 넣으세요.';
+      if (button) button.disabled = true;
+      return;
+    }
+    if (!UUID.test(id)) {
+      state.textContent = '방문자 ID 형식이 아닙니다. 36자리(예: 1a2b3c4d-…) 전체를 복사했는지 확인하세요.';
+      if (button) button.disabled = true;
+      return;
+    }
+    const listed = document.querySelector(`[data-visitor="${id}"]`);
+    if (listed) {
+      listed.classList.add('current');
+      state.textContent = '✓ 이미 지표에서 제외된 방문자 ID입니다.';
+      if (button) button.disabled = true;
+    } else {
+      state.textContent = `등록할 방문자 ID: ${id.slice(0, 8)}… (아직 집계에 포함됨)`;
+      if (button) button.disabled = false;
+    }
+  };
+  input.addEventListener('input', update);
+  update();
 })();
 
 // 좁은 화면(920px 이하)의 메뉴: '메뉴' 단추로 펼치고, 바깥·Esc·메뉴 선택·넓은 화면 전환 시 닫는다.

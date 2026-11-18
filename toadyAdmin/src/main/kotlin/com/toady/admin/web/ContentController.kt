@@ -284,7 +284,8 @@ class ContentController(
 	@PostMapping("/admin/members/{seq}/memo")
 	fun addMemo(@PathVariable seq: Long, @RequestParam memo: String, user: Principal, redirect: RedirectAttributes): String {
 		val ok = memos.add(seq, memo, user.name)
-		if (ok) audit.record(user.name, "MEMBER_MEMO", "MEMBER", seq, after = memo.trim().take(200))
+		// 메모 본문은 회원 메모(TB_MEMBER_MEMO)에만 두고, 작업 이력에는 내용 없이 길이만 남긴다.
+		if (ok) audit.record(user.name, "MEMBER_MEMO", "MEMBER", seq, after = "메모 추가(길이 ${memo.trim().take(500).length}자)")
 		flash(redirect, ok, "메모를 남겼습니다.", "메모를 저장하지 못했습니다(2자 이상, database.sql 27번 확인).")
 		return "redirect:/admin/members/$seq"
 	}

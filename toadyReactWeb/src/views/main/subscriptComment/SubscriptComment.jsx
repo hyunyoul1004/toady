@@ -10,7 +10,7 @@
  *   팝업 하나가 브라우저 히스토리 한 단계라서 뒤로가기를 누르면 페이지가 아니라 팝업이 닫힌다.
  *   열린 팝업 값은 location.state.overlayLayers에 저장된다.
  */
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { summaryOf, koreaToday } from '@/features/planner/plannerUtils';
@@ -80,7 +80,7 @@ const getAvatarColor = (name = '') => {
 };
 
 /**
- * 실제 이야기 화면 본체. 바깥의 SubscriptComment가 공고·계정별 key를 붙여 렌더링한다.
+ * 실제 이야기 화면 본체. 바깥의 SubscriptComment가 공고별 key를 붙여 렌더링한다.
  * @param subscriptDetail 공고 상세 데이터(type·houseManageNo·pblancNo와 일정 정보)
  * @param subscriptSeq 공고 식별 값. 없으면 subscriptDetail.subscriptSeq를 쓴다.
  */
@@ -167,6 +167,24 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const blocked = useBlockedSet();
   // 차단 글 중 '보기'를 눌러 펼친 글 번호 모음. useState에 함수를 넘기면 첫 렌더에서만 초기값을 만든다.
   const [revealed, setRevealed] = useState(() => new Set());
+  // 로그인한 계정이 '다른 회원'으로 바뀌면 앞 사람이 쓰던 글·답글·수정창을 비운다.
+  // 로그아웃(만료 포함)으로 비회원이 된 동안은 그대로 둬서, 같은 계정으로 다시 로그인하면 이어서 쓸 수 있다.
+  const lastMember = useRef(user?.userSeq ?? null);
+  // useLayoutEffect: 화면에 그리기 전에 비워서, 새 회원 화면에 앞 사람 글이 한 프레임도 보이지 않게 한다.
+  useLayoutEffect(() => {
+    const current = user?.userSeq ?? null;
+    if (current == null) return;
+    if (lastMember.current != null && lastMember.current !== current) {
+      setRootContent('');
+      setReplyState({ parentCommentSeq: null, content: '', show: false });
+      setModifyState({ commentSeq: null, content: '', show: false });
+      // 앞 회원이 펼쳐 본 차단 글과 남은 안내 문구도 비운다.
+      setRevealed(new Set());
+      clearTimeout(feedbackTimer.current);
+      setFeedback(null);
+    }
+    lastMember.current = current;
+  }, [user?.userSeq]);
   const openCard = row => setMemberCard(cardValue(row.createUserSeq, currentSubscriptSeq));
   const reportStory = row => { if (!isAuthenticated) { setLayoutOverlay('login'); return; } setReport(reportValue('COMMENT', row.subscriptCommentSeq, row.createUserSeq)); };
 
@@ -193,6 +211,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
       }
     });
 
+    // 원글은 서버 순서(최신순)를 따르지만, 답글은 대화 흐름대로 먼저 쓴 글이 위에 오게 번호(작성 순) 오름차순으로 둔다.
+    Object.values(map).forEach(item => { if (item.items.length > 1) item.items.sort((a, b) => Number(a.subscriptCommentSeq) - Number(b.subscriptCommentSeq)); });
     // 운영팀이 고정한 원글을 맨 위에 둔다(나머지 순서는 그대로).
     return [...rootItems.filter(item => item.pinned), ...rootItems.filter(item => !item.pinned)];
   }, [commentsRes]);
@@ -375,7 +395,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   // 단일 댓글 카드 렌더링 (루트 or 답글)
   const renderCommentCard = (row, isChild = false) => {
     const isAuthor = isAuthenticated && user?.userSeq === row.createUserSeq;
-    const isEditing = modifyState.show && modifyState.commentSeq === row.subscriptCommentSeq;
+    // 수정·답글 창은 로그인했을 때만 그린다. 로그인이 만료되면 창만 숨기고 내용(state)은 남겨, 다시 로그인하면 이어서 쓴다.
+    const isEditing = isAuthenticated && modifyState.show && modifyState.commentSeq === row.subscriptCommentSeq;
     const avatarColor = getAvatarColor(row.userNicName);
     // 차단한 회원의 이야기는 접어 두고, 원하면 그 자리에서 펼쳐 본다. 그 글에 달린 다른 회원의 답글은 그대로 보여 준다.
     if (isCollapsedStory(row, { myUserSeq: isAuthenticated ? user?.userSeq : null, blocked, revealed })) {
@@ -551,7 +572,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         )}
 
         {/* 답글 입력창 (인라인 토글) */}
-        {!isChild && replyState.show && replyState.parentCommentSeq === row.subscriptCommentSeq && (
+        {!isChild && isAuthenticated && replyState.show && replyState.parentCommentSeq === row.subscriptCommentSeq && (
           <Box
             sx={{
               ml: { xs: 2, sm: 5.8 },
@@ -914,14 +935,14 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
 
 /**
  * 외부에 내보내는 이야기 탭 컴포넌트(Main.jsx에서 사용).
- * 공고 또는 계정이 바뀌면 이전 작성 중 내용·답글·수정 상태를 함께 비운다.
+ * 공고가 바뀌면 이전 작성 중 내용·답글·수정 상태를 함께 비운다.
  * React는 key가 바뀌면 그 컴포넌트를 새로 만들어서 안의 useState가 전부 초기값으로 돌아간다.
- * 로그아웃 상태는 'guest'로 묶는다.
+ * key에 계정 번호는 넣지 않는다. 로그인이 만료돼(401) 로그아웃되는 순간 쓰던 글이 사라지지 않고,
+ * 다시 로그인하면 이어서 쓸 수 있게 하기 위해서다. 다른 계정으로 바뀐 경우는 CommentContent 안에서 비운다.
  */
 export const SubscriptComment = (props) => {
-  const userSeq = useAuthStore(state => state.user?.userSeq ?? 'guest');
   const announcement = props.subscriptSeq || props.subscriptDetail?.subscriptSeq || '';
-  return <CommentContent key={`${announcement}:${userSeq}`} {...props} />;
+  return <CommentContent key={announcement} {...props} />;
 };
 
 export default SubscriptComment;

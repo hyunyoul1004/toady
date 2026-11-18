@@ -26,6 +26,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 import { authApi } from '@/features/auth/api/authApi';
 import { isEmail } from '@/utils/text.util';
+import { PASSWORD_RULE_TEXT, normalizeEmail, passwordProblem, resendWaitLeft } from '@/features/auth/passwordRule';
 
 export const FindPassword = (props) => {
   // 01: 이메일 입력 단계, 02: 인증코드 및 새 비밀번호 입력 단계
@@ -42,6 +43,21 @@ export const FindPassword = (props) => {
   const [validationInfo, setValidationInfo] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
+  // changed: 비밀번호를 바꾼 뒤 로그인 창으로 넘어가기 전까지 버튼을 다시 누르지 못하게 한다(같은 코드로 두 번 보내지 않게).
+  const [changed, setChanged] = useState(false);
+  // sent: 마지막으로 인증코드를 보낸 이메일과 시각({ email, at }). '이메일 다시 입력하기'로 돌아와도
+  // 같은 이메일이면 4분 동안 다시 받기를 막고 남은 시간을 보여 준다. 오타를 고친 다른 이메일은 바로 받을 수 있다.
+  const [sent, setSent] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const waitLeft = resendWaitLeft(sent, userEmail, now);
+  // 대기 중일 때만 1초마다 남은 시간을 새로 그린다.
+  useEffect(() => {
+    if (!waitLeft) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [waitLeft > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const waitSeconds = Math.ceil(waitLeft / 1000);
+  const waitText = `${Math.floor(waitSeconds / 60)}:${String(waitSeconds % 60).padStart(2, '0')}`;
 
   const emailRef = useRef(null);
   const codeRef = useRef(null);
@@ -64,6 +80,7 @@ export const FindPassword = (props) => {
   // 1단계: 인증코드 전송 요청
   const handleRequestCertify = async (e) => {
     e.preventDefault();
+    if (isLoading || waitLeft > 0) return;
     if (!userEmail) {
       setValidationInfo({ userEmailMsg: '이메일을 입력해 주세요.' });
       emailRef.current?.focus();
@@ -82,6 +99,8 @@ export const FindPassword = (props) => {
 
       if (res?.resultCode === 'SUCCESS') {
         setStatusMessage({ severity: 'success', text: res?.resultMessage || '가입된 이메일이면 인증코드를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요.' });
+        const at = Date.now();
+        setSent({ email: normalizeEmail(userEmail), at }); setNow(at);
         setStep('02');
       } else {
         setStatusMessage({ severity: 'error', text: res?.resultMessage || '인증코드 발송에 실패했습니다.' });
@@ -96,6 +115,7 @@ export const FindPassword = (props) => {
   // 2단계: 인증코드 검증 및 비밀번호 변경
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+    if (isLoading || changed) return;
     const { certifyCode, userPassword, userPasswordConfirm } = inputData;
 
     if (!certifyCode) {
@@ -103,13 +123,10 @@ export const FindPassword = (props) => {
       codeRef.current?.focus();
       return;
     }
-    if (!userPassword) {
-      setValidationInfo({ userPasswordMsg: '변경할 비밀번호를 입력해 주세요.' });
-      pwRef.current?.focus();
-      return;
-    }
-    if (userPassword.length < 6) {
-      setValidationInfo({ userPasswordMsg: '비밀번호는 최소 6자 이상이어야 합니다.' });
+    // 서버와 같은 규칙(영문 + 숫자 또는 특수문자, 6자 이상)으로 미리 확인한다.
+    const passwordMsg = userPassword ? passwordProblem(userPassword) : '변경할 비밀번호를 입력해 주세요.';
+    if (passwordMsg) {
+      setValidationInfo({ userPasswordMsg: passwordMsg });
       pwRef.current?.focus();
       return;
     }
@@ -137,6 +154,7 @@ export const FindPassword = (props) => {
 
       if (res?.resultCode === 'SUCCESS') {
         setStatusMessage({ severity: 'success', text: '비밀번호가 성공적으로 변경되었습니다. 변경된 비밀번호로 로그인해 주세요.' });
+        setChanged(true);
         // 안내를 잠시 보여준 뒤 같은 'layout' 레이어를 로그인으로 교체한다(닫기 후 열기는 비동기 이동이 겹쳐 로그인 창이 사라짐).
         clearTimeout(loginTimerRef.current);
         loginTimerRef.current = setTimeout(() => {
@@ -201,17 +219,20 @@ export const FindPassword = (props) => {
       {step === '01' ? (
         <Box component="form" onSubmit={handleRequestCertify} noValidate>
           <Box sx={{ mb: 2 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+            <Typography component="label" htmlFor="reset-email" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
               이메일 아이디
             </Typography>
             <TextField
               required
               fullWidth
-              id="userEmail"
+              id="reset-email"
+              autoComplete="username"
+              inputProps={{ inputMode: 'email', autoCapitalize: 'none', spellCheck: false }}
               placeholder="가입 시 등록한 이메일"
               value={userEmail}
               onChange={(e) => {
                 setUserEmail(e.target.value);
+                setNow(Date.now());
                 setValidationInfo({});
               }}
               inputRef={emailRef}
@@ -241,7 +262,7 @@ export const FindPassword = (props) => {
             type="submit"
             fullWidth
             variant="contained"
-            disabled={isLoading}
+            disabled={isLoading || waitLeft > 0}
             sx={{
               mt: 2,
               mb: 2.5,
@@ -254,7 +275,7 @@ export const FindPassword = (props) => {
               '&:hover': { bgcolor: '#1d4ed8' }
             }}
           >
-            {isLoading ? <CircularProgress size={24} color="inherit" /> : '인증코드 받기'}
+            {isLoading ? <CircularProgress size={24} color="inherit" /> : waitLeft > 0 ? `${waitText} 뒤에 다시 받을 수 있어요` : '인증코드 받기'}
           </Button>
 
           <Box sx={{ textAlign: 'center', pt: 1, borderTop: '1px solid #f1f5f9' }}>
@@ -279,12 +300,15 @@ export const FindPassword = (props) => {
         /* 3. 2단계: 인증코드 및 새 비밀번호 입력 폼 */
         <Box component="form" onSubmit={handlePasswordChange} noValidate>
           <Box sx={{ mb: 1.8 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+            <Typography component="label" htmlFor="reset-code" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
               인증코드 (이메일 수신)
             </Typography>
             <TextField
               required
               fullWidth
+              id="reset-code"
+              autoComplete="one-time-code"
+              inputProps={{ autoCapitalize: 'characters', spellCheck: false }}
               placeholder="메일로 받은 인증코드 붙여넣기"
               value={inputData.certifyCode}
               onChange={(e) => setInputData((prev) => ({ ...prev, certifyCode: e.target.value }))}
@@ -311,19 +335,21 @@ export const FindPassword = (props) => {
           </Box>
 
           <Box sx={{ mb: 1.8 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+            <Typography component="label" htmlFor="reset-password" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
               새 비밀번호
             </Typography>
             <TextField
               required
               fullWidth
               type={showPassword ? 'text' : 'password'}
-              placeholder="새 비밀번호 (6자 이상)"
+              id="reset-password"
+              autoComplete="new-password"
+              placeholder={PASSWORD_RULE_TEXT}
               value={inputData.userPassword}
               onChange={(e) => setInputData((prev) => ({ ...prev, userPassword: e.target.value }))}
               inputRef={pwRef}
               error={Boolean(validationInfo.userPasswordMsg)}
-              helperText={validationInfo.userPasswordMsg}
+              helperText={validationInfo.userPasswordMsg || PASSWORD_RULE_TEXT}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -351,13 +377,15 @@ export const FindPassword = (props) => {
           </Box>
 
           <Box sx={{ mb: 2 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
+            <Typography component="label" htmlFor="reset-password-confirm" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.5 }}>
               새 비밀번호 확인
             </Typography>
             <TextField
               required
               fullWidth
               type={showPassword ? 'text' : 'password'}
+              id="reset-password-confirm"
+              autoComplete="new-password"
               placeholder="새 비밀번호 확인"
               value={inputData.userPasswordConfirm}
               onChange={(e) => setInputData((prev) => ({ ...prev, userPasswordConfirm: e.target.value }))}
@@ -387,7 +415,7 @@ export const FindPassword = (props) => {
             type="submit"
             fullWidth
             variant="contained"
-            disabled={isLoading}
+            disabled={isLoading || changed}
             sx={{
               mt: 2,
               mb: 2,
@@ -400,13 +428,14 @@ export const FindPassword = (props) => {
               '&:hover': { bgcolor: '#1d4ed8' }
             }}
           >
-            {isLoading ? <CircularProgress size={24} color="inherit" /> : '비밀번호 변경 완료'}
+            {isLoading ? <CircularProgress size={24} color="inherit" /> : changed ? '변경했어요 · 로그인 창으로 이동 중' : '비밀번호 변경 완료'}
           </Button>
 
           <Box sx={{ textAlign: 'center' }}>
             <Button
               variant="text"
-              onClick={() => setStep('01')}
+              disabled={isLoading || changed}
+              onClick={() => { setStep('01'); setStatusMessage(null); setValidationInfo({}); }}
               sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}
             >
               이메일 다시 입력하기

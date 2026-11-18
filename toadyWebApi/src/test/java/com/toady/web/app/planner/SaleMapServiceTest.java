@@ -81,9 +81,9 @@ class SaleMapServiceTest {
             return sources.stream().map(s -> item("apt/" + s.houseManageNo() + "/" + s.pblancNo(), s.houseNm(), s.hssplyAdres(),
                 status.get("apt/" + s.houseManageNo() + "/" + s.pblancNo()), s.houseNm().contains("입주 끝난") ? "2026-02" : "2029-03")).toList();
         });
-        when(locator.locate(open)).thenReturn(Optional.of(new AddressLocator.Location("4148011700", "동패동", open, 37.72, 126.73)));
-        when(locator.locate(done)).thenReturn(Optional.of(new AddressLocator.Location("4148011700", "동패동", done, 37.717, 126.725)));
-        when(locator.locate(block)).thenReturn(Optional.empty());
+        when(locator.locate(eq(open), isNull())).thenReturn(Optional.of(new AddressLocator.Location("4148011700", "동패동", open, 37.72, 126.73)));
+        when(locator.locate(eq(done), isNull())).thenReturn(Optional.of(new AddressLocator.Location("4148011700", "동패동", done, 37.717, 126.725)));
+        when(locator.locate(eq(block), isNull())).thenReturn(Optional.empty());
 
         SaleMapService service = new SaleMapService(feed, search, locator, Clock.fixed(TODAY.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
         SaleMapService.Result result = service.sales("4148011700", "경기 파주시");
@@ -94,7 +94,7 @@ class SaleMapServiceTest {
         assertEquals("4148011700", result.sales().get(1).bcode(), "상세 탭과 같은 주변 시세 비교를 부를 수 있게 법정동을 함께 준다");
         assertEquals("동패동", result.sales().get(1).dong());
         assertEquals(List.of("블록 단지"), result.unlocated().stream().map(SaleMapService.Unlocated::houseNm).toList(), "지구·블록 주소는 지도에 놓지 않고 따로 알린다");
-        verify(locator, never()).locate(moved);
+        verify(locator, never()).locate(eq(moved), any());
         service.close();
     }
 

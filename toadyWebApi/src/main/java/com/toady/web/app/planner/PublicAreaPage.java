@@ -62,18 +62,29 @@ public class PublicAreaPage {
         return Stream.concat(groups.open().stream(), groups.upcoming().stream()).map(Item::source).toList();
     }
 
-    /** 접수 마감이 오늘부터 days일 안쪽(오늘 포함)인 APT 공고 ID. 결과 알림의 공개 시각 기록에 쓴다. */
-    public List<String> aptEndedWithin(LocalDate today, int days) {
+    /**
+     * 결과(1순위 경쟁률·당첨가점)가 나올 수 있는 APT 공고 ID: 접수를 시작했고(시작일 ≤ 오늘) 접수 마감이 days일 안쪽(마감일 ≥ 오늘-days).
+     * 마감일까지 기다리면 1순위가 마감 전날 끝나는 공고(특별공급 → 1순위 → 마감)의 결과 알림이 하루 이틀 늦어진다.
+     * 결과가 실제로 있는지는 AnnouncementResults로 따로 확인한다. 결과 알림의 공개 시각 기록에 쓴다.
+     */
+    public List<String> aptResultWindow(LocalDate today, int days) {
         AnnouncementSearch query = new AnnouncementSearch();
         query.setStartDate(today.minusDays(days + 60)); query.setEndDate(today); query.setSize(500);
         List<String> ids = new ArrayList<>();
         for (AnnouncementListItem item : search.searchAll(query, List.of("apt")).getContent()) {
             LocalDate start = PlannerSummary.date(item.rceptBgnde() == null ? "" : item.rceptBgnde());
             LocalDate end = PlannerSummary.date(item.rceptEndde() == null ? "" : item.rceptEndde());
-            LocalDate last = end != null ? end : start;
-            if (last != null && !last.isAfter(today) && !last.isBefore(today.minusDays(days))) ids.add(item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo());
+            if (resultWindow(start, end, today, days)) ids.add(item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo());
         }
         return ids;
+    }
+    /**
+     * 결과 알림 대상 기간의 공통 기준(공고 목록 쪽 aptResultWindow와 구독자별 PushDigest.resultLines가 함께 쓴다).
+     * 접수 시작일 ≤ 오늘이고 접수 마감일 ≥ 오늘-days. 한쪽 날짜가 없으면 다른 쪽 날짜로 대신한다. 둘 다 없으면 대상이 아니다.
+     */
+    public static boolean resultWindow(LocalDate start, LocalDate end, LocalDate today, int days) {
+        LocalDate first = start != null ? start : end, last = end != null ? end : start;
+        return first != null && !first.isAfter(today) && !last.isBefore(today.minusDays(days));
     }
 
     /** 주간 브리핑 집계: 기간 안에 접수를 시작하는 공고 수(아파트, 무순위·줍줍, 그 밖의 유형). */

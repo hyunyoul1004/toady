@@ -1,5 +1,6 @@
 package com.toady.web.app.user.controller;
 
+import com.toady.web.app.certify.service.EmailRules;
 import com.toady.web.app.user.dto.UserDTO;
 import com.toady.web.app.user.service.UserService;
 import com.toady.web.core.constants.ResultCode;
@@ -77,6 +78,11 @@ public class UserController {
 
         if (result.hasErrors()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ResData.of(ResultCode.VALID_ERROR.getCode(), CmnUtils.getErrMsg(result, '\n')));
+        }
+        // 계정 주소는 ASCII만 쓴다(가입 규칙 EmailRules). DB 비교 규칙(utf8mb4_general_ci)은 'é'와 'e'를 같게 보지만
+        // 실패 횟수 키는 문자열 그대로라, 악센트 변형 주소로 같은 계정을 실패 제한 없이 대입할 수 있었다. 비교 전에 바로 거부한다.
+        if (!EmailRules.ascii(param.getUserEmail())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ResData.of(ResultCode.BAD_CREDENTIALS_ERROR.getCode(), "이메일 또는 비밀번호가 맞지 않습니다."));
         }
         String ip = RequestLimitFilter.clientIp(request);
         if (!loginAttempts.tryAcquire(ip, param.getUserEmail())) {

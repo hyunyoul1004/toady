@@ -45,8 +45,9 @@ function label(kakao, map, point, text, className, onRemove) {
  * @param mapRef 카카오 지도 객체 ref / kakaoRef window.kakao ref / containerRef 지도 DOM ref
  * @param mapReady 지도가 만들어지면 바뀌는 값. ref는 바뀌어도 effect를 다시 돌리지 않으므로 이 값을 의존성에 넣는다.
  * @param origin 공고 기준 위치. 바뀌면 재던 선과 원을 지운다.
+ * @param resetKey 공고 식별 값. 위치가 같거나 둘 다 미확인이어도 다른 공고로 옮기면 재던 선과 원을 지운다.
  */
-export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }) {
+export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin, resetKey = '' }) {
   const [measuring, setMeasuring] = useState(false);
   const [points, setPoints] = useState([]);
   const [drawing, setDrawing] = useState(false);       // 반경 그리기 모드(지도 끌기 대신 원 그리기)
@@ -62,8 +63,9 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
   // 지도 이름표의 ✕ 단추가 늘 최신 지우기 함수를 부르도록 ref로 넘긴다.
   const clearRef = useRef({}); clearRef.current = { clearMeasure, clearCircle };
 
-  // 기준 위치가 바뀌면(다른 공고·직접 검색) 재던 선과 원을 지운다.
-  useEffect(() => { setPoints([]); setMeasuring(false); setDrawing(false); setCircle(null); setDrawHint(''); }, [originKey]);
+  // 기준 위치나 공고가 바뀌면(다른 공고·직접 검색) 재던 선과 원을 지운다.
+  // 공고만 보면 같은 위치의 다른 공고(같은 단지의 다른 차수 등)나 위치 미확인 공고 사이를 옮길 때 이전 선이 남는다.
+  useEffect(() => { setPoints([]); setMeasuring(false); setDrawing(false); setCircle(null); setDrawHint(''); }, [originKey, resetKey]);
 
   const path = points;
   const segments = path.slice(1).map((point, index) => distanceMeters(path[index], point));

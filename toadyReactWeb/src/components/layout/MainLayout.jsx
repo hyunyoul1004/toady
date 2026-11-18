@@ -16,7 +16,8 @@
 import React from 'react';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import { useScrollTopOnNavigate } from '@/hooks/useScrollTopOnNavigate';
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import { replaceHomeLink } from './navItems';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
@@ -69,6 +70,7 @@ export function MainLayout() {
   // 다른 화면으로 새로 이동하면 맨 위로(뒤로가기는 읽던 위치 유지).
   useScrollTopOnNavigate();
   const mobileOpen = overlay === 'menu';
+  const atHome = replaceHomeLink(useLocation());
   const loginModalOpen = overlay === 'login';
   const signUpModalOpen = overlay === 'signup';
   const findPwModalOpen = overlay === 'password';
@@ -126,7 +128,8 @@ export function MainLayout() {
           >
             <Badge color="error" variant="dot" invisible={!newCount}><MenuIcon /></Badge>
           </IconButton>
-          <Box component={Link} to="/" state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
+          {/* Sidebar 로고와 같은 규칙: 이미 첫 화면(쿼리 없는 '/')이면 바꿔 써서 누를 때마다 히스토리가 쌓이지 않게 한다. */}
+          <Box component={Link} to="/" replace={atHome} state={{browseView:'calendar'}} aria-label="TOADY 홈으로" sx={{ display: 'flex', alignItems: 'center', gap: 1,color:'inherit',textDecoration:'none' }}>
             <BrandLogo size={26} />
           </Box>
         </Toolbar>

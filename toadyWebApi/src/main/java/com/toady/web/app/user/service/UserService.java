@@ -145,6 +145,11 @@ public class UserService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_PATTERN_VALID1_ERROR.getCode(), ResultCode.PASSWORD_PATTERN_VALID1_ERROR.getMessage()));
             }
 
+            // 운영자·서비스 이름을 흉내 내는 닉네임은 막는다(닉네임 변경과 같은 규칙, NicknameRules)
+            if (NicknameRules.reserved(param.getUserNicName())) {
+                return ResponseEntity.ok().body(ResData.of(ResultCode.VALID_ERROR.getCode(), NicknameRules.RESERVED_MESSAGE));
+            }
+
             UserEntity existing = userRepository.findByEmailForUpdate(param.getUserEmail());
             if (existing != null) {
                 // 이메일 인증을 마치지 않은 계정은 다시 가입하는 사람의 정보로 덮어쓴다.
@@ -152,6 +157,10 @@ public class UserService {
                 boolean reusable = !"Y".equals(existing.getEmailCertifyYn()) && "N".equals(existing.getLockYn()) && "N".equals(existing.getWithdrawalYn());
                 if (!reusable) {
                     return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
+                }
+                // 같은 이메일로 재가입을 반복해 인증 메일을 계속 보내지 못하게 하루 상한을 덮어쓰기 전에 본다(넘으면 아무것도 바꾸지 않는다)
+                if (certifyService.accountMailCapped(existing.getUserEmail())) {
+                    return ResponseEntity.ok().body(ResData.of(ResultCode.VALID_ERROR.getCode(), CertifyService.ACCOUNT_MAIL_CAPPED));
                 }
                 UserEntity sameNick = userRepository.findByUserNicName(param.getUserNicName());
                 if (sameNick != null && !sameNick.getUserSeq().equals(existing.getUserSeq()) && !releaseStaleNickname(sameNick)) {

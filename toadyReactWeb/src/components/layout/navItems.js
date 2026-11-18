@@ -61,3 +61,11 @@ export function retapAction(path, location) {
   if (location.pathname !== path || location.search) return 'replace';
   return 'none';
 }
+
+/**
+ * 로고(홈) 링크를 히스토리에 새로 쌓지 않고 바꿔 쓸지. 이미 첫 화면(쿼리 없는 '/')이면 바꿔 써서
+ * 로고를 누를 때마다 같은 화면이 쌓이지 않게 한다. 사이드바 로고와 모바일 상단 바 로고가 함께 쓴다.
+ */
+export function replaceHomeLink({ pathname, search } = {}) {
+  return pathname === '/' && !search;
+}

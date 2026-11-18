@@ -19,6 +19,7 @@ import java.util.stream.Stream;
  * 공급 주소를 카카오 로컬 REST API로 확인해 법정동 코드를 얻는다. 화면(resolveLocation.js)과 같은 규칙만 쓴다.
  * - 지번(동·리·로·길 + 번지)이 있는 후보만 조회하고, 응답의 지번이 요청과 같고 시·도·시·군·구가 공고 주소와 같을 때만 확정한다.
  * - 지구·블록 이름만 있는 주소는 확정하지 않는다(엉뚱한 위치에 확정하지 않는다). 단지별 예외 규칙은 두지 않는다.
+ * - 운영자가 관리자에서 확인한 주소(TB_ANNOUNCEMENT_OVERRIDE.LOCATION_ADDRESS)가 있으면 먼저 같은 검증으로 확인한다(ConfirmedAddresses가 넘긴다).
  * 카카오 주소 검색 API(dapi.kakao.com/v2/local/search/address.json)를 부른다. SaleMapService(분양 지도 위치 확인)와 PriceGapSnapshots(주변 시세 미리 계산)가 쓴다.
  */
 // @Component: 스프링 빈으로 등록한다.
@@ -37,14 +38,31 @@ public class AddressLocator {
     public boolean enabled() { return !key.isBlank(); }
 
     /** 정확한 지번 위치를 찾으면 돌려준다. 찾지 못하면 empty(후보 위치로 확정하지 않는다). 제공처 오류는 예외. */
-    public Optional<Location> locate(String rawAddress) throws Exception {
+    public Optional<Location> locate(String rawAddress) throws Exception { return locate(rawAddress, null); }
+
+    /**
+     * 화면 resolveLocation과 같은 순서로 위치를 확정한다: ① 운영자 확인 주소(관리자 '위치 확인', 후보 2개까지) → ② 공급 주소의 지번(후보 3개까지).
+     * 운영자 주소도 공급 주소와 같은 검증(지번 일치)을 거치고, 찾은 위치가 공급 주소의 시·도·시·군·구와 같을 때만 쓴다(공급 주소가 비면 운영자 주소 기준).
+     * 통과하지 못하면 공급 주소 판정으로 그대로 이어진다. 둘 다 못 찾으면 empty(미확인)다.
+     */
+    public Optional<Location> locate(String supplyAddress, String confirmedAddress) throws Exception {
         if (!enabled()) return Optional.empty();
-        String address = normalize(rawAddress);
-        for (String candidate : parcelCandidates(address).stream().limit(3).toList()) {
+        String supply = normalize(supplyAddress), confirmed = normalize(confirmedAddress);
+        if (!confirmed.isEmpty()) {
+            var found = find(confirmed, supply.isEmpty() ? null : supply, 2);
+            if (found.isPresent()) return found;
+        }
+        return find(supply, null, 3);
+    }
+    /** address의 지번 후보를 limit개까지 조회해 지번이 같은 첫 결과. region이 있으면 그 주소와 같은 시·도·시·군·구여야 한다. */
+    private Optional<Location> find(String address, String region, int limit) throws Exception {
+        for (String candidate : parcelCandidates(address).stream().limit(limit).toList()) {
             URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?size=10&query=" + URLEncoder.encode(candidate, StandardCharsets.UTF_8));
             JsonNode body = json.readTree(transport.get(uri, Map.of("Authorization", "KakaoAK " + key)));
             for (JsonNode row : body.path("documents")) {
                 if (!precise(row, address, candidate)) continue;
+                String found = row.path("address").path("address_name").asText("");
+                if (region != null && !sameRegion(region, found.isBlank() ? row.path("address_name").asText("") : found)) continue;
                 String bcode = row.path("address").path("b_code").asText(""), dong = row.path("address").path("region_3depth_name").asText("");
                 if (bcode.matches("\\d{10}") && !dong.isBlank()) return Optional.of(new Location(bcode, dong, row.path("address").path("address_name").asText(candidate),
                     row.path("y").asDouble(Double.NaN), row.path("x").asDouble(Double.NaN)));

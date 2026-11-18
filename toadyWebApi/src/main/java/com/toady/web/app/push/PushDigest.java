@@ -327,10 +327,10 @@ public class PushDigest {
         try { return work.get(); }
         catch (RuntimeException failure) { log.warn("웹 푸시 {} 계산 실패: error={}", what, failure.getClass().getSimpleName()); return List.of(); }
     }
-    /** 접수 마감 30일 이내 APT 공고의 결과 공개 시각을 구독자와 무관하게 기록한다. */
+    /** 결과가 나올 수 있는 APT 공고(접수 시작 뒤 ~ 마감 30일 이내)의 결과 공개 시각을 구독자와 무관하게 기록한다. */
     void trackResults(LocalDate today, LocalDateTime now, Map<String, AnnouncementResults.Result> cache,
             Map<String, LocalDateTime> seen, Set<String> started) {
-        List<String> ids = areas.aptEndedWithin(today, RESULT_FRESH_DAYS);
+        List<String> ids = areas.aptResultWindow(today, RESULT_FRESH_DAYS);
         if (ids.isEmpty()) return;
         for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);
         Map<String, AnnouncementResults.Result> found = results.forIds(ids);
@@ -368,14 +368,15 @@ public class PushDigest {
         return "접수 시작 " + counts.total() + "건 · " + String.join(" · ", parts);
     }
 
-    /** 결과 알림은 접수 마감 뒤 이 기간 안의 공고만 보낸다(오래된 공고를 새로 저장했을 때 지난 결과를 새 소식처럼 보내지 않는다). */
+    /** 결과 알림은 접수 시작 뒤부터 마감 후 이 기간 안의 공고만 보낸다(오래된 공고를 새로 저장했을 때 지난 결과를 새 소식처럼 보내지 않는다). */
     static final int RESULT_FRESH_DAYS = 30;
     static final String RATE_SLUG = "result-rate", SCORE_SLUG = "result-score";
     /** 관심 공고의 1순위 경쟁률·당첨가점이 마지막 알림 뒤 처음 공개됐으면 한 줄씩 만든다. 공개 시점은 TB_PUSH_AREA_SEEN에 결과 종류별로 기록한다. */
     List<PushMessage.Line> resultLines(List<PlannerSummary.Summary> favorites, LocalDate today, LocalDateTime since, LocalDateTime now,
             Map<String, AnnouncementResults.Result> cache, Map<String, LocalDateTime> seen, Set<String> started) {
-        List<PlannerSummary.Summary> fresh = favorites.stream().filter(summary -> summary.id().startsWith("apt/") && summary.endDate() != null
-            && !summary.endDate().isBefore(today.minusDays(RESULT_FRESH_DAYS)) && !summary.endDate().isAfter(today)).toList();
+        // trackResults(공고 목록 쪽)와 같은 기준: 접수를 시작했고 마감 30일 이내. 마감일 전에 나온 1순위 결과도 바로 알린다.
+        List<PlannerSummary.Summary> fresh = favorites.stream().filter(summary -> summary.id().startsWith("apt/")
+            && PublicAreaPage.resultWindow(summary.startDate(), summary.endDate(), today, RESULT_FRESH_DAYS)).toList();
         if (fresh.isEmpty()) return List.of();
         // 두 결과 종류의 기록을 함께 시작한다. 시작한 실행에서 보이는 결과는 기준 시각으로 두고, 그 뒤 처음 보이는 결과만 새 소식이다.
         for (String slug : List.of(RATE_SLUG, SCORE_SLUG)) startResults(slug, started);

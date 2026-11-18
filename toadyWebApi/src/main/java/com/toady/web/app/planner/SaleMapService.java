@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 /**
  * 위치 탭 지도에 함께 놓을 분양 공고: 청약 중·예정(맞춤 청약과 같은 EligibilityFeed)과
  * 최근 3년 안에 접수를 마쳤지만 아직 입주 전인 분양 완료 APT 공고(아직 매매 실거래가 없는 단지).
- * 위치는 주변 시세 비교와 같은 규칙(AddressLocator: 지번까지 일치할 때만 확정)으로 확인한다.
+ * 위치는 주변 시세 비교와 같은 규칙(AddressLocator: 지번까지 일치할 때만 확정)으로 확인하고, 운영자 확인 주소가 있으면 먼저 쓴다(ConfirmedAddresses).
  * 지구·블록만 있는 주소는 지도에 놓지 않고 unlocated로 따로 돌려준다(화면은 목록으로만 보여 준다).
  * 위치 확인 결과는 하루 동안 기억하고, 시간 안에 못 끝낸 확인은 백그라운드에서 이어 간다(pending).
  * 위치 확인(카카오 호출)은 전용 스레드 3개에서 하고, 요청 스레드는 최대 4초만 기다린다.
@@ -75,6 +75,11 @@ public class SaleMapService {
         this.feed = feed; this.search = search; this.locator = locator; this.clock = clock;
         pool.allowCoreThreadTimeOut(true);
     }
+    /** 운영자 확인 주소(관리자 '위치 확인'). 공고 상세와 같은 순서(확인 주소 → 공급 주소)로 위치를 정한다. */
+    private ConfirmedAddresses confirmed = ConfirmedAddresses.NONE;
+    // @Autowired(required=false) 메서드 주입: 생성자를 늘리지 않고 빈이 있을 때만 넣는다(테스트는 직접 넣는다).
+    @Autowired(required = false)
+    void useConfirmed(ConfirmedAddresses confirmed) { this.confirmed = confirmed == null ? ConfirmedAddresses.NONE : confirmed; }
     // @PreDestroy: 서버가 꺼질 때 위치 확인 스레드를 정리한다.
     @PreDestroy void close() { pool.shutdownNow(); }
 
@@ -96,10 +101,11 @@ public class SaleMapService {
         List<Future<?>> waiting = new ArrayList<>();
         for (EligibilityFeed.Item item : nearby) {
             String key = key(item);
+            String operator = confirmed.of(item.id());
             if (located.getIfPresent(key) != null || failed.getIfPresent(key) != null || !inFlight.add(key)) continue;
             try {
                 waiting.add(pool.submit(() -> {
-                    try { located.put(key, locator.locate(item.address())); }
+                    try { located.put(key, locator.locate(item.address(), operator)); }
                     catch (Exception provider) { failed.put(key, Boolean.TRUE); }
                     finally { inFlight.remove(key); }
                 }));
@@ -176,8 +182,11 @@ public class SaleMapService {
         return province == null || found == null || province.equals(found);
     }
 
-    /** 공고 주소가 정정되면 다시 확인하도록 주소까지 키에 넣는다. */
-    private static String key(EligibilityFeed.Item item) { return item.id() + "|" + item.address(); }
+    /** 공고 주소가 정정되거나 운영자 확인 주소가 바뀌면 다시 확인하도록 두 주소를 키에 넣는다. */
+    private String key(EligibilityFeed.Item item) {
+        String operator = confirmed.of(item.id());
+        return item.id() + "|" + item.address() + "|" + (operator == null ? "" : operator);
+    }
 
     /** '경기 파주시' → ['파주시'], '경기 수원시 영통구' → ['수원시', '영통구'], '세종특별자치시' → ['세종']. */
     static List<String> municipalityNames(String region) {

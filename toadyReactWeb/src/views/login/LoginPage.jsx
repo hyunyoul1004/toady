@@ -169,16 +169,17 @@ export const LoginPage = (props) => {
       <Box component="form" onSubmit={handleSubmit} noValidate>
         {/* 이메일 인풋 */}
         <Box sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.6 }}>
+          <Typography component="label" htmlFor="login-email" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', mb: 0.6 }}>
             이메일 아이디
           </Typography>
           <TextField
             required
             fullWidth
-            id="userEmail"
+            id="login-email"
             name="userEmail"
             placeholder="example@email.com"
-            autoComplete="email"
+            autoComplete="username"
+            inputProps={{ inputMode: 'email', autoCapitalize: 'none', spellCheck: false }}
             inputRef={userEmailFocus}
             error={!validationInfo.userEmailCheck}
             helperText={validationInfo.userEmailMsg}
@@ -211,7 +212,7 @@ export const LoginPage = (props) => {
         {/* 비밀번호 인풋 */}
         <Box sx={{ mb: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.6 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+            <Typography component="label" htmlFor="login-password" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
               비밀번호
             </Typography>
             <Button
@@ -237,7 +238,7 @@ export const LoginPage = (props) => {
             fullWidth
             name="userPassword"
             type={showPassword ? 'text' : 'password'}
-            id="userPassword"
+            id="login-password"
             placeholder="비밀번호를 입력하세요"
             autoComplete="current-password"
             inputRef={userPasswordFocus}

@@ -6,6 +6,7 @@ import com.toady.web.app.certify.repository.CertifyRepository;
 import com.toady.web.app.user.entity.UserEntity;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.core.constants.ResultCode;
+import com.toady.web.core.redis.SlidingWindows;
 import com.toady.web.core.response.ResData;
 import com.toady.web.core.util.StrUtils;
 import com.toady.web.core.util.email.EmailDeliveryException;
@@ -48,6 +49,7 @@ import jakarta.annotation.PostConstruct;
  * 인증 코드 발급·확인을 맡는다. 두 종류가 있다.
  * - ACCOUNT: 가입 인증 링크(24시간 유효). 링크의 코드 + 가입 비밀번호가 맞으면 TB_USER.EMAIL_CERTIFY_YN을 Y로 바꾼다.
  * - FIND_PW: 비밀번호 재설정 코드(10분 유효, 4분 간격, 계정당 하루 5통).
+ * 가입 인증 메일(가입·재가입·재발송)은 이메일당 24시간에 DAILY_ACCOUNT_MAILS통까지 보낸다(SlidingWindows에 기록).
  * 코드는 SHA-256 해시로만 TB_CERTIFY에 저장한다. 계정 행을 FOR UPDATE로 잠가 같은 계정의 동시 요청을 한 줄로 세운다.
  * 호출: CertifyController, UserService(가입 시 saveCertify·reissueAccountVerification).
  * 메일은 EmailUtilService로 보내고, 본문은 EmailTemplates로 만든다.
@@ -74,6 +76,22 @@ public class CertifyService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    // 가입 인증 메일 발송 기록(이메일별 하루 상한). 요청 제한·로그인 실패와 같은 저장소(Redis, 없으면 메모리)를 쓴다
+    @Autowired
+    private SlidingWindows windows;
+
+    /** 한 이메일로 하루(24시간)에 보내는 가입 인증 메일 수. 재발송·재가입을 반복해 메일 한도를 다 쓰거나 남의 메일함을 채우지 못하게 한다. */
+    public static final int DAILY_ACCOUNT_MAILS = 5;
+    static final java.time.Duration ACCOUNT_MAIL_WINDOW = java.time.Duration.ofDays(1);
+    private static String accountMailKey(String email) { return "accountmail|" + email.trim().toLowerCase(Locale.ROOT); }
+    /** 이 이메일로 오늘 보낼 수 있는 가입 인증 메일을 다 썼는지(최근 24시간 기준). */
+    public boolean accountMailCapped(String email) {
+        return windows.count(accountMailKey(email), ACCOUNT_MAIL_WINDOW) >= DAILY_ACCOUNT_MAILS;
+    }
+    /** 재가입 때 하루 상한에 걸리면 보여 주는 안내. */
+    public static final String ACCOUNT_MAIL_CAPPED = "오늘 이 이메일로 보낼 수 있는 인증 메일(" + DAILY_ACCOUNT_MAILS
+            + "통)을 모두 보냈어요. 이미 받은 메일의 링크를 열거나 내일 다시 시도해 주세요.";
 
 
     /** 서비스 주소가 http(s) 절대 주소인지 시작할 때 확인한다. 잘못되면 앱 시작을 멈춘다. */
@@ -156,6 +174,8 @@ public class CertifyService {
             } catch (Exception e) {
                 throw new EmailDeliveryException("회원가입 인증 이메일 발송에 실패했습니다.", e);
             }
+            // 실제로 보낸 메일만 하루 상한에 센다(발송 실패는 세지 않아 바로 다시 요청할 수 있다)
+            if ("ACCOUNT".equals(param.getCertifyType())) windows.add(accountMailKey(param.getUserEmail()), ACCOUNT_MAIL_WINDOW);
 
         } catch (Exception e) {
             if (e instanceof EmailDeliveryException emailDeliveryException) {
@@ -172,11 +192,15 @@ public class CertifyService {
     // @Transactional: 계정 잠금·이전 코드 폐기·새 코드 저장을 하나로 묶는다. 메일 실패 예외가 나면 전부 되돌린다
     @Transactional
     public ResponseEntity<ResData> resendAccountVerification(CertifyDTO.UserInfo param) {
+        // ASCII가 아닌 주소는 DB 비교 규칙상 다른 계정(예: é → e)에 맞을 수 있어 계정을 찾지 않는다(가입 규칙과 같다).
+        if (!EmailRules.ascii(param.getUserEmail())) return resendAccepted();
         UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
         // 계정 유무·인증 여부·상태와 상관없이 같은 응답을 돌려 이메일 존재 여부가 드러나지 않게 한다.
         if (user == null || "Y".equals(user.getEmailCertifyYn()) || !"N".equals(user.getLockYn()) || !"N".equals(user.getWithdrawalYn())) return resendAccepted();
         var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
         if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return resendAccepted();
+        // 하루 상한도 같은 응답으로 돌린다(상한 안내는 공통 문구에 들어 있어 계정 유무가 드러나지 않는다). 계정 행을 잠근 뒤라 동시 요청도 한 줄로 센다.
+        if (accountMailCapped(user.getUserEmail())) return resendAccepted();
         certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
         CertifyDTO.Save request = new CertifyDTO.Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL");
         saveCertify(request);
@@ -185,13 +209,17 @@ public class CertifyService {
     /** 재발송 요청에 항상 돌려주는 같은 응답(가입 여부를 숨긴다). */
     public static ResponseEntity<ResData> resendAccepted() {
         return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(),
-                "인증을 기다리는 계정이면 새 인증 메일을 보냈습니다(링크 24시간 유효). 이미 인증했다면 바로 로그인해 주세요. 메일은 4분 간격으로 보낼 수 있어요."));
+                "인증을 기다리는 계정이면 새 인증 메일을 보냈습니다(링크 24시간 유효). 이미 인증했다면 바로 로그인해 주세요. 메일은 4분 간격, 하루 " + DAILY_ACCOUNT_MAILS + "통까지 보낼 수 있어요."));
     }
 
     /** 가입 인증 코드를 확인하고 이메일 인증 상태를 갱신합니다. */
     @Transactional
     public ResponseEntity<ResData> certifyCheck(CertifyDTO.CheckParam param){
 
+        // ASCII가 아닌 주소는 '인증 요청 없음'과 같은 응답으로 바로 돌린다(악센트 변형 주소가 다른 계정에 맞지 않게).
+        if (!EmailRules.ascii(param.getUserEmail())) {
+            return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
+        }
         try {
             UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
 
@@ -251,6 +279,8 @@ public class CertifyService {
     public boolean reissueAccountVerification(UserEntity user) {
         var latest = certifyRepository.findTop1ByCertifyTypeAndCertifySendTypeAndCreateUserSeqOrderByCreateDtDesc("ACCOUNT", "EMAIL", user.getUserSeq());
         if (latest != null && latest.getCreateDt().plusMinutes(4).isAfter(LocalDateTime.now())) return false;
+        // 하루 상한에 걸리면 보내지 않는다(regUser가 덮어쓰기 전에 먼저 확인해 안내한다)
+        if (accountMailCapped(user.getUserEmail())) return false;
         certifyRepository.invalidateAccountCodes(user.getUserSeq(), LocalDateTime.now());
         saveCertify(new CertifyDTO.Save(user.getUserSeq(), user.getUserEmail(), user.getUserNicName(), "ACCOUNT", "EMAIL"));
         return true;
@@ -339,7 +369,10 @@ public class CertifyService {
     @Transactional
     public ResponseEntity<ResData> certifyConfrimAndPasswordChange(CertifyDTO.PasswordChange param){
 
-
+        // ASCII가 아닌 주소는 '코드가 맞지 않음'과 같은 응답으로 바로 돌린다(악센트 변형 주소가 다른 계정에 맞지 않게).
+        if (!EmailRules.ascii(param.getUserEmail())) {
+            return ResponseEntity.ok().body(ResData.of(ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getCode(), ResultCode.EMPTY_CERTIFY_REQUEST_ERROR.getMessage()));
+        }
 
         try {
             UserEntity userEntity = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));

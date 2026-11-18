@@ -14,6 +14,7 @@
 import { create } from 'zustand';
 import { jwtDecode } from 'jwt-decode';
 import config from 'config';
+import { clearAllDrafts } from '@/utils/draftStore';
 
 /**
  * 서버에 로그아웃을 알린다(POST /api/v1/auth/logout). 서버는 이 회원의 토큰 버전을 올려 이미 발급한 토큰을 모두 무효로 만든다.
@@ -141,11 +142,14 @@ export const useAuthStore = create((set, get) => ({
   /**
    * 로그아웃 시 인증 정보를 제거합니다.
    * 회원이 직접 로그아웃하면 서버에도 알려 다른 곳에 남은 같은 토큰을 쓸 수 없게 한다(모든 기기에서 로그아웃).
-   * @param {{ server?: boolean }} [options] server=false면 서버에 알리지 않는다(401로 이미 끊긴 세션 정리 등).
+   * @param {{ server?: boolean, clearDrafts?: boolean }} [options] server=false면 서버에 알리지 않는다(401로 이미 끊긴 세션 정리 등).
+   * clearDrafts: 이 탭의 쓰던 글 초안(sessionStorage 'toady.draft.')을 지울지. 기본은 회원이 직접 로그아웃할 때(server를 끄지 않았을 때)만 지운다.
+   * 401 만료 경로(server:false)는 지우지 않아, 다시 로그인하면 쓰던 쪽지를 이어 쓸 수 있다.
    */
   logout: (options) => {
     const notifyServer = !(options && options.server === false);
     if (notifyServer) revokeOnServer(get().accessToken);
+    if (options?.clearDrafts ?? notifyServer) clearAllDrafts();
     localStorage.removeItem('user');
     set({
       accessToken: null,

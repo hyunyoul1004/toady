@@ -113,6 +113,7 @@ export function resetDefaultSeo() {
   setMetaContent('#meta-keywords', DEFAULT_SEO.keywords);
 
   setMetaContent('#og-title', DEFAULT_SEO.title);
+  setMetaContent('#og-image',DEFAULT_SEO.image);
   setMetaContent('meta[property="og:image"]',DEFAULT_SEO.image);
   setMetaContent('meta[name="twitter:image"]',DEFAULT_SEO.image);
   setMetaContent('#og-description', DEFAULT_SEO.description);
@@ -143,8 +144,13 @@ export function resetDefaultSeo() {
 }
 
 
-/** 도구·안내 화면(예: 가점 계산기)의 제목·설명·대표 주소. 화면을 떠날 때 resetDefaultSeo로 되돌린다. */
+/**
+ * 도구·안내 화면(예: 가점 계산기, 지역 캘린더)의 제목·설명·대표 주소. 화면을 떠날 때 resetDefaultSeo로 되돌린다.
+ * 먼저 기본값으로 모두 되돌린 뒤 덮어쓴다. 그래야 이 화면 위에서 연 공고 상세를 닫았을 때
+ * 상세의 대표 이미지·키워드·구조화 데이터가 남지 않는다(제목·설명만 바꾸면 나머지가 상세 것으로 남는다).
+ */
 export function updatePageSeo({ title, description, path }) {
+  resetDefaultSeo();
   const url = new URL(path || '/', 'https://www.toady.co.kr').href;
   document.title = title;
   for (const selector of ['#meta-description', 'meta[name="description"]', '#og-description', '#twitter-description']) setMetaContent(selector, description);
@@ -153,4 +159,16 @@ export function updatePageSeo({ title, description, path }) {
   setMetaContent('meta[property="og:url"]', url);
   setLinkHref('#canonical-url', url);
   setLinkHref('link[rel="canonical"]', url);
+}
+
+/**
+ * 검색엔진 색인 지시(<meta name="robots">)를 잠시 바꾼다. 개인용 화면(예: 내 방문자 ID)을 색인하지 않게 할 때 쓴다.
+ * 돌려주는 함수를 부르면 원래 값으로 되돌린다(화면을 떠날 때 useEffect 정리 함수에서 부른다).
+ */
+export function setPageRobots(content) {
+  const el = document.querySelector('meta[name="robots"]');
+  if (!el) return () => {};
+  const previous = el.getAttribute('content');
+  el.setAttribute('content', content);
+  return () => { if (previous != null) el.setAttribute('content', previous); };
 }

@@ -3,7 +3,7 @@
  * 방문자 ID(브라우저마다 무작위, localStorage)와 세션 ID(30분 동안 움직임이 없으면 새로)를 함께 보낸다.
  * API: POST /api/v1/analytics/page-views. 로그인 토큰은 싣지 않는다(회원과 연결하지 않음).
  */
-// 기록할 화면 경로. 여기에 없는 경로는 보내지 않는다.
+// 기록할 화면 경로. 여기에 없는 경로는 보내지 않는다(/my-visitor-id 같은 운영자용 화면은 일부러 넣지 않아 집계에서 빠진다).
 const PATHS = new Set(['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/announcements', '/login', '/certify', '/showSubscriptDetail']);
 const VISITOR_KEY = 'toady.analytics.visitor';
 const SESSION_KEY = 'toady.analytics.session';
@@ -32,6 +32,21 @@ export function externalReferrer(referrer, search, ownHost) {
 /** 알림 클릭 꼬리표(src=push.digest 등)를 행동 기록 이름으로 바꾼다. 정해진 값이 아니면 null. */
 const PUSH_SOURCES = { 'push.digest': 'tool/push-digest', 'push.result': 'tool/push-result', 'push.message': 'tool/push-message', 'push.notice': 'tool/push-notice', 'push.other': 'tool/push-other' };
 export function pushOpenSubject(source) { return PUSH_SOURCES[(source || '').toLowerCase()] || null; }
+
+/**
+ * 이 브라우저의 방문자 ID를 읽는다(/my-visitor-id 화면). 없거나 형식이 다르면 기록기와 같은 규칙으로 새로 만들어 저장한다.
+ * 저장소가 막혀 있으면 null(저장되지 않는 ID를 보여 주면 관리자에 등록해도 다음 방문과 맞지 않는다).
+ * 이 함수는 조회 기록을 보내지 않는다.
+ */
+export function ensureVisitorId(storage, randomUUID) {
+  try {
+    const saved = storage.getItem(VISITOR_KEY);
+    if (UUID.test(saved || '')) return saved;
+    const created = randomUUID();
+    storage.setItem(VISITOR_KEY, created);
+    return storage.getItem(VISITOR_KEY) === created ? created : null;
+  } catch { return null; }
+}
 
 /**
  * 저장소 차단 시 메모리 식별자로 동작하며, 조회 실패는 화면으로 전파하지 않는다.

@@ -239,7 +239,8 @@ export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect, 
  */
 export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale = null, siteStatus = null, siteComplex = null, origin, onOpen, onClose, onSelectComplex, panelRef }) {
   const rawUnits = sale ? (sale.units || []).map(unit => ({ ...unit, area: Number(unit.area), supplyArea: unit.supplyArea == null ? null : Number(unit.supplyArea) })) : (detail.unitPrices || []);
-  const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
+  // 이름 앞에 '이 공고' 꼬리표가 따로 붙으므로, 이름이 없을 때 같은 말을 한 번 더 쓰지 않는다.
+  const name = sale ? sale.houseNm || '분양 단지' : detail.houseNm || '분양 단지';
   const target = sale ? (sale.bcode ? { bcode: sale.bcode, dong: sale.dong } : null) : precise;
   // 주변 시세 비교는 features/match/usePriceGap의 조회를 그대로 쓴다(상세 탭과 같은 숫자가 나오게).
   // target이 null(부지 미확정)이면 비교하지 않는다.
@@ -259,7 +260,7 @@ export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale 
       {sale && <IconButton size="small" aria-label="청약 단지 정보 닫기" onClick={onClose}><CloseRounded fontSize="small" /></IconButton>}
     </Box>
     <Typography variant="caption" color="text.secondary">{sale ? [period, distance && `이 공고 위치에서 직선 ${distance}`].filter(Boolean).join(' · ') : '지도에서 다른 단지를 누르면 그 단지의 실거래를 보여 드려요.'}</Typography>
-    {sale && <Button size="small" variant="contained" disableElevation onClick={() => onOpen(sale)} sx={{ display: 'flex', mt: 1 }}>이 공고 자세히 보기</Button>}
+    {sale && <Button size="small" variant="contained" disableElevation onClick={() => onOpen(sale)} sx={{ display: 'flex', mt: 1 }}>이 단지 공고 자세히 보기</Button>}
     {siteAreas.length > 0 && <Box className="price-map-site-trades">
       <Typography variant="caption" component="p" sx={{ m: 0, fontWeight: 800 }}>이 단지 최근 실거래(같은 지번)</Typography>
       {siteAreas.map(item => <span key={item.area}>{areaText(item.area, areaUnit)} <b>{shortPrice(monthPrice(item))}</b> <small>{monthLabel(item.month || String(item.latestDate || '').slice(0, 7))} {item.monthCount || 1}건 평균</small></span>)}

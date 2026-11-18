@@ -80,16 +80,16 @@ class AdminController(
 		return page(model, user, "dashboard", "admin/dashboard")
 	}
 
-	/** 이 브라우저(관리자 화면이 읽은 방문자 ID)를 지표에서 뺀다. 과거 기록에도 적용된다. */
+	/** 붙여 넣은 방문자 ID(사이트 /my-visitor-id 화면에서 복사)를 지표에서 뺀다. 과거 기록에도 적용된다. */
 	// @PostMapping: POST 요청을 연결한다. @RequestParam은 폼 값을 매개변수로 받는다(defaultValue가 없으면 필수).
 	// RedirectAttributes.addFlashAttribute는 리다이렉트 뒤 한 번만 보이는 안내 문구를 세션에 잠깐 담는다.
 	@PostMapping("/admin/exclusions")
 	fun exclude(@RequestParam visitorId: String, @RequestParam(defaultValue = "") label: String, user: Principal, redirect: RedirectAttributes): String {
 		when (exclusions.add(visitorId, label, user.name)) {
-			"ADDED" -> { redirect.addFlashAttribute("notice", "이 브라우저의 방문을 지표에서 뺐습니다(과거 기록 포함)."); audit.record(user.name, "VISITOR_EXCLUDE", "VISITOR", visitorId, after = label) }
+			"ADDED" -> { redirect.addFlashAttribute("notice", "이 방문자 ID의 방문을 지표에서 뺐습니다(과거 기록 포함)."); audit.record(user.name, "VISITOR_EXCLUDE", "VISITOR", ExclusionService.normalize(visitorId) ?: visitorId, after = label) }
 			"EXISTS" -> redirect.addFlashAttribute("notice", "이미 제외된 브라우저입니다.")
 			"UNAVAILABLE" -> redirect.addFlashAttribute("error", "제외 목록 테이블이 없습니다. database.sql 20번과 관리자 DB 권한(19번)을 적용하세요.")
-			else -> redirect.addFlashAttribute("error", "이 브라우저에는 사이트 방문 기록이 없습니다. 먼저 www.toady.co.kr을 한 번 연 뒤 다시 누르세요.")
+			else -> redirect.addFlashAttribute("error", "방문자 ID 형식이 아닙니다. www.toady.co.kr/my-visitor-id에서 복사해 붙여 넣으세요.")
 		}
 		return "redirect:/admin/#exclusions"
 	}
@@ -185,7 +185,8 @@ class AdminController(
 		if (added.outcome == SanctionService.Outcome.DONE) {
 			val period = if (kind == "STORY_BAN") SanctionService.DAYS[days] else null
 			audit.record(user.name, "SANCTION_ADD", "MEMBER", seq, after = listOfNotNull(SanctionService.KINDS[kind], period, SanctionService.REASONS[reason]).joinToString(" · "), note = memo)
-			if (kind == "NICKNAME_RESET") audit.record(user.name, "NICKNAME_RESET", "MEMBER", seq, added.previousNickname, added.nickname, memo)
+			// 작업 이력은 오래 남고 여러 관리자가 보므로 초기화 전 닉네임 원문은 남기지 않고 길이만 적는다.
+			if (kind == "NICKNAME_RESET") audit.record(user.name, "NICKNAME_RESET", "MEMBER", seq, added.previousNickname?.let { "이전 닉네임(${it.length}자)" }, added.nickname, memo)
 		}
 		when (added.outcome) {
 			SanctionService.Outcome.DONE -> redirect.addFlashAttribute("notice", when (kind) {

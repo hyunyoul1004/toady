@@ -22,6 +22,7 @@ import EligibilityForm, { accountChoice, ACCOUNT_CHOICES } from './EligibilityFo
 import { priceRange, receiptBadge, shortDate, TYPE_LABEL, useEligibilityFeed } from './matchShared';
 import { gapBadge, sortZupzup } from './priceGapRules';
 import './match.css';
+import { shareLink, toolShareText } from '@/utils/share.util';
 
 // 탭별 검색엔진용 제목·설명. 상세를 열지 않았을 때만 적용한다.
 const SEO = {
@@ -145,14 +146,12 @@ export default function MatchPage({ tab = 'match' }) {
   /** 개인 조건은 넣지 않고, 같은 진단을 해 볼 수 있는 주소만 공유한다. 휴대폰은 기본 공유 창, 안 되면 클립보드 복사. */
   async function share(count) {
     const url = new URL(tab === 'zupzup' ? '/match/zupzup' : '/match', window.location.origin).href;
-    const data = tab === 'zupzup'
-      ? { title: '무순위·줍줍 청약 모아보기 · TOADY', text: `지금 접수 중·예정인 줍줍 청약 ${count}건, 같이 확인해 봐요.`, url }
-      : { title: '내게 맞는 청약 · TOADY', text: `30초 자격 진단으로 지금 넣을 수 있는 청약을 찾아봤어요(${count}건). 내 조건으로도 확인해 보세요.`, url };
-    try {
-      if (navigator.share) { await navigator.share(data); trackAction('share', 'tool/match'); return; }
-      await navigator.clipboard.writeText(`${data.text} ${url}`); trackAction('share', 'tool/match'); setShareMessage('공유 문구와 링크를 복사했어요.');
-    // AbortError는 사용자가 공유 창을 닫은 경우라 오류로 보지 않는다.
-    } catch (error) { if (error?.name !== 'AbortError') setShareMessage('링크를 복사하지 못했어요.'); }
+    // 공고 공유와 같은 형식: 한 줄 문구 + 링크(복사 시 '문구\n링크'). 사용자가 공유 창을 닫으면(cancelled) 아무 안내도 하지 않는다.
+    const text = toolShareText(tab === 'zupzup' ? `지금 접수 중·예정인 줍줍 청약 ${count}건` : `30초 자격 진단으로 찾은 넣을 수 있는 청약 ${count}건`);
+    const result = await shareLink({ text, url });
+    if (result === 'shared' || result === 'copied') trackAction('share', 'tool/match');
+    if (result === 'copied') setShareMessage('공유 문구와 링크를 복사했어요.');
+    else if (result === 'failed') setShareMessage('링크를 복사하지 못했어요.');
   }
   const feed = useEligibilityFeed();
   const items = useMemo(() => (Array.isArray(feed.data?.items) ? feed.data.items : []), [feed.data]);
