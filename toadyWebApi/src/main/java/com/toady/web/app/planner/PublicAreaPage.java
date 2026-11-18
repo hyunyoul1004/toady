@@ -102,17 +102,33 @@ public class PublicAreaPage {
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays) { return groups(keyword, types, today, pastDays, 12); }
     /** closedLimit: 최근 마감을 몇 건까지 남길지. 건수 통계를 내는 화면은 자르지 않고 받은 뒤 목록만 줄인다. */
     Groups groups(String keyword, List<String> types, LocalDate today, int pastDays, int closedLimit) {
+        var page = search(keyword, types, today.minusDays(pastDays), today.plusDays(FUTURE_DAYS));
+        if (page.getTotalElements() <= SEARCH_LIMIT) return classify(page.getContent(), today, closedLimit);
+        // 결과는 접수 시작일 최신순으로 잘리므로 넘치면 앞쪽(접수 예정)이 자리를 차지해 오래전에 시작한 접수 중 공고가 빠질 수 있다.
+        // 이미 시작한 공고와 앞으로 시작할 공고를 나눠 다시 읽어, 접수 예정 건수 때문에 접수 중 공고가 밀려나지 않게 한다.
+        var started = search(keyword, types, today.minusDays(pastDays), today);
+        var future = search(keyword, types, today.plusDays(1), today.plusDays(FUTURE_DAYS));
+        if (started.getTotalElements() > SEARCH_LIMIT || future.getTotalElements() > SEARCH_LIMIT)
+            log.warn("공개 목록 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, started={}, upcoming={}", SEARCH_LIMIT, keyword, types,
+                started.getTotalElements(), future.getTotalElements());
+        List<AnnouncementListItem> merged = new ArrayList<>(future.getContent());
+        merged.addAll(started.getContent());
+        return classify(merged, today, closedLimit);
+    }
+    /** 접수 시작일이 from~to인 공고를 통합 검색 한 페이지(최대 SEARCH_LIMIT건)로 읽는다. */
+    private org.springframework.data.domain.Page<AnnouncementListItem> search(String keyword, List<String> types, LocalDate from, LocalDate to) {
         AnnouncementSearch query = new AnnouncementSearch();
         query.setKeyword(keyword);
-        query.setStartDate(today.minusDays(pastDays));
-        query.setEndDate(today.plusDays(FUTURE_DAYS));
+        query.setStartDate(from);
+        query.setEndDate(to);
         query.setSize(SEARCH_LIMIT);
-        var page = search.searchAll(query, types);
-        // 접수 시작일 최신순으로 자르므로, 넘치면 오래전에 시작한 접수 중 공고가 빠질 수 있다.
-        if (page.getTotalElements() > SEARCH_LIMIT) log.warn("공개 목록 조회가 {}건을 넘어 일부가 빠졌습니다: keyword={}, types={}, total={}", SEARCH_LIMIT, keyword, types, page.getTotalElements());
-        return classify(page.getContent(), today, closedLimit);
+        return search.searchAll(query, types);
     }
-    static final int SEARCH_LIMIT = 100;
+    /**
+     * 한 번에 읽는 공고 상한. 통합 검색이 허용하는 최대((page+1)×size ≤ 1000)라 최근 마감 건수(운영 100건 이상)와
+     * 웹 푸시의 무순위 접수 중·예정 판정이 잘리지 않는다. 실제 조회는 조건에 맞는 행만큼만 읽는다.
+     */
+    static final int SEARCH_LIMIT = PublicCollectionPages.MAX_ITEMS;
     private static final Logger log = LoggerFactory.getLogger(PublicAreaPage.class);
     static Groups classify(List<AnnouncementListItem> sources, LocalDate today) { return classify(sources, today, 12); }
     /** closedLimit: 최근 마감 목록을 몇 건까지 남길지(생활권 페이지 12건). 집계에 쓰는 곳은 Integer.MAX_VALUE로 자르지 않는다. */
@@ -167,6 +183,10 @@ public class PublicAreaPage {
         }).toList());
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
+    /** 숨김 목록이 바뀌면 생활권 요약 캐시를 비운다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { areaSummaryCache.invalidateAll(); }
 
     // 생활권 한 곳의 HTML. @PathVariable로 slug를 받는다. 없는 slug는 캐시에 넣지 않고 바로 404를 준다.
     @GetMapping(value = "/api/v1/public/areas/{slug}", produces = "text/html;charset=UTF-8")

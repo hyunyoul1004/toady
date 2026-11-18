@@ -34,6 +34,11 @@ class PlannerIntegrationTest {
     @MockitoBean EmailUtilService mail;
     @Autowired com.toady.web.app.planner.ScoreBenchmarks benchmarks;
     @Autowired com.toady.web.app.planner.PublicAnnouncementIndex announcementIndex;
+    @Autowired com.toady.web.app.planner.HiddenAnnouncements hiddenAnnouncements;
+    @Autowired com.toady.web.app.operation.AnnouncementOverrides overrides;
+    @Autowired org.springframework.context.ApplicationEventPublisher events;
+    /** 운영 숨김 목록을 바로 다시 읽게 한다(AnnouncementOverrides.refresh는 operation 패키지 안에서만 보인다). */
+    void reloadOverrides() { org.springframework.test.util.ReflectionTestUtils.invokeMethod(overrides,"refresh"); }
     @BeforeEach void setup() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT,ANNOUNCEMENT_TYPE VARCHAR(20),HOUSE_MANAGE_NO VARCHAR(40),PBLANC_NO VARCHAR(40),NOTE VARCHAR(2000),CHECKLIST INT,EMAIL_ENABLED BOOLEAN,REG_DT TIMESTAMP,PRIMARY KEY(USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (ID INT PRIMARY KEY)");
@@ -43,11 +48,16 @@ class PlannerIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_RATE_POLL (ANNOUNCEMENT_ID VARCHAR(110) NOT NULL,VISITOR_ID CHAR(36) NOT NULL,CHOICE TINYINT NOT NULL,REG_DT TIMESTAMP NOT NULL,PRIMARY KEY(ANNOUNCEMENT_ID,VISITOR_ID))");
         for(String table:List.of("TB_RATE_POLL","TB_APT_LTTOT_PBLANC_CMPET","TB_REMNDR_LTTOT_PBLANC_DETAIL","TB_CALENDAR_FEED","TB_FAVORITE","TB_MAIL_ATTEMPT","TB_MAIL_BUDGET","TB_REMINDER_DELIVERY","TB_CERTIFY","TB_USER","TB_APT_LTTOT_PBLANC_SCORE","TB_APT_LTTOT_PBLANC_DETAIL")) jdbc.update("DELETE FROM "+table);
         jdbc.update("INSERT INTO TB_MAIL_BUDGET VALUES (1)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE VARCHAR(20) NOT NULL, HOUSE_MANAGE_NO VARCHAR(40) NOT NULL, PBLANC_NO VARCHAR(40) NOT NULL,"
+                + " HIDDEN_YN VARCHAR(1) DEFAULT 'N' NOT NULL, NOTICE VARCHAR(500), ADMIN_NAME VARCHAR(100) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL, PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO))");
+        jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides();
         jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
         org.mockito.Mockito.reset(mail);
         com.toady.web.app.planner.PublicPagesCache.clear();
         com.toady.web.app.planner.PublicPagesCache.clear(benchmarks);
         com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
+        // 이번 주 청약·지역 요약 등 앱 화면용 캐시도 숨김 변경 때와 같은 방법으로 비운다(앞선 시험의 결과가 남지 않게).
+        events.publishEvent(new com.toady.web.app.planner.HiddenAnnouncements.Changed());
     }
     UserEntity user(String email) {
         return users.save(UserEntity.builder().userEmail(email).userNicName(email.substring(0,email.indexOf('@'))).userPassword(passwords.encode("Password123!"))
@@ -541,4 +551,42 @@ class PlannerIntegrationTest {
         org.mockito.Mockito.verify(mail,org.mockito.Mockito.times(2)).sendReminder(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
     }
 
+
+    /** 운영자가 숨긴 공고는 이번 주 발표·당첨가점 기준·알림 메일·구독 캘린더·공유 이미지에서 빠지고, 숨김이 바뀌면 공개 캐시를 바로 비운다. */
+    @Test void hiddenAnnouncementsStayOutOfWeeklyScoresRemindersCalendarAndShareImages() throws Exception {
+        var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        apt("W1","보이는 발표 단지","서울특별시 송파구 1",today.minusDays(20),today.minusDays(18),today);
+        apt("W2","숨긴 발표 단지","서울특별시 송파구 2",today.minusDays(20),today.minusDays(18),today);
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,LWET_SCORE,TOP_SCORE) VALUES ('W1','N1','01','01','50','60'),('W2','N1','01','01','20','30')");
+        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=?,RCEPT_ENDDE=? WHERE HOUSE_MANAGE_NO='P1'",today.toString(),today.plusDays(1).toString());
+        UserEntity account=user("hidden@example.test");String auth=token("hidden@example.test");
+        planner.save(account.getUserSeq(),"apt","P1","N1","",0,true,null);
+        String feed=feedToken(mvc.perform(post("/api/v1/me/calendar-feed").header("Authorization",auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        // 숨기기 전 상태를 캐시에 올려 둔다.
+        hiddenAnnouncements.watch();
+        assertTrue(html(mvc.perform(get("/api/v1/public/weekly-summary"))).contains("apt/W2/N1"));
+        assertTrue(html(mvc.perform(get("/api/v1/public/weekly"))).contains("/announcements/apt/W2/N1"));
+        assertTrue(announcementIndex.find("apt/W2/N1").isPresent());
+
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','W2','N1','Y',NULL,'operator',CURRENT_TIMESTAMP),('APT','P1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        reloadOverrides();
+        hiddenAnnouncements.watch();
+        // 캐시를 직접 비우지 않아도 숨김 변경 감지로 이번 주 청약·사이트맵 목록에서 빠진다.
+        var summary=json.readTree(html(mvc.perform(get("/api/v1/public/weekly-summary")).andExpect(status().isOk())));
+        var winners=new ArrayList<String>(); summary.path("winners").forEach(w->winners.add(w.path("id").asText()));
+        assertTrue(winners.contains("apt/W1/N1") && !winners.contains("apt/W2/N1"),winners.toString());
+        String weekly=html(mvc.perform(get("/api/v1/public/weekly")).andExpect(status().isOk()));
+        assertTrue(weekly.contains("/announcements/apt/W1/N1") && !weekly.contains("/announcements/apt/W2/N1"),weekly);
+        assertTrue(announcementIndex.find("apt/W2/N1").isEmpty(),"사이트맵·지역 페이지 목록도 바로 다시 만든다");
+        var scores=json.readTree(html(mvc.perform(get("/api/v1/public/score-benchmarks/search").param("sido","서울").param("years","0")).andExpect(status().isOk())));
+        var scoreIds=new ArrayList<String>(); scores.path("items").forEach(i->scoreIds.add(i.path("id").asText()));
+        assertEquals(List.of("apt/W1/N1"),scoreIds,"숨긴 공고의 가점은 기준에 넣지 않는다");
+        mvc.perform(get("/api/v1/public/announcement-images/apt/P1/N1.png")).andExpect(status().isGone());
+        String ics=mvc.perform(get("/api/v1/public/calendar/"+feed+".ics")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(ics.contains("운정 테스트"),"숨긴 공고는 구독 캘린더에 넣지 않는다");
+        var reminder=new PlannerReminder(jdbc,planner,users,mail,"https://www.toady.co.kr",unsubscribe);
+        reminder.useHidden(hiddenAnnouncements);
+        reminder.send();
+        org.mockito.Mockito.verifyNoInteractions(mail);
+    }
 }

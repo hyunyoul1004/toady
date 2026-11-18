@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,8 @@ public class ApplyhomeSyncService {
 
 	private static final Logger log = LoggerFactory.getLogger(ApplyhomeSyncService.class);
 	private static final DateTimeFormatter COMPACT_DATE = DateTimeFormatter.BASIC_ISO_DATE;
+	/** 이보다 많이 실패하면 DB·제공처 같은 공통 장애로 보고 나머지를 멈춘다(다섯 유형 전체 기준). */
+	static final int MAX_FAILURES = 20;
 
 	private final ApplyhomeApiClient apiClient;
 	private final ApplyhomeEntityMapper mapper;
@@ -67,7 +70,7 @@ public class ApplyhomeSyncService {
 			throw new IllegalArgumentException("A valid start and end date range is required");
 		}
 		syncLock.execute(() -> {
-			// 한 유형에서 일부 공고의 주택형이 실패해도 나머지 유형은 계속 수집하고, 실패는 끝에서 한 번에 알린다(한도 20건은 전체 기준).
+			// 한 유형에서 일부 공고의 상세·주택형 저장이 실패해도 나머지 공고·유형은 계속 수집하고, 실패는 끝에서 한 번에 알린다(한도 20건은 전체 기준).
 			List<String> failures = new ArrayList<>();
 			synchronizeDataset("getAPTLttotPblancDetail", AptLttotPblancDetail.class,
 					"getAPTLttotPblancMdl", AptLttotPblancMdl.class, startDate, endDate, false, false, failures);
@@ -80,14 +83,16 @@ public class ApplyhomeSyncService {
 			synchronizeDataset("getOPTLttotPblancDetail", OptLttotPblancDetail.class,
 					"getOPTLttotPblancMdl", OptLttotPblancMdl.class, startDate, endDate, true, false, failures);
 			if (!failures.isEmpty()) {
-				throw new PartialFailureException("주택형 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
+				throw new PartialFailureException("공고·주택형 수집 중 " + failures.size() + "건 실패(나머지는 저장됨): "
 						+ String.join(", ", failures.subList(0, Math.min(5, failures.size()))) + (failures.size() > 5 ? " 외" : ""));
 			}
 		});
 	}
 
 	/**
-	 * 한 유형의 상세 목록을 먼저 저장하고, 목록에서 얻은 공고 키로 주택형 API를 호출해 후속 저장한다.
+	 * 한 유형의 상세 목록을 받은 뒤, 공고 하나씩 주택형 API를 호출하고 상세·주택형을 한 트랜잭션으로 저장한다.
+	 * 저장은 공고마다 따로 트랜잭션을 연다. 한 공고의 값 오류(예: 컬럼 길이 초과)가 같은 유형의 다른 공고나
+	 * 다음 유형·다음 기간까지 되돌리지 않게 하고, 실패한 공고 키만 failures에 모아 끝에서 일부 실패로 알린다.
 	 * 민간임대/임의공급은 날짜 검색값 형식이 다르며, 도시형 주택형은 API 중복 행을 제거한다.
 	 */
 	private <D, M> void synchronizeDataset(
@@ -100,13 +105,12 @@ public class ApplyhomeSyncService {
 			boolean compactDate,
 			boolean urbanModel,
 			List<String> failures) {
+		String label = modelEndpoint.replace("get", "").replace("LttotPblancMdl", "");
 		Map<String, String> dateFilters = dateFilters(startDate, endDate, compactDate);
 		List<JsonNode> detailRows = fetchAllPages(detailEndpoint, dateFilters);
-		List<D> details = detailRows.stream().map(row -> mapper.toEntity(row, detailType)).toList();
-		persistenceService.upsertAll(details);
-		log.info("Upserted Applyhome endpoint={} rows={}", detailEndpoint, details.size());
 
-		Set<AnnouncementKey> announcementKeys = new LinkedHashSet<>();
+		// 저장 전에 모든 행의 공고 키를 확인한다. 키가 빠진 응답은 제공처 이상으로 보고 아무것도 바꾸지 않고 멈춘다.
+		Map<AnnouncementKey, JsonNode> detailsByKey = new LinkedHashMap<>();
 		for (JsonNode row : detailRows) {
 			// 주택형 API는 날짜 범위 검색을 제공하지 않아 상세 목록의 복합 키로 호출한다.
 			String houseManageNo = textValue(row, "HOUSE_MANAGE_NO");
@@ -114,56 +118,68 @@ public class ApplyhomeSyncService {
 			if (houseManageNo == null || pblancNo == null) {
 				throw new IllegalStateException("Applyhome detail response is missing announcement keys: " + detailEndpoint);
 			}
-			announcementKeys.add(new AnnouncementKey(houseManageNo, pblancNo));
+			detailsByKey.put(new AnnouncementKey(houseManageNo, pblancNo), row);
 		}
 
-		List<M> models = new ArrayList<>();
+		// 공고 하나씩 주택형을 먼저 받고, 상세와 주택형을 한 트랜잭션으로 함께 저장한다.
+		// 새 공고가 주택형 없이 먼저 보이거나, 주택형 조회·저장이 실패한 공고가 상세만 남는 일이 없게 하기 위해서다.
+		// 실패한 공고는 상세·주택형 모두 이번에 바꾸지 않고(기존 값 유지) failures에 남긴다. 호출 수는 공고당 주택형 1회로 전과 같다.
 		Set<JsonNode> distinctUrbanRows = new LinkedHashSet<>();
-		// 주택형 조회에 실패한 공고는 이번 교체에서 빼고(기존 주택형 유지) 나머지 공고는 반영한 뒤 실패를 알린다.
-		List<AnnouncementKey> fetched = new ArrayList<>();
-		for (AnnouncementKey key : announcementKeys) {
-			Map<String, String> filters = Map.of(
-					"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
-					"cond[PBLANC_NO::EQ]", key.pblancNo());
-			List<M> keyModels = new ArrayList<>();
+		int savedAnnouncements = 0;
+		long savedModels = 0;
+		for (var entry : detailsByKey.entrySet()) {
+			AnnouncementKey key = entry.getKey();
+			List<M> keyModels;
 			try {
-				for (JsonNode row : fetchAllPages(modelEndpoint, filters)) {
-	                if (!key.houseManageNo().equals(textValue(row, "HOUSE_MANAGE_NO"))
-	                        || !key.pblancNo().equals(textValue(row, "PBLANC_NO"))) {
-	                    throw new ResponseMismatchException("Applyhome model response does not match the requested announcement: " + modelEndpoint);
-	                }
-					// 도시형 응답에는 동일 주택형이 반복될 수 있어 원본 JSON 기준으로 한 번만 적재한다.
-					if (urbanModel && !distinctUrbanRows.add(row)) {
-						continue;
-					}
-					keyModels.add(mapper.toEntity(row, modelType));
-				}
+				keyModels = fetchModels(modelEndpoint, modelType, key, urbanModel, distinctUrbanRows);
+				persistenceService.saveAnnouncement(mapper.toEntity(entry.getValue(), detailType), modelType, key, keyModels);
 			} catch (RuntimeException failure) {
-				// 다른 공고의 주택형이 섞여 오면 제공처 전체 이상으로 보고 아무것도 바꾸지 않고 멈춘다(개별 오류만 건너뛴다).
-				if (failure instanceof ResponseMismatchException || Thread.currentThread().isInterrupted()) throw failure;
-				// 인증키 오류·일일 한도 초과는 남은 공고도 모두 실패하므로 바로 멈추고 원인을 남긴다.
-				if (failure instanceof ApplyhomeApiClient.ProviderRejectedException) throw failure;
-				failures.add(modelEndpoint.replace("get", "").replace("LttotPblancMdl", "") + ":" + key.houseManageNo() + "/" + key.pblancNo());
-				log.warn("Applyhome model sync failed for one announcement endpoint={} key={}/{} error={}",
-						modelEndpoint, key.houseManageNo(), key.pblancNo(), failure.getMessage());
-				if (failures.size() >= 20) throw new IllegalStateException("주택형 수집 실패가 20건을 넘어 중단했습니다: " + failure.getMessage(), failure);
+				recordFailure(failures, label, key, modelEndpoint, failure);
 				continue;
 			}
-			fetched.add(key);
-			models.addAll(keyModels);
+			savedAnnouncements++;
+			savedModels += keyModels.size();
 		}
-		announcementKeys = new LinkedHashSet<>(fetched);
+		log.info("Upserted Applyhome endpoint={} announcements={} failed={} models={}",
+				detailEndpoint, savedAnnouncements, detailsByKey.size() - savedAnnouncements, savedModels);
+	}
 
-		if (urbanModel) {
-			List<UrbtyOfctlLttotPblancMdl> urbanModels = models.stream()
-					.map(UrbtyOfctlLttotPblancMdl.class::cast)
-					.toList();
-			persistenceService.upsertUrbanModels(List.copyOf(announcementKeys), urbanModels);
-		} else {
-			persistenceService.replaceModels(modelType, List.copyOf(announcementKeys), models);
+	/**
+	 * 공고 하나의 주택형을 모두 받아 엔티티로 바꾼다. 다른 공고의 응답이 섞여 오면 제공처 이상으로 보고 전체를 멈춘다.
+	 * 도시형 응답에는 동일 주택형이 반복될 수 있어 원본 JSON 기준으로 한 번만 담는다.
+	 */
+	private <M> List<M> fetchModels(String modelEndpoint, Class<M> modelType, AnnouncementKey key,
+			boolean urbanModel, Set<JsonNode> distinctUrbanRows) {
+		Map<String, String> filters = Map.of(
+				"cond[HOUSE_MANAGE_NO::EQ]", key.houseManageNo(),
+				"cond[PBLANC_NO::EQ]", key.pblancNo());
+		List<M> models = new ArrayList<>();
+		for (JsonNode row : fetchAllPages(modelEndpoint, filters)) {
+			if (!key.houseManageNo().equals(textValue(row, "HOUSE_MANAGE_NO"))
+					|| !key.pblancNo().equals(textValue(row, "PBLANC_NO"))) {
+				throw new ResponseMismatchException("Applyhome model response does not match the requested announcement: " + modelEndpoint);
+			}
+			if (urbanModel && !distinctUrbanRows.add(row)) {
+				continue;
+			}
+			models.add(mapper.toEntity(row, modelType));
 		}
-		log.info("Upserted Applyhome endpoint={} announcements={} rows={}",
-				modelEndpoint, announcementKeys.size(), models.size());
+		return models;
+	}
+
+	/**
+	 * 공고 하나의 실패를 기록하고 넘어간다. 다만 아래 경우는 남은 공고도 똑같이 실패하거나 제공처 이상이므로 바로 멈춘다:
+	 * 다른 공고의 응답이 섞여 온 경우, 중단 요청, 인증키 오류·일일 한도 초과, 실패가 MAX_FAILURES에 이른 경우.
+	 */
+	private void recordFailure(List<String> failures, String label, AnnouncementKey key, String endpoint, RuntimeException failure) {
+		if (failure instanceof ResponseMismatchException || Thread.currentThread().isInterrupted()) throw failure;
+		if (failure instanceof ApplyhomeApiClient.ProviderRejectedException) throw failure;
+		failures.add(label + ":" + key.houseManageNo() + "/" + key.pblancNo());
+		log.warn("Applyhome sync failed for one announcement endpoint={} key={}/{} error={}",
+				endpoint, key.houseManageNo(), key.pblancNo(), failure.getMessage());
+		if (failures.size() >= MAX_FAILURES) {
+			throw new ApplyhomeFailureLimitException("공고·주택형 수집", MAX_FAILURES, failures, failure);
+		}
 	}
 
 	/**
@@ -200,7 +216,7 @@ public class ApplyhomeSyncService {
 		ResponseMismatchException(String message) { super(message); }
 	}
 
-	/** 일부 공고의 주택형만 실패했고 나머지는 저장된 경우(공통 ApplyhomePartialFailureException). */
+	/** 일부 공고의 상세·주택형만 실패했고 나머지는 저장된 경우(공통 ApplyhomePartialFailureException). */
 	public static class PartialFailureException extends ApplyhomePartialFailureException {
 		public PartialFailureException(String message) { super(message); }
 	}

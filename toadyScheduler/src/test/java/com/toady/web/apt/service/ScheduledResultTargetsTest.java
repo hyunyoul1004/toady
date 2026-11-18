@@ -147,6 +147,43 @@ class ScheduledResultTargetsTest {
     }
 
     @Test
+    void aFailedEmptyLeftoverIsRetriedOnTheNextRun() {
+        apt("WINNERS_LAST_WEEK", null, "2026-11-01", "2026-11-03", "2026-11-12");
+        var filters = Map.of("cond[HOUSE_MANAGE_NO::EQ]", "WINNERS_LAST_WEEK", "cond[PBLANC_NO::EQ]", "WINNERS_LAST_WEEK");
+        when(competitionApi.getPage(anyString(), eq(1), anyMap())).thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        // 첫 실행은 일시적인 오류로 실패한다. 확인 시각을 남기지 않아야 다음 실행(10분 뒤)에서 바로 다시 받는다.
+        when(competitionApi.getPage(eq("getAptLttotPblancScore"), eq(1), eq(filters)))
+                .thenThrow(new IllegalStateException("timeout"))
+                .thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.synchronizeScheduled(START, TODAY))
+                .isInstanceOf(ApplyhomePartialFailureException.class);
+        service.synchronizeScheduled(START, TODAY);
+        // 성공한 뒤에는 재확인 간격(3시간)이 적용되어 세 번째 실행에서는 부르지 않는다.
+        service.synchronizeScheduled(START, TODAY);
+        verify(competitionApi, times(2)).getPage(eq("getAptLttotPblancScore"), eq(1), eq(filters));
+    }
+
+    @Test
+    void aPersistentlyFailingAnnouncementBacksOffWhileOthersKeepRunning() {
+        apt("IN_PROGRESS", null, "2026-11-16", "2026-11-18", "2026-11-25");
+        var filters = Map.of("cond[HOUSE_MANAGE_NO::EQ]", "IN_PROGRESS", "cond[PBLANC_NO::EQ]", "IN_PROGRESS");
+        when(competitionApi.getPage(anyString(), eq(1), anyMap())).thenReturn(new ApplyhomeApiPage(List.of(), 0, 0));
+        when(competitionApi.getPage(eq("getAPTLttotPblancCmpet"), eq(1), eq(filters))).thenThrow(new IllegalStateException("broken"));
+        long[] now = {0};
+        service.clock = () -> now[0];
+        long minute = 60_000;
+        // 10분마다 실행: 첫 실패는 바로 다음 실행에서 다시 받고, 두 번 연속 실패하면 30분, 그다음 1시간을 기다린다.
+        int runs = 0;
+        for (; now[0] <= 120 * minute; now[0] += 10 * minute, runs++) {
+            try { service.synchronizeScheduled(START, TODAY); } catch (ApplyhomePartialFailureException ignored) { }
+        }
+        // 0분(1회), 10분(2회) → 30분 대기 → 40분(3회) → 1시간 대기 → 100분(4회). 13번 실행 중 4번만 부른다.
+        verify(competitionApi, times(4)).getPage(eq("getAPTLttotPblancCmpet"), eq(1), eq(filters));
+        // 같은 공고의 특별공급 신청현황(다른 항목)은 실패하지 않으므로 실행마다 받는다.
+        verify(competitionApi, times(runs)).getPage(eq("getAPTSpsplyReqstStus"), eq(1), eq(filters));
+    }
+
+    @Test
     void synchronizeCallsOnlyTargetsAndSkipsTheApiWhenNothingIsDue() {
         assertThat(service.synchronizeScheduled(START, TODAY)).isEqualTo(new ApplyhomeCompetitionSyncService.ScheduledResult(0, 0));
         verifyNoInteractions(competitionApi);

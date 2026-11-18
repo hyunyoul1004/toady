@@ -34,6 +34,10 @@ public class AreaCalendar {
     /** 생활권별 피드를 30분 동안 메모리(Guava Cache)에 들고 있는다. 만료 순간 요청이 몰려도 같은 생활권은 한 번만 만든다. */
     private final Cache<String, String> cache = CacheBuilder.newBuilder()
             .maximumSize(50).expireAfterWrite(CACHE).build();
+    /** 숨김 목록이 바뀌면 캐시를 비워 숨긴 공고가 바로 빠지게 한다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { cache.invalidateAll(); }
 
     // @Autowired: 생성자가 둘이라 스프링이 쓸 생성자를 이것으로 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired

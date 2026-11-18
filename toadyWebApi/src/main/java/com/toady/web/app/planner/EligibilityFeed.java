@@ -39,6 +39,10 @@ public class EligibilityFeed {
     private final Clock clock;
     private final PriceGapStore gapStore;
     private final Cache<String, Map<String, Object>> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(10)).build();
+    /** 숨김 목록이 바뀌면 캐시를 비워 숨긴 공고가 바로 빠지게 한다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { cache.invalidateAll(); }
 
     // @Autowired: 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired

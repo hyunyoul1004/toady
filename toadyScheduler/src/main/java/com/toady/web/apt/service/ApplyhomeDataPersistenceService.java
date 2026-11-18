@@ -143,6 +143,22 @@ public class ApplyhomeDataPersistenceService {
         upsertAll(models);
     }
 
+	/**
+	 * 공고 하나의 상세와 주택형을 한 트랜잭션으로 저장한다. 둘 중 하나라도 실패하면 둘 다 되돌려 기존 값이 그대로 남는다.
+	 * 주택형 규칙은 replaceModels·upsertUrbanModels와 같다(빈 응답이면 기존 주택형 유지).
+	 * 같은 빈 안의 호출이라 내부 메서드의 @Transactional은 따로 적용되지 않고 이 트랜잭션 하나에 묶인다.
+	 */
+	@Transactional
+	@SuppressWarnings("unchecked")
+	public <M> void saveAnnouncement(Object detail, Class<M> modelType, AnnouncementKey key, List<M> models) {
+		upsertAll(List.of(detail));
+		if (modelType == UrbtyOfctlLttotPblancMdl.class) {
+			upsertUrbanModels(List.of(key), (List<UrbtyOfctlLttotPblancMdl>) models);
+		} else {
+			replaceModels(modelType, List.of(key), models);
+		}
+	}
+
 	/** 도시형 주택형을 '값이 같은지' 비교하기 위한 묶음을 만든다(ID 제외). */
 	private UrbanModelValues valuesOf(UrbtyOfctlLttotPblancMdl model) {
 		return new UrbanModelValues(

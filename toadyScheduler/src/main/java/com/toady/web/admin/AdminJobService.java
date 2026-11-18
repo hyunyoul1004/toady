@@ -2,6 +2,7 @@ package com.toady.web.admin;
 
 import com.toady.web.apt.api.ApplyhomeApiClient.ProviderRejectedException;
 import com.toady.web.apt.service.ApplyhomeCompetitionSyncService;
+import com.toady.web.apt.service.ApplyhomeFailureLimitException;
 import com.toady.web.apt.service.ApplyhomeSyncBusyException;
 import com.toady.web.apt.service.ApplyhomePartialFailureException;
 import com.toady.web.apt.service.ApplyhomeSyncService;
@@ -120,7 +121,21 @@ public class AdminJobService {
         return id;
     }
 
-    /** 월별 구간을 순차 처리하고, 구간 경계에서 중지 요청과 실행 소유 상태를 다시 확인한다. */
+    /**
+     * 실행 전에 거절된 요청(기간 초과 등)을 실패 이력으로 남긴다. 자동 일정이 설정 문제로 거절될 때
+     * 로그에만 남으면 관리자가 수집이 멈춘 것을 알 수 없어서다. 같은 분에 이미 남겼으면 다시 남기지 않는다.
+     */
+    public void recordRejected(JobKind kind, LocalDate start, LocalDate end, String user, String source, String message) {
+        try {
+            repository.insertFinished(UUID.randomUUID().toString(), kind, source, start, end, "FAILED", user,
+                    message.length() > 900 ? message.substring(0, 900) + "…" : message, now());
+        } catch (DuplicateKeyException ignored) { /* 같은 분의 자동 실행이 이미 기록됐다. */ }
+    }
+
+    /**
+     * 월별 구간을 최근 달부터 순차 처리하고, 구간 경계에서 중지 요청과 실행 소유 상태를 다시 확인한다.
+     * 오래된 달에서 멈추거나 실패해도 최근 공고가 먼저 반영되도록 최신 구간을 앞에 둔다(진행률은 완료한 구간 수라 순서와 무관).
+     */
     private void run(String id) {
         int completed = 0;
         long scoreRows = 0;
@@ -131,9 +146,14 @@ public class AdminJobService {
         List<String> partialFailures = new ArrayList<>();
         // 지금 구간에서 생긴 일부 실패. 같은 구간의 다음 단계(경쟁률)가 다른 오류로 끝나도 실패 문구에 함께 남긴다.
         String chunkPartial = null;
+        // 시간순 구간 목록. 중단·실패 문구에 남은 기간을 적는 데 쓴다.
+        List<DateRange> chronological = List.of();
         try {
             AdminJob job = repository.find(id).orElseThrow();
-            for (DateRange chunk : chunks(job.kind(), job.startDate(), job.endDate())) {
+            chronological = chunks(job.kind(), job.startDate(), job.endDate());
+            List<DateRange> ordered = new ArrayList<>(chronological);
+            java.util.Collections.reverse(ordered);
+            for (DateRange chunk : ordered) {
                 boolean done = false;
                 // 전체 수집에서 경쟁률 단계만 잠금 대기로 재시도할 때 이미 끝난 공고 단계를 다시 실행하지 않는다.
                 boolean announcementsDone = false;
@@ -146,7 +166,7 @@ public class AdminJobService {
                     // 진행 중인 수집 트랜잭션을 강제로 끊지 않는다. 중지는 다음 구간 시작 전에 반영한다.
                     if (closing || Thread.currentThread().isInterrupted() || current.cancelRequested()) {
                         repository.finish(id, closing ? "INTERRUPTED" : "CANCELLED",
-                                withNotes("작업을 중지했습니다. 완료된 기간의 데이터는 유지됩니다.", partialFailures, chunkPartial), now());
+                                withNotes("작업을 중지했습니다. 완료된 기간의 데이터는 유지됩니다." + remainingNote(chronological, completed), partialFailures, chunkPartial), now());
                         return;
                     }
                     if (!repository.update(id, "RUNNING", completed,
@@ -216,12 +236,12 @@ public class AdminJobService {
             repository.finish(id, "SUCCEEDED", message, now());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            repository.finish(id, "INTERRUPTED", "실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", now());
+            repository.finish(id, "INTERRUPTED", withNotes("실행이 중단되었습니다." + remainingNote(chronological, completed), partialFailures, chunkPartial), now());
         } catch (Exception exception) {
             // 배포·종료로 실행기를 멈추면 HTTP 호출 중의 인터럽트가 일반 예외로 바뀌어 온다. 실제 장애와 구분해 중단으로 기록한다.
             if (closing || Thread.currentThread().isInterrupted()) {
                 log.warn("Manual scheduler job interrupted by shutdown: id={}", id);
-                repository.finish(id, "INTERRUPTED", withNotes("실행이 중단되었습니다. 완료된 기간 이후부터 다시 실행하세요.", partialFailures, chunkPartial), now());
+                repository.finish(id, "INTERRUPTED", withNotes("실행이 중단되었습니다." + remainingNote(chronological, completed), partialFailures, chunkPartial), now());
                 return;
             }
             // 상세 예외는 작업 ID와 함께 서버 로그에 남기고, 화면에는 원본 응답·인증정보를 노출하지 않는다.
@@ -231,10 +251,15 @@ public class AdminJobService {
             if (cause instanceof ProviderRejectedException rejected) {
                 // 인증키 오류·일일 한도 초과는 원인을 그대로 알려 운영자가 다시 실행할 시점을 판단하게 한다.
                 repository.finish(id, "FAILED", withNotes("청약홈 API가 요청을 거절해 중단했습니다(HTTP " + rejected.status()
-                        + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다.", partialFailures, chunkPartial), now());
+                        + "). 인증키와 일일 호출 한도를 확인하세요. 완료된 기간은 유지됩니다." + remainingNote(chronological, completed), partialFailures, chunkPartial), now());
                 return;
             }
-            repository.finish(id, "FAILED", withNotes("수집에 실패했습니다. 완료된 기간은 유지됩니다. 서버 로그에서 작업 ID로 원인을 확인하세요.", partialFailures, chunkPartial), now());
+            // 공고·경쟁률 수집이 실패 한도를 넘어 멈춘 경우는 실패 공고 키를 담은 사유를 그대로 보여 준다(응답 원문·인증정보 없음).
+            String reason = exception instanceof ApplyhomeFailureLimitException
+                    ? " " + exception.getMessage() + ". 원인은 서버 로그에서 작업 ID로 확인하세요."
+                    : " 서버 로그에서 작업 ID로 원인을 확인하세요.";
+            repository.finish(id, "FAILED", withNotes("수집에 실패했습니다." + reason + " 완료된 기간은 유지됩니다."
+                    + remainingNote(chronological, completed), partialFailures, chunkPartial), now());
         } finally {
             localJob.compareAndSet(id, null);
         }
@@ -260,6 +285,31 @@ public class AdminJobService {
         if (id != null) repository.heartbeat(id, now());
         repository.recoverStale(now().minusMinutes(10), now());
     }
+    /**
+     * 최근 구간부터 completed개를 끝냈을 때 남은 기간(시간순 앞쪽 구간들). 남은 구간은 시작일부터 이어진 하나의 기간이다.
+     * 끝낸 구간이 없거나 모두 끝냈으면 전체 기간을 돌려준다('다시 실행'이 전체를 다시 도는 경우).
+     */
+    static DateRange remainingRange(List<DateRange> chronological, int completed) {
+        int total = chronological.size();
+        DateRange whole = new DateRange(chronological.get(0).start(), chronological.get(total - 1).end());
+        if (completed <= 0 || completed >= total) return whole;
+        return new DateRange(chronological.get(0).start(), chronological.get(total - completed - 1).end());
+    }
+
+    /** 작업 이력으로 '다시 실행'할 기간을 정한다. 중간에 멈춘 작업은 끝내지 못한 이전 기간만 다시 수집한다. */
+    static DateRange retryRange(AdminJob job) {
+        return remainingRange(chunks(job.kind(), job.startDate(), job.endDate()), job.completedChunks());
+    }
+
+    /** 중단·실패 문구에 붙일 남은 기간 안내. 끝낸 구간이 없으면(전체가 남음) 다시 실행하면 전체를 돈다고만 적는다. */
+    static String remainingNote(List<DateRange> chronological, int completed) {
+        if (chronological.isEmpty() || completed >= chronological.size()) return "";
+        if (completed <= 0) return " 완료된 구간이 없어 '다시 실행'하면 전체 기간을 수집합니다.";
+        DateRange left = remainingRange(chronological, completed);
+        int count = chronological.size() - completed;
+        return " 남은 기간: " + left.start() + " ~ " + left.end() + "(" + count + "개 구간). '다시 실행'하면 남은 기간만 수집합니다.";
+    }
+
     /** 일정 맞춤 수집은 범위 안 일정을 한 번에 고르므로 나누지 않는다(월 경계에 걸친 접수 기간을 두 번 받지 않게). */
     static List<DateRange> chunks(JobKind kind, LocalDate start, LocalDate end) {
         return kind == JobKind.SCHEDULED_RESULTS ? List.of(new DateRange(start, end)) : chunks(start, end);

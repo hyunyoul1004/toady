@@ -147,6 +147,29 @@ class PushIntegrationTest {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_PUSH_SUBSCRIPTION", Integer.class));
     }
 
+    /** 운영자가 숨긴 공고는 회원·비회원 관심 공고의 내일 일정 줄과 결과 줄에서 모두 빠진다(요약 단계에서 걸러진다). */
+    @Test void eveningDigestSkipsHiddenFavoriteAnnouncements() throws Exception {
+        String guest = "https://fcm.googleapis.com/fcm/send/hidden-guest", member = "https://web.push.apple.com/hidden-member";
+        jdbc.update("INSERT INTO TB_PUSH_SUBSCRIPTION (ENDPOINT_HASH,ENDPOINT,P256DH,AUTH,FAVORITES_ENABLED,FAVORITE_IDS,AREA_SLUGS,REG_DT,UPDATED_DT) VALUES (?,?,?,?,TRUE,'apt/P1/N1','',?,?)",
+            PushSubscriptions.hash(guest), guest, b64(uncompressed((ECPublicKey) browser.getPublic())), b64(auth), java.sql.Timestamp.valueOf("2026-11-01 10:00:00"), java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+        String bearer = token("hidden-digest@example.test");
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":0,\"emailEnabled\":false}")).andExpect(status().isOk());
+        mvc.perform(put("/api/v1/push/subscription").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content(body(member))).andExpect(status().isOk());
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET REG_DT=?", java.sql.Timestamp.valueOf("2026-11-01 10:00:00"));
+
+        var hidden = org.mockito.Mockito.mock(com.toady.web.app.planner.HiddenAnnouncements.class);
+        org.mockito.Mockito.when(hidden.hiddenId("apt/P1/N1")).thenReturn(true);
+        PushDigest digest = digest("2026-11-11T18:00");
+        digest.useHidden(hidden);
+        var report = digest.run();
+        assertEquals(0, report.sent(), report.toString());
+        assertEquals(2, report.empty(), "숨긴 공고만 저장한 구독은 보낼 내용이 없다");
+        assertTrue(SENT.isEmpty());
+        // 같은 조건에서 숨김이 없으면 두 구독 모두 내일 접수 시작을 받는다(위 결과가 우연히 비지 않았음을 확인).
+        jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=NULL");
+        assertEquals(2, digest("2026-11-11T18:00").run().sent());
+    }
+
     @Test void expiredSubscriptionIsRemovedOnTestSend() throws Exception {
         String endpoint = "https://updates.push.services.mozilla.com/wpush/v2/gone";
         mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint))).andExpect(status().isOk());

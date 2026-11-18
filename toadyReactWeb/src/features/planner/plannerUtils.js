@@ -67,6 +67,15 @@ export function summaryOf(detail = {}) {
       const date = isoDate(keys.map(key => detail[key]).find(Boolean)); return date ? [{ label, date }] : [];
     }), unavailable: false };
 }
+/**
+ * 비회원 관심 공고의 저장 요약에 서버의 최신 요약을 합친다. 서버가 원본을 찾지 못한 공고(unavailable)는
+ * '원본을 찾을 수 없는 공고' 같은 빈 요약으로 덮지 않고, 처음 저장한 단지명·일정을 지킨 채 unavailable만 표시한다.
+ */
+export function mergeGuestSummary(saved, latest) {
+  if (!latest) return saved;
+  if (latest.unavailable && saved) return { ...saved, unavailable: true };
+  return latest;
+}
 /** storage에서 JSON을 읽는다. 없거나 깨졌거나 저장소가 막혀 있으면 fallback. */
 export function safeRead(storage, key, fallback) { try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; } }
 /**

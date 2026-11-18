@@ -33,6 +33,11 @@ public class PlannerReminder {
     /** 회원별로 '오늘 보낼 일정 없음'을 확인한 관심 공고 상태. 날짜·관심 공고가 바뀌면 다시 확인한다. */
     private final Map<Long,String> nothingToSend=new ConcurrentHashMap<>();
     private volatile LocalDate memoDate;
+    /** 운영자가 숨긴 공고(잘못 수집·취소)는 알림에 넣지 않는다. 테스트에서 직접 만들면 없을 수 있다. */
+    private HiddenAnnouncements hidden;
+    // @Autowired(required=false) 메서드 주입: 숨김 확인 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void useHidden(HiddenAnnouncements hidden) { this.hidden=hidden; }
     public PlannerReminder(JdbcTemplate jdbc,PlannerService planner,UserRepository users,EmailUtilService mail,
             @Value("${toady.web.domain}") String domain,ReminderUnsubscribe unsubscribe) { this.jdbc=jdbc;this.planner=planner;this.users=users;this.mail=mail;this.domain=domain.replaceAll("/+$","");this.unsubscribe=unsubscribe; }
     /** 정시에 서버가 중단되어도 08~18시 사이 재기동 후 실행할 수 있도록 30분마다 확인한다. */
@@ -67,6 +72,7 @@ public class PlannerReminder {
         StringBuilder lines=new StringBuilder();
         for(var favorite:planner.list(id)) {
             if(!favorite.emailEnabled() || favorite.summary().unavailable()) continue;
+            if(hidden!=null && hidden.hiddenId(favorite.id())) continue;
             for(var event:favorite.summary().events()) {
                 if((event.date().equals(today) || event.date().equals(today.plusDays(1))) && lines.length()<20000) {
                     // 당첨자 발표 일정은 결과(경쟁률·당첨가점)를 볼 탭으로 연다.

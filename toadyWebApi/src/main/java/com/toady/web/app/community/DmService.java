@@ -291,11 +291,15 @@ public class DmService {
         });
     }
 
-    // user가 이 방에서 아직 읽지 않은 상대 쪽지 수(읽은 위치와 나간 위치 중 큰 값 뒤부터 센다)
+    // user가 이 방에서 아직 읽지 않은 상대 쪽지 수(읽은 위치와 나간 위치 중 큰 값 뒤부터 센다).
+    // 메뉴 배지(unread)와 같은 기준으로, user가 차단한 회원이 보낸 쪽지는 세지 않는다(쪽지함 숫자와 배지가 어긋나지 않게).
     private long unreadIn(Thread thread, long user) {
-        return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ<>? AND MESSAGE_SEQ>?",
-                thread.seq(), user, Math.max(thread.read(user), thread.left(user)));
+        return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ<>? AND MESSAGE_SEQ>?" + NOT_BLOCKED_SENDER,
+                thread.seq(), user, Math.max(thread.read(user), thread.left(user)), user);
     }
+
+    /** 받는 사람(마지막 ? 자리)이 차단한 회원이 보낸 쪽지는 빼는 조건. 배지와 쪽지함이 함께 쓴다. */
+    static final String NOT_BLOCKED_SENDER = " AND SENDER_SEQ NOT IN (SELECT BLOCKED_USER_SEQ FROM TB_USER_BLOCK WHERE USER_SEQ=?)";
 
     // ---------------------------------------------------------------- 읽기
 
@@ -304,7 +308,7 @@ public class DmService {
         if (!community.ready()) return 0;
         try {
             // 내가 차단한 회원이 차단 전에 보낸 안 읽은 쪽지는 배지에 세지 않는다.
-            String notBlocked = " AND m.SENDER_SEQ NOT IN (SELECT BLOCKED_USER_SEQ FROM TB_USER_BLOCK WHERE USER_SEQ=?)";
+            String notBlocked = NOT_BLOCKED_SENDER.replace(" SENDER_SEQ", " m.SENDER_SEQ");
             return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE m JOIN TB_DM_THREAD t ON t.THREAD_SEQ=m.THREAD_SEQ WHERE t.USER_LOW=? AND m.SENDER_SEQ<>?"
                     + " AND m.MESSAGE_SEQ>t.LOW_READ_SEQ AND m.MESSAGE_SEQ>t.LOW_LEFT_SEQ" + notBlocked, me, me, me)
                     + community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE m JOIN TB_DM_THREAD t ON t.THREAD_SEQ=m.THREAD_SEQ WHERE t.USER_HIGH=? AND m.SENDER_SEQ<>?"

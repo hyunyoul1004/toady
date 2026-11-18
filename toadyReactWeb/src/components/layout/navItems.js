@@ -34,8 +34,17 @@ export function isMoreActive(pathname) {
 // 각 화면이 상세를 '히스토리 한 칸'으로 열 때 location.state에 남기는 표식 이름들(useDirectDetailHistory 참고).
 const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreDetail', 'weeklyDetail'];
 /**
+ * 상세 링크의 location.state. 그 탭의 목록(listPath)이 아닌 화면(from)에서 열면 detailFromOther를 함께 남긴다.
+ * 이때 바로 앞 기록은 다른 화면이므로, 탭 다시 누르기는 뒤로가기 대신 목록으로 바꿔(replace) 보여 준다.
+ */
+export function detailLinkState(marker, listPath, from) {
+  return from === listPath ? { [marker]: true } : { [marker]: true, detailFromOther: true };
+}
+
+/**
  * 지금 보고 있는 탭을 다시 눌렀을 때 할 일.
  * - 'back': 상세·팝업이 히스토리 한 단계로 열려 있으면 닫는다(뒤로가기와 같게).
+ *   다만 다른 화면에서 연 상세(detailFromOther)는 뒤로가면 그 화면으로 나가므로 'replace'로 목록을 보여 준다.
  * - 'replace': 검색 조건 등 주소 뒤 값만 지우고 처음 화면으로(히스토리를 쌓지 않음).
  * - 'none': 이미 처음 화면.
  * 다른 탭이면 'push'.
@@ -45,7 +54,10 @@ const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreD
 export function retapAction(path, location) {
   if (!isNavActive(path, location.pathname)) return 'push';
   const state = location.state || {};
-  if (DETAIL_MARKERS.some(marker => state[marker]) || (state.overlayLayers || []).length) return 'back';
+  const layers = state.overlayLayers || [];
+  // 상세 위에 팝업이 떠 있으면 먼저 팝업만 닫는다(뒤로가기 한 단계).
+  if (state.detailFromOther && !layers.length && DETAIL_MARKERS.some(marker => state[marker])) return 'replace';
+  if (DETAIL_MARKERS.some(marker => state[marker]) || layers.length) return 'back';
   if (location.pathname !== path || location.search) return 'replace';
   return 'none';
 }

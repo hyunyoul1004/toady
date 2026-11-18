@@ -255,3 +255,50 @@ test('서비스 워커는 페이지 이동만 네트워크로 받고, 끊기면 
   listeners.fetch({ request: { mode: 'cors', method: 'GET' }, respondWith: value => { responded = value; } });
   assert.equal(responded, null);
 });
+
+test('알림으로 연 상세는 목록 한 단계만 먼저 쌓고, 같은 상세 주소를 목록으로 쌓지 않는다', async () => {
+  const { notificationEntries } = await import('../src/features/push/pushSupport.js');
+  const announcement = '/announcements/apt/2026000576/2026000576?src=push.result';
+  // 다른 화면(/my)에서 누르면 [목록 '/', 상세(표식)] — 상세를 닫는 뒤로가기 한 번이면 첫 화면이 나온다.
+  assert.deepEqual(notificationEntries(announcement, '/my'), [['/', undefined], [announcement, { detailOverlay: true }]]);
+  // 이미 첫 화면이면 상세만 쌓는다.
+  assert.deepEqual(notificationEntries(announcement, '/'), [[announcement, { detailOverlay: true }]]);
+  const legacy = '/showSubscriptDetail?subscriptSeq=apt%2F1%2F1';
+  assert.deepEqual(notificationEntries(legacy, '/score'), [['/', undefined], [legacy, { detailOverlay: true }]]);
+  assert.deepEqual(notificationEntries(legacy, '/'), [[legacy, { detailOverlay: true }]]);
+  // 목록에 검색 조건이 있으면 그 조건까지 같아야 같은 목록이다.
+  const planner = '/my?subscriptSeq=apt%2F1%2F1&tabType=rate&view=list';
+  assert.deepEqual(notificationEntries(planner, '/my?view=list'), [[planner, { plannerDetail: true }]]);
+  assert.deepEqual(notificationEntries(planner, '/my'), [['/my?view=list', undefined], [planner, { plannerDetail: true }]]);
+  // 상세가 아닌 화면은 그대로 한 번만 이동한다.
+  assert.deepEqual(notificationEntries('/my', '/'), [['/my', undefined]]);
+});
+
+test('알림 꼬리표 src는 목록 주소에서 빼고, 지금 화면과 비교할 때도 무시한다', async () => {
+  const { notificationEntries, detailListBase } = await import('../src/features/push/pushSupport.js');
+  const home = '/?subscriptSeq=apt%2F1%2F1&src=push.result';
+  assert.equal(detailListBase(home), '/');
+  // 이미 첫 화면이면 목록을 한 칸 더 쌓지 않는다(기록 중복·알림 열기 이중 집계 방지).
+  assert.deepEqual(notificationEntries(home, '/'), [[home, { detailOverlay: true }]]);
+  assert.deepEqual(notificationEntries(home, '/?src=push.result'), [[home, { detailOverlay: true }]]);
+  assert.deepEqual(notificationEntries(home, '/score'), [['/', undefined], [home, { detailOverlay: true }]]);
+  const planner = '/my?subscriptSeq=apt%2F1%2F1&view=list&src=push.digest';
+  assert.equal(detailListBase(planner), '/my?view=list');
+  assert.deepEqual(notificationEntries(planner, '/my?view=list'), [[planner, { plannerDetail: true }]]);
+  assert.deepEqual(notificationEntries(planner, '/'), [['/my?view=list', undefined], [planner, { plannerDetail: true }]]);
+  const weekly = '/this-week?subscriptSeq=apt%2F1%2F1&src=push.result';
+  assert.equal(detailListBase(weekly), '/this-week');
+  assert.deepEqual(notificationEntries(weekly, '/this-week'), [[weekly, { weeklyDetail: true }]]);
+  assert.deepEqual(notificationEntries(weekly, '/my'), [['/this-week', undefined], [weekly, { weeklyDetail: true }]]);
+});
+
+test('깨진 구독 범위 저장값은 기본값으로 돌리고 비교 키도 멈추지 않는다', async () => {
+  const { normalizeScope, scopeKey } = await import('../src/features/push/pushSupport.js');
+  assert.deepEqual(normalizeScope(null), { favorites: true, areas: [] });
+  assert.deepEqual(normalizeScope('x'), { favorites: true, areas: [] });
+  assert.deepEqual(normalizeScope([1]), { favorites: true, areas: [] });
+  assert.deepEqual(normalizeScope({ favorites: false, areas: '운정' }), { favorites: false, areas: [] });
+  assert.deepEqual(normalizeScope({ areas: ['운정', 3, null, '검단'] }), { favorites: true, areas: ['운정', '검단'] });
+  assert.doesNotThrow(() => scopeKey({ endpoint: 'e', areas: '운정', favoriteIds: { a: 1 } }));
+  assert.equal(scopeKey({ endpoint: 'e', areas: '운정' }), scopeKey({ endpoint: 'e', areas: [] }));
+});

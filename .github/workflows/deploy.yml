@@ -310,22 +310,28 @@ jobs:
             recorded_sum() { [ ! -f .deployed-env-sums ] || awk -v key="$1" '$1 == key { print $2 }' .deployed-env-sums; }
             # Redis 설정 표시: compose의 redis 서비스 부분 + 비밀번호 줄. 바뀌면 Redis를 다시 만든다(기록이 없으면 한 번 다시 만든다).
             redis_sum() { { awk '/^  redis:/ { f = 1; print; next } f && /^  [A-Za-z]/ { f = 0 } f' docker-compose.yml; grep '^REDIS_PASSWORD=' toadyWebApi/.env.prod; } | cksum | awk '{print $1 "-" $2}'; }
+            # 이번 배포에서 Redis를 새 설정으로 다시 만들었으면 그때의 설정 표시를 남긴다(롤백 때 이전 설정으로 다시 만들지 판단).
+            REDIS_RECREATED_SUM=""
             start_redis() {
               if [ "$(recorded_sum redis)" != "$(redis_sum)" ]; then
                 echo "redis settings changed: recreating redis"
+                REDIS_RECREATED_SUM=$(redis_sum)
                 docker-compose -p toady up -d --force-recreate redis
               else
                 docker-compose -p toady up -d --no-recreate redis
               fi
             }
+            # ENV_CHANGED: 설정 파일이 바뀌어 다시 만드는 앱 목록. 롤백은 .env.prod를 되돌리지 않으므로 실패 안내에 쓴다.
+            ENV_CHANGED=""
             select_restart() {
               RESTART=""
+              ENV_CHANGED=""
               compose_changed=""
               cmp -s .rollback/docker-compose.yml docker-compose.yml 2>/dev/null || compose_changed=1
               for app in $APPS; do
                 recorded=$(recorded_sum "$app")
                 env_changed=""
-                if [ -n "$recorded" ] && [ "$recorded" != "$(env_sum "$app")" ]; then env_changed=1; fi
+                if [ -n "$recorded" ] && [ "$recorded" != "$(env_sum "$app")" ]; then env_changed=1; ENV_CHANGED="$ENV_CHANGED $app"; fi
                 want=$(docker image inspect -f '{{.Id}}' "$DOCKER_USERNAME/$(image_of "$app"):$NEW_TAG" 2>/dev/null || true)
                 have=$(docker inspect -f '{{.Image}}' "$app" 2>/dev/null || true)
                 running=$(docker inspect -f '{{.State.Running}}' "$app" 2>/dev/null || true)
@@ -365,18 +371,30 @@ jobs:
               deploy_failed="deployment checks failed"
             fi
             if [ -n "$deploy_failed" ]; then
-              if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$NEW_TAG" ]; then
+              # 같은 커밋을 다시 배포한 경우(이전 태그 = 새 태그)도 compose·설정 변경으로 컨테이너를 다시 만들었을 수 있으므로
+              # 같은 경로로 되돌린다: 이전 compose로 바꾼 뒤 다시 만든 앱(과 Redis)을 그 설정으로 다시 띄운다.
+              if [ -n "$PREVIOUS_TAG" ]; then
                 echo "DEPLOY FAILED: $NEW_TAG ($deploy_failed). Rolling back app containers and compose files to $PREVIOUS_TAG." >&2
                 restore_config
                 export IMAGE_TAG="$PREVIOUS_TAG"
+                # Redis를 새 설정으로 다시 만들었고 되돌린 compose의 Redis 설정이 다르면 이전 설정으로 다시 만든다.
+                if [ -n "$REDIS_RECREATED_SUM" ] && [ "$(redis_sum)" != "$REDIS_RECREATED_SUM" ]; then
+                  echo "rolling back redis to the previous compose settings"
+                  docker-compose -p toady up -d --force-recreate redis || echo "ROLLBACK WARNING: redis recreate failed. Inspect the server manually." >&2
+                fi
                 if [ -z "$RESTART" ]; then
                   echo "DEPLOY FAILED before any app container was replaced; app containers unchanged ($PREVIOUS_TAG)." >&2
+                elif [ "$PREVIOUS_TAG" = "$NEW_TAG" ] && [ -z "$compose_changed" ] && [ -n "$ENV_CHANGED" ]; then
+                  # 같은 태그·같은 compose라면 되돌릴 이미지·설정이 없다. 다시 띄워도 바뀐 .env.prod로 똑같이 실패하므로 재시작하지 않는다.
+                  echo "ROLLBACK SKIPPED: 설정 파일(.env.prod) 변경은 자동으로 되돌리지 않습니다 — 서버에서 직접 되돌린 뒤 다시 실행하세요. (changed:$ENV_CHANGED, tag $PREVIOUS_TAG)" >&2
                 elif ! start_apps; then
                   echo "ROLLBACK FAILED: docker-compose up for $PREVIOUS_TAG failed. Inspect the server manually." >&2
                 elif bash scripts/check-deployment.sh; then
                   echo "ROLLBACK OK: app containers are running $PREVIOUS_TAG. DB changes are not rolled back." >&2
                 else
                   echo "ROLLBACK CHECK FAILED: $PREVIOUS_TAG also failed checks. Inspect the server manually." >&2
+                  # 이미지·compose는 되돌렸어도 바뀐 설정 파일은 그대로라 같은 원인으로 실패했을 수 있다.
+                  [ -z "$ENV_CHANGED" ] || echo "NOTE: 설정 파일(.env.prod) 변경은 자동으로 되돌리지 않습니다 — 서버에서 직접 되돌린 뒤 다시 실행하세요. (changed:$ENV_CHANGED)" >&2
                 fi
               else
                 restore_config

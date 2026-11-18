@@ -122,3 +122,13 @@ test('관심 지역 고르기: 처음 상태에서만, 최대 3곳, 생활권 �
   assert.equal(toggleInterest(three, '검단'), three);
   assert.deepEqual(toggleInterest(three, '동탄'), ['운정', '다산']);
 });
+
+test('guest summary keeps saved name and schedule when the server cannot find the original', async () => {
+  const { mergeGuestSummary } = await import('../src/features/planner/plannerUtils.js');
+  const saved={id:'apt/1/2',houseNm:'운정 단지',events:[{label:'접수 시작',date:'2026-11-16'}],unavailable:false};
+  const missing={id:'apt/1/2',houseNm:'원본을 찾을 수 없는 공고',events:[],unavailable:true};
+  assert.deepEqual(mergeGuestSummary(saved,missing),{...saved,unavailable:true});
+  const fresh={...saved,houseNm:'운정 단지(변경)'};
+  assert.equal(mergeGuestSummary(saved,fresh),fresh);
+  assert.equal(mergeGuestSummary(saved,undefined),saved);
+});

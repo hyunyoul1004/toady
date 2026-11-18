@@ -53,6 +53,20 @@ public class AdminJobRepository {
                 ? kind.name() + ":" + now.withSecond(0).withNano(0) : null);
     }
     /**
+     * 실행 전에 거절된 요청을 끝난 이력 한 줄로 남긴다(활성 슬롯을 잡지 않음). 자동 실행이면 insert와 같은 TRIGGER_KEY로
+     * 같은 분의 중복 기록을 막는다.
+     */
+    public void insertFinished(String id, JobKind kind, String source, LocalDate start, LocalDate end,
+            String status, String user, String message, LocalDateTime now) {
+        jdbc.update("""
+                INSERT INTO TB_SCHEDULER_ADMIN_JOB
+                (JOB_ID, JOB_KIND, JOB_SOURCE, START_DATE, END_DATE, STATUS, TOTAL_CHUNKS,
+                 COMPLETED_CHUNKS, CANCEL_REQUESTED, REQUESTED_BY, MESSAGE, CREATED_AT, FINISHED_AT, HEARTBEAT_AT, ACTIVE_SLOT, TRIGGER_KEY)
+                VALUES (?, ?, ?, ?, ?, ?, 0, 0, FALSE, ?, ?, ?, ?, ?, NULL, ?)
+                """, id, kind.name(), source, start, end, status, user, message, now, now, now, "SCHEDULE".equals(source)
+                ? kind.name() + ":" + now.withSecond(0).withNano(0) : null);
+    }
+    /**
      * 화면에 표시할 최근 이력: 일반 작업 50건 + 일정 맞춤 수집 10건을 시간순으로 합친다.
      * 일정 맞춤 수집은 하루 수십 번 돌아 함께 50건을 자르면 공고·경쟁률 수집 이력이 화면에서 밀려나기 때문이다.
      * 이전 이력을 삭제하거나 전체 이력 건수를 의미하지는 않는다.

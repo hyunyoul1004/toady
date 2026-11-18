@@ -175,6 +175,8 @@ public class PublicAnnouncementPage {
     @GetMapping(value="/api/v1/public/announcement-images/{type}/{house}/{notice}.png",produces=MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> image(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) throws IOException {
         if(!valid(type,house,notice))return ResponseEntity.notFound().build();
+        // 숨긴 공고는 공유 카드도 내주지 않는다(공고 페이지와 같이 410). 캐시보다 먼저 확인해 숨긴 직후부터 막는다.
+        if(overrides!=null && overrides.hidden(type.toUpperCase(Locale.ROOT).replace('-','_'),house,notice)) return ResponseEntity.status(410).build();
         String section=section(tabType);
         ShareScores.Range scores=section.equals("rate")?shareScores.get(type,house,notice):new ShareScores.Range("", "");
         // 렌더링 비용이 커서 같은 공고·탭·공개 가점의 이미지는 10분간 다시 쓴다(쿼리 값을 바꿔도 같은 키, 가점이 공개되면 새로 그린다).

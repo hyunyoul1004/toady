@@ -1,5 +1,7 @@
 /* 홈 화면 추가 화살표 안내(InstallCoach). 화면 전체를 어둡게 덮고, 브라우저 메뉴 버튼 쪽 끝을 화살표로 가리킨다. */
 .install-coach{position:fixed;inset:0;z-index:1500;background:rgba(15,23,42,.62);display:flex;flex-direction:column;padding:16px;overflow-y:auto}
+/* 초점 가두기(Modal)가 안내 바깥 상자에 초점을 둘 때 테두리를 그리지 않는다. */
+.install-coach:focus{outline:none}
 
 /* 화살표: 메뉴 버튼이 있는 화면 끝(삼성 인터넷은 아래 도구 막대 오른쪽 끝, Chrome은 주소창 오른쪽 끝)에 붙여 통통 튀게 한다. */
 .coach-arrow{position:fixed;right:6px;z-index:1;display:flex;flex-direction:column;align-items:flex-end;color:#facc15;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));pointer-events:none}

@@ -10,7 +10,7 @@ import { create } from 'zustand';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
-import { ID_PATTERN, safeRead } from './plannerUtils';
+import { ID_PATTERN, mergeGuestSummary, safeRead } from './plannerUtils';
 
 // 비회원 관심 공고 저장 키. 값은 [{ id, summary, note, checklist, stage }] 배열이다.
 const KEY = 'toady.planner.guest';
@@ -46,11 +46,12 @@ export function usePlanner() {
   // 메일 알림 기능이 켜져 있는지 알려 주는 서버 설정. 로그인과 상관없이 받는다.
   const settings = useQuery({ queryKey: ['plannerSettings'], queryFn: () => apiClient.get('/api/v1/planner/settings'), staleTime: 300000 });
   // 비회원 공고는 저장 당시 요약이라 일정이 바뀌었을 수 있다. ID 목록으로 최신 요약을 받아 덮어 보여 준다(기기 저장값은 그대로).
+  // 원본이 사라진 공고는 서버 요약 대신 저장해 둔 단지명·일정에 unavailable 표시만 더한다(mergeGuestSummary).
   // 키에 ID를 정렬해 넣어 같은 공고 묶음이면 순서가 달라도 같은 캐시를 쓴다.
   const guestSummaries = useQuery({ queryKey:['guestSummaries',local.map(x=>x.id).sort().join(',')], enabled:!userSeq && local.length>0,
     queryFn:()=>apiClient.post('/api/v1/planner/summaries',{ids:local.map(x=>x.id)},{auth:false}), staleTime:300000, retry:1 });
   const latest = new Map((Array.isArray(guestSummaries.data) ? guestSummaries.data : []).map(s=>[s.id,s]));
-  const items = userSeq ? (query.data || []) : local.map(item=>({...item,summary:latest.get(item.id) || item.summary}));
+  const items = userSeq ? (query.data || []) : local.map(item=>({...item,summary:mergeGuestSummary(item.summary, latest.get(item.id))}));
   /** 공고 저장(새로 저장, 메모·체크리스트·단계 수정 모두). 저장 직전에 로그인 계정이 바뀌었으면(다른 탭 로그아웃 등) 멈춘다. */
   async function save(item) {
     if ((useAuthStore.getState().isAuthenticated ? useAuthStore.getState().user?.userSeq : null) !== userSeq) throw Error('계정이 변경되었습니다. 다시 시도해 주세요.');

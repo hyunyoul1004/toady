@@ -74,14 +74,18 @@ public class AdminInternalApi {
                 : ResponseEntity.badRequest().body(Map.of("message", "이미 종료되었거나 존재하지 않는 작업입니다."));
     }
 
-    /** 기존 이력은 보존하고 같은 종류·기간의 새 작업을 만든다. */
+    /**
+     * 기존 이력은 보존하고 같은 종류의 새 작업을 만든다. 최근 구간부터 돌다 멈춘 작업은 끝내지 못한 이전 기간만 다시 수집하고,
+     * 끝낸 구간이 없거나 모두 끝낸 작업(일부 공고 실패 등)은 전체 기간을 다시 돈다.
+     */
     @PostMapping("/jobs/{id}/retry")
     public ResponseEntity<?> retry(@PathVariable String id, @RequestBody(required = false) RetryRequest body, HttpServletRequest request) {
         if (!authorized(request)) return denied();
         var job = repository.find(id).orElse(null);
         if (job == null) return ResponseEntity.badRequest().body(Map.of("message", "작업을 찾을 수 없습니다."));
         if (job.isActive()) return ResponseEntity.badRequest().body(Map.of("message", "진행 중인 작업은 다시 실행할 수 없습니다."));
-        return submit(job.kind(), job.startDate(), job.endDate(), body == null ? null : body.requestedBy());
+        var range = AdminJobService.retryRange(job);
+        return submit(job.kind(), range.start(), range.end(), body == null ? null : body.requestedBy());
     }
 
     /** 자동 일정 저장. cron은 '|'로 여러 개를 이을 수 있고, 형식이 틀리면 400으로 사유를 돌려준다. */

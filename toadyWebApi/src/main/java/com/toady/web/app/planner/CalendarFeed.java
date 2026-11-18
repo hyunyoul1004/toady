@@ -32,6 +32,10 @@ import java.util.Map;
 public class CalendarFeed {
     private static final SecureRandom RANDOM = new SecureRandom();
     private final JdbcTemplate jdbc; private final PlannerService planner; private final UserRepository users; private final String domain;
+    /** 운영자가 숨긴 공고(잘못 수집·취소)는 구독 캘린더에 넣지 않는다. 빈이 없으면 숨김 없이 동작한다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    HiddenAnnouncements hidden;
     public CalendarFeed(JdbcTemplate jdbc, PlannerService planner, UserRepository users, @Value("${toady.web.domain}") String domain) {
         this.jdbc = jdbc; this.planner = planner; this.users = users; this.domain = domain.replaceAll("/+$", "");
     }
@@ -96,7 +100,8 @@ public class CalendarFeed {
         if (user == null || users.findById(user).filter(account -> !"Y".equals(account.getWithdrawalYn()) && !"Y".equals(account.getLockYn())).isEmpty())
             return ResponseEntity.notFound().build();
         jdbc.update("UPDATE TB_CALENDAR_FEED SET LAST_READ_DT=? WHERE USER_SEQ=?", Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul"))), user);
-        String ics = CalendarIcs.build(planner.list(user).stream().map(PlannerService.Favorite::summary).toList(), domain, Instant.now());
+        String ics = CalendarIcs.build(planner.list(user).stream().filter(favorite -> hidden == null || !hidden.hiddenId(favorite.id()))
+            .map(PlannerService.Favorite::summary).toList(), domain, Instant.now());
         return ResponseEntity.ok().header("Content-Type", "text/calendar;charset=UTF-8")
             .header("Content-Disposition", "inline; filename=\"toady.ics\"").header("X-Robots-Tag", "noindex")
             .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate()).body(ics);

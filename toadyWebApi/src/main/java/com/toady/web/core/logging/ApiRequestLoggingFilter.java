@@ -9,12 +9,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.regex.Pattern;
 
 /**
  * API 요청의 메서드, 경로, 응답 상태, 처리 시간을 기록합니다.
  * 쿼리 문자열과 헤더, 요청 본문은 개인정보 및 인증정보 보호를 위해 기록하지 않습니다.
  * 서블릿 필터라서 컨트롤러보다 먼저 실행되고, 응답이 끝난 뒤 finally에서 결과를 남긴다.
  * 5xx는 error, 4xx는 warn, 나머지는 info 레벨로 남긴다.
+ * 경로 자체가 열람 권한인 주소(회원별 캘린더 구독 /api/v1/public/calendar/{토큰}.ics)는 토큰 부분을 가려서 남긴다.
  */
 // @Slf4j: log 필드를 만들어 준다
 @Slf4j
@@ -36,7 +38,7 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             log.error(
                     "HTTP {} {} 처리 중 예외: {}",
                     request.getMethod(),
-                    request.getRequestURI(),
+                    path(request),
                     exception.getClass().getSimpleName()
             );
             throw exception;
@@ -45,16 +47,27 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             int status = response.getStatus();
             if (status >= HttpServletResponse.SC_INTERNAL_SERVER_ERROR) {
                 log.error("HTTP {} {} -> {} ({} ms)",
-                        request.getMethod(), request.getRequestURI(), status, elapsedMs);
+                        request.getMethod(), path(request), status, elapsedMs);
             } else if (status >= HttpServletResponse.SC_BAD_REQUEST) {
                 log.warn("HTTP {} {} -> {} ({} ms)",
-                        request.getMethod(), request.getRequestURI(), status, elapsedMs);
+                        request.getMethod(), path(request), status, elapsedMs);
             } else {
                 log.info("HTTP {} {} -> {} ({} ms)",
-                        request.getMethod(), request.getRequestURI(), status, elapsedMs);
+                        request.getMethod(), path(request), status, elapsedMs);
             }
         }
     }
+
+    /** 경로에 들어 있는 비밀 토큰(캘린더 구독 주소)을 가린다. 확장자(.ics)는 남겨 어떤 요청인지는 알 수 있게 한다. */
+    private static final Pattern CALENDAR_TOKEN = Pattern.compile("^(/api/v1/public/calendar/)[^/]+?(\\.ics)?$");
+
+    /** 로그에 남길 경로. 토큰이 든 경로는 가린 값을 돌려준다. */
+    static String maskedPath(String uri) {
+        if (uri == null) return "";
+        return CALENDAR_TOKEN.matcher(uri).replaceFirst("$1***$2");
+    }
+
+    private static String path(HttpServletRequest request) { return maskedPath(request.getRequestURI()); }
 
     /** 문서 UI 및 문서 리소스 요청은 요청 로그 대상에서 제외합니다. */
     @Override

@@ -64,8 +64,10 @@ class AdminConsoleTest {
         assertEquals("SUCCEEDED", job.status());
         assertEquals(2, job.completedChunks());
         assertTrue(job.message().contains("6건"));
-        verify(competition).synchronizeScores(LocalDate.of(2020,1,30), LocalDate.of(2020,1,31));
-        verify(competition).synchronizeScores(LocalDate.of(2020,2,1), LocalDate.of(2020,2,2));
+        // 최근 달부터 수집한다(오래된 달에서 멈춰도 최근 공고가 먼저 반영되게).
+        var order = inOrder(competition);
+        order.verify(competition).synchronizeScores(LocalDate.of(2020,2,1), LocalDate.of(2020,2,2));
+        order.verify(competition).synchronizeScores(LocalDate.of(2020,1,30), LocalDate.of(2020,1,31));
         verifyNoInteractions(announcements);
         // 관리자 사이트가 읽는 상태 응답에 완료 이력이 담긴다.
         mvc.perform(get("/internal/admin/state").header(AdminInternalApi.HEADER, TOKEN)).andExpect(status().isOk())
@@ -99,6 +101,17 @@ class AdminConsoleTest {
         assertTrue(repository.active().isEmpty());
     }
 
+    @Test void aFailureLimitStopShowsTheFailedAnnouncementKeys() {
+        doThrow(new com.toady.web.apt.service.ApplyhomeFailureLimitException("공고·주택형 수집", 20,
+                java.util.stream.IntStream.rangeClosed(1, 20).mapToObj(i -> "APT:H" + i + "/1").toList(), new IllegalStateException("db down")))
+                .when(announcements).synchronize(any(), any());
+        String id = jobs.submit(JobKind.ANNOUNCEMENTS, LocalDate.of(2020, 3, 1), LocalDate.of(2020, 3, 2), "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
+        String message = repository.find(id).orElseThrow().message();
+        assertTrue(message.contains("APT:H1/1, APT:H2/1, APT:H3/1, APT:H4/1, APT:H5/1 외 15건"), message);
+        assertFalse(message.contains("db down"), "원인 문구는 화면에 내보내지 않는다");
+    }
+
     @Test void refusesParallelJobsAndCancelsAfterCurrentChunk() throws Exception {
         // 첫 구간을 의도적으로 멈춰 중복 접수 차단과 구간 종료 후 중지 처리를 검증한다.
         CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
@@ -115,8 +128,19 @@ class AdminConsoleTest {
             assertTrue(repository.cancel(id));
         } finally { release.countDown(); }
         await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
-        assertEquals("CANCELLED", repository.find(id).orElseThrow().status());
+        var cancelled = repository.find(id).orElseThrow();
+        assertEquals("CANCELLED", cancelled.status());
         verify(competition, times(1)).synchronizeScores(any(), any());
+        // 최근 구간(2월)만 끝났으므로 남은 1월 구간을 문구에 적고, '다시 실행'은 남은 기간만 접수한다.
+        assertTrue(cancelled.message().contains("남은 기간: 2020-01-01 ~ 2020-01-31(1개 구간)"), cancelled.message());
+        mvc.perform(post("/internal/admin/jobs/" + id + "/retry").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"requestedBy\":\"operator\"}"))
+                .andExpect(status().isOk());
+        await().atMost(Duration.ofSeconds(5)).until(() -> repository.active().isEmpty());
+        var retried = repository.recent().stream().filter(job -> !job.id().equals(id)).findFirst().orElseThrow();
+        assertEquals(LocalDate.of(2020, 1, 1), retried.startDate());
+        assertEquals(LocalDate.of(2020, 1, 31), retried.endDate());
+        verify(competition).synchronizeScores(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 31));
     }
 
     @Test void persistsScheduleSettingsAndRejectsExcessivelyFrequentCron() throws Exception {
@@ -131,6 +155,33 @@ class AdminConsoleTest {
                         .content("{\"enabled\":true,\"cron\":\"* * * * * *\",\"lookbackDays\":365}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").exists());
         assertFalse(schedules.list().stream().filter(s -> s.kind() == JobKind.SCORES).findFirst().orElseThrow().enabled());
+    }
+
+    @Test void scheduledResultsLookbackIsLimitedOnSave() throws Exception {
+        // 일정 맞춤 수집은 실행 시 31일을 넘는 기간을 거절하므로 저장 단계에서 막는다.
+        mvc.perform(post("/internal/admin/schedules/SCHEDULED_RESULTS").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"enabled\":false,\"cron\":\"0 0 * * * *\",\"lookbackDays\":32}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(containsString("31일")));
+        mvc.perform(post("/internal/admin/schedules/SCHEDULED_RESULTS").header(AdminInternalApi.HEADER, TOKEN).contentType("application/json")
+                        .content("{\"enabled\":false,\"cron\":\"0 0 * * * *\",\"lookbackDays\":31}"))
+                .andExpect(status().isOk());
+        assertEquals(31, schedules.list().stream().filter(s -> s.kind() == JobKind.SCHEDULED_RESULTS).findFirst().orElseThrow().lookbackDays());
+        // 다른 종류는 기존처럼 366일까지 허용한다.
+        AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", 366);
+        assertThrows(IllegalArgumentException.class, () -> AdminScheduleManager.validate(JobKind.SCHEDULED_RESULTS, "0 15 4 * * *", 32));
+    }
+
+    @Test void aRejectedScheduledRunIsRecordedAsAFailedJob() {
+        // 이전 버전에서 저장된 긴 재조회 일수처럼 실행 단계에서 거절되면, 로그만이 아니라 실행 내역에 실패로 남긴다.
+        schedules.trigger(new AdminSchedule(JobKind.SCHEDULED_RESULTS, true, "0 0 * * * *", 40, AdminJobService.now(), null), false);
+        var recorded = repository.recent().stream().filter(job -> job.kind() == JobKind.SCHEDULED_RESULTS).toList();
+        assertEquals(1, recorded.size());
+        assertEquals("FAILED", recorded.getFirst().status());
+        assertEquals("SCHEDULE", recorded.getFirst().source());
+        assertFalse(recorded.getFirst().isActive());
+        assertTrue(recorded.getFirst().message().contains("31일"), recorded.getFirst().message());
+        assertTrue(repository.active().isEmpty(), "거절된 실행은 활성 슬롯을 잡지 않는다");
+        verifyNoInteractions(competition);
     }
 
     @Test void recoversStaleHistoryAndPreventsDuplicateScheduleTriggers() {

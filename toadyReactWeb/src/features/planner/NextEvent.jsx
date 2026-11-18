@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { detailLinkState } from '@/components/layout/navItems';
 import EventAvailableOutlined from '@mui/icons-material/EventAvailableOutlined';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import './nextEvent.css';
@@ -11,6 +12,7 @@ const dLabel = days => (days === 0 ? '오늘' : `D-${days}`);
  * 쓰는 곳: MyPlanner.jsx(card), TodayOverview.jsx(line).
  */
 export default function NextEvent({ event, variant = 'card', onOpen }) {
+  const location = useLocation();
   if (!event) return null;
   const urgent = event.days <= 1;
   const others = event.othersSameDay > 0 ? ` 외 ${event.othersSameDay}곳` : '';
@@ -34,7 +36,8 @@ export default function NextEvent({ event, variant = 'card', onOpen }) {
   const className = `next-event is-${variant}`;
   const label = `내 다음 일정: ${event.text}, ${event.houseNm} 공고 보기`;
   // Link의 state는 이동한 화면의 location.state가 된다. plannerDetail 표시가 있으면 상세를 닫을 때 뒤로가기를 쓴다.
+  // 나의 청약 밖에서 열면 '다른 화면에서 연 상세' 표시도 붙여, '나의 청약' 탭을 다시 누를 때 이전 화면이 아니라 목록으로 가게 한다.
   return onOpen
     ? <button type="button" className={className} aria-label={label} onClick={() => onOpen(event.id)}>{content}</button>
-    : <Link className={className} aria-label={label} to={`/my?subscriptSeq=${encodeURIComponent(event.id)}`} state={{ plannerDetail: true }}>{content}</Link>;
+    : <Link className={className} aria-label={label} to={`/my?subscriptSeq=${encodeURIComponent(event.id)}`} state={detailLinkState('plannerDetail', '/my', location.pathname)}>{content}</Link>;
 }

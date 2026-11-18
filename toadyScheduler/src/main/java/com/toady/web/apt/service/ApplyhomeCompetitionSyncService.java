@@ -147,18 +147,31 @@ public class ApplyhomeCompetitionSyncService {
 		syncLock.execute(() -> {
 			int calls = 0;
 			Set<AnnouncementKey> announcements = new LinkedHashSet<>();
-			long now = System.currentTimeMillis();
+			long now = clock.getAsLong();
 			coldChecked.values().removeIf(at -> now - at > COLD_RETRY.toMillis());
+			// 하루 넘게 다시 실패하지 않은 기록(대상에서 빠진 공고 등)은 지운다.
+			failureBackoff.values().removeIf(backoff -> now - backoff.failedAt() > java.time.Duration.ofDays(1).toMillis());
 			for (ResultPhase phase : RESULT_PHASES) {
 				List<AnnouncementKey> due = new ArrayList<>();
+				Set<AnnouncementKey> cold = new java.util.HashSet<>();
 				for (ScheduledTarget target : scheduledTargets(phase, startDate, endDate)) {
+					// 연속으로 실패한 공고는 대기 시간이 지날 때까지 건너뛴다(hot이어도 같다).
+					FailureBackoff backoff = failureBackoff.get(coldKey(phase, target.key()));
+					if (backoff != null && now < backoff.retryAt()) continue;
 					// 비어 있는 공고의 재확인은 최근에 확인했으면 건너뛴다(값 대신 '확인 시각'만 이 JVM에 기억).
-					if (!target.hot() && coldChecked.putIfAbsent(phase.table().table() + "|" + target.key(), now) != null) continue;
+					if (!target.hot()) {
+						if (coldChecked.containsKey(coldKey(phase, target.key()))) continue;
+						cold.add(target.key());
+					}
 					due.add(target.key());
 				}
 				announcements.addAll(due);
 				calls += due.size();
-				syncForAnnouncements(phase.table(), due, failures);
+				// 확인 시각은 조회·저장이 끝난 공고에만 남긴다. 실패한 공고는 실패 대기 규칙(recordScheduledFailure)을 따른다.
+				syncForAnnouncements(phase.table(), due, failures, key -> {
+					failureBackoff.remove(coldKey(phase, key));
+					if (cold.contains(key)) coldChecked.put(coldKey(phase, key), clock.getAsLong());
+				}, key -> recordScheduledFailure(coldKey(phase, key)));
 			}
 			result.set(new ScheduledResult(announcements.size(), calls));
 		});
@@ -176,6 +189,37 @@ public class ApplyhomeCompetitionSyncService {
 	static final java.time.Duration COLD_RETRY = java.time.Duration.ofHours(3);
 	/** 비어 있는 공고(항목|공고)를 마지막으로 확인한 시각. 재시작하면 비지만 하루 몇 번 더 부를 뿐이다. */
 	private final Map<String, Long> coldChecked = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** 연속 실패 두 번째부터 기다리는 시간(두 배씩 늘린다)과 그 상한. */
+	static final java.time.Duration FAILURE_BACKOFF_START = java.time.Duration.ofMinutes(30);
+	static final java.time.Duration FAILURE_BACKOFF_MAX = java.time.Duration.ofHours(3);
+	/**
+	 * 일정 맞춤 수집에서 실패한 공고(항목|공고)의 연속 실패 횟수와 다음 재시도 시각. coldChecked처럼 이 JVM에만 둔다.
+	 * 첫 실패는 다음 실행(10분 뒤)에 바로 다시 받고, 연속 실패하면 30분·1시간·2시간·3시간(상한) 간격으로 늦춘다.
+	 * 계속 실패하는 공고 하나가 10분마다 호출되며 매 실행을 실패로 표시해 다른 실패를 가리지 않게 하기 위해서다.
+	 */
+	private final Map<String, FailureBackoff> failureBackoff = new java.util.concurrent.ConcurrentHashMap<>();
+	/** 현재 시각(밀리초). 테스트에서 시간 경과를 흉내 내려고 바꿀 수 있게 둔다. */
+	java.util.function.LongSupplier clock = System::currentTimeMillis;
+
+	/** 연속 실패 횟수, 마지막 실패 시각, 다음 재시도 시각. */
+	record FailureBackoff(int failures, long failedAt, long retryAt) { }
+
+	/** 실패를 한 번 더 세고 다음 재시도 시각을 정한다. */
+	private void recordScheduledFailure(String key) {
+		long now = clock.getAsLong();
+		failureBackoff.compute(key, (k, previous) -> {
+			int count = previous == null ? 1 : previous.failures() + 1;
+			if (count == 1) return new FailureBackoff(1, now, now);
+			long delay = FAILURE_BACKOFF_START.toMillis() << Math.min(count - 2, 10);
+			return new FailureBackoff(count, now, now + Math.min(delay, FAILURE_BACKOFF_MAX.toMillis()));
+		});
+	}
+
+	/** 비어 있는 공고 재확인 기록의 키(항목 테이블|공고). */
+	private static String coldKey(ResultPhase phase, AnnouncementKey key) {
+		return phase.table().table() + "|" + key;
+	}
 
 	/** hot: 결과가 나올 날이라 실행마다 받는다. 아니면 비어 있어서 다시 확인하는 공고다. */
 	record ScheduledTarget(AnnouncementKey key, boolean hot) { }
@@ -317,6 +361,15 @@ public class ApplyhomeCompetitionSyncService {
 	 * 인증·한도 오류나 실패가 MAX_FAILURES를 넘으면 바로 멈춘다. 반환값은 저장한 응답 행 수다.
 	 */
 	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements, List<String> failures) {
+		return syncForAnnouncements(table, announcements, failures, key -> { }, key -> { });
+	}
+
+	/**
+	 * onSaved: 공고 하나의 조회·저장이 끝났을 때만 호출된다(실패한 공고는 호출하지 않음).
+	 * onFailed: 그 공고만의 실패로 기록될 때 호출된다(인증·한도 오류, 중단 요청은 공고 탓이 아니라 호출하지 않음).
+	 */
+	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements, List<String> failures,
+			java.util.function.Consumer<AnnouncementKey> onSaved, java.util.function.Consumer<AnnouncementKey> onFailed) {
 		long totalRows = 0;
 		for (AnnouncementKey key : announcements) {
 			Map<String, String> filters = Map.of(
@@ -327,15 +380,19 @@ public class ApplyhomeCompetitionSyncService {
 				persistenceService.replace(table.table(), table.columns(), table.keys(),
 	                    key.houseManageNo(), key.pblancNo(), rows);
 				totalRows += rows.size();
+				onSaved.accept(key);
 			} catch (RuntimeException failure) {
 				// 중단 요청(배포·관리자 중지)은 그대로 멈춘다.
 				if (Thread.currentThread().isInterrupted()) throw failure;
 				// 인증키 오류·일일 한도 초과는 남은 공고도 모두 실패하므로 바로 멈추고 원인을 남긴다.
 				if (failure instanceof ApplyhomeApiClient.ProviderRejectedException) throw failure;
 				failures.add(table.table() + ":" + key.houseManageNo() + "/" + key.pblancNo());
+				onFailed.accept(key);
 				log.warn("Applyhome competition sync failed for one announcement table={} key={}/{} error={}",
 						table.table(), key.houseManageNo(), key.pblancNo(), failure.getMessage());
-				if (failures.size() >= MAX_FAILURES) throw new IllegalStateException("경쟁률 수집 실패가 " + MAX_FAILURES + "건을 넘어 중단했습니다: " + failure.getMessage(), failure);
+				if (failures.size() >= MAX_FAILURES) {
+					throw new ApplyhomeFailureLimitException("경쟁률 수집", MAX_FAILURES, failures, failure);
+				}
 			}
 		}
 		log.info("Synchronized Applyhome endpoint={} announcements={} rows={}",

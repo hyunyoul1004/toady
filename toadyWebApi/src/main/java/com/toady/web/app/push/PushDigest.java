@@ -3,6 +3,7 @@ package com.toady.web.app.push;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.toady.web.app.announcement.dto.AnnouncementListItem;
 import com.toady.web.app.planner.AnnouncementResults;
+import com.toady.web.app.planner.HiddenAnnouncements;
 import com.toady.web.app.planner.LivingAreas;
 import com.toady.web.app.planner.PlannerService;
 import com.toady.web.app.planner.PlannerSummary;
@@ -66,6 +67,12 @@ public class PushDigest {
         this.store = store; this.sender = sender; this.jdbc = jdbc; this.planner = planner; this.summaries = summaries;
         this.areas = areas; this.users = users; this.mapper = mapper; this.results = results; this.gapStore = gapStore; this.clock = clock;
     }
+
+    /** 운영자가 숨긴 공고. 빈이 없으면(일부 테스트) 아무것도 숨기지 않는다. */
+    private HiddenAnnouncements hidden;
+    // @Autowired(required=false) 메서드 주입: 생성자를 늘리지 않고 숨김 확인 빈이 있을 때만 넣는다.
+    @Autowired(required = false)
+    void useHidden(HiddenAnnouncements hidden) { this.hidden = hidden; }
 
     static final int STALE_DAYS = 180;
     /** 한 번 실행한 결과 수: 보냄 / 만료로 삭제 / 다시 시도 / 보낼 내용 없음. */
@@ -423,11 +430,14 @@ public class PushDigest {
         if (resultMarked.size() > 2_000) resultMarked.values().removeIf(day -> !day.equals(today));
         markSeen(slug, List.of(id), now);
     }
-    /** 공고 id(유형/주택관리번호/공고번호)의 요약을 읽는다. 이번 실행 안에서는 cache로 공고마다 한 번만 읽는다. */
+    /**
+     * 공고 id(유형/주택관리번호/공고번호)의 요약을 읽는다. 이번 실행 안에서는 cache로 공고마다 한 번만 읽는다.
+     * 운영자가 숨긴 공고는 빈 값으로 돌려준다. 회원·비회원의 내일 일정 줄과 결과 줄(묶음·즉시 알림)이 모두 여기서 요약을 얻으므로 함께 빠진다.
+     */
     private Optional<PlannerSummary.Summary> guestSummary(String id, Map<String, Optional<PlannerSummary.Summary>> cache) {
         return cache.computeIfAbsent(id, key -> {
             String[] parts = key.split("/");
-            if (parts.length != 3) return Optional.empty();
+            if (parts.length != 3 || (hidden != null && hidden.hiddenId(key))) return Optional.empty();
             try { return Optional.of(summaries.get(parts[0], parts[1], parts[2])); }
             catch (EntityNotFoundException | IllegalArgumentException missing) { return Optional.empty(); }
         });

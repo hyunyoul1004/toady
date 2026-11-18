@@ -57,6 +57,10 @@ public class SaleMapService {
     private final Cache<String, Boolean> failed = CacheBuilder.newBuilder().maximumSize(5000).expireAfterWrite(10, TimeUnit.MINUTES).build();
     /** 시·군·구별 분양 완료 공고(하루에 한 번 바뀌는 자료라 1시간 기억한다). */
     private final Cache<String, List<EligibilityFeed.Item>> past = CacheBuilder.newBuilder().maximumSize(300).expireAfterWrite(1, TimeUnit.HOURS).build();
+    /** 숨김 목록이 바뀌면 분양 완료 공고 캐시를 비워 숨긴 공고가 지도에 최대 1시간 남지 않게 한다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { past.invalidateAll(); }
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final ThreadPoolExecutor pool = new ThreadPoolExecutor(3, 3, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(500), task -> {
         Thread thread = new Thread(task, "sale-locate"); thread.setDaemon(true); return thread;

@@ -81,6 +81,10 @@ public class PublicAnnouncementIndex {
     LocalDate today() { return LocalDate.now(clock.withZone(KST)); }
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { cache.invalidateAll(); }
+    /** 숨김 목록이 바뀌면 캐시를 비워 숨긴 공고가 바로 빠지게 한다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { cache.invalidateAll(); }
 
     /** 최근·앞으로의 공개 공고 전체(유형 순서, 같은 유형은 주택관리번호·공고번호 순). 30분 캐시. */
     public List<Entry> recent() {

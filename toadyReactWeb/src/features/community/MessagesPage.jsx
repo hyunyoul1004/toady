@@ -20,6 +20,7 @@ import WarningAmberRounded from '@mui/icons-material/WarningAmberRounded';
 import ApartmentRounded from '@mui/icons-material/ApartmentRounded';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { detailLinkState } from '@/components/layout/navItems';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import ProfileAvatar from '@/features/account/ProfileAvatar';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
@@ -172,7 +173,7 @@ function ThreadView({ threadSeq, onBack }) {
       <Button size="small" color="inherit" className="dm-leave" onClick={() => setLeaveOpen(true)}>나가기</Button>
     </ThreadHeader>
     {leaveError && <Alert severity="error" onClose={() => setLeaveError('')} sx={{ borderRadius: 0 }}>{leaveError}</Alert>}
-    {data.contextId && <Link className="dm-context" to={detailPath(data.contextId)} state={{ detailOverlay: true }}>
+    {data.contextId && <Link className="dm-context" to={detailPath(data.contextId)} state={detailLinkState('detailOverlay', '/', location.pathname)}>
       <ApartmentRounded fontSize="small" /><span>{data.houseNm || '공고'} 보기</span><ChevronRightRounded fontSize="small" /></Link>}
     <Box className="dm-list" ref={listRef} onScroll={onScroll} role="log" aria-live="polite" aria-busy={loadingOlder} aria-label={`${data.other.nickname}님과의 쪽지`}>
       {more && <Button size="small" onClick={loadOlder} disabled={loadingOlder} className="dm-older">{loadingOlder ? '불러오는 중…' : '이전 쪽지 더 보기'}</Button>}

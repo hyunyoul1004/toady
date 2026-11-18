@@ -21,6 +21,7 @@ import '@/features/community/community.css';
 import ForumOutlined from '@mui/icons-material/ForumOutlined';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
+import { detailLinkState } from '@/components/layout/navItems';
 import PushSettingsDialog from '@/features/push/PushSettingsDialog';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { ACCOUNT_KEY, NICKNAME_RULE, PASSWORD_RULE, accountApi } from './accountApi';
@@ -103,7 +104,8 @@ function PasswordForm({ onDone, onCancel }) {
     if (!result.ok) { setError(result.message); return; }
     // 비밀번호가 바뀌면 이전 토큰은 모두 무효가 되므로, 이 기기는 새 토큰으로 로그인을 이어 간다.
     // 새 토큰을 쓰지 못하면 이전 토큰은 이미 무효라 로그인 상태로 두지 않는다(같은 비밀번호로 다시 제출해 틀린 횟수만 쌓이지 않게).
-    if (!adoptToken(login, result.data?.accessToken)) { logout(); onDone(RELOGIN); return; }
+    // 새 토큰을 못 받은 경우는 이 기기만 로그아웃한다(서버 로그아웃은 다른 기기까지 끊는다).
+    if (!adoptToken(login, result.data?.accessToken)) { logout({ server: false }); onDone(RELOGIN); return; }
     onDone(result.message);
   };
   return <form className="account-form" onSubmit={submit}>
@@ -183,7 +185,7 @@ const storyDate = value => {
 
 /** 받은 답글: 내 이야기에 다른 회원이 단 답글. 화면에 보이면 '봤음'으로 기억해 메뉴의 새 답글 표시를 끈다(목록의 '새 답글' 표시는 이번 화면에서는 남긴다). */
 function ReceivedReplies() {
-  const navigate = useNavigate();
+  const navigate = useNavigate(), location = useLocation();
   const replies = useMyReplies();
   const items = replies.data?.items || [];
   const latest = replies.data?.latestSeq;
@@ -191,7 +193,8 @@ function ReceivedReplies() {
   useEffect(() => { if (latest) replies.markSeen(); }, [latest]);
   if (replies.isLoading || (!items.length && !replies.isError)) return null;
   // 공고 상세의 이야기 탭으로 가서 그 답글로 이동한다. state.detailOverlay는 '사이트 안에서 연 상세' 표시라 닫기가 뒤로가기로 동작한다.
-  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  // 캘린더 목록이 아닌 이 화면에서 열었으므로 detailFromOther도 남겨, 캘린더 탭을 다시 누르면 내 정보가 아닌 캘린더가 나오게 한다.
+  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: detailLinkState('detailOverlay', '/', location.pathname) });
   const fresh = items.filter(item => item.isNew).length;
   return <section className="account-card account-replies" aria-labelledby="account-replies-title">
     <div className="account-stories-head"><h2 id="account-replies-title"><ForumOutlined fontSize="small" />받은 답글{fresh > 0 && <span className="account-new-count">새 답글 {fresh}</span>}</h2></div>
@@ -214,7 +217,7 @@ function ReceivedReplies() {
 
 /** 내가 쓴 이야기. 누르면 그 공고의 이야기 탭을 열고 해당 이야기로 이동한다(뒤로가기로 이 목록에 돌아온다). */
 function MyStories({ onClose, seen }) {
-  const navigate = useNavigate();
+  const navigate = useNavigate(), location = useLocation();
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
   // useInfiniteQuery: '더 보기'로 페이지를 이어 붙이는 목록용 React Query.
   // getNextPageParam이 다음 페이지 번호를 돌려주고, undefined면 끝이라 hasNextPage가 false가 된다.
@@ -227,7 +230,7 @@ function MyStories({ onClose, seen }) {
     staleTime: 30000
   });
   const items = (stories.data?.pages || []).flatMap(page => page?.items || []);
-  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
+  const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: detailLinkState('detailOverlay', '/', location.pathname) });
   return <section className="account-card account-stories" id="account-stories" aria-labelledby="account-stories-title">
     <div className="account-stories-head"><h2 id="account-stories-title"><ChatBubbleOutlineRounded fontSize="small" />내가 쓴 이야기</h2>
       <Button size="small" onClick={onClose}>접기</Button></div>
@@ -374,14 +377,14 @@ export default function AccountPage() {
 
     <section className="account-card" aria-labelledby="account-session-title">
       <h2 id="account-session-title"><PersonOutlineRounded fontSize="small" />계정</h2>
-      <div className="account-row"><div><span className="account-value">로그아웃</span><small>이 기기에서만 로그아웃해요.</small></div>
+      <div className="account-row"><div><span className="account-value">모든 기기에서 로그아웃</span><small>이 계정으로 로그인한 휴대폰·PC 모두 로그아웃돼요.</small></div>
         <Button size="small" variant="outlined" onClick={() => { logout(); navigate('/', { replace: true }); }}>로그아웃</Button></div>
       <div className="account-row account-danger"><div><span className="account-value">회원 탈퇴</span>
         <small>관심 공고·알림·캘린더 연결과 이메일·닉네임이 지워져요. 작성한 이야기는 '탈퇴회원'으로 남아요. 되돌릴 수 없어요.</small></div>
         {editing !== 'withdraw' && <Button size="small" color="error" onClick={() => { setEditing('withdraw'); setNotice(''); }}>탈퇴</Button>}</div>
       {/* 탈퇴가 끝나면 이전 회원의 캐시가 남지 않게 React Query 캐시를 모두 비우고(queryClient.clear) 로그아웃한다. */}
       {editing === 'withdraw' && <WithdrawForm phrase={data?.withdrawPhrase || '탈퇴합니다'} onCancel={() => setEditing(null)}
-        onDone={message => { queryClient.clear(); logout(); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
+        onDone={message => { queryClient.clear(); logout({ server: false }); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
     </section>
 
     <PushSettingsDialog open={Boolean(pushOpen)} onClose={() => setPushOpen(false)} loggedIn />

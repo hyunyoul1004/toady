@@ -33,6 +33,10 @@ public class ScoreBenchmarks {
     private final JdbcTemplate jdbc; private final Clock clock;
     /** 전체 기간 공고별 요약. 1시간마다 다시 읽고, 같은 시점의 동시 요청은 한 번만 조회한다. */
     private final Cache<String, List<Item>> index = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofHours(1)).build();
+    /** 운영자가 숨긴 공고는 기준에서 뺀다. 캐시(1시간)와 상관없이 바로 반영되도록 읽을 때마다 거른다. 테스트에서 직접 만들면 없을 수 있다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @Autowired(required = false)
+    HiddenAnnouncements hidden;
 
     // @Autowired: 스프링이 쓸 생성자. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
@@ -74,17 +78,22 @@ public class ScoreBenchmarks {
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { index.invalidateAll(); }
 
+    /** 공개 가점이 있는 공고 전체(최신순). 숨긴 공고는 뺀다. */
     List<Item> all() {
-        return PublicHtml.load(index, "all", this::load);
+        List<Item> loaded = PublicHtml.load(index, "all", this::load);
+        return hidden == null ? loaded : hidden.visible(loaded, Item::id);
     }
     private List<Item> load() {
-        List<String[]> rows = jdbc.query("SELECT d.HOUSE_MANAGE_NO,d.PBLANC_NO,d.HOUSE_NM,d.HSSPLY_ADRES,d.RCEPT_BGNDE,s.LWET_SCORE,s.TOP_SCORE "
+        List<String[]> rows = jdbc.query("SELECT d.HOUSE_MANAGE_NO,d.PBLANC_NO,d.HOUSE_NM,d.HSSPLY_ADRES,d.RCEPT_BGNDE,s.LWET_SCORE,s.TOP_SCORE,d.SUBSCRPT_AREA_CODE_NM "
                 + "FROM TB_APT_LTTOT_PBLANC_SCORE s JOIN TB_APT_LTTOT_PBLANC_DETAIL d ON d.HOUSE_MANAGE_NO=s.HOUSE_MANAGE_NO AND d.PBLANC_NO=s.PBLANC_NO",
-            (r, n) -> new String[]{r.getString(1), r.getString(2), r.getString(3), r.getString(4), r.getString(5), r.getString(6), r.getString(7)});
+            (r, n) -> new String[]{r.getString(1), r.getString(2), r.getString(3), r.getString(4), r.getString(5), r.getString(6), r.getString(7), r.getString(8)});
         return items(rows);
     }
 
-    /** rows: 주택관리번호, 공고번호, 단지명, 주소, 접수시작일, 최저가점, 최고가점 (주택형·거주지역별 한 행) → 공고별 한 줄, 최신순 */
+    /**
+     * rows: 주택관리번호, 공고번호, 단지명, 주소, 접수시작일, 최저가점, 최고가점[, 공급지역명] (주택형·거주지역별 한 행) → 공고별 한 줄, 최신순.
+     * 공급지역명이 있으면 지역별 공개 페이지와 같이 '광주시 오포읍'처럼 시·도 없이 시작하는 주소도 시·도로 묶는다.
+     */
     static List<Item> items(List<String[]> rows) {
         Map<String, Item> byNotice = new LinkedHashMap<>();
         for (String[] row : rows) {
@@ -95,7 +104,7 @@ public class ScoreBenchmarks {
             if (receipt == null) continue;
             Item previous = byNotice.get(id);
             String slug = LivingAreas.match(row[3], row[2]).map(LivingAreas.Area::slug).orElse(null);
-            String[] region = region(row[3]);
+            String[] region = region(row[3], row.length > 7 ? row[7] : null);
             byNotice.put(id, new Item(id, row[2], row[3], receipt.toString(), slug,
                 min(previous == null ? null : previous.low(), low == null ? null : low.doubleValue()),
                 max(previous == null ? null : previous.high(), high == null ? null : high.doubleValue()), region[0], region[1]));
@@ -197,8 +206,10 @@ public class ScoreBenchmarks {
     private static int sidoOrder(String sido) { int index = SIDO.indexOf(sido); return index < 0 ? SIDO.size() : index; }
 
     /** 주소 앞부분으로 [시·도 약칭, 시·군·구]를 정한다(지역별 공개 페이지와 같은 Regions 규칙). 확인할 수 없으면 null. 세종은 시·군·구가 없다. */
-    static String[] region(String address) {
-        return Regions.of(address).map(found -> new String[]{found.sido().shortName(), found.district()}).orElse(new String[]{null, null});
+    static String[] region(String address) { return region(address, null); }
+    /** 주소와 청약홈 공급지역명(SUBSCRPT_AREA_CODE_NM)으로 정한다. PublicAnnouncementIndex(지역별 공개 페이지)와 같은 Regions.of(주소, 공급지역명) 규칙이다. */
+    static String[] region(String address, String regionName) {
+        return Regions.of(address, regionName).map(found -> new String[]{found.sido().shortName(), found.district()}).orElse(new String[]{null, null});
     }
     private static Double min(Double a, Double b) { return a == null ? b : b == null ? a : Math.min(a, b); }
     private static Double max(Double a, Double b) { return a == null ? b : b == null ? a : Math.max(a, b); }

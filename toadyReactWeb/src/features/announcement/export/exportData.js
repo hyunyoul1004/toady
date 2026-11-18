@@ -1,23 +1,14 @@
 import { summaryOf, normalizeScheduleEvents } from '../../planner/plannerUtils.js';
 import { unitLabel, formatManwon } from '../../planner/researchUtils.js';
-import { formatCompetitionRate } from '../../../utils/rate.util.js';
-import { specialApplicants } from '../../../views/main/subscriptRate/rateFormat.js';
+import { formatCount, normalizeRateRows, parseRate, rankLabel, specialApplicants } from '../../../views/main/subscriptRate/rateFormat.js';
 
 /**
  * 이미지 저장(ImageExportButton)에 넣을 표 데이터를 만든다. 표 하나는 { title, note?, columns, weights?, rows } 모양이다.
  * 그리기는 renderImage.js가 한다. 값이 없으면 '—'로 채우고, 미공개 값을 0으로 적지 않는다.
+ * 경쟁률·순위 문구는 화면 표와 같은 parseRate·rankLabel을 쓴다('N세대 미달', '접수 없음'·'미공개').
  */
 const text=value=>value==null || String(value).trim()===''?'—':String(value);
 const count=value=>value==null || value===''?'—':Number.isFinite(Number(value))?Number(value).toLocaleString('ko-KR'):text(value);
-const ratio=value=>{
-  const raw=String(value ?? '').trim();
-  if(!raw || raw==='-')return '—';
-  const number=Number(raw);
-  // 화면·알림과 같은 규칙(100 이상은 정수, 그 아래는 소수 둘째 자리까지, 끝의 0은 뺀다).
-  if(Number.isFinite(number))return number>0?formatCompetitionRate(number):number<0?`미달 ${Math.abs(number)}세대`:'—';
-  const shortage=raw.match(/^\(?[△▲]\s*(\d+)\)?$/) || raw.match(/^\((\d+)\)$/);
-  return shortage?`미달 ${shortage[1]}세대`:raw;
-};
 // 당첨가점은 0 초과 84점 이하 숫자만 공개 값으로 본다(0·빈 값은 미공개). MobileCompetitionCards.jsx도 쓴다.
 export const validScore=value=>value!=null && /^\d+(?:\.\d+)?$/.test(String(value).trim()) && Number(value)>0 && Number(value)<=84;
 const score=value=>validScore(value)?`${Number(value)}점`:'미공개';
@@ -36,16 +27,18 @@ export function competitionImageSections(type, rates=[], scores=[], special=[]) 
   let columns, rows;
   if(type==='apt') {
     columns=['주택형','순위','지역','공급 세대','접수 건수','경쟁률'];
-    rows=rates.map(row=>[unitLabel(row.houseTy,row.modelNo),row.subscrptRankCode==='1'?'1순위':row.subscrptRankCode==='2'?'2순위':text(row.subscrptRankCode),row.resideSenm || row.resideSecd,count(row.suplyHshldco),count(row.reqCnt),ratio(row.cmpetRate)]);
-  } else if(type==='cancel-resupply') {
-    columns=['주택형','일반 세대','일반 접수','일반 경쟁률','다자녀 경쟁률','신혼부부 경쟁률'];
-    rows=rates.map(row=>[unitLabel(row.houseTy,row.modelNo),count(row.normalHshldco),count(row.normalReqCnt),ratio(row.normalCmpetRate),ratio(row.mnychCmpetRate),ratio(row.nwwdsCmpetRate)]);
+    rows=rates.map(row=>[unitLabel(row.houseTy,row.modelNo),rankLabel(row.subscrptRankCode),row.resideSenm || row.resideSecd,count(row.suplyHshldco),count(row.reqCnt),parseRate(row.cmpetRate,row.reqCnt).text]);
   } else {
-    columns=['주택형','공급 구분','공급 세대','접수 건수','경쟁률'];
-    rows=rates.map(row=>[unitLabel(row.houseTy,row.modelNo),type==='urban'?(row.residentPriorSenm || (row.residntPriorAt==='Y'?'거주자 우선':'일반')):row.spsplyKndNm || row.houseSecdNm || row.rceptTyNm || '일반',count(row.spsplyKndHshldco ?? row.suplyHshldco),count(row.reqCnt),ratio(row.cmpetRate)]);
+    // APT 이외 공고는 화면 표(SubscriptRate·MobileRateRowCards)와 같은 normalizeRateRows 결과로 만든다.
+    // 공급 구분 열 표시 여부·문구(잔여세대 '구분 N', 오피스텔 거주자 우선 등)와 추가 경쟁률 열이 화면과 같아진다.
+    const table=normalizeRateRows(type,rates);
+    const isCancel=type==='cancel-resupply';
+    columns=['주택형',...(table.showCategory?[table.categoryLabel]:[]),isCancel?'일반공급 세대':'공급 세대',isCancel?'일반공급 접수':'접수 건수',isCancel?'일반공급 경쟁률':'경쟁률',...table.extras.map(extra=>`${extra.label} 경쟁률`)];
+    rows=table.rows.map(row=>[row.unit,...(table.showCategory?[row.category || '-']:[]),formatCount(row.supply),formatCount(row.applications),row.rate.text,
+      ...table.extras.map(extra=>row.extras.find(item=>item.key===extra.key)?.rate.text)]);
   }
   return [
-    {title:'청약 경쟁률',note:'공급 세대수는 행별 표시값이며 중복 합산하지 않습니다. — 는 미공개 또는 경쟁률 표시 대상이 아닌 값입니다.',columns,rows:rows.map(row=>row.map(text))},
+    {title:'청약 경쟁률',note:'공급 세대수는 행별 표시값이며 중복 합산하지 않습니다. — 는 공개되지 않은 값입니다.',columns,rows:rows.map(row=>row.map(text))},
     ...(type==='apt'?[{title:'당첨가점',note:'주택형·거주지역별 공개 점수입니다. 미공개 점수는 0점으로 표시하지 않습니다.',columns:['주택형','지역','최저 가점','최고 가점','평균 가점'],rows:scores.map(row=>[unitLabel(row.houseTy,row.modelNo),row.resideSenm || text(row.resideSecd),score(row.lwetScore),score(row.topScore),score(row.avrgScore)])},
     {title:'특별공급 신청현황',columns:['주택형','배정 세대','다자녀 해당','다자녀 경기','다자녀 기타','신혼부부 접수','생애최초 접수'],rows:special.map(row=>[unitLabel(row.houseTy,row.modelNo),count(row.spsplyHshldco),count(row.crspareaMnychCnt),count(row.ctprvnMnychCnt),count(row.etcAreaMnychCnt),count(specialApplicants(row,'NwwdsNmtw')),count(specialApplicants(row,'LfeFrst'))])}]:[])
   ].filter(section=>section.rows.length);

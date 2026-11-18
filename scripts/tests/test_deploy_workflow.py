@@ -39,7 +39,8 @@ class DeployWorkflowTest(unittest.TestCase):
             for name, source in stubs.items():
                 (bin_dir / name).write_text(source)
                 (bin_dir / name).chmod(0o755)
-            check = '#!/bin/sh\necho "check $IMAGE_TAG" >> "$CALL_LOG"\n[ "$IMAGE_TAG" != "$CHECK_FAILS_FOR" ]\n'
+            # CHECK_FAILS_FOR에 든 태그(공백으로 여러 개)는 확인에 실패한다.
+            check = '#!/bin/sh\necho "check $IMAGE_TAG" >> "$CALL_LOG"\ncase " $CHECK_FAILS_FOR " in *" $IMAGE_TAG "*) exit 1 ;; esac\n'
             (work / 'scripts' / 'check-deployment.sh').write_text(check)
             (work / 'docker-compose.yml').write_text('old compose\n')
             # scp가 받아 둔 새 파일(배포 스크립트가 이전 파일을 보관한 뒤 교체한다).
@@ -164,6 +165,27 @@ class DeployWorkflowTest(unittest.TestCase):
         self.assertIn('ROLLBACK OK', result.stderr)
         self.assertEqual('old\n', tag)
 
+    def test_same_tag_redeploy_failure_restarts_apps_with_the_restored_compose(self):
+        # 같은 커밋을 다시 배포했는데 compose 변경으로 다시 만든 컨테이너가 확인에 실패하면, 이전 compose로 다시 띄운다.
+        result, calls, tag, *_ = self.run_deploy(previous_tag='new', env_text='IMAGE_TAG=new\n',
+                                                 same_apps='toadyWebApi toadyScheduler toadyReactWeb', check_fails_for='new')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Rolling back', result.stderr)
+        self.assertEqual(2, calls.count('compose new -p toady up -d --no-deps toadyWebApi toadyScheduler toadyReactWeb'), calls)
+        self.assertEqual('old compose\n', self.compose)
+        self.assertEqual('new\n', tag)
+
+    def test_rollback_recreates_redis_only_when_its_settings_were_changed(self):
+        redis_compose = 'services:\n  redis:\n    image: redis:new\n'
+        result, calls, *_ = self.run_deploy(previous_tag='new', env_text='IMAGE_TAG=new\n', new_compose=redis_compose,
+                                            same_apps='toadyWebApi toadyScheduler toadyReactWeb', check_fails_for='new')
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(2, calls.count('up -d --force-recreate redis'), '새 설정으로 다시 만든 Redis를 이전 설정으로 되돌린다')
+        # Redis 설정이 그대로면(기록이 없어 한 번 다시 만든 경우) 롤백 때 다시 만들지 않는다.
+        result, calls, *_ = self.run_deploy(check_fails_for='new')
+        self.assertIn('ROLLBACK OK', result.stderr)
+        self.assertEqual(1, calls.count('up -d --force-recreate redis'))
+
     def test_unchanged_settings_keep_redis_and_record_sums(self):
         result, calls, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n', recorded_sums='current',
                                             same_apps='toadyWebApi toadyScheduler toadyReactWeb')
@@ -177,6 +199,27 @@ class DeployWorkflowTest(unittest.TestCase):
                                             same_apps='toadyWebApi toadyScheduler toadyReactWeb')
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn('up -d --no-deps toadyWebApi\n', calls)
+
+    def test_same_tag_env_change_failure_explains_that_settings_are_not_rolled_back(self):
+        # 같은 태그·같은 compose에서 .env.prod만 바뀌어 실패하면 되돌릴 것이 없다. 같은 컨테이너를 다시 띄우지 않고 안내한다.
+        result, calls, tag, *_ = self.run_deploy(previous_tag='new', env_text='IMAGE_TAG=new\n', new_compose='old compose\n',
+                                                 recorded_sums='toadyWebApi 1-1\n', check_fails_for='new',
+                                                 same_apps='toadyWebApi toadyScheduler toadyReactWeb')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('ROLLBACK SKIPPED', result.stderr)
+        self.assertIn('설정 파일(.env.prod) 변경은 자동으로 되돌리지 않습니다', result.stderr)
+        self.assertIn('toadyWebApi', result.stderr)
+        self.assertNotIn('ROLLBACK CHECK FAILED', result.stderr)
+        self.assertEqual(1, calls.count('up -d --no-deps toadyWebApi'), calls)
+        self.assertEqual('new\n', tag)
+
+    def test_failed_rollback_check_after_env_change_mentions_the_settings_file(self):
+        # 이미지를 되돌려도 바뀐 .env.prod 때문에 이전 태그도 실패하면, 설정 파일은 직접 되돌려야 한다고 함께 알린다.
+        result, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', new_compose='old compose\n', recorded_sums='toadyWebApi 1-1\n',
+                                     check_fails_for='new old', same_apps='toadyScheduler toadyReactWeb')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('ROLLBACK CHECK FAILED', result.stderr)
+        self.assertIn('설정 파일(.env.prod) 변경은 자동으로 되돌리지 않습니다', result.stderr)
 
     def test_pull_failure_reports_unchanged_containers(self):
         result, calls, tag, *_ = self.run_deploy(env_text='IMAGE_TAG=old\n', fail_pull='1')

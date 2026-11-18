@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import Modal from '@mui/material/Modal';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
 import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
@@ -20,6 +19,8 @@ import './installCoach.css';
  * 브라우저 메뉴 버튼은 페이지 밖(주소창·아래 도구 막대)에 있어 직접 가리킬 수 없으므로, 그 쪽 화면 끝으로 통통 튀는 화살표를 둔다.
  * 메뉴 안의 항목은 실제 메뉴를 본뜬 그림에서 눌러야 할 줄을 깜빡여 보여 준다(삼성 인터넷 메뉴는 2026-11 실제 화면 기준).
  * 열고 닫기는 부모(InstallGuideDialog → Sidebar의 useHistoryOverlay)가 관리해 뒤로가기 한 번에 닫힌다.
+ * MUI Modal로 감싸 열면 닫기 버튼으로 초점을 옮기고, Tab 초점을 안내 안에 가두고, 닫으면 연 버튼으로 초점을 돌려준다.
+ * 뒤 화면 스크롤 잠금과 Esc 닫기도 Modal이 한다(배경 어둡게는 안내 자체 스타일이라 Modal 배경은 숨긴다).
  */
 const COACH = {
   samsung: {
@@ -54,20 +55,9 @@ function MenuRow({ Icon, label, hot }) {
 
 export default function InstallCoach({ browser, onClose }) {
   const coach = COACH[browser] || COACH.chrome;
-  // 열려 있는 동안 뒤 화면이 스크롤되지 않게 한다(닫으면 원래대로).
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; };
-  }, []);
-  // Esc로도 닫힌다(PC에서 미리 볼 때).
-  useEffect(() => {
-    const onKey = event => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(<div className="install-coach" role="dialog" aria-modal="true" aria-labelledby="install-coach-title">
+  // Modal의 onClose는 (event, reason)을 넘기므로 부모 onClose에는 넘기지 않는다.
+  return <Modal open onClose={() => onClose()} hideBackdrop sx={{ zIndex: 1500 }}>
+    <div className="install-coach" role="dialog" aria-modal="true" aria-labelledby="install-coach-title">
     {/* 브라우저 메뉴 버튼 쪽 화면 끝을 가리키는 화살표 */}
     <div className={`coach-arrow is-${coach.arrow}`} aria-hidden="true">
       <span className="coach-arrow-label">여기 <MoreVertRounded fontSize="inherit" /> 를 눌러요</span>
@@ -76,7 +66,7 @@ export default function InstallCoach({ browser, onClose }) {
     <div className={`coach-card is-${coach.arrow}`}>
       <div className="coach-head">
         <strong id="install-coach-title">홈 화면에 TOADY 추가하기</strong>
-        <button type="button" className="coach-close" aria-label="안내 닫기" onClick={onClose}><CloseRounded fontSize="small" /></button>
+        <button type="button" className="coach-close" aria-label="안내 닫기" onClick={onClose} autoFocus><CloseRounded fontSize="small" /></button>
       </div>
       <ol className="coach-steps">
         <li><span className="coach-no">1</span><p>{coach.first}</p></li>
@@ -96,5 +86,6 @@ export default function InstallCoach({ browser, onClose }) {
       <p className="coach-note">홈 화면에 안 보이면 화면을 아래에서 위로 쓸어 올린 앱스 화면에서 TOADY를 찾아 길게 누르고 ‘홈에 추가’를 눌러요.</p>
       <button type="button" className="coach-done" onClick={onClose}>확인했어요</button>
     </div>
-  </div>, document.body);
+    </div>
+  </Modal>;
 }

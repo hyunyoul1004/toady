@@ -35,6 +35,10 @@ import static com.toady.web.app.planner.PublicHtml.esc;
 public class PublicCollectionPages {
     static final List<String> UNRANKED_TYPES = List.of("remaining", "optional");
     private final PublicAreaPage areas; private final AnnouncementSearchService search; private final JdbcTemplate jdbc; private final String domain; private final Clock clock;
+    /** 운영자가 숨긴 공고는 당첨자 발표 목록에서 뺀다. 단위 테스트에서 직접 만들면 없을 수 있다(그때는 숨김 없이 동작). */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @Autowired(required = false)
+    HiddenAnnouncements hidden;
 
     // @Autowired: 스프링이 쓸 생성자를 지정한다. @Value로 서비스 주소를 읽는다. 아래 생성자는 테스트용(시계 교체).
     @Autowired
@@ -195,8 +199,16 @@ public class PublicCollectionPages {
         return result.getContent();
     }
 
-    List<Winner> winners(Week week) { return winners(jdbc, week); }
-    /** 이번 주 APT 당첨자 발표. 서버 /weekly 페이지와 앱 weekly-summary(오늘의 요약 숫자·이번 주 청약 목록)가 같은 결과를 쓴다. */
+    /** 이번 주 APT 당첨자 발표에서 운영자가 숨긴 공고를 뺀다(공고 검색과 같은 숨김 기준). */
+    List<Winner> winners(Week week) {
+        List<Winner> found = winners(jdbc, week);
+        return hidden == null ? found : hidden.visible(found, Winner::id);
+    }
+    /** 숨김 목록이 바뀌면 앱 화면용 집계 캐시를 비운다(HTML 캐시는 HiddenAnnouncements가 비운다). */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { weeklyCache.invalidateAll(); activeCache.invalidateAll(); }
+    /** 이번 주 APT 당첨자 발표(숨김 확인 전). 서버 /weekly 페이지와 앱 weekly-summary(오늘의 요약 숫자·이번 주 청약 목록)가 같은 결과를 쓴다. */
     static List<Winner> winners(JdbcTemplate jdbc, Week week) {
         String from = week.monday().format(DateTimeFormatter.BASIC_ISO_DATE), to = week.sunday().format(DateTimeFormatter.BASIC_ISO_DATE);
         return jdbc.query("SELECT HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,PRZWNER_PRESNATN_DE FROM TB_APT_LTTOT_PBLANC_DETAIL "

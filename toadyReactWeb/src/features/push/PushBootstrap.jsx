@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { useGuestFavoriteIds } from '@/features/planner/usePlanner';
 import { SYNCED_KEY, usePushStore } from './pushStore';
-import { appPath, detailMarker, isSpaPath, scopeKey } from './pushSupport';
+import { appPath, isSpaPath, notificationEntries, scopeKey } from './pushSupport';
 
 /**
  * 앱 전체에서 한 번: 서비스 워커 등록(권한 요청 없음), 구독 상태 확인, 알림 클릭 이동,
@@ -43,12 +43,9 @@ export default function PushBootstrap() {
       if (!path) return;
       // 서버가 그리는 페이지(/areas 등)는 앱 라우터에 없으므로 전체 페이지로 이동한다.
       if (!isSpaPath(path, window.location.origin)) { window.location.assign(path); return; }
-      // 앱 안 이동이므로 상세의 '직접 진입' 처리를 건너뛰어, 뒤로가기가 보던 화면으로 돌아가게 한다.
-      const marker = detailMarker(path);
-      // 상세를 다른 화면에서 열면 그 상세의 기준 화면을 한 단계 먼저 쌓는다(탭 다시 누르기·뒤로가기가 그 화면으로 닫히게).
-      const base = new URL(path, window.location.origin).pathname;
-      if (marker && window.location.pathname !== base) navigateRef.current(base);
-      navigateRef.current(path, { state: marker });
+      // 앱 안 이동이므로 상세에 표식(state)을 붙여 '직접 진입' 처리를 건너뛰고, 뒤로가기가 보던 화면으로 돌아가게 한다.
+      // 상세를 다른 화면에서 열면 그 상세의 목록 주소를 한 단계 먼저 쌓는다(탭 다시 누르기·뒤로가기가 그 목록으로 닫히게).
+      for (const [to, state] of notificationEntries(path, window.location.pathname + window.location.search)) navigateRef.current(to, state ? { state } : undefined);
     };
     // 정리(cleanup) 함수: 컴포넌트가 사라지거나 effect가 다시 돌기 전에 React가 부른다. 등록한 리스너를 떼어 중복을 막는다.
     navigator.serviceWorker.addEventListener('message', onMessage);

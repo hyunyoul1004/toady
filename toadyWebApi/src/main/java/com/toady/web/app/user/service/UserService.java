@@ -73,6 +73,9 @@ public class UserService {
     @Autowired
     private CertifyService certifyService;
 
+    @Autowired
+    private WithdrawnSanctions withdrawnSanctions;
+
     /** 없는 계정도 실제 비교와 비슷한 시간이 걸리게 하는 더미 해시. 응답 시간으로 가입 여부를 알아내지 못하게 한다. */
     private static final String DUMMY_HASH = new BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
 
@@ -190,6 +193,9 @@ public class UserService {
                     throw new EmailTakenException();
                 throw new NicknameTakenException();
             }
+
+            // 같은 이메일로 탈퇴한 기록에 진행 중인 제재·차단이 있으면 새 계정에 다시 건다(database.sql 32번)
+            withdrawnSanctions.reapply(userParam.getUserSeq(), userParam.getUserEmail());
 
             certifyService.saveCertify(new CertifyDTO.Save(userParam.getUserSeq(), userParam.getUserEmail(), userParam.getUserNicName(), "ACCOUNT", "EMAIL"));
 

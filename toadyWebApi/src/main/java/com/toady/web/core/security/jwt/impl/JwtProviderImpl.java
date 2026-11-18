@@ -1,6 +1,7 @@
 package com.toady.web.core.security.jwt.impl;
 
 import com.toady.web.app.user.repository.UserRepository;
+import com.toady.web.core.security.TokenVersions;
 import com.toady.web.core.security.jwt.JwtProvider;
 import com.toady.web.core.security.service.CustomUserDetails;
 import com.toady.web.core.util.SecUtils;
@@ -12,7 +13,9 @@ import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -31,6 +34,7 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  * 서명된 JWT 발급·검증과 클레임에서 Spring Security 인증 정보를 복원합니다.
  * 토큰 안에는 이메일(subject), 권한, 최초 로그인 시각(tca), 회원 번호·닉네임, 비밀번호 버전(credentialVersion)이 들어간다.
+ * 토큰 버전(tokenVersion, database.sql 33번)도 넣어 두고, 로그아웃으로 DB 값이 올라가면 이전 토큰을 거부한다.
  * 검증할 때마다 TB_USER를 다시 읽어 잠금·탈퇴·미인증이거나 비밀번호가 바뀌었으면 토큰을 거부한다.
  * HS512(비밀 키 하나로 서명·검증) 방식이며, 키는 JWT_SECRET(Base64, 64바이트 이상)으로 받는다.
  */
@@ -40,6 +44,12 @@ public class JwtProviderImpl implements JwtProvider {
     private final UserRepository userRepository;
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
+    static final String TOKEN_VERSION = "tokenVersion";
+
+    /** 회원별 토큰 버전. @Bean으로 만든 객체라 필드 주입을 쓴다. 단위 테스트처럼 없으면 버전을 비교하지 않는다. */
+    // @Autowired(required = false): 빈이 없어도 시작은 된다(null)
+    @Autowired(required = false)
+    private TokenVersions tokenVersions;
 
     // @Value: 설정 값을 필드에 넣는다. @Bean으로 만든 객체도 스프링이 관리하므로 필드 주입이 된다
     @Value("${toady.security.secret-key}")
@@ -77,15 +87,21 @@ public class JwtProviderImpl implements JwtProvider {
     @Override
     /** 사용자 식별자·권한과 만료 시각을 포함한 서명 토큰을 발급합니다. */
     public String generatorToken(Authentication authentication) {
-        return token(authentication, Instant.now());
+        CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
+        return token(authentication, Instant.now(), tokenVersion(user.getUserSeq()));
     }
 
-    /** 최초 로그인 시각(tca)을 이전 토큰에서 그대로 옮긴다. 값이 없던 예전 토큰은 발급 시각을 최초 시각으로 본다. */
+    /**
+     * 최초 로그인 시각(tca)을 이전 토큰에서 그대로 옮긴다. 값이 없던 예전 토큰은 발급 시각을 최초 시각으로 본다.
+     * 토큰 버전도 DB를 다시 읽지 않고 이전 토큰 값을 옮긴다. 이 요청에서 getAuthentication이 이미 DB 값과 같은지 확인했으므로,
+     * 그 뒤에 로그아웃으로 버전이 올라가도 새 토큰이 올라간 버전을 받아 살아남는 일이 없다(조회 한 번도 줄어든다).
+     */
     @Override
     public String renewToken(HttpServletRequest request, Authentication authentication) {
         String header = request.getHeader(AUTHORIZATION_HEADER);
         Claims claims = parse(header.substring(BEARER_PREFIX.length()));
-        return token(authentication, createdAt(claims));
+        Number version = claims.get(TOKEN_VERSION, Number.class);
+        return token(authentication, createdAt(claims), version == null ? 0L : version.longValue());
     }
 
     // 토큰에서 최초 로그인 시각을 꺼낸다. 최대 유지 기간(14일) 계산의 기준이다
@@ -97,7 +113,7 @@ public class JwtProviderImpl implements JwtProvider {
     }
 
     /** 실제 토큰 생성. 만료는 지금부터 tokenExpireMs(기본 90분) 뒤이고, createdAt은 처음 로그인한 시각을 이어받는다. */
-    private String token(Authentication authentication, Instant createdAt) {
+    private String token(Authentication authentication, Instant createdAt, long tokenVersion) {
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
         Instant now = Instant.now();
         return Jwts.builder()
@@ -105,6 +121,7 @@ public class JwtProviderImpl implements JwtProvider {
                 .claim(authoritiesKey, SecUtils.getAuthorities(authentication.getAuthorities()))
                 .claim(tokenCreatedAtKey, Date.from(createdAt))
                 .claim("credentialVersion", credentialVersion(user.getPassword()))
+                .claim(TOKEN_VERSION, tokenVersion)
                 .claim("userSeq", user.getUserSeq())
                 .claim("userNicName", user.getUserNicName())
                 .issuedAt(Date.from(now))
@@ -146,6 +163,18 @@ public class JwtProviderImpl implements JwtProvider {
                 credentialVersion(account.getUserPassword()).getBytes(StandardCharsets.UTF_8))) {
             throw new JwtException("Credentials have changed");
         }
+        // 로그아웃으로 버전이 올라갔으면 그 전에 발급한 토큰은 거부한다. 버전 값이 없는 예전 토큰은 0으로 본다.
+        // 컬럼이 없을 때만 비교를 건너뛰고, 일시적인 DB 오류면 통과시키지 않고 거부한다(401).
+        Long current;
+        try {
+            current = tokenVersions == null ? null : tokenVersions.current(account.getUserSeq());
+        } catch (DataAccessException failure) {
+            throw new JwtException("Token version unavailable", failure);
+        }
+        if (current != null) {
+            Number issued = claims.get(TOKEN_VERSION, Number.class);
+            if ((issued == null ? 0L : issued.longValue()) != current) throw new JwtException("Signed out");
+        }
         Collection<? extends GrantedAuthority> authorities =
                 SecUtils.mapToGrantedAuthorities(authoritiesValue);
         CustomUserDetails user = new CustomUserDetails(account.getUserEmail(), account.getUserPassword(), authorities);
@@ -163,6 +192,13 @@ public class JwtProviderImpl implements JwtProvider {
         }
         Date expiry = parse(header.substring(BEARER_PREFIX.length())).getExpiration();
         return expiry.before(Date.from(Instant.now().plusSeconds(30 * 60L)));
+    }
+
+    // 발급할 때 넣을 토큰 버전. 컬럼이 없으면 0. 그 밖의 DB 오류는 그대로 올려 틀린 버전의 토큰을 만들지 않는다
+    private long tokenVersion(Long userSeq) {
+        if (tokenVersions == null || userSeq == null) return 0L;
+        Long current = tokenVersions.current(userSeq);
+        return current == null ? 0L : current;
     }
 
     /** 서명과 만료를 검사하고 내용(클레임)을 꺼낸다. 위조·만료면 JwtException이 난다. */

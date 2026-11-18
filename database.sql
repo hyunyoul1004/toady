@@ -911,3 +911,39 @@ CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (
 --     MODIFY RESIDNT_PRIOR_AT VARCHAR(1) NOT NULL COMMENT '거주자 우선여부(Y 거주자 우선, N 기타)',
 --     DROP PRIMARY KEY,
 --     ADD PRIMARY KEY (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, RESIDNT_PRIOR_AT);
+
+-- ============================================================================
+-- 32. 탈퇴 후 재가입으로 제재·차단을 피하지 못하게 하는 기록 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 탈퇴할 때 진행 중인 제재(이야기 쓰기 정지 STORY_BAN·쪽지 보내기 정지 DM_SUSPEND)와 다른 회원이 나를 차단한 기록(BLOCKED_BY)을
+-- 이메일 원문 대신 HMAC-SHA256(정규화한 이메일, 서버 비밀 키) 값에 묶어 남긴다. 같은 이메일로 다시 가입하면 새 계정에 다시 건다.
+-- 정규화: 공백 제거·소문자. Gmail(googlemail.com 포함)은 아이디의 점과 +태그를 무시하고, Outlook·iCloud 등 +태그가 같은 받은편지함인 서비스는 +태그만 뗀다.
+-- 키는 WITHDRAWN_HASH_KEY(없으면 JWT_SECRET)이며, 바꾸면 이전 기록과 맞지 않게 된다. 운영 .env.prod에 따로 정해 두는 것을 권장한다.
+-- 테이블·권한이 없을 때만 건너뛰고, 일시적인 DB 오류는 탈퇴·가입을 되돌린다.
+-- 보관: 제재가 끝나는 시각과 탈퇴 후 1년 중 이른 때(EXPIRE_DT)까지. API가 매일 04:50과 탈퇴 때 지난 행을 지운다(개인정보처리방침 2·3번).
+-- 미적용이면 API는 기록 없이 예전처럼 탈퇴·가입을 처리한다.
+CREATE TABLE IF NOT EXISTS TB_WITHDRAWN_SANCTION (
+    EMAIL_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'HMAC-SHA256(소문자 이메일) 16진수',
+    KIND VARCHAR(20) NOT NULL COMMENT 'STORY_BAN·DM_SUSPEND·BLOCKED_BY',
+    BLOCKER_SEQ BIGINT NOT NULL DEFAULT 0 COMMENT 'BLOCKED_BY일 때 차단한 회원 번호(그 밖에는 0)',
+    REASON VARCHAR(20) NULL COMMENT '제재 사유 코드(TB_USER_SANCTION.REASON)',
+    END_DT DATETIME(6) NULL COMMENT '한국시간 제재가 끝나는 시각(NULL이면 무기한·차단)',
+    EXPIRE_DT DATETIME(6) NOT NULL COMMENT '한국시간 이 시각이 지나면 지운다(END_DT와 탈퇴 후 1년 중 이른 때)',
+    REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 탈퇴 시각',
+    PRIMARY KEY (EMAIL_HASH, KIND, BLOCKER_SEQ),
+    INDEX IX_WITHDRAWN_SANCTION_EXPIRE (EXPIRE_DT)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='탈퇴 회원 제재·차단 기록(재가입 시 다시 적용)';
+-- 앱 계정: 이 테이블 SELECT, INSERT, DELETE. 재가입 계정에 제재를 다시 걸므로 TB_USER_SANCTION에 INSERT도 필요하다(26번은 SELECT·UPDATE만).
+-- GRANT SELECT, INSERT, DELETE ON toady.TB_WITHDRAWN_SANCTION TO '앱계정'@'%';
+-- GRANT INSERT ON toady.TB_USER_SANCTION TO '앱계정'@'%';
+-- (후속) 스케줄러 보관 정리에 넣으려면: GRANT SELECT, DELETE ON toady.TB_WITHDRAWN_SANCTION TO 'toady_sources'@'%';
+--        DELETE FROM TB_WITHDRAWN_SANCTION WHERE EXPIRE_DT <= NOW() LIMIT 10000;  (지금은 API가 지운다)
+
+-- ============================================================================
+-- 33. 서버 로그아웃용 토큰 버전 (운영 DB에서 관리 계정으로 한 번 실행, 미적용이어도 앱은 동작)
+-- ============================================================================
+-- 로그인 토큰에 이 값을 넣고 요청마다 비교한다. 로그아웃(POST /api/v1/auth/logout)하면 1 올려 이미 발급한 토큰을 모두 무효로 만든다.
+-- 미적용이면 API는 비교하지 않고(예전 동작) 로그아웃은 화면에서만 처리된다. 적용 후 5분 안에 API가 컬럼을 다시 확인한다.
+-- TB_USER는 이 파일이 아니라 API(JPA)가 만든 테이블이라 자동 실행하지 않게 주석으로 둔다. 기존 행은 기본값 0이 들어가 기존 토큰은 그대로 유효하다.
+-- ALTER TABLE TB_USER ADD COLUMN IF NOT EXISTS TOKEN_VERSION INT NOT NULL DEFAULT 0 COMMENT '토큰 버전(로그아웃하면 1 증가)';
+-- 앱 계정이 열 단위 권한을 쓰는 경우: GRANT SELECT (TOKEN_VERSION), UPDATE (TOKEN_VERSION) ON toady.TB_USER TO '앱계정'@'%';

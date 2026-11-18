@@ -55,6 +55,10 @@ public class AnnouncementFeed {
     @Autowired(required = false)
     com.toady.web.app.operation.AnnouncementOverrides overrides;
     private final Cache<String, String> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(30)).maximumSize(1).build();
+    /** 숨김 목록이 바뀌면 캐시를 비워 숨긴 공고가 바로 빠지게 한다. */
+    // @EventListener: HiddenAnnouncements가 알리는 Changed 이벤트를 받는다.
+    @org.springframework.context.event.EventListener(HiddenAnnouncements.Changed.class)
+    void onHiddenChanged() { cache.invalidateAll(); }
 
     // @Autowired: 스프링이 쓸 생성자를 지정한다. @Value로 서비스 주소를 읽는다. 아래 생성자는 테스트용(시계 교체).
     @Autowired

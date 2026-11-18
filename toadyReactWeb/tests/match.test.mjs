@@ -205,6 +205,35 @@ test('메뉴: 공용 이름·활성 판정·같은 탭 다시 누르기', async 
   assert.equal(retapAction('/match', { pathname: '/match', search: '', state: { overlayLayers: [{ id: 'match-edit', value: true }] } }), 'back');
   assert.equal(retapAction('/match', { pathname: '/match/zupzup', search: '?sort=gap', state: null }), 'replace', '히스토리를 쌓지 않고 처음 화면으로');
   assert.equal(retapAction('/', { pathname: '/', search: '', state: null }), 'none');
+  // 다른 화면에서 연 나의 청약 상세: 뒤로가면 이전 화면으로 나가므로 탭 다시 누르기는 목록으로 바꾼다.
+  const { detailLinkState } = await import('../src/components/layout/navItems.js');
+  assert.deepEqual(detailLinkState('plannerDetail', '/my', '/my'), { plannerDetail: true });
+  const fromHome = detailLinkState('plannerDetail', '/my', '/');
+  assert.deepEqual(fromHome, { plannerDetail: true, detailFromOther: true });
+  assert.equal(retapAction('/my', { pathname: '/my', search: '?subscriptSeq=apt/1/1', state: fromHome }), 'replace');
+  assert.equal(retapAction('/my', { pathname: '/my', search: '?subscriptSeq=apt/1/1', state: { ...fromHome, overlayLayers: [{ id: 'share', value: true }] } }), 'back', '상세 위 팝업은 먼저 닫는다');
+});
+
+test('내 정보·쪽지에서 연 공고 상세는 캘린더 탭 다시 누르기로 캘린더를 보여 준다', async () => {
+  const { detailLinkState, retapAction } = await import('../src/components/layout/navItems.js');
+  const { readFileSync } = await import('node:fs');
+  const detail = { pathname: '/announcements/apt/1/1', search: '?tabType=comment&comment=3' };
+  const fromAccount = detailLinkState('detailOverlay', '/', '/account');
+  assert.deepEqual(fromAccount, { detailOverlay: true, detailFromOther: true });
+  // 뒤로가면 내 정보로 나가므로 탭 다시 누르기는 캘린더로 바꾼다(replace). 상세 닫기(뒤로가기)는 그대로 내 정보로 돌아간다.
+  assert.equal(retapAction('/', { ...detail, state: fromAccount }), 'replace');
+  assert.equal(retapAction('/', { ...detail, state: detailLinkState('detailOverlay', '/', '/messages') }), 'replace');
+  assert.equal(retapAction('/', { ...detail, state: { ...fromAccount, overlayLayers: [{ id: 'share', value: true }] } }), 'back', '상세 위 팝업은 먼저 닫는다');
+  // 캘린더에서 연 상세는 뒤로가기로 닫는다.
+  assert.equal(retapAction('/', { ...detail, state: detailLinkState('detailOverlay', '/', '/') }), 'back');
+  // 다른 탭은 그대로 이동
+  assert.equal(retapAction('/my', { ...detail, state: fromAccount }), 'push');
+  // 화면 코드가 실제로 이 표식을 쓰는지(상세 링크에 detailOverlay만 남기지 않는지) 확인한다.
+  for (const file of ['../src/features/account/AccountPage.jsx', '../src/features/community/MessagesPage.jsx']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.ok(!/state[=:]\s*\{\{?\s*detailOverlay: true/.test(source), `${file}: detailLinkState를 써야 한다`);
+    assert.match(source, /detailLinkState\('detailOverlay', '\/', location\.pathname\)/);
+  }
 });
 
 test('오늘의 요약 숫자', async () => {

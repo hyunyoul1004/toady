@@ -55,15 +55,23 @@ public class HttpResearchTransport implements ResearchTransport {
         try {
             return pending.get(TOTAL_SECONDS,TimeUnit.SECONDS);
         } catch(TimeoutException timeout) {
-            pending.cancel(true);
-            // 본문을 읽고 있던 스트림을 닫아 HttpClient 쪽 읽기도 끝낸다.
-            var body=stream.get();
-            if(body!=null) try { body.close(); } catch(IOException ignored) { /* 이미 끊긴 연결 */ }
+            abandon(pending,stream);
             throw new IOException("Provider timeout");
+        } catch(InterruptedException interrupted) {
+            // 부른 쪽 스레드가 중단되어도 본문 읽기 스레드·연결이 남지 않게 똑같이 정리하고, 중단 표시를 되살려 그대로 알린다.
+            abandon(pending,stream);
+            Thread.currentThread().interrupt();
+            throw interrupted;
         } catch(ExecutionException failed) {
             Throwable cause=failed.getCause() instanceof UncheckedIOException unchecked?unchecked.getCause():failed.getCause();
             if(cause instanceof Exception exception) throw exception;
             throw new IOException("Provider unavailable",cause);
         }
+    }
+    /** 기다리던 본문 읽기를 취소하고, 읽고 있던 스트림을 닫아 HttpClient 쪽 읽기도 끝낸다. */
+    private static void abandon(java.util.concurrent.CompletableFuture<byte[]> pending,AtomicReference<InputStream> stream) {
+        pending.cancel(true);
+        var body=stream.get();
+        if(body!=null) try { body.close(); } catch(IOException ignored) { /* 이미 끊긴 연결 */ }
     }
 }

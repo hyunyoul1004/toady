@@ -78,9 +78,21 @@ export function isSpaPath(url, origin) {
   } catch { return false; }
 }
 
-/** 구독 범위가 바뀌었을 때만 서버와 다시 맞추기 위한 비교 키. */
-export function scopeKey({ endpoint, userSeq, favorites, areas = [], favoriteIds = [] }) {
-  return JSON.stringify([endpoint || '', userSeq ?? null, favorites !== false, [...areas].sort(), userSeq ? [] : [...favoriteIds].sort()]);
+/** 배열이 아니면 빈 배열, 배열이면 문자열 값만 남긴다(저장소·서버 값이 깨져 있어도 화면이 멈추지 않게). */
+const stringList = value => (Array.isArray(value) ? value.filter(item => typeof item === 'string') : []);
+
+/**
+ * localStorage에 남은 구독 범위(toady.push.scope)를 믿지 않고 모양을 맞춘다. 객체가 아니거나 areas가 배열이 아니면
+ * 기본값({ favorites: true, areas: [] })으로 돌린다. 앱 전체에 한 번 있는 PushBootstrap이 읽으므로 여기서 깨지면 화면 전체가 멈춘다.
+ */
+export function normalizeScope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { favorites: true, areas: [] };
+  return { favorites: value.favorites !== false, areas: stringList(value.areas).slice(0, 6) };
+}
+
+/** 구독 범위가 바뀌었을 때만 서버와 다시 맞추기 위한 비교 키. 배열이 아닌 값은 빈 목록으로 본다. */
+export function scopeKey({ endpoint, userSeq, favorites, areas = [], favoriteIds = [] } = {}) {
+  return JSON.stringify([endpoint || '', userSeq ?? null, favorites !== false, stringList(areas).sort(), userSeq ? [] : stringList(favoriteIds).sort()]);
 }
 
 /** pushMode 결과별로 알림을 켤 수 없는 이유와 방법(알림 설정 창에 표시). */
@@ -102,12 +114,36 @@ export function detailMarker(path) {
   return marker ? { [marker]: true } : null;
 }
 
-/** 상세 주소를 닫았을 때 돌아갈 목록 주소(상세 값만 뺀다). /announcements/…는 첫 화면이다. */
+/**
+ * 상세 주소를 닫았을 때 돌아갈 목록 주소(상세 값만 뺀다). /announcements/…는 첫 화면이다.
+ * 서비스 워커가 붙인 알림 꼬리표(src=push.*)도 뺀다. 남기면 목록이 '/?src=…'가 되어 지금 화면('/')과 달라 보이고,
+ * 기록이 한 칸 더 쌓이며 알림 열기도 두 번 세어진다.
+ */
 export function detailListBase(path) {
   const url = new URL(path, 'https://toady.invalid');
   if (url.pathname.startsWith('/announcements/') || url.pathname === '/showSubscriptDetail') return '/';
-  url.searchParams.delete('subscriptSeq'); url.searchParams.delete('tabType'); url.searchParams.delete('comment');
+  for (const key of ['subscriptSeq', 'tabType', 'comment', 'src']) url.searchParams.delete(key);
   return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '');
+}
+
+/** 주소(pathname+search)에서 알림 꼬리표 src만 뺀다. 지금 화면이 상세의 목록인지 비교할 때 쓴다. */
+function withoutSource(path) {
+  const url = new URL(path || '/', 'https://toady.invalid');
+  url.searchParams.delete('src');
+  return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '');
+}
+
+/**
+ * 알림을 눌러 앱 안에서 열 때 쌓을 기록 목록([[주소, state], …]). current는 지금 화면의 pathname+search.
+ * 상세 주소면 그 상세의 목록(detailListBase)을 먼저 쌓아, 상세를 닫거나 탭을 다시 누르면 목록으로 돌아가게 한다.
+ * 지금 화면이 이미 그 목록이면 다시 쌓지 않는다(뒤로가기 한 번에 상세가 닫히게). 비교할 때 알림 꼬리표 src는 무시한다.
+ * /announcements/…·/showSubscriptDetail은 목록이 첫 화면('/')이므로 같은 상세 주소를 목록으로 쌓지 않는다.
+ */
+export function notificationEntries(path, current) {
+  const marker = detailMarker(path);
+  if (!marker) return [[path, undefined]];
+  const base = detailListBase(path);
+  return [...(withoutSource(current) === base ? [] : [[base, undefined]]), [path, marker]];
 }
 
 /**

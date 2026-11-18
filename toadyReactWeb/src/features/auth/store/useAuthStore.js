@@ -13,6 +13,24 @@
  */
 import { create } from 'zustand';
 import { jwtDecode } from 'jwt-decode';
+import config from 'config';
+
+/**
+ * 서버에 로그아웃을 알린다(POST /api/v1/auth/logout). 서버는 이 회원의 토큰 버전을 올려 이미 발급한 토큰을 모두 무효로 만든다.
+ * 응답을 기다리지 않고(fire-and-forget), 실패해도 화면의 로그아웃은 그대로 진행한다.
+ * api/client.js가 이 스토어를 불러 쓰므로 순환 참조를 피하려고 fetch를 직접 쓴다. 401 응답도 무시한다(이미 끊긴 토큰).
+ */
+function revokeOnServer(accessToken) {
+  if (!accessToken || typeof fetch !== 'function') return;
+  try {
+    fetch(`${config.apiUrl}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      // 로그아웃 직후 페이지를 옮겨도 요청이 끊기지 않게 한다
+      keepalive: true
+    }).catch(() => { /* 네트워크 실패는 무시 */ });
+  } catch { /* fetch를 쓸 수 없는 환경 */ }
+}
 
 /** 저장된 로그인 정보의 토큰만 읽는다(없거나 깨졌으면 null). */
 function readStoredToken() {
@@ -122,8 +140,12 @@ export const useAuthStore = create((set, get) => ({
 
   /**
    * 로그아웃 시 인증 정보를 제거합니다.
+   * 회원이 직접 로그아웃하면 서버에도 알려 다른 곳에 남은 같은 토큰을 쓸 수 없게 한다(모든 기기에서 로그아웃).
+   * @param {{ server?: boolean }} [options] server=false면 서버에 알리지 않는다(401로 이미 끊긴 세션 정리 등).
    */
-  logout: () => {
+  logout: (options) => {
+    const notifyServer = !(options && options.server === false);
+    if (notifyServer) revokeOnServer(get().accessToken);
     localStorage.removeItem('user');
     set({
       accessToken: null,
@@ -141,7 +163,8 @@ if (typeof window !== 'undefined') {
     if (event.key === 'user' || event.key === null) useAuthStore.getState().syncFromStorage();
   });
   window.addEventListener('auth-logout', () => {
-    useAuthStore.getState().logout();
+    // 서버가 이미 토큰을 거부했으므로(401) 다시 알리지 않는다.
+    useAuthStore.getState().logout({ server: false });
   });
 }
 

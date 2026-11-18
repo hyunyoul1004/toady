@@ -326,9 +326,11 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
                 logout();
                 if (mobileOpen) onMobileClose();
               }}
-              sx={{ fontWeight: 700, borderRadius: 1.5, mt: 0.5 }}
+              title="이 계정으로 로그인한 모든 기기에서 로그아웃해요"
+              sx={{ fontWeight: 700, borderRadius: 1.5, mt: 0.5, whiteSpace: 'nowrap' }}
             >
-              로그아웃
+              {/* 서버가 토큰 버전을 올려 다른 기기의 로그인도 함께 끊는다(useAuthStore.logout). */}
+              모든 기기에서 로그아웃
             </Button>
           </Box>
         )}

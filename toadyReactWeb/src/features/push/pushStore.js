@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import apiClient from '@/api/client';
 import { anonymousVisitorId, trackAction } from '@/features/analytics/trackAction';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
-import { base64UrlToBytes, detectPlatform, pushMode, scopeKey } from './pushSupport';
+import { base64UrlToBytes, detectPlatform, normalizeScope, pushMode, scopeKey } from './pushSupport';
 
 // localStorage 키. scope: 마지막으로 저장한 구독 범위, synced: 서버와 맞춘 범위의 비교 키(PushBootstrap이 다시 보낼지 판단).
 const SCOPE_KEY = 'toady.push.scope';
@@ -51,7 +51,7 @@ async function renewSubscription(reg, subscription, publicKey) {
  */
 export const usePushStore = create((set, get) => ({
   status: 'loading', platform: platform(), permission: permission(), enabled: false, publicKey: null,
-  endpoint: null, subscribed: false, member: false, scope: read(SCOPE_KEY, { favorites: true, areas: [] }), favoriteIds: [],
+  endpoint: null, subscribed: false, member: false, scope: normalizeScope(read(SCOPE_KEY, null)), favoriteIds: [],
   error: null,
 
   /** 앱 시작 때 한 번(PushBootstrap). 서버 설정을 받고, 이 기기에 남은 구독이 서버에도 있는지 확인한다. 권한은 묻지 않는다. */
@@ -69,7 +69,7 @@ export const usePushStore = create((set, get) => ({
       const server = await apiClient.post('/api/v1/push/subscription/lookup', { endpoint: subscription.endpoint });
       set({ endpoint: subscription.endpoint, status: 'ready' });
       if (server?.subscribed) write(RELOST_KEY, null);
-      if (server?.subscribed) set({ subscribed: true, member: server.member === true, scope: { favorites: server.favorites !== false, areas: server.areas || [] } });
+      if (server?.subscribed) set({ subscribed: true, member: server.member === true, scope: normalizeScope({ favorites: server.favorites, areas: server.areas }) });
       else {
         // 서버 기록이 사라졌다. 처음이면(서버 정리·이관 등) 같은 구독을 다시 저장해 복구한다.
         // 다시 저장했던 같은 주소가 또 사라졌다면 푸시 서버가 만료(410)로 거절하는 구독이므로, 같은 주소를 또 쓰지 않고
@@ -113,7 +113,7 @@ export const usePushStore = create((set, get) => ({
     const reg = await navigator.serviceWorker.getRegistration('/');
     const subscription = reg && await reg.pushManager.getSubscription();
     if (!subscription) { set({ subscribed: false, endpoint: null }); return; }
-    const next = { favorites: scope.favorites !== false, areas: [...new Set(scope.areas || [])].slice(0, 6) };
+    const next = normalizeScope({ favorites: scope?.favorites, areas: [...new Set(Array.isArray(scope?.areas) ? scope.areas : [])] });
     // 익명 방문자 ID는 로그인하지 않은 구독에만 싣는다. 로그인 토큰과 함께 보내면 익명 통계가 회원과 연결될 수 있다.
     let visitorId;
     if (!useAuthStore.getState().isAuthenticated) { try { visitorId = anonymousVisitorId(); } catch { visitorId = undefined; } }
@@ -121,7 +121,7 @@ export const usePushStore = create((set, get) => ({
     write(SCOPE_KEY, next);
     const auth = useAuthStore.getState();
     try { localStorage.setItem(SYNCED_KEY, scopeKey({ endpoint: subscription.endpoint, userSeq: auth.isAuthenticated ? auth.user?.userSeq ?? null : null, ...next, favoriteIds: get().favoriteIds })); } catch { /* 무시 */ }
-    set({ subscribed: true, endpoint: subscription.endpoint, member: server?.member === true, scope: { favorites: server?.favorites !== false, areas: server?.areas || next.areas } });
+    set({ subscribed: true, endpoint: subscription.endpoint, member: server?.member === true, scope: normalizeScope({ favorites: server?.favorites, areas: Array.isArray(server?.areas) ? server.areas : next.areas }) });
   },
 
   /** 이 기기의 알림 끄기: 서버 기록을 지우고 브라우저 구독도 해제한다. 서버 요청이 실패해도 브라우저 쪽은 끈다. */

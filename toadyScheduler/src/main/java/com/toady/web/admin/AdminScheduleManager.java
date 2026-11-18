@@ -141,7 +141,7 @@ public class AdminScheduleManager {
     }
     /** DB 저장 후 이 인스턴스의 타이머를 즉시 갱신한다. 다른 인스턴스는 주기 조회로 반영한다. */
     public synchronized void save(JobKind kind, boolean enabled, String cron, int lookback) {
-        validate(cron, lookback);
+        validate(kind, cron, lookback);
         int changed = jdbc.update("""
                 UPDATE TB_SCHEDULER_ADMIN_SCHEDULE SET ENABLED = ?, CRON_EXPRESSION = ?,
                  LOOKBACK_DAYS = ?, UPDATED_AT = ? WHERE JOB_KIND = ?
@@ -185,14 +185,23 @@ public class AdminScheduleManager {
             return next == null ? null : next.atZone(ZONE).toInstant();
         };
     }
-    /** cron 문법·조회 범위를 검증하고, 앞으로 7일(최대 2,000회) 실행 사이에 10분 미만의 간격이 있는지 확인한다. */
-    static void validate(String cron, int lookback) {
+    /** 종류를 가리지 않는 공통 검증(조회 일수 1~366일). */
+    static void validate(String cron, int lookback) { validate(null, cron, lookback); }
+    /**
+     * cron 문법·조회 범위를 검증하고, 앞으로 7일(최대 2,000회) 실행 사이에 10분 미만의 간격이 있는지 확인한다.
+     * 조회 일수 상한은 실행 시 AdminJobService.submit이 거절하는 기준과 같게 종류별로 둔다(저장은 됐는데 자동 실행이 매번 거절되는 일 방지).
+     */
+    static void validate(JobKind kind, String cron, int lookback) {
         if (cron == null || cron.isBlank() || cron.length() > 100) {
             throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다(100자 이내).");
         }
         var expressions = parse(cron);
         // 자동 실행도 수동 실행과 같은 최대 기간을 둔다(외부 API 일일 한도 보호, '다시 실행'도 같은 제한 안에서 동작).
         if (lookback < 1 || lookback > AdminJobService.MANUAL_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.MANUAL_MAX_DAYS + "일 사이여야 합니다.");
+        // 일정 맞춤 수집은 구간을 나누지 않고 한 번에 돌아 31일을 넘는 기간은 실행 단계에서 거절된다.
+        if (kind == JobKind.SCHEDULED_RESULTS && lookback > AdminJobService.SCHEDULED_RESULTS_MAX_DAYS) {
+            throw new IllegalArgumentException("일정 맞춤 경쟁률·가점의 재조회 일수는 1~" + AdminJobService.SCHEDULED_RESULTS_MAX_DAYS + "일 사이여야 합니다.");
+        }
         LocalDateTime previous = LocalDateTime.now(ZONE).withSecond(0).withNano(0);
         LocalDateTime horizon = previous.plusDays(7);
         for (int i = 0; i < 2000 && previous.isBefore(horizon); i++) {
@@ -254,9 +263,20 @@ public class AdminScheduleManager {
             log.info("Scheduled results run skipped: another scheduled job is waiting to retry");
             return;
         }
+        LocalDate today = AdminJobService.today();
+        LocalDate start = scheduleStart(today, schedule.lookbackDays());
         try {
-            LocalDate today = AdminJobService.today();
-            jobs.submit(schedule.kind(), scheduleStart(today, schedule.lookbackDays()), today, "자동 스케줄", "SCHEDULE");
+            jobs.submit(schedule.kind(), start, today, "자동 스케줄", "SCHEDULE");
+        } catch (IllegalArgumentException invalid) {
+            // 설정값이 실행 기준에 맞지 않아 거절된 경우(예: 이전 버전에서 저장한 긴 재조회 일수). 로그만 남기면 수집이 조용히 멈추므로
+            // 실행 내역에 실패로 남겨 관리자 화면에서 바로 보이게 한다. 같은 설정이면 다음 실행도 실패로 쌓인다.
+            log.warn("Scheduled submission rejected for {}: {}", schedule.kind(), invalid.getMessage());
+            try {
+                jobs.recordRejected(schedule.kind(), start, today, "자동 스케줄", "SCHEDULE",
+                        "자동 실행을 시작하지 못했습니다: " + invalid.getMessage() + " 자동 스케줄 설정을 확인하세요.");
+            } catch (RuntimeException recordFailure) {
+                log.warn("Rejected scheduled run could not be recorded for {}: {}", schedule.kind(), recordFailure.getMessage());
+            }
         } catch (IllegalStateException busy) {
             if (retry) {
                 log.warn("Scheduled retry skipped for {}: {}", schedule.kind(), busy.getMessage());

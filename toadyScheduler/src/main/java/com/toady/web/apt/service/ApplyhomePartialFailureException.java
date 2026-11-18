@@ -10,4 +10,10 @@ public class ApplyhomePartialFailureException extends IllegalStateException {
 	public ApplyhomePartialFailureException(String message) { this(message, 0); }
 	public ApplyhomePartialFailureException(String message, long savedRows) { super(message); this.savedRows = savedRows; }
 	public long savedRows() { return savedRows; }
+
+	/** 실패 키 앞 5개를 쉼표로 잇고, 더 있으면 '외 N건'을 붙인다(관리자 화면 메시지용). */
+	public static String firstKeys(java.util.List<String> failures) {
+		String head = String.join(", ", failures.subList(0, Math.min(5, failures.size())));
+		return failures.size() > 5 ? head + " 외 " + (failures.size() - 5) + "건" : head;
+	}
 }

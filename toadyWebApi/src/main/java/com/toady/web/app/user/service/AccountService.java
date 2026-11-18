@@ -52,9 +52,11 @@ public class AccountService {
     private final PasswordEncoder encoder;
     private final JdbcTemplate jdbc;
     private final ProfileIcons profileIcons;
+    private final WithdrawnSanctions withdrawnSanctions;
 
-    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc, ProfileIcons profileIcons) {
+    public AccountService(UserRepository users, UserService userService, SimpleUserDetailsService details, PasswordEncoder encoder, JdbcTemplate jdbc, ProfileIcons profileIcons, WithdrawnSanctions withdrawnSanctions) {
         this.users = users; this.userService = userService; this.details = details; this.encoder = encoder; this.jdbc = jdbc; this.profileIcons = profileIcons;
+        this.withdrawnSanctions = withdrawnSanctions;
     }
 
     /** 공고 유형(댓글 테이블의 enum 이름) → 화면 주소의 유형과 상세 테이블 */
@@ -336,6 +338,9 @@ public class AccountService {
     // 탈퇴 공통 처리. 계정 행은 남기고 개인 정보만 지우거나 바꾼다(댓글 작성자 번호가 가리킬 행이 필요하다)
     private Outcome erase(UserEntity user, long userSeq, String reason) {
         LocalDateTime now = LocalDateTime.now();
+        // 진행 중인 제재·나를 차단한 기록을 이메일 해시에 묶어 남긴다(재가입으로 제재를 피하지 못하게, database.sql 32번).
+        // 이메일을 익명 값으로 바꾸기 전에 불러야 한다.
+        withdrawnSanctions.remember(userSeq, user.getUserEmail());
         // 가입 규칙으로는 만들 수 없는 값이라 실제 이메일·닉네임과 겹치지 않는다(.invalid는 메일이 가지 않는 예약 도메인).
         user.setUserEmail("withdrawn-" + userSeq + "@withdrawn.invalid");
         user.setUserNicName("탈퇴회원_" + userSeq);
@@ -409,11 +414,6 @@ public class AccountService {
 
     /** 테이블이 없다는 오류인가(MariaDB 1146·SQLSTATE 42S02, H2 42102·42103·42104). 그 밖의 오류는 false. */
     static boolean missingTable(Throwable failure) {
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.sql.SQLException sql) {
-                if (sql.getErrorCode() == 1146 || "42S02".equals(sql.getSQLState()) || sql.getErrorCode() == 42102 || sql.getErrorCode() == 42103 || sql.getErrorCode() == 42104) return true;
-            }
-        }
-        return false;
+        return com.toady.web.core.util.SqlErrors.missingTable(failure);
     }
 }

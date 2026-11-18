@@ -113,6 +113,39 @@ class PublicPagesUnitTest {
         assertArrayEquals(new String[]{"세종", null}, ScoreBenchmarks.region("세종특별자치시 반곡동 14"));
         assertArrayEquals(new String[]{null, null}, ScoreBenchmarks.region("주소 미상"));
     }
+    @Test void scoreRegionsUseSupplyRegionLikeTheRegionIndex() {
+        // '광주시 오포읍'처럼 시·도 없이 시작하는 주소는 지역별 공개 페이지와 같이 공급지역명으로 시·도를 정한다.
+        assertArrayEquals(new String[]{"경기", "광주시"}, ScoreBenchmarks.region("광주시 오포읍 신현리 1", "경기"));
+        assertArrayEquals(new String[]{null, null}, ScoreBenchmarks.region("광주시 오포읍 신현리 1"), "공급지역명이 없으면 광주광역시로 넘겨짚지 않는다");
+        var items = ScoreBenchmarks.items(List.<String[]>of(new String[]{"G", "1", "오포 단지", "광주시 오포읍 신현리 1", "2026-03-01", "50", "60", "경기"}));
+        assertEquals("경기", items.getFirst().sido());
+        assertEquals("광주시", items.getFirst().district());
+        assertEquals(Regions.of("광주시 오포읍 신현리 1", "경기").map(Regions.Region::district).orElse(null), items.getFirst().district());
+    }
+    @Test void hiddenAnnouncementsMatchPathTypesAndAnnounceChangesOnce() {
+        var overrides = org.mockito.Mockito.mock(com.toady.web.app.operation.AnnouncementOverrides.class);
+        java.util.Set<String[]> none = java.util.Set.of(), one = java.util.Set.<String[]>of(new String[]{"H1", "N1"});
+        org.mockito.Mockito.when(overrides.hiddenOf(org.mockito.ArgumentMatchers.anyString())).thenReturn(none);
+        org.mockito.Mockito.when(overrides.hidden("PUBLIC_RENTAL", "H1", "N1")).thenReturn(true);
+        List<Object> events = new java.util.ArrayList<>();
+        var hidden = new HiddenAnnouncements(overrides, events::add);
+        assertTrue(hidden.hiddenId("public-rental/H1/N1"), "공개 주소의 경로값을 운영 테이블 유형 이름으로 바꿔 확인한다");
+        assertFalse(hidden.hiddenId("apt/H1/N1"));
+        assertFalse(hidden.hiddenId("잘못된 값"));
+        assertEquals(List.of("apt/H1/N1"), hidden.visible(List.of("public-rental/H1/N1", "apt/H1/N1"), id -> id), "숨긴 공고만 목록에서 뺀다");
+        hidden.watch(); hidden.watch();
+        assertTrue(events.isEmpty(), "처음 확인과 변화 없는 확인에는 알리지 않는다");
+        org.mockito.Mockito.when(overrides.hiddenOf("APT")).thenReturn(one);
+        hidden.watch(); hidden.watch(); hidden.watch();
+        assertEquals(2, events.size(), "숨김 목록이 바뀌면 알리고, 계산 중이던 캐시 값을 정리하려고 다음 확인에 한 번만 더 알린다");
+        assertInstanceOf(HiddenAnnouncements.Changed.class, events.getFirst());
+        // 시작 기준값을 잡을 때 이미 숨긴 공고가 있으면 시작 중에 채워진 캐시를 비우도록 한 번 알린다.
+        events.clear();
+        var restarted = new HiddenAnnouncements(overrides, events::add);
+        restarted.onReady(); restarted.watch(); restarted.watch();
+        assertEquals(2, events.size(), "시작 때 숨긴 공고가 있으면 알리고(다음 확인에 한 번 더) 그 뒤로는 조용하다");
+        assertFalse(new HiddenAnnouncements((com.toady.web.app.operation.AnnouncementOverrides) null, events::add).hiddenId("apt/H1/N1"), "숨김 기능이 없으면 아무것도 숨기지 않는다");
+    }
     @Test void searchWidensPeriodWhenRecentDataIsScarceAndSuggestsProvince() {
         var today = LocalDate.of(2026, 11, 12);
         var items = ScoreBenchmarks.items(List.of(
