@@ -11,6 +11,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
+import ButtonBase from '@mui/material/ButtonBase';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import { formatDate, dayjs } from '@/utils/date.util';
 import { RCEPT_SE_META } from './calendarGroup';
@@ -194,6 +195,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                       type="button"
                       aria-label={`${cell.dateStr} 청약 일정 ${count}건`}
                       aria-pressed={isSelected}
+                      aria-expanded={isExpanded}
+                      aria-controls={isExpanded ? 'mobile-calendar-day-list' : undefined}
                       key={cell.dateStr}
                       onClick={() => handleDateClick(cell.dateStr)}
                       sx={{
@@ -223,7 +226,9 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                     >
                       {/* 일자 (02, 03 ...) */}
                       <Typography
+                        component="span"
                         sx={{
+                          display: 'block',
                           fontSize: '1rem',
                           fontWeight: isSelected ? 800 : 600,
                           color: isSelected ? '#2563eb' : '#1e293b',
@@ -235,10 +240,12 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
 
                       {/* 건수 표시 (예: (8건), (0건)) */}
                       <Typography
+                        component="span"
                         sx={{
+                          display: 'block',
                           fontSize: '0.72rem',
                           fontWeight: isSelected ? 700 : 500,
-                          color: count > 0 ? '#2563eb' : '#94a3b8',
+                          color: count > 0 ? '#2563eb' : '#64748b',
                           mt: 0.3,
                           lineHeight: 1
                         }}
@@ -249,7 +256,10 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                       {/* 펼쳐졌을 때: 선택된 날짜와 하단 목록 박스의 테두리를 하나로 잇는 흰색 마스킹 바 */}
                       {isExpanded && (
                         <Box
+                          component="span"
+                          aria-hidden="true"
                           sx={{
+                            display: 'block',
                             position: 'absolute',
                             bottom: -2,
                             left: 0,
@@ -269,6 +279,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
               {isSelectedInWeek && (
                 <Collapse in={isListOpen} timeout={250} unmountOnExit>
                   <Box
+                    id="mobile-calendar-day-list"
                     sx={{
                       // 날짜 칸과 같은 가로 범위에 둬야 양 끝 날짜의 세로 테두리가 목록 상자 테두리와 이어진다.
                       mx: 0,
@@ -300,12 +311,16 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                         <CalendarMonthOutlinedIcon sx={{ fontSize: '1rem' }} aria-hidden="true" />
                         {dayjs(selectedDate).format('M월 D일')} 청약 일정{ready ? ` (${selectedEvents.length}건)` : ''}
                       </Typography>
-                      <Box
+                      <ButtonBase
                         onClick={(e) => {
                           e.stopPropagation();
                           setIsListOpen(false);
                         }}
+                        aria-expanded={isListOpen}
+                        aria-controls="mobile-calendar-day-list"
+                        aria-label={`${dayjs(selectedDate).format('M월 D일')} 일정 목록 접기`}
                         sx={{
+                          fontFamily: 'inherit',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 0.3,
@@ -318,15 +333,16 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                           borderRadius: 1,
                           bgcolor: '#f1f5f9',
                           transition: 'all 0.15s ease',
-                          '&:hover': { bgcolor: '#e2e8f0', color: '#0f172a' }
+                          '&:hover, &.Mui-focusVisible': { bgcolor: '#e2e8f0', color: '#0f172a' },
+                          '&.Mui-focusVisible': { outline: '2px solid #2563eb', outlineOffset: 1 }
                         }}
                       >
-                        목록 접기 ✕
-                      </Box>
+                        목록 접기 <span aria-hidden="true">✕</span>
+                      </ButtonBase>
                     </Box>
 
                     {selectedEvents.length > 0 ? (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Box component="ul" sx={{ display: 'flex', flexDirection: 'column', gap: 1, listStyle: 'none', m: 0, p: 0 }}>
                         {selectedEvents.map((item, idx) => {
                           const styleInfo = RCEPT_SE_STYLE[item.effectiveRceptSe] || {
                             label: '공급',
@@ -338,14 +354,19 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                           const commentTag = item.subscriptCommentCnt > 0 ? ` (${item.subscriptCommentCnt})` : '';
 
                           return (
-                            <Box
-                              key={`${item.subscriptSeq}-${idx}`}
+                            <li key={`${item.subscriptSeq}-${idx}`}>
+                            <ButtonBase
                               onClick={() => {
                                 if (typeof handleOpen === 'function') {
                                   handleOpen(item.subscriptSeq);
                                 }
                               }}
+                              aria-label={`${styleInfo.label} ${item.houseNm}${item.areaLabel ? ` (${item.areaLabel})` : ''}${item.subscriptCommentCnt > 0 ? `, 이야기 ${item.subscriptCommentCnt}개` : ''} 상세 보기`}
                               sx={{
+                                width: '100%',
+                                justifyContent: 'flex-start',
+                                textAlign: 'left',
+                                fontFamily: 'inherit',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 1.2,
@@ -355,13 +376,16 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                 cursor: 'pointer',
                                 borderRadius: 1.5,
                                 transition: 'background-color 0.15s ease',
-                                '&:active': {
+                                '&:active, &:hover, &.Mui-focusVisible': {
                                   bgcolor: '#eff6ff'
-                                }
+                                },
+                                '&.Mui-focusVisible': { outline: '2px solid #2563eb', outlineOffset: 1 }
                               }}
                             >
                               {/* 공급유형 뱃지 */}
                               <Box
+                                component="span"
+                                aria-hidden="true"
                                 sx={{
                                   minWidth: 54,
                                   height: 26,
@@ -383,6 +407,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
 
                               {/* 아파트명 */}
                               <Typography
+                                component="span"
+                                aria-hidden="true"
                                 sx={{
                                   fontSize: '0.88rem',
                                   fontWeight: 600,
@@ -396,7 +422,8 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
                                 {item.areaLabel ? ` (${item.areaLabel})` : ''}
                                 {commentTag}
                               </Typography>
-                            </Box>
+                            </ButtonBase>
+                            </li>
                           );
                         })}
                       </Box>

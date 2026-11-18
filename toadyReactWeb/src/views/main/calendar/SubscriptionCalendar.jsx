@@ -1,15 +1,12 @@
 /**
  * @file SubscriptionCalendar.jsx
- * @description FullCalendar 기반 청약 일정 달력 컴포넌트
+ * @description 청약 일정 달력 컴포넌트(데스크톱: FullCalendar를 지연 로딩, 모바일: MobileApplyhomeCalendar)
  * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶고, 하루 최대 4줄 + '+N건 더보기' 목록(히스토리 연동)
  * - 주말(토/일) 제외 (weekends: false)
  * - 날짜 이동 시 onMonthChange로 월을 알리고, 조회 기간은 Main이 계산한다
  */
-import React, { useRef, useState, useMemo, useCallback, useEffect } from 'react';
-import FullCalendar from '@fullcalendar/react';
+import React, { useRef, useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import interactionPlugin from '@fullcalendar/interaction';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -22,6 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Tooltip from '@mui/material/Tooltip';
+import Skeleton from '@mui/material/Skeleton';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 
@@ -31,34 +29,28 @@ import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import MobileApplyhomeCalendar from './MobileApplyhomeCalendar';
 import { koreaToday } from '@/features/planner/plannerUtils';
 import { groupCalendarSchedules, groupsByDate, usedRceptSes, describeGroup, rceptSeMeta } from './calendarGroup';
+import StageBadges from './StageBadges';
+import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
 import './SubscriptionCalendar.css';
+
+// FullCalendar(약 210KB)는 데스크톱 달력에서만 쓰므로 그때만 내려받는다. 모바일 첫 화면은 이 파일을 받지 않는다.
+const DesktopFullCalendar = lazy(() => import('./DesktopFullCalendar'));
+
+/** 데스크톱 달력 파일을 받는 동안: 요일 머리글 + 5주 칸 뼈대로 자리를 잡아 화면이 밀리지 않게 한다. */
+function DesktopCalendarSkeleton() {
+  return (
+    <Box className="subscription-calendar-wrapper" role="status" aria-label="달력을 불러오는 중" aria-busy="true" sx={{ p: 1.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0.75 }}>
+        {Array.from({ length: 5 }, (_, index) => <Skeleton key={`h${index}`} variant="rounded" height={34} sx={{ bgcolor: '#f1f5f9' }} />)}
+        {Array.from({ length: 25 }, (_, index) => <Skeleton key={index} variant="rounded" height={112} sx={{ bgcolor: '#f8fafc' }} />)}
+      </Box>
+    </Box>
+  );
+}
 
 // 한 날짜 칸에 보여줄 최대 줄 수('+N건 더보기' 줄 포함). 넘치면 더보기 목록으로 모은다.
 const DAY_OVERLAY_ID = 'calendar-day';
 const isDateKey = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-/** 공고 단계 뱃지 묶음: 공고 전체 단계(특·1·2)를 보여주고 이 칸의 단계만 채워서 강조한다. */
-function StageBadges({ group, size = 'sm' }) {
-  const active = new Set(group.stages.map((stage) => stage.rceptSe));
-  // 달력 칸(sm)에서는 그날 해당하는 단계만 보여 단지명 자리를 넓힌다. 전체 단계 흐름은 날짜 목록·상세에서 본다.
-  const shown = size === 'sm' ? group.allStages.filter(({ rceptSe }) => active.has(rceptSe)) : group.allStages;
-  return (
-    <span className={`tc-stages tc-stages-${size}`} aria-hidden="true">
-      {shown.map(({ rceptSe }) => {
-        const meta = rceptSeMeta(rceptSe);
-        return (
-          <span
-            key={rceptSe}
-            className={`tc-badge ${active.has(rceptSe) ? 'is-active' : 'is-muted'}`}
-            style={{ '--tc-accent': meta.accent, '--tc-text': meta.text, '--tc-tint': meta.tint }}
-          >
-            {meta.short}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
 
 export function SubscriptionCalendar(props) {
   const theme = useTheme();
@@ -94,6 +86,8 @@ export function SubscriptionCalendar(props) {
   const [overlayDate, setOverlayDate] = useHistoryOverlay(DAY_OVERLAY_ID);
   // undefined: 칸을 찾는 중, null: 화면에 그 칸이 없음(가운데 표시), 요소: 그 칸에 붙여 표시
   const [dayAnchor, setDayAnchor] = useState(undefined);
+  // 데스크톱 달력 파일을 받아 첫 화면을 그렸는지. 그 전에는 날짜 칸이 없으므로 '칸 없음'으로 오판하지 않고 기다린다.
+  const [desktopReady, setDesktopReady] = useState(false);
   // 앞뒤 달이 섞인 첫·마지막 주 칸도 열 수 있도록 월 대신 '지금 화면에 그 날짜 칸이 있는지'로 판단한다(아래 dayAnchor).
   const openDate = isDateKey(overlayDate) ? overlayDate : null;
   const dayGroups = openDate ? groupMap[openDate] || [] : [];
@@ -129,6 +123,7 @@ export function SubscriptionCalendar(props) {
   // 2. FullCalendar 날짜 범위 변경 시 부모 컴포넌트(Main)에 조회 파라미터 전달
   const handleDatesSet = useCallback(
     (dateInfo) => {
+      setDesktopReady(true);
       const api = calendarRef.current?.getApi();
       if (api) {
         const viewDate = api.getDate();
@@ -156,6 +151,9 @@ export function SubscriptionCalendar(props) {
     changeMonth(new Date(`${koreaToday()}T12:00:00`));
   };
 
+  // 휴대폰에서 데스크톱 폭으로 바뀌면 달력을 새로 받아 그리므로 준비 표시를 되돌린다.
+  useEffect(() => { if (isMobile) setDesktopReady(false); }, [isMobile]);
+
   const moveDate = (date) => {
     if (date) {
       changeMonth(date);
@@ -169,33 +167,7 @@ export function SubscriptionCalendar(props) {
     }
   };
 
-  const handleEventClick = (info) => {
-    info.jsEvent?.preventDefault();
-    openDetail(info.event.extendedProps?.group?.subscriptSeq);
-  };
-
-  // 말줄임된 단지명·단계·지역을 마우스 올림/스크린리더로 확인할 수 있게 한다.
-  const handleEventDidMount = (info) => {
-    const group = info.event.extendedProps?.group;
-    if (!group) return;
-    const text = describeGroup(group);
-    info.el.setAttribute('title', text);
-    info.el.setAttribute('aria-label', `${text} 상세 보기`);
-  };
-
-  // 5. 한 줄 렌더링: 단계 뱃지(특·1·2) + 단지명(1회) + 이야기 수
-  const renderEventContent = (eventInfo) => {
-    const group = eventInfo.event.extendedProps?.group;
-    if (!group) return null;
-    const meta = rceptSeMeta(group.primaryRceptSe);
-    return (
-      <div className="tc-event" style={{ '--tc-accent': meta.accent }}>
-        <StageBadges group={group} />
-        <span className="tc-title">{group.houseNm}</span>
-        {group.commentCount > 0 && <span className="tc-count">{group.commentCount}</span>}
-      </div>
-    );
-  };
+  // 5. 일정 칸 표시(단계 뱃지·단지명 2줄·이야기 수)와 마우스 올림 안내는 DesktopFullCalendar가 맡는다.
 
   // 6. '+N건 더보기': FullCalendar 기본 팝오버 대신 히스토리와 연결된 목록을 연다.
   const handleMoreLinkClick = (arg) => {
@@ -217,6 +189,10 @@ export function SubscriptionCalendar(props) {
       setDayAnchor(null);
       return undefined;
     }
+    if (!desktopReady) {
+      setDayAnchor(undefined);
+      return undefined;
+    }
     const find = () => wrapperRef.current?.querySelector(`.fc-daygrid-day[data-date="${openDate}"]`) || null;
     const found = find();
     if (found) {
@@ -225,7 +201,7 @@ export function SubscriptionCalendar(props) {
     }
     const frame = requestAnimationFrame(() => setDayAnchor(find()));
     return () => cancelAnimationFrame(frame);
-  }, [openDate, events, isMobile, currentTitle]);
+  }, [openDate, events, isMobile, currentTitle, desktopReady]);
   // 예전 방문 기록으로 다른 달의 날짜 목록이 복원되면(칸도 없고 지금 데이터에 그 날 일정도 없음) 빈 창을 띄우지 않고
   // 그 레이어를 현재 기록에서 조용히 지운다(replace라 뒤로가기 횟수가 늘지 않는다).
   const location = useLocation(), navigate = useNavigate();
@@ -338,7 +314,7 @@ export function SubscriptionCalendar(props) {
           </Tooltip>
 
           <MonthDatePicker
-            selected={currentTitle ? new Date(`${currentTitle}-15T07:45:00Z`) : currentDate}
+            selected={currentTitle || currentDate}
             moveDate={moveDate}
           />
 
@@ -402,46 +378,20 @@ export function SubscriptionCalendar(props) {
           handleOpen={props.handleOpen}
         />
       ) : (
-        <Box className="subscription-calendar-wrapper" ref={wrapperRef}>
-          {legendCodes.length > 0 && (
-            <Box className="tc-legend" component="ul" aria-label="공급 유형 범례">
-              {legendCodes.map((code) => {
-                const meta = rceptSeMeta(code);
-                return (
-                  <li key={code}>
-                    <span className="tc-badge is-active" style={{ '--tc-accent': meta.accent, '--tc-text': meta.text }} aria-hidden="true">{meta.short}</span>
-                    {meta.label}
-                  </li>
-                );
-              })}
-            </Box>
-          )}
-          <FullCalendar
-            initialDate={currentDate}
-            ref={calendarRef}
-            plugins={[dayGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
-            headerToolbar={false}
-            weekends={false}
-            firstDay={1}
-            height="auto"
-            // 하루 일정을 모두 펼쳐 한눈에 본다(사용자 요청). 같은 단지는 calendarGroup에서 한 줄로 묶여 있어 칸이 과하게 길어지지 않는다.
-            dayMaxEventRows={false}
-            moreLinkClick={handleMoreLinkClick}
-            moreLinkContent={(arg) => `+${arg.num}건 더보기`}
-            moreLinkHint={(num) => `${num}건 더 보기`}
-            eventOrder="order,title"
-            events={events}
-            eventClick={handleEventClick}
-            eventDidMount={handleEventDidMount}
-            eventContent={renderEventContent}
-            datesSet={handleDatesSet}
-            eventInteractive
-            locale="ko"
-            dayHeaderFormat={{ weekday: 'short' }}
-          />
-
-        </Box>
+        <SectionErrorBoundary title="달력을 표시하지 못했어요" resetKey={currentTitle}>
+          <Suspense fallback={<DesktopCalendarSkeleton />}>
+            <DesktopFullCalendar
+              calendarRef={calendarRef}
+              wrapperRef={wrapperRef}
+              initialDate={currentDate}
+              events={events}
+              legendCodes={legendCodes}
+              onEventOpen={openDetail}
+              onMoreLinkClick={handleMoreLinkClick}
+              onDatesSet={handleDatesSet}
+            />
+          </Suspense>
+        </SectionErrorBoundary>
       )}
 
           <Popover

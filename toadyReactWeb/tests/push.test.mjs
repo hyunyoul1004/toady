@@ -114,6 +114,16 @@ test('SPA path classification matches the service worker list', async () => {
   assert.deepEqual(list, SPA_PATHS);
 });
 
+test('지역별 청약 주소(/regions/시·도/시·군·구)는 앱 안의 지역 캘린더이고, 서비스 워커와 같은 식을 쓴다', async () => {
+  const { REGION_PATH } = await import('../src/features/push/pushSupport.js');
+  const origin = 'https://www.toady.co.kr';
+  assert.equal(isSpaPath('/regions/%EA%B2%BD%EA%B8%B0%EB%8F%84/%ED%8C%8C%EC%A3%BC%EC%8B%9C', origin), true);
+  assert.equal(isSpaPath(`/regions/${encodeURIComponent('전북특별자치도')}/`, origin), true);
+  assert.equal(isSpaPath('/regions/a/b/c', origin), false);
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  assert.equal(source.match(/const REGION_PATH = (\/.*\/);/)[1], String(REGION_PATH));
+});
+
 test('manifest declares same-origin 192/512 PNG icons and standalone display', async () => {
   const manifest = JSON.parse(await readFile(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
   assert.equal(manifest.display, 'standalone');
@@ -215,7 +225,18 @@ test('홈 화면 추가: 이미 앱으로 열었거나 방법이 없는 PC 브�
   assert.equal(installMode({ ...base, inApp: true }, { android: true }), 'in-app');
   assert.equal(installMode(base, { android: true }), 'android');
   assert.equal(installMode(base), 'none');
+  assert.equal(installMode(base, { promptDismissed: true }), 'desktop');
+  assert.equal(installMode(base, { android: true, promptDismissed: true }), 'android');
   assert.equal(showInstallEntry('installed'), false);
   assert.equal(showInstallEntry('none'), false);
   assert.equal(showInstallEntry('android'), true);
+});
+
+test('홈 화면 추가 안내는 안드로이드 브라우저마다 다른 순서를 고른다', async () => {
+  const { androidBrowser } = await import('../src/features/install/installSupport.js');
+  assert.equal(androidBrowser('Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0 Mobile Safari/537.36'), 'samsung');
+  assert.equal(androidBrowser('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36'), 'chrome');
+  assert.equal(androidBrowser('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Whale/3.28 Mobile Safari/537.36'), 'whale');
+  assert.equal(androidBrowser('Mozilla/5.0 (Android 14; Mobile; rv:132.0) Gecko/132.0 Firefox/132.0'), 'firefox');
+  assert.equal(androidBrowser('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36 EdgA/131.0'), 'edge');
 });

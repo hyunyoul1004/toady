@@ -275,3 +275,46 @@ test('토지임대부 공고는 일반 매매가와 비교하지 않는다(서�
   assert.equal(isLandLease('GTX운정중앙역 시티프라디움 3단지'), false);
   assert.equal(isLandLease(null), false);
 });
+
+test('지역별 청약 주소 조각은 서버 공개 페이지와 같은 기준의 캘린더 검색 대상이 된다', async () => {
+  const { regionTargetOf, regionPath, matchesRegionTarget } = await import('../src/features/explore/regionRules.js');
+  const { normalizeSearchTargets } = await import('../src/features/planner/searchState.js');
+  const paju = regionTargetOf('경기도', '파주시');
+  assert.deepEqual(paju, { type: 'district', key: '경기도 파주시', label: '경기도 파주시', cityName: '경기도', districtName: '파주시' });
+  assert.deepEqual(normalizeSearchTargets([paju]), [paju], '저장·복원해도 지역 검색 그대로');
+  assert.equal(regionTargetOf('경기', '파주시').key, '경기도 파주시', '줄임말 시·도');
+  assert.equal(regionTargetOf('서울시', null).cityName, '서울특별시', '예전 이름');
+  assert.equal(regionTargetOf('강원도', '춘천시').cityName, '강원특별자치도');
+  assert.equal(regionTargetOf('없는도', '파주시'), null);
+  assert.equal(regionTargetOf('광주시', null), null, '경기 광주시를 광주광역시로 보지 않는다');
+  // 지구·신도시 이름은 시·군·구가 아니다: 시·도만 남긴다(서버는 이 주소를 404로 둔다).
+  for (const [sido, name] of [['인천광역시', '검단신도시'], ['경상남도', '진주혁신도시'], ['경기도', '평택고덕국제화지구']]) {
+    assert.deepEqual(regionTargetOf(sido, name), { type: 'city', key: sido, label: sido, cityName: sido });
+  }
+  assert.equal(regionPath(paju), `/regions/${encodeURIComponent('경기도')}/${encodeURIComponent('파주시')}`);
+  assert.equal(regionPath(regionTargetOf('세종특별자치시')), `/regions/${encodeURIComponent('세종특별자치시')}`);
+  // 검색 목록(Citys)에 없는 시·군·구도 글자 포함이 아니라 같은 시·도 안의 낱말로 거른다.
+  const dobong = regionTargetOf('서울특별시', '도봉구');
+  assert.equal(dobong.districtName, '도봉구');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '서울특별시 도봉구 창동 1' }, dobong), true);
+  assert.equal(matchesRegionTarget({ hssplyAdres: '경기도 의정부시 도봉구청로 1' }, dobong), false, '다른 시·도의 같은 글자');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '경기도 파주시 동패동 1' }, paju), true);
+  assert.equal(matchesRegionTarget({ hssplyAdres: '인천광역시 서구 검단신도시 AA21블록' }, regionTargetOf('인천광역시', '검단신도시')), true, '시·도 단위로는 보인다');
+});
+
+test('지역 주소의 시·군·구 목록은 서버(Regions.java)와 같고, 일반구가 있는 시는 그 구 공고까지 묶는다', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { DISTRICTS } = await import('../src/features/explore/districts.js');
+  const { regionTargetOf, matchesRegionTarget } = await import('../src/features/explore/regionRules.js');
+  const java = await readFile(new URL('../../toadyWebApi/src/main/java/com/toady/web/app/planner/Regions.java', import.meta.url), 'utf8');
+  const shortOf = Object.fromEntries([...java.matchAll(/new Sido\("([^"]+)", "([^"]+)"\)/g)].map(m => [m[1], m[2]]));
+  const server = Object.fromEntries([...java.matchAll(/Map\.entry\("([^"]+)", names\("([^"]+)"\)\)/g)].map(m => [m[1], m[2].split(' ').sort()]));
+  for (const [city, names] of Object.entries(DISTRICTS)) assert.deepEqual([...names].sort(), server[shortOf[city]] || [], city);
+  // 목록에 없는 이름(다른 시·도의 시, 지구 이름)은 시·도만 남긴다.
+  assert.equal(regionTargetOf('서울특별시', '파주시').type, 'city');
+  assert.equal(regionTargetOf('인천광역시', '검단신도시').type, 'city');
+  const cheongju = regionTargetOf('충청북도', '청주시');
+  assert.equal(cheongju.type, 'district');
+  assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 청주시 상당구 용암동 1', regionName: '충북' }, cheongju), true);
+  assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 충주시 연수동 1', regionName: '충북' }, cheongju), false);
+});

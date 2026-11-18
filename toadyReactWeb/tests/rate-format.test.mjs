@@ -10,9 +10,9 @@ test('house types drop padded zeros and keep the suffix letter',()=>{
 });
 
 test('rates distinguish numbers, applyhome shortage notation and empty values',()=>{
-  assert.deepEqual(parseRate('21'),{kind:'rate',value:21,text:'21.00 : 1'});
-  assert.equal(formatRate('1,249.5'),'1,249.50 : 1');
-  assert.equal(formatRate('21 : 1'),'21.00 : 1');
+  assert.deepEqual(parseRate('21'),{kind:'rate',value:21,text:'21 : 1'});
+  assert.equal(formatRate('1,249.5'),'1,250 : 1');
+  assert.equal(formatRate('21 : 1'),'21 : 1');
   assert.deepEqual(parseRate('(△2)'),{kind:'shortage',count:2,text:'2세대 미달'});
   assert.equal(formatRate('▲ 13'),'13세대 미달');
   assert.equal(formatRate('(4)'),'4세대 미달');
@@ -42,8 +42,8 @@ test('category column is hidden when every row carries the same code',()=>{
 test('cancel-resupply keeps only extra supply columns that have data',()=>{
   const result=normalizeRateRows('cancel-resupply',[{houseTy:'059',normalHshldco:'1',normalReqCnt:'30',normalCmpetRate:'30',mnychCmpetRate:'3.5',nwwdsCmpetRate:'-'}]);
   assert.deepEqual(result.extras.map(extra=>extra.label),['다자녀']);
-  assert.equal(result.rows[0].rate.text,'30.00 : 1');
-  assert.equal(result.rows[0].extras[0].rate.text,'3.50 : 1');
+  assert.equal(result.rows[0].rate.text,'30 : 1');
+  assert.equal(result.rows[0].extras[0].rate.text,'3.5 : 1');
 });
 
 test('apt summary counts supply once per house type and shortage on the last rank only',()=>{
@@ -55,7 +55,7 @@ test('apt summary counts supply once per house type and shortage on the last ran
     {houseTy:'101.0000A',suplyHshldco:'3',subscrptRankCode:'2',resideSenm:'해당지역',reqCnt:'0',cmpetRate:'(△2)'}
   ];
   const summary=summarizeRates('apt',rows);
-  assert.equal(summary.top.text,'21.00 : 1');
+  assert.equal(summary.top.text,'21 : 1');
   assert.equal(summary.top.unit,'84.64㎡ · G');
   assert.equal(summary.top.context,'1순위 · 해당지역');
   assert.equal(summary.unitCount,3);
@@ -72,7 +72,7 @@ test('non-apt summary works without numeric rates or counts',()=>{
   assert.equal(summary.appTotal,null);
   assert.equal(summarizeRates('urban',[]),null);
   const single=summarizeRates('remaining',[{houseTy:'096.7880 ',remndrHshldPblancTycd:'01',suplyHshldco:'1',reqCnt:'11292',cmpetRate:'11,292.00'}]);
-  assert.equal(single.top.text,'11,292.00 : 1');
+  assert.equal(single.top.text,'11,292 : 1');
   assert.equal(single.top.context,'');
   assert.equal(single.top.unit,'96.788㎡');
 });

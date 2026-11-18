@@ -5,6 +5,7 @@
  * - 신뢰도: 높음(같은 동·신축 5건 이상) · 보통(3건 이상) · 참고(그 밖). '참고'는 요약·목록에 쓰지 않는다.
  * diff = 시세 − 분양가. 양수면 분양가가 시세보다 낮다.
  */
+import { formatManwon } from '../../utils/money.util.js';
 const MIN_NEW_TRADES = 3;
 /**
  * 토지임대부 분양은 건물만 분양하고 토지는 임대(월 임대료 별도)라 일반 아파트 매매가와 직접 비교하지 않는다.
@@ -49,11 +50,10 @@ export function representative(rows = []) {
   return [...usable].sort((a, b) => rank[b.confidence] - rank[a.confidence] || b.basisCount - a.basisCount || Math.abs(a.area - 84) - Math.abs(b.area - 84))[0];
 }
 
-/** 1천만원 단위로 반올림한 억 표기: 12,345 → '1.2억', 4,800 → '4,800만원'(1억 미만은 천만 단위 만원). */
+/** 1천만원 단위로 반올림한 짧은 금액(공통 compact 표기): 12,345 → '1.2억', 4,800 → '5,000만원'. */
 export function roughEok(manwon) {
   const value = Math.abs(Math.round(manwon / 1000) * 1000);
-  if (value < 10000) return value === 0 ? '0원' : `${value.toLocaleString('ko-KR')}만원`;
-  return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}억`;
+  return formatManwon(value, { compact: true, won: true, empty: '0원' });
 }
 
 /**

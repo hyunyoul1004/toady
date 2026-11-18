@@ -39,7 +39,9 @@
 
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
-    <link id="canonical-url" rel="canonical" href="https://www.toady.co.kr/" />
+    <!-- 대표 주소는 지금 경로로 만든다. 고정값(/)을 두면 JS를 실행하지 않는 봇이 모든 앱 주소를 홈의 중복으로 본다.
+         화면별 대표 주소는 앱(seo.util.js)이 같은 #canonical-url을 고쳐 쓴다. -->
+    <script>(function(){var l=document.createElement('link');l.id='canonical-url';l.rel='canonical';l.href='https://www.toady.co.kr'+location.pathname;document.head.appendChild(l);})();</script>
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

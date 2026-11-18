@@ -103,7 +103,7 @@ test('actual app prioritizes application details, restores detail tabs and retai
     await click('경쟁률');
     await act(async()=>{mobileViewport=true;for(const listener of [...mediaListeners])listener({matches:true});});
     await waitFor(()=>Boolean(document.querySelector('.competition-mobile-card')),'mobile competition should use cards');
-    assert.ok(document.querySelector('.competition-mobile-cards').textContent.includes('249.75 : 1'));
+    assert.ok(document.querySelector('.competition-mobile-cards').textContent.includes('250 : 1'));
     assert.ok(document.querySelector('.competition-mobile-cards').textContent.includes('999건'));
     assert.ok(document.querySelector('[aria-label="특별공급 신청현황 카드"]'));
     await act(async()=>{mobileViewport=false;for(const listener of [...mediaListeners])listener({matches:false});});

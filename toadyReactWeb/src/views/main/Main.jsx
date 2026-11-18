@@ -6,7 +6,7 @@ import { kakaoShareKey, preloadKakaoShare, shareToKakao } from '@/utils/kakaoSha
  * @file Main.jsx
  * @description 청약 일정 캘린더 및 공고 메인 화면 컴포넌트
  */
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
@@ -20,16 +20,16 @@ import '@/features/planner/planner.css';
 import { initialBrowseState, monthRange, readSupplyTypes, supplyTypesKey } from '@/features/planner/browseState';
 import { safeRead, isoDate, koreaToday } from '@/features/planner/plannerUtils';
 import { SubscriptionCalendar } from '@/views/main/calendar';
-import { SubscriptComment } from '@/views/main/subscriptComment';
-import SubscriptRate from '@/views/main/subscriptRate';
-import Kakaomap from '@/components/kakao/Kakaomap';
+import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
+import { DetailBodySkeleton, DetailTabSkeleton } from './components/DetailSkeletons';
 import { ALL_REGIONS, FLAT_CITY_OPTIONS } from './announcementFilters';
 import { normalizeSearchTargets, readSearchTargets } from '@/features/planner/searchState';
 import AnnouncementFilters from './components/AnnouncementFilters';
 import AnnouncementNotice from './components/AnnouncementNotice';
 import { useAnnouncementSearch } from './hooks/useAnnouncementSearch';
 
-import { updateAnnouncementSeo, resetDefaultSeo } from '@/utils/seo.util';
+import { updateAnnouncementSeo, resetDefaultSeo, updatePageSeo } from '@/utils/seo.util';
+import { regionPath, regionTargetOf } from '@/features/explore/regionRules';
 import { useAnnouncementsQuery, useAnnouncementDetailQuery, useAptScoresQuery } from '@/features/announcement/hooks/useAnnouncements';
 
 import { createTheme, ThemeProvider } from '@mui/material/styles';
@@ -58,9 +58,18 @@ import Snackbar from '@mui/material/Snackbar';
 import Tooltip from '@mui/material/Tooltip';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
-import CircularProgress from '@mui/material/CircularProgress';
 
 import './main.css';
+
+// 상세의 경쟁률·위치(지도)·이야기 탭은 그 탭을 열 때 내려받는다(첫 화면 JS를 줄인다).
+const SubscriptRate = lazy(() => import('@/views/main/subscriptRate'));
+const Kakaomap = lazy(() => import('@/components/kakao/Kakaomap'));
+const SubscriptComment = lazy(() => import('@/views/main/subscriptComment').then(module => ({ default: module.SubscriptComment })));
+
+/** 상세 탭 하나를 오류 경계·지연 로딩 표시로 감싼다. 한 탭이 실패해도 상세의 다른 탭과 사이트 전체는 그대로 쓴다. */
+function DetailTab({ title, resetKey, children }) {
+  return <SectionErrorBoundary title={title} resetKey={resetKey}><Suspense fallback={<DetailTabSkeleton />}>{children}</Suspense></SectionErrorBoundary>;
+}
 
 /** 무순위·잔여세대(06), 임의공급(07), 불법행위 재공급(08) */
 const UNRANKED_RCEPT_SE=['06','07','08'];
@@ -75,6 +84,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const routeDetailId = route.type ? `${route.type}/${route.house}/${route.notice}` : searchParams.get('subscriptSeq');
+  // 지역별 청약 주소(/regions/경기도/파주시): 같은 주소에서 그 지역으로 거른 캘린더를 연다(검색 봇은 같은 주소에서 서버 HTML을 받는다).
+  const regionTarget = useMemo(() => (detailOnly || !route.sido ? null : regionTargetOf(route.sido, route.district)), [detailOnly, route.sido, route.district]);
+  const regionKey = regionTarget?.key || null;
   useDirectDetailHistory(!detailOnly && Boolean(routeDetailId), 'detailOverlay', '/');
   const [initialBrowse] = useState(() => initialBrowseState({getItem:key=>localStorage.getItem(key)}));
   const [calendarMonth,setCalendarMonth] = useState(initialBrowse.month);
@@ -196,6 +208,31 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     setParamInfo(previous=>({...previous,citys:[],...Object.fromEntries(Array.from({length:8},(_,index)=>[`rceptSe${String(index+1).padStart(2,'0')}`,'Y']))}));
   };
 
+  // 지역 주소에서 사용자가 검색 지역을 바꾸면 주소가 화면과 어긋나지 않게 홈 주소로 바꾼다(히스토리를 쌓지 않음).
+  // 아래 적용 효과보다 먼저 둔다: 지역을 처음 적용하는 렌더에서는 appliedRegion이 아직 비어 있어 이전 검색 조건으로 판단하지 않는다.
+  const appliedRegion = useRef(null);
+  useEffect(() => {
+    if (!regionKey || appliedRegion.current !== regionKey) return;
+    const citys = paramInfo.citys || [];
+    if (citys.length === 1 && citys[0]?.key === regionKey) return;
+    navigate({ pathname:'/', search:location.search, hash:location.hash }, { replace:true, state:location.state });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramInfo.citys]);
+  // 지역 주소로 들어오면(첫 진입·뒤로/앞으로가기·메뉴 왕복) 저장된 유형·지역 조건 없이 그 지역만 보여 준다(서버 공개 페이지와 같은 건수).
+  // 같은 지역 위에 연 상세를 닫고 돌아올 때는 다시 적용하지 않아 그사이 바꾼 달력 월 등을 유지한다. 홈 주소로 가면 기록을 지운다.
+  useEffect(() => {
+    if (detailOnly) return;
+    if (!route.sido) { if (location.pathname === '/') appliedRegion.current = null; return; }
+    if (!regionTarget) { navigate('/regions', { replace:true }); return; }
+    // 시·군·구로 확인되지 않는 조각(지구·신도시 이름)은 시·도 주소로 바꾼다(서버 공개 페이지는 이 주소를 404로 둔다).
+    if (route.district && !regionTarget.districtName) { navigate(regionPath(regionTarget) + location.search, { replace:true, state:location.state }); return; }
+    if (appliedRegion.current === regionKey) return;
+    appliedRegion.current = regionKey;
+    resetForEntry();
+    setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets([regionTarget]) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionKey, route.sido, route.district, location.pathname, detailOnly]);
+
   // 상세 모달 상태 및 탭 (상세 0, 위치 1, 댓글 2)
   const [modalOpen, setModalOpen] = useState(false);
   const lastViewed = useRef(null);
@@ -256,10 +293,14 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   useEffect(() => {
     if (modalOpen && currentSubscriptDetail?.houseNm) {
       updateAnnouncementSeo(currentSubscriptDetail,['detail','rate','map','comment'][detailTabValue],scoreText);
+    } else if (!modalOpen && regionTarget) {
+      // 지역 캘린더: 서버 공개 페이지와 같은 제목·대표 주소를 쓴다.
+      updatePageSeo({ title:`${regionTarget.label} 청약 일정·분양 공고 · TOADY`, path:regionPath(regionTarget),
+        description:`${regionTarget.label} 아파트·오피스텔·무순위 청약 공고를 캘린더로 확인하세요. 분양가·경쟁률·당첨가점까지 한 화면에서 볼 수 있어요.` });
     } else if (!modalOpen) {
       resetDefaultSeo();
     }
-  }, [modalOpen, currentSubscriptDetail,detailTabValue,scoreText]);
+  }, [modalOpen, currentSubscriptDetail,detailTabValue,scoreText,regionTarget]);
 
   useEffect(() => {
     if (!modalOpen) { lastViewed.current = null; return; }
@@ -327,7 +368,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
   };
   // 위치 탭 지도에서 고른 단지·전체 화면 레이어(히스토리 칸)가 위에 있는 채로 다른 탭으로 가면, 그 칸들이 숨은 채 남아
   // 뒤로가기가 상세를 닫지 않고 위치 탭으로 돌아간다. 먼저 그 칸들을 뒤로가기로 걷어 낸 뒤 탭을 바꾼다.
-  const MAP_LAYERS = ['price-map-complex', 'map-fullscreen'];
+  // (PriceMapParts의 범위 팝업 레이어 이름도 포함한다. 지도 파일을 첫 화면에 싣지 않으려고 이름만 같은 글자로 둔다.)
+  const MAP_LAYERS = ['price-map-complex', 'map-fullscreen', 'price-map-range-price', 'price-map-range-area'];
   const pendingTab = useRef(null);
   const handleTabChange = (event, newValue) => {
     setDetailTabValue(newValue);
@@ -447,7 +489,8 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         </Box>
 
         <AreaSubscribe targets={paramInfo.citys} />
-        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} isError={isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode} />
+        <TodayOverview onResetFilters={resetBrowseFilters} month={calendarMonth} onMonthChange={setCalendarMonth} isLoading={(announcementsRes == null || isListPlaceholder) && !isListError} isError={isListError} items={subscriptList} onOpen={handleOpenDetail} viewMode={viewMode} setViewMode={setViewMode}
+          searchTargets={paramInfo.citys} onApplyAreas={targets => setParamInfo(previous => ({ ...previous, citys: normalizeSearchTargets(targets) }))} />
         {/* 캘린더 또는 목록 표시 */}
         <Box sx={{ mt: 0.5 }}>
           {isListError && <Alert severity="error" sx={{ mb: 2 }}
@@ -754,30 +797,45 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
           }}
         >
           {isDetailLoading ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 8, gap: 1.5 }}>
-              <CircularProgress size={36} />
-              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
-                공고 상세 정보를 불러오는 중입니다...
-              </Typography>
-            </Box>
+            <DetailBodySkeleton />
           ) : isDetailError ? (
-            <Alert severity="error" action={<Button color="inherit" onClick={() => refetchDetail()}>다시 시도</Button>}>
-              공고 상세를 불러오지 못했습니다. {detailError?.message}
-            </Alert>
+            detailError?.status === 404 ? (
+              <Box role="alert" sx={{ textAlign: 'center', py: 6, px: 2 }}>
+                <Typography component="p" sx={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem', mb: 0.75 }}>
+                  마감됐거나 찾을 수 없는 공고예요
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748b', mb: 2.5, wordBreak: 'keep-all' }}>
+                  공고가 정정·취소됐거나 주소가 바뀌었을 수 있어요. 청약 일정에서 다른 공고를 찾아보세요.
+                </Typography>
+                <Button variant="contained" disableElevation onClick={handleCloseDetail}>공고 목록으로</Button>
+              </Box>
+            ) : (
+              <Alert severity="error" action={<Button color="inherit" onClick={() => refetchDetail()}>다시 시도</Button>}>
+                {detailError?.status >= 500 || !detailError?.status
+                  ? '공고 상세를 잠시 불러오지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.'
+                  : '공고 상세를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'}
+              </Alert>
+            )
           ) : (
             <>
-              {detailTabValue === 0 && <ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={handleResearchTabChange} onShowMap={() => handleTabChange(null, 2)} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel>}
+              {detailTabValue === 0 && <DetailTab title="공고 상세를 표시하지 못했어요" resetKey={`${selectedSubscriptSeq}/${researchTab}`}><ResearchPanel key={currentSubscriptDetail.subscriptSeq} detail={currentSubscriptDetail} tab={researchTab} onTabChange={handleResearchTabChange} onShowMap={() => handleTabChange(null, 2)} showTabs={false} after={<AnnouncementNotice mainDetail={mainDetail} part="original" />}><AnnouncementNotice mainDetail={mainDetail} part="schedule" /></ResearchPanel></DetailTab>}
               {detailTabValue === 1 && currentSubscriptDetail && (
-                <SubscriptRate subscriptDetail={currentSubscriptDetail} />
+                <DetailTab title="경쟁률을 표시하지 못했어요" resetKey={selectedSubscriptSeq}>
+                  <SubscriptRate subscriptDetail={currentSubscriptDetail} />
+                </DetailTab>
               )}
               {detailTabValue === 2 && currentSubscriptDetail && (
-                <Kakaomap subscriptDetail={currentSubscriptDetail} />
+                <DetailTab title="위치·지도를 표시하지 못했어요" resetKey={selectedSubscriptSeq}>
+                  <Kakaomap subscriptDetail={currentSubscriptDetail} />
+                </DetailTab>
               )}
               {detailTabValue === 3 && currentSubscriptDetail && (
-                <SubscriptComment
-                  subscriptDetail={currentSubscriptDetail}
-                  subscriptSeq={selectedSubscriptSeq}
-                />
+                <DetailTab title="이야기를 표시하지 못했어요" resetKey={selectedSubscriptSeq}>
+                  <SubscriptComment
+                    subscriptDetail={currentSubscriptDetail}
+                    subscriptSeq={selectedSubscriptSeq}
+                  />
+                </DetailTab>
               )}
             </>
           )}

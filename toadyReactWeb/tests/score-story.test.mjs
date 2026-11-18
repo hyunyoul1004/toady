@@ -59,7 +59,7 @@ test('경쟁률 투표 결과는 비율·내 선택·실제 구간을 함께 보
   assert.equal(view.hitPercent, 75); assert.equal(view.voted, true);
   assert.equal(pollView(null), null);
   assert.equal(pollView({ open: true, labels: ['a'], counts: [0], total: 0, myChoice: null, actualChoice: null }).hitPercent, null);
-  assert.equal(formatRate(1234.5), '1,234.5 : 1');
+  assert.equal(formatRate(1234.5), '1,235 : 1');
 });
 
 test('실거래 비교는 같은 면적 주택형과 화면의 실거래만 쓴다', () => {

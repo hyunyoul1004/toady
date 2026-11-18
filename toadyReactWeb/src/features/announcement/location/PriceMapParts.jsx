@@ -9,7 +9,12 @@ import { distanceMeters as distanceMetersSafe } from './priceMapRules';
 import { AGE_BANDS, AREA_MARKS_PYEONG, AREA_RANGE, DEFAULT_FILTERS, PRICE_RANGE, areaRangeText, areaText, isAreaFiltered, isPriceFiltered, mapSummary, moveInText, saleStatusLabel, SUPPLY_RATIO, outsideText, priceRangeText, PYEONG_HINT, rangePrice, PRICE_MODES, SORTS, ageTone, distanceText, fullPrice, monthLabel, monthPrice, measureText, perPyeong, unitAreaLabel, shortPrice, nearbyText, NEARBY_KIND, groupSaleUnits, saleGroupText } from './priceMapRules';
 import { usePriceGapFor } from '@/features/match/usePriceGap';
 import { LAND_LEASE_TEXT, gapRows, gapText, gapTone } from '@/features/match/priceGapRules';
+import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import './priceMap.css';
+
+/** 범위 팝업의 히스토리 레이어 이름(상세 탭을 바꿀 때 Main이 위치 탭 레이어로 함께 걷어 낸다). */
+export const PRICE_RANGE_LAYER = 'price-map-range-price';
+export const AREA_RANGE_LAYER = 'price-map-range-area';
 
 const SELECTS = [
   { key: 'age', label: '준공 연식', options: AGE_BANDS }
@@ -43,15 +48,20 @@ export function PriceMapFilters({ filters, setFilters, areaDefault = null }) {
  * 범위 필터 공통(네이버 부동산 방식): 단추에 지금 범위를 보여 주고, 누르면 양쪽 손잡이 슬라이더로 최소·최대를 고른다.
  * 손을 뗄 때 적용한다(끌고 있는 동안은 글자만 바뀐다).
  */
-function RangeFilter({ title, buttonText, active, range, value, onCommit, onReset, valueText, markLabel, extra, note, label }) {
+function RangeFilter({ overlayId, title, buttonText, active, range, value, onCommit, onReset, valueText, markLabel, extra, note, label }) {
+  // 범위 팝업은 히스토리 한 단계로 연다: 휴대폰 뒤로가기로 팝업만 닫히고(상세가 닫히지 않음), 앞으로가기로 다시 열린다.
+  const [openLayer, setOpenLayer] = useHistoryOverlay(overlayId);
+  const open = Boolean(openLayer);
+  // 기준 단추는 상태 ref로 잡아, 앞으로가기·새로고침으로 열린 채 복원될 때도 단추가 그려지자마자 붙인다.
   const [anchor, setAnchor] = useState(null);
   const [draft, setDraft] = useState(value);
   useEffect(() => { setDraft(value); }, [value[0], value[1]]);
+  const close = () => { if (open) setOpenLayer(null); };
   return <>
-    <button type="button" className={`price-map-area-button${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(anchor)} onClick={event => setAnchor(event.currentTarget)}>
+    <button type="button" ref={setAnchor} className={`price-map-area-button${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpenLayer(true)}>
       <span>{buttonText}</span><KeyboardArrowDownRounded fontSize="small" />
     </button>
-    <Popover open={Boolean(anchor)} anchorEl={anchor} onClose={() => setAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+    <Popover open={open && Boolean(anchor)} anchorEl={anchor} onClose={close} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       disableScrollLock slotProps={{ paper: { className: 'price-map-area-popover', role: 'dialog', 'aria-label': title } }}>
       <Typography component="h4" sx={{ m: 0, fontSize: 16, fontWeight: 800 }}>{title}</Typography>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
@@ -75,7 +85,7 @@ function RangeFilter({ title, buttonText, active, range, value, onCommit, onRese
 function PriceFilter({ filters, setFilters }) {
   const active = isPriceFiltered(filters);
   const markLabel = value => (value <= PRICE_RANGE.min ? '최소' : value >= PRICE_RANGE.max ? '최대' : rangePrice(value));
-  return <RangeFilter title="가격" label="매매가 " buttonText={active ? `매매가 ${priceRangeText(filters)}` : '매매가'} active={active} range={PRICE_RANGE}
+  return <RangeFilter overlayId={PRICE_RANGE_LAYER} title="가격" label="매매가 " buttonText={active ? `매매가 ${priceRangeText(filters)}` : '매매가'} active={active} range={PRICE_RANGE}
     value={[filters.priceMin, filters.priceMax]} onCommit={([priceMin, priceMax]) => setFilters({ priceMin, priceMax })}
     onReset={() => setFilters({ priceMin: PRICE_RANGE.min, priceMax: PRICE_RANGE.max })}
     valueText={([priceMin, priceMax]) => { const text = priceRangeText({ priceMin, priceMax }); return text === '전체' ? '전체' : text; }} markLabel={markLabel}
@@ -88,7 +98,7 @@ function AreaFilter({ filters, setFilters, areaDefault = null }) {
   const unit = filters.unit;
   const active = isAreaFiltered(filters);
   const markLabel = value => (value <= AREA_RANGE.min ? '최소' : value >= AREA_RANGE.max ? '최대' : areaText(value, unit));
-  return <RangeFilter title="면적" buttonText={active ? areaRangeText(filters, unit) : '면적'} active={active} range={unit === 'pyeong' ? { ...AREA_RANGE, marks: AREA_MARKS_PYEONG } : AREA_RANGE}
+  return <RangeFilter overlayId={AREA_RANGE_LAYER} title="면적" buttonText={active ? areaRangeText(filters, unit) : '면적'} active={active} range={unit === 'pyeong' ? { ...AREA_RANGE, marks: AREA_MARKS_PYEONG } : AREA_RANGE}
     value={[filters.areaMin, filters.areaMax]} onCommit={([areaMin, areaMax]) => setFilters({ areaMin, areaMax })}
     // 필터 줄의 '초기화'와 같게 이 공고 주택형 범위로 돌린다(공고 정보가 없으면 전체).
     onReset={() => setFilters(areaDefault ? { areaMin: areaDefault.areaMin, areaMax: areaDefault.areaMax } : { areaMin: AREA_RANGE.min, areaMax: AREA_RANGE.max })}

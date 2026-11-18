@@ -86,7 +86,8 @@
 
 .tc-event {
   display: flex;
-  align-items: center;
+  /* 단지명이 2줄일 때 단계 뱃지·이야기 수는 첫 줄에 맞춘다 */
+  align-items: flex-start;
   gap: 6px;
   width: 100%;
   min-width: 0;
@@ -99,13 +100,31 @@
   flex: 1;
   min-width: 0;
   font-weight: 700;
+  /* 'GTX운정중앙역 시티프라디움 3단지'와 '4단지'처럼 앞부분이 같은 이름도 구분되도록 2줄까지 보여 주고 넘치면 말줄임한다.
+     전체 이름은 마우스를 올리면(title) 보인다. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* FullCalendar 기본 한 줄 고정(nowrap)을 풀어 2줄 단지명이 칸 안에서 줄바꿈되게 한다 */
+.subscription-calendar-wrapper .fc-daygrid-event,
+.subscription-calendar-wrapper .fc-event-main {
+  white-space: normal;
+}
+
+.tc-event .tc-stages {
+  margin-top: 1px;
 }
 
 .tc-event .tc-count {
   flex-shrink: 0;
+  margin-top: 1px;
   padding: 0 5px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.75);
@@ -188,91 +207,3 @@
     display: none;
   }
 }
-
-/* react-datepicker 월 선택 팝업 UI 스타일링 */
-.react-datepicker-popper {
-  z-index: 1500 !important;
-}
-
-.react-datepicker {
-  font-family: inherit !important;
-  background-color: #ffffff !important; /* 투명도 제거 - 불투명 흰색 배경 */
-  border-radius: 14px !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08) !important;
-  overflow: hidden;
-  padding: 12px !important;
-}
-
-.react-datepicker__header {
-  background-color: #f8fafc !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  border-radius: 10px 10px 0 0 !important;
-  padding: 10px 0 !important;
-}
-
-.react-datepicker__current-month,
-.react-datepicker-year-header {
-  font-size: 1.15rem !important;
-  font-weight: 800 !important;
-  color: #0f172a !important;
-}
-
-/* 연도 이동 화살표 네비게이션 버튼 */
-.react-datepicker__navigation {
-  top: 18px !important;
-}
-
-.react-datepicker__navigation--previous {
-  left: 14px !important;
-}
-
-.react-datepicker__navigation--next {
-  right: 14px !important;
-}
-
-/* 1월 ~ 12월 월별 그리드 타일 */
-.react-datepicker__month-container {
-  background-color: #ffffff !important;
-}
-
-.react-datepicker__month {
-  margin: 12px 6px !important;
-}
-
-.react-datepicker__month .react-datepicker__month-text {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 68px !important;
-  height: 42px !important;
-  line-height: normal !important;
-  margin: 6px 8px !important;
-  font-size: 0.95rem !important;
-  font-weight: 700 !important;
-  border-radius: 8px !important;
-  color: #334155 !important;
-  background-color: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
-  cursor: pointer !important;
-  transition: all 0.15s ease !important;
-}
-
-.react-datepicker__month .react-datepicker__month-text:hover {
-  background-color: #eff6ff !important;
-  color: #2563eb !important;
-  border-color: #bfdbfe !important;
-  transform: translateY(-2px) !important;
-  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.15) !important;
-}
-
-/* 현재 선택된 월 */
-.react-datepicker__month--selected,
-.react-datepicker__month-text--keyboard-selected {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-  border-color: #2563eb !important;
-  font-weight: 800 !important;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3) !important;
-}
-

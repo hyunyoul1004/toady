@@ -5,4 +5,5 @@ public final class PublicPagesCache {
     private PublicPagesCache() { }
     public static void clear() { PublicHtml.clearCache(); }
     public static void clear(ScoreBenchmarks benchmarks) { benchmarks.invalidate(); }
+    public static void clear(PublicAnnouncementIndex index) { index.invalidate(); }
 }

@@ -6,6 +6,7 @@
  * React·브라우저 API에 의존하지 않으므로 node:test로 검증한다.
  */
 import { unitLabel } from '../../../features/planner/researchUtils.js';
+import { formatCompetitionRate } from '../../../utils/rate.util.js';
 
 /** 비어 있거나 청약홈이 '-'로 내려준 값 */
 const isBlank=value=>value==null || String(value).trim()==='' || String(value).trim()==='-';
@@ -56,7 +57,7 @@ export function parseRate(value,reqCnt) {
       return {kind:'shortage',count,text:`${count.toLocaleString('ko-KR')}세대 미달`};
     }
     if(number===0)return empty();
-    return {kind:'rate',value:number,text:`${number.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2})} : 1`};
+    return {kind:'rate',value:number,text:formatCompetitionRate(number)};
   }
   return {kind:'text',text:raw};
 }

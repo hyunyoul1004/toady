@@ -56,12 +56,14 @@ export const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq
 
 /** 공고 주소(/announcements/종류/번호/번호)도 앱 안에서 바로 연다. public/sw.js와 같은 식이어야 한다(테스트로 대조). */
 export const ANNOUNCEMENT_PATH = /^\/announcements\/(apt|urban|remaining|public-rental|optional)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,40}$/;
+/** 지역별 청약 주소(/regions/시·도[/시·군·구])도 앱 안의 지역 캘린더다. public/sw.js와 같은 식이어야 한다(테스트로 대조). */
+export const REGION_PATH = /^\/regions\/[^/]{1,80}(\/[^/]{1,80})?$/;
 /** 같은 출처의 SPA 경로인지(끝 슬래시는 무시). */
 export function isSpaPath(url, origin) {
   try {
     const parsed = new URL(url, origin);
     const path = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
-    return parsed.origin === origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path));
+    return parsed.origin === origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path) || REGION_PATH.test(path));
   } catch { return false; }
 }
 

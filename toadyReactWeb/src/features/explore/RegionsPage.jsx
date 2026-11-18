@@ -26,7 +26,7 @@ export default function RegionsPage() {
   const areas = useQuery({ queryKey: ['areaSummaries'], queryFn: () => apiClient.get('/api/v1/public/area-summaries'), staleTime: 600000, retry: 1 });
   useEffect(() => {
     updatePageSeo({ title: '지역별 청약 · 접수 중·예정 공고가 있는 지역 · TOADY',
-      description: '지금 접수 중이거나 곧 접수하는 청약 공고가 있는 시·도와 시·군·구, 운정·동탄 같은 신도시 생활권을 한눈에 보고 지역별 공고를 찾아보세요.', path: '/areas' });
+      description: '지금 접수 중이거나 곧 접수하는 청약 공고가 있는 시·도와 시·군·구, 운정·동탄 같은 신도시 생활권을 한눈에 보고 지역별 공고를 찾아보세요.', path: '/regions' });
     return () => resetDefaultSeo();
   }, []);
   const items = useMemo(() => (Array.isArray(active.data) ? active.data : []), [active.data]);

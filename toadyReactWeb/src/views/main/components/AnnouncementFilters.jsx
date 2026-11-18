@@ -1,9 +1,27 @@
 import { useState } from 'react';
-import { Box, Paper, Typography, Button, Divider, Autocomplete, TextField, InputAdornment, Chip, Collapse, FormControlLabel, Checkbox } from '@mui/material';
+import { Box, Paper, Typography, Button, ButtonBase, Divider, Autocomplete, TextField, InputAdornment, Chip, Collapse } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import IndeterminateCheckBoxIcon from '@mui/icons-material/IndeterminateCheckBox';
 import SearchIcon from '@mui/icons-material/Search';
 import TuneRounded from '@mui/icons-material/TuneRounded';
 import { REGION_SEOUL, REGION_METRO, REGION_PROVINCE, ALL_REGIONS, SUPPLY_FILTER_ITEMS } from '../announcementFilters';
+
+/** 버튼 안의 체크 표시(장식). 선택 상태는 버튼의 aria-pressed로 알린다(버튼 안에 체크박스 입력을 넣지 않는다). */
+function CheckMark({ checked, mixed = false, color, checkedColor, sx }) {
+  const Icon = mixed ? IndeterminateCheckBoxIcon : checked ? CheckBoxIcon : CheckBoxOutlineBlankIcon;
+  return <Icon aria-hidden="true" sx={{ fontSize: '1.15rem', color: checked || mixed ? checkedColor : color, flexShrink: 0, ...sx }} />;
+}
+
+/** 키보드 포커스가 보이도록 하는 공통 테두리 */
+const FOCUS_RING = { '&.Mui-focusVisible': { outline: '2px solid #2563eb', outlineOffset: 2 } };
+
+/** 그룹(도·광역) 선택 상태: 전부 true, 일부 'mixed', 없음 false */
+function groupPressed(groupList, selectedRegions) {
+  const count = groupList.filter((g) => selectedRegions.some((p) => p.code === g.code)).length;
+  return count === groupList.length ? true : count > 0 ? 'mixed' : false;
+}
 
 export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyTouched, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
@@ -252,7 +270,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                                   variant="caption"
                                   sx={{
                                     fontSize: '0.75rem',
-                                    color: isGlobal ? '#6b21a8' : '#94a3b8',
+                                    color: isGlobal ? '#6b21a8' : '#64748b',
                                     fontWeight: isGlobal ? 600 : 400,
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
@@ -374,10 +392,13 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                   {SUPPLY_FILTER_ITEMS.map((item) => {
                     const isChecked = paramInfo[`rceptSe${item.id}`] === 'Y';
                     return (
-                      <Box
+                      <ButtonBase
                         key={item.id}
                         onClick={() => handleRceptSeToggle(item.id)}
+                        aria-pressed={isChecked}
                         sx={{
+                          ...FOCUS_RING,
+                          fontFamily: 'inherit',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 0.6,
@@ -389,7 +410,8 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                           fontWeight: isChecked ? 700 : 500,
                           border: isChecked ? '1.5px solid #94a3b8' : '1px solid #e2e8f0',
                           bgcolor: isChecked ? '#ffffff' : '#f8fafc',
-                          color: isChecked ? '#0f172a' : '#94a3b8',
+                          // 꺼진 유형도 읽을 수 있는 대비(#64748b)를 지킨다. 켜짐/꺼짐은 굵기·테두리·색 점으로 구분한다.
+                          color: isChecked ? '#0f172a' : '#64748b',
                           boxShadow: isChecked ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
                           transition: 'all 0.15s ease',
                           userSelect: 'none',
@@ -401,6 +423,8 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                       >
                         {/* 공급 유형 컬러 닷 */}
                         <Box
+                          component="span"
+                          aria-hidden="true"
                           sx={{
                             width: 7,
                             height: 7,
@@ -410,7 +434,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                           }}
                         />
                         {item.label}
-                      </Box>
+                      </ButtonBase>
                     );
                   })}
                 </Box>
@@ -431,9 +455,14 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                   }}
                 >
                   {/* 좌측: 공급지역 타이틀 + 선택 카운트 뱃지 + 지역 선택 토글 버튼 */}
-                  <Box
+                  <ButtonBase
                     onClick={() => setIsRegionOpen((prev) => !prev)}
+                    aria-expanded={isRegionOpen}
+                    aria-controls="announcement-region-panel"
                     sx={{
+                      ...FOCUS_RING,
+                      fontFamily: 'inherit',
+                      alignSelf: { xs: 'flex-start', sm: 'center' },
                       display: showFilters ? 'inline-flex' : 'none',
                       alignItems: 'center',
                       gap: 1,
@@ -445,10 +474,11 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                       '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.03)' }
                     }}
                   >
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <span style={{ color: '#16a34a' }}>●</span> 공급지역
+                    <Typography component="span" sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <span style={{ color: '#16a34a' }} aria-hidden="true">●</span> 공급지역
                     </Typography>
                     <Box
+                      component="span"
                       sx={{
                         fontSize: '0.75rem',
                         fontWeight: 600,
@@ -463,74 +493,60 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                         ? '전국 (17개)'
                         : `${selectedRegions.length}개 선택됨`}
                     </Box>
-                    <Button
-                      size="small"
-                      variant="text"
-                      endIcon={
-                        <ExpandMoreIcon
-                          sx={{
-                            transform: isRegionOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                            transition: 'transform 0.2s ease',
-                            fontSize: '1.1rem'
-                          }}
-                        />
-                      }
+                    <Box
+                      component="span"
                       sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         fontSize: '0.78rem',
                         fontWeight: 700,
-                        color: isRegionOpen ? '#16a34a' : '#64748b',
-                        p: 0,
-                        minWidth: 'auto',
-                        '&:hover': { bgcolor: 'transparent', color: '#16a34a' }
+                        color: isRegionOpen ? '#16a34a' : '#64748b'
                       }}
                     >
                       {isRegionOpen ? '접기' : '지역 선택'}
-                    </Button>
-                  </Box>
+                      <ExpandMoreIcon
+                        aria-hidden="true"
+                        sx={{
+                          transform: isRegionOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.2s ease',
+                          fontSize: '1.1rem'
+                        }}
+                      />
+                    </Box>
+                  </ButtonBase>
 
                 </Box>
 
                 {/* 공급지역 상세 체크박스 레이어 (Collapse 애니메이션 적용) */}
                 <Collapse in={isRegionOpen && showFilters} timeout="auto" unmountOnExit>
-                  <Box sx={{ display: 'flex', gap: 1.2, flexWrap: { xs: 'wrap', lg: 'nowrap' }, mt: 1 }}>
+                  <Box id="announcement-region-panel" sx={{ display: 'flex', gap: 1.2, flexWrap: { xs: 'wrap', lg: 'nowrap' }, mt: 1 }}>
                   {/* 1. 서울 카드 (블루 단독) */}
-                  <Box
-                    sx={{
-                      bgcolor: selectedRegions.some((r) => r.code === REGION_SEOUL.code) ? '#2563eb' : '#f8fafc',
-                      color: selectedRegions.some((r) => r.code === REGION_SEOUL.code) ? '#fff' : '#64748b',
-                      border: selectedRegions.some((r) => r.code === REGION_SEOUL.code) ? '1px solid #1d4ed8' : '1px solid #cbd5e1',
-                      borderRadius: 1.5,
-                      px: 2,
-                      py: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      minWidth: { xs: '100%', sm: '90px' },
-                      transition: 'all 0.15s ease',
-                      '&:hover': {
-                        bgcolor: selectedRegions.some((r) => r.code === REGION_SEOUL.code) ? '#1d4ed8' : '#e2e8f0'
-                      }
-                    }}
-                    onClick={() => handleToggleRegion(REGION_SEOUL)}
-                  >
-                    <FormControlLabel
-                      sx={{ m: 0, pointerEvents: 'none' }}
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={selectedRegions.some((r) => r.code === REGION_SEOUL.code)}
-                          sx={{
-                            color: selectedRegions.some((r) => r.code === REGION_SEOUL.code) ? '#fff' : '#94a3b8',
-                            '&.Mui-checked': { color: '#fff' },
-                            p: 0.2,
-                            mr: 0.5
-                          }}
-                        />
-                      }
-                      label={<Typography sx={{ fontWeight: 800, fontSize: '0.9rem' }}>서울</Typography>}
-                    />
-                  </Box>
+                  {(() => {
+                    const seoulOn = selectedRegions.some((r) => r.code === REGION_SEOUL.code);
+                    return (
+                      <ButtonBase
+                        onClick={() => handleToggleRegion(REGION_SEOUL)}
+                        aria-pressed={seoulOn}
+                        sx={{
+                          ...FOCUS_RING,
+                          fontFamily: 'inherit',
+                          bgcolor: seoulOn ? '#2563eb' : '#f8fafc',
+                          color: seoulOn ? '#fff' : '#475569',
+                          border: seoulOn ? '1px solid #1d4ed8' : '1px solid #cbd5e1',
+                          borderRadius: 1.5,
+                          px: 2,
+                          py: 1,
+                          gap: 0.6,
+                          minWidth: { xs: '100%', sm: '90px' },
+                          transition: 'all 0.15s ease',
+                          '&:hover': { bgcolor: seoulOn ? '#1d4ed8' : '#e2e8f0' }
+                        }}
+                      >
+                        <CheckMark checked={seoulOn} color="#64748b" checkedColor="#fff" />
+                        <Typography component="span" sx={{ fontWeight: 800, fontSize: '0.9rem' }}>서울</Typography>
+                      </ButtonBase>
+                    );
+                  })()}
 
                   {/* 2. 도 카드 (그린 헤더 + 9개 도 하단 그리드) */}
                   <Box
@@ -543,44 +559,42 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                       bgcolor: '#fff'
                     }}
                   >
-                    <Box
+                    <ButtonBase
+                      onClick={() => handleToggleRegionGroup(REGION_PROVINCE)}
+                      aria-pressed={groupPressed(REGION_PROVINCE, selectedRegions)}
+                      aria-label={`도 전체`}
                       sx={{
+                        ...FOCUS_RING,
+                        outlineOffset: -2,
+                        fontFamily: 'inherit',
+                        width: '100%',
                         bgcolor: '#16a34a',
                         color: '#fff',
                         py: 0.5,
                         px: 1.5,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
+                        gap: 0.6,
                         '&:hover': { bgcolor: '#15803d' }
                       }}
-                      onClick={() => handleToggleRegionGroup(REGION_PROVINCE)}
                     >
-                      <FormControlLabel
-                        sx={{ m: 0, pointerEvents: 'none' }}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={REGION_PROVINCE.every((g) => selectedRegions.some((p) => p.code === g.code))}
-                            indeterminate={
-                              REGION_PROVINCE.some((g) => selectedRegions.some((p) => p.code === g.code)) &&
-                              !REGION_PROVINCE.every((g) => selectedRegions.some((p) => p.code === g.code))
-                            }
-                            sx={{ color: '#fff', '&.Mui-checked': { color: '#fff' }, '&.MuiCheckbox-indeterminate': { color: '#fff' }, p: 0.2, mr: 0.5 }}
-                          />
-                        }
-                        label={<Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>도</Typography>}
+                      <CheckMark
+                        checked={groupPressed(REGION_PROVINCE, selectedRegions) === true}
+                        mixed={groupPressed(REGION_PROVINCE, selectedRegions) === 'mixed'}
+                        color="#fff"
+                        checkedColor="#fff"
                       />
-                    </Box>
+                      <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>도</Typography>
+                    </ButtonBase>
                     <Box sx={{ p: 0.8, display: 'flex', flexWrap: 'wrap', gap: 0.6, bgcolor: '#f8fafc' }}>
                       {REGION_PROVINCE.map((region) => {
                         const checked = selectedRegions.some((r) => r.code === region.code);
                         return (
-                          <Box
+                          <ButtonBase
                             key={region.code}
                             onClick={() => handleToggleRegion(region)}
+                            aria-pressed={checked}
                             sx={{
+                              ...FOCUS_RING,
+                              fontFamily: 'inherit',
                               display: 'inline-flex',
                               alignItems: 'center',
                               px: 0.9,
@@ -593,15 +607,11 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                               '&:hover': { borderColor: '#86efac' }
                             }}
                           >
-                            <Checkbox
-                              size="small"
-                              checked={checked}
-                              sx={{ p: 0, mr: 0.4, color: '#94a3b8', '&.Mui-checked': { color: '#16a34a' } }}
-                            />
-                            <Typography sx={{ fontSize: '0.8rem', fontWeight: checked ? 700 : 500, color: checked ? '#15803d' : '#475569' }}>
+                            <CheckMark checked={checked} color="#94a3b8" checkedColor="#16a34a" sx={{ fontSize: '1.05rem', mr: 0.4 }} />
+                            <Typography component="span" sx={{ fontSize: '0.8rem', fontWeight: checked ? 700 : 500, color: checked ? '#15803d' : '#475569' }}>
                               {region.name}
                             </Typography>
-                          </Box>
+                          </ButtonBase>
                         );
                       })}
                     </Box>
@@ -618,44 +628,42 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                       bgcolor: '#fff'
                     }}
                   >
-                    <Box
+                    <ButtonBase
+                      onClick={() => handleToggleRegionGroup(REGION_METRO)}
+                      aria-pressed={groupPressed(REGION_METRO, selectedRegions)}
+                      aria-label={`광역 전체`}
                       sx={{
+                        ...FOCUS_RING,
+                        outlineOffset: -2,
+                        fontFamily: 'inherit',
+                        width: '100%',
                         bgcolor: '#2563eb',
                         color: '#fff',
                         py: 0.5,
                         px: 1.5,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
+                        gap: 0.6,
                         '&:hover': { bgcolor: '#1d4ed8' }
                       }}
-                      onClick={() => handleToggleRegionGroup(REGION_METRO)}
                     >
-                      <FormControlLabel
-                        sx={{ m: 0, pointerEvents: 'none' }}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={REGION_METRO.every((g) => selectedRegions.some((p) => p.code === g.code))}
-                            indeterminate={
-                              REGION_METRO.some((g) => selectedRegions.some((p) => p.code === g.code)) &&
-                              !REGION_METRO.every((g) => selectedRegions.some((p) => p.code === g.code))
-                            }
-                            sx={{ color: '#fff', '&.Mui-checked': { color: '#fff' }, '&.MuiCheckbox-indeterminate': { color: '#fff' }, p: 0.2, mr: 0.5 }}
-                          />
-                        }
-                        label={<Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>광역</Typography>}
+                      <CheckMark
+                        checked={groupPressed(REGION_METRO, selectedRegions) === true}
+                        mixed={groupPressed(REGION_METRO, selectedRegions) === 'mixed'}
+                        color="#fff"
+                        checkedColor="#fff"
                       />
-                    </Box>
+                      <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>광역</Typography>
+                    </ButtonBase>
                     <Box sx={{ p: 0.8, display: 'flex', flexWrap: 'wrap', gap: 0.6, bgcolor: '#f8fafc' }}>
                       {REGION_METRO.map((region) => {
                         const checked = selectedRegions.some((r) => r.code === region.code);
                         return (
-                          <Box
+                          <ButtonBase
                             key={region.code}
                             onClick={() => handleToggleRegion(region)}
+                            aria-pressed={checked}
                             sx={{
+                              ...FOCUS_RING,
+                              fontFamily: 'inherit',
                               display: 'inline-flex',
                               alignItems: 'center',
                               px: 0.9,
@@ -668,15 +676,11 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                               '&:hover': { borderColor: '#93c5fd' }
                             }}
                           >
-                            <Checkbox
-                              size="small"
-                              checked={checked}
-                              sx={{ p: 0, mr: 0.4, color: '#94a3b8', '&.Mui-checked': { color: '#2563eb' } }}
-                            />
-                            <Typography sx={{ fontSize: '0.8rem', fontWeight: checked ? 700 : 500, color: checked ? '#1e40af' : '#475569' }}>
+                            <CheckMark checked={checked} color="#94a3b8" checkedColor="#2563eb" sx={{ fontSize: '1.05rem', mr: 0.4 }} />
+                            <Typography component="span" sx={{ fontSize: '0.8rem', fontWeight: checked ? 700 : 500, color: checked ? '#1e40af' : '#475569' }}>
                               {region.name}
                             </Typography>
-                          </Box>
+                          </ButtonBase>
                         );
                       })}
                     </Box>

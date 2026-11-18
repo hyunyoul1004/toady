@@ -156,4 +156,74 @@ class PublicPagesUnitTest {
         org.junit.jupiter.api.Assertions.assertNull(PlannerSummary.moveInMonth(""));
         org.junit.jupiter.api.Assertions.assertNull(PlannerSummary.moveInMonth(null));
     }
+    @Test void regionsUseExactProvinceNamesOrSupplyRegionWithoutPerComplexRules() {
+        var paju = Regions.of("경기도 파주시 파주운정3지구 주상복합 3블록(경기도 파주시 동패동 1673번지 일원)").orElseThrow();
+        assertEquals("경기도", paju.sido().name()); assertEquals("파주시", paju.district());
+        assertEquals("/regions/" + Regions.segment("경기도") + "/" + Regions.segment("파주시"), paju.path());
+        assertEquals("경기도 파주시", paju.label());
+        assertEquals("수원시", Regions.of("경기 수원시 영통구 이의동 1").orElseThrow().district(), "구가 있는 시는 시 단위로 묶는다");
+        assertEquals("강원특별자치도", Regions.of("강원도 춘천시 1").orElseThrow().sido().name(), "예전 이름도 지금 이름으로");
+        assertNull(Regions.of("세종특별자치시 반곡동 14").orElseThrow().district());
+        // 시·도 없이 '광주시'로 시작하면 광주광역시로 짐작하지 않고 공급지역명을 쓴다.
+        assertTrue(Regions.of("광주시 오포읍 1", null).isEmpty());
+        var gwangju = Regions.of("광주시 오포읍 1", "경기").orElseThrow();
+        assertEquals("경기도", gwangju.sido().name()); assertEquals("광주시", gwangju.district());
+        assertEquals("광주광역시", Regions.of("광주광역시 북구 1", "광주").orElseThrow().sido().name());
+        assertEquals("충청북도", Regions.of("청주시 흥덕구 1", "충청북도").orElseThrow().sido().name());
+        assertTrue(Regions.bySegment("경기").isPresent() && Regions.bySegment("경기도").isPresent() && Regions.bySegment("서울시").isPresent());
+        assertTrue(Regions.bySegment("없는도").isEmpty() && Regions.bySegment("").isEmpty());
+        assertEquals(17, Regions.ALL.size());
+    }
+    @Test void districtsComeOnlyFromTheRealDistrictListOfThatProvince() {
+        // 지구·신도시 이름은 시·군·구가 아니다(시·도만 남긴다).
+        for (String address : List.of("인천광역시 검단신도시 AA21블록", "경상남도 진주혁신도시 C-1블록", "경기도 평택고덕국제화지구 A-50블록",
+                "경기도 위례신도시 A1-5블록", "경기 화성동탄2신도시 A-1블록", "서울특별시 마곡도시개발구 1")) {
+            var region = Regions.of(address).orElseThrow();
+            assertNull(region.district(), address);
+        }
+        assertEquals("서구", Regions.of("인천광역시 서구 원당동 1").orElseThrow().district());
+        assertEquals("고성군", Regions.of("강원특별자치도 고성군 1").orElseThrow().district());
+        assertEquals("군위군", Regions.of("대구광역시 군위군 1").orElseThrow().district());
+        assertEquals("창원시", Regions.of("경남 창원시 성산구 1").orElseThrow().district());
+        assertNull(Regions.of("광주시 오포읍 1", "광주").orElseThrow().district(), "광주광역시에는 광주시가 없다");
+        var gyeonggi = Regions.strict("경기도").orElseThrow();
+        assertTrue(Regions.district(gyeonggi, "파주시").isPresent() && Regions.district(gyeonggi, "강남구").isEmpty());
+        assertEquals(17, Regions.DISTRICTS.size(), "모든 시·도에 목록이 있다");
+        for (var sido : Regions.ALL) assertTrue(Regions.DISTRICTS.containsKey(sido.shortName()), sido.name());
+        assertEquals(25, Regions.DISTRICTS.get("서울").size());
+        assertEquals(31, Regions.DISTRICTS.get("경기").size());
+        for (var names : Regions.DISTRICTS.values()) for (String name : names)
+            assertTrue(name.matches("[가-힣]{1,5}(시|군|구)") && !name.endsWith("도시") && !name.endsWith("지구"), name);
+    }
+    @Test void resultCardUsesTheFetchedResultAndSkipsTheTableWhenHouseTypesFail() {
+        var results = org.mockito.Mockito.mock(AnnouncementResults.class);
+        org.mockito.Mockito.when(results.houseTypes("H1", "N1")).thenThrow(new IllegalStateException("db down"));
+        var page = new PublicAnnouncementPage(null, null, "https://www.toady.co.kr", results, null);
+        var published = new AnnouncementResults.Result("apt/H1/N1", true, 12.4, "54", "69", true);
+        String card = page.resultCard("apt/H1/N1", published);
+        assertTrue(card.contains("12.4 : 1") && card.contains("최저 54점"), card);
+        assertFalse(card.contains("주택형별 1순위"), "주택형 조회가 실패하면 표만 뺀다");
+        org.mockito.Mockito.verify(results, org.mockito.Mockito.never()).forIds(org.mockito.ArgumentMatchers.any());
+        assertEquals("", page.resultCard("apt/H1/N1", null));
+    }
+    @Test void shortDateShowsYearOnlyOutsideTheCurrentYear() {
+        var today = LocalDate.of(2026, 11, 18);
+        assertEquals("12.08", PublicHtml.shortDate(LocalDate.of(2026, 12, 8), today));
+        assertEquals("2025.12.08", PublicHtml.shortDate(LocalDate.of(2025, 12, 8), today));
+        assertEquals("2027.01.05", PublicHtml.shortDate(LocalDate.of(2027, 1, 5), today));
+        assertEquals("미제공", PublicHtml.shortDate(null, today));
+    }
+    @Test void structuredDataEscapesScriptEndAndListsBreadcrumbPositions() {
+        var crumbs = List.of(new PublicHtml.Crumb("TOADY", "https://www.toady.co.kr/"), new PublicHtml.Crumb("</script>단지", null));
+        String ld = PublicHtml.breadcrumbLd(crumbs, "https://www.toady.co.kr/announcements/apt/A/B");
+        assertTrue(ld.startsWith("<script type='application/ld+json'>") && ld.contains("\"BreadcrumbList\"") && ld.contains("\"position\":2"));
+        assertFalse(ld.substring(ld.indexOf('>') + 1, ld.length() - "</script>".length()).contains("<"), "본문의 <는 이스케이프한다");
+        assertTrue(ld.contains("\\u003c/script\\u003e단지"));
+        assertTrue(ld.contains("https://www.toady.co.kr/announcements/apt/A/B"), "마지막 항목은 현재 주소");
+        String nav = PublicHtml.breadcrumb(crumbs);
+        assertTrue(nav.contains("<a href='https://www.toady.co.kr/'>TOADY</a>") && nav.contains("<span>&lt;/script&gt;단지</span>"));
+        assertTrue(PublicHtml.itemListLd("목록", List.of(new PublicHtml.Crumb("a", "https://x/1"))).contains("\"ItemList\""));
+        assertEquals(1, PublicRegionPages.page(null)); assertEquals(3, PublicRegionPages.page("3"));
+        assertEquals(0, PublicRegionPages.page("0")); assertEquals(0, PublicRegionPages.page("abc")); assertEquals(0, PublicRegionPages.page("10000"));
+    }
 }

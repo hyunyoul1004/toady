@@ -1,0 +1,25 @@
+.next-event{font:inherit;display:flex;align-items:center;gap:12px;width:100%;text-align:left;text-decoration:none;color:#0f172a;cursor:pointer;border:1px solid #d7e5fb;background:#f4f8ff;transition:border-color .15s,background .15s}
+.next-event:hover{border-color:#a9c4f2;background:#edf3ff}
+.next-event:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.next-event-badge{flex-shrink:0;font-size:12px;font-weight:800;color:#1d4ed8;background:#dbe7fd;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.next-event-badge.is-urgent{color:#fff;background:#2563eb}
+.next-event-chevron{flex-shrink:0;color:#94a3b8}
+.next-event-name{color:#475569;font-weight:600}
+.next-event.is-card{border-radius:16px;padding:16px 16px 16px 18px;margin-bottom:24px}
+.next-event-icon{flex-shrink:0;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#fff;color:#2563eb;border:1px solid #d7e5fb}
+.next-event-body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.next-event-body small{font-size:12px;font-weight:700;color:#2563eb}
+.next-event-body strong{font-size:18px;font-weight:800;letter-spacing:-.3px;line-height:1.35}
+.next-event-body .next-event-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-event.is-line{border-radius:12px;padding:9px 10px 9px 10px;margin-bottom:10px;gap:9px;min-height:44px}
+.next-event-line-text{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-event-line-text b{color:#2563eb;font-weight:800;margin-right:2px}
+@media (max-width:600px){
+  .next-event.is-card{padding:14px 12px 14px 14px;gap:10px;margin-bottom:20px}
+  .next-event-icon{width:36px;height:36px;border-radius:11px}
+  .next-event-body strong{font-size:16px}
+  .next-event-line-text{font-size:13px}
+}
+
+/* 한 줄 표시에서 단지명이 길어도 '외 N곳'은 잘리지 않게 따로 둔다. */
+.next-event-others{flex-shrink:0;font-size:.78rem;font-weight:700;color:#475569;white-space:nowrap}

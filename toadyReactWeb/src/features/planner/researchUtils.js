@@ -1,3 +1,4 @@
+import { formatManwon as formatMoney } from '../../utils/money.util.js';
 /** API 공급금액은 만원 단위다. 주택형별 최고 금액을 최저 분양가로 표현하지 않는다. */
 export function parseManwon(value) {
   const text=String(value ?? '').trim().replaceAll(',','');
@@ -5,10 +6,9 @@ export function parseManwon(value) {
   const amount=Number(text);
   return Number.isFinite(amount) && amount>0 ? amount : null;
 }
+/** 표·요약용 전체 금액('3억 5,000만원'). 규칙은 공통 금액 표기(utils/money.util)를 따른다. */
 export function formatManwon(amount) {
-  if(!Number.isFinite(amount) || amount<=0) return '금액 미제공';
-  const eok=Math.floor(amount/10000),rest=amount%10000;
-  return `${eok?`${eok.toLocaleString('ko-KR')}억`:''}${eok && rest?' ':''}${rest?`${rest.toLocaleString('ko-KR',{maximumFractionDigits:2})}만원`:eok?'원':''}`;
+  return formatMoney(amount,{empty:'금액 미제공'});
 }
 export function unitLabel(type,modelNo) {
   const match=String(type || '').trim().match(/^(\d+(?:\.\d+)?)([A-Za-z]+)?$/);

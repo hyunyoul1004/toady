@@ -1,5 +1,6 @@
 import { summaryOf, normalizeScheduleEvents } from '../../planner/plannerUtils.js';
 import { unitLabel, formatManwon } from '../../planner/researchUtils.js';
+import { formatCompetitionRate } from '../../../utils/rate.util.js';
 
 const text=value=>value==null || String(value).trim()===''?'—':String(value);
 const count=value=>value==null || value===''?'—':Number.isFinite(Number(value))?Number(value).toLocaleString('ko-KR'):text(value);
@@ -7,7 +8,8 @@ const ratio=value=>{
   const raw=String(value ?? '').trim();
   if(!raw || raw==='-')return '—';
   const number=Number(raw);
-  if(Number.isFinite(number))return number>0?`${number.toFixed(2)} : 1`:number<0?`미달 ${Math.abs(number)}세대`:'—';
+  // 화면·알림과 같은 규칙(100 이상은 정수, 그 아래는 소수 둘째 자리까지, 끝의 0은 뺀다).
+  if(Number.isFinite(number))return number>0?formatCompetitionRate(number):number<0?`미달 ${Math.abs(number)}세대`:'—';
   const shortage=raw.match(/^\(?[△▲]\s*(\d+)\)?$/) || raw.match(/^\((\d+)\)$/);
   return shortage?`미달 ${shortage[1]}세대`:raw;
 };

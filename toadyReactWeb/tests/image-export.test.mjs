@@ -13,10 +13,10 @@ test('image pages repeat table metadata and retain every row of long tables',()=
 });
 test('competition images retain rank and region and show missing scores explicitly',()=>{
   const sections=competitionImageSections('apt',[{houseTy:'084.9500A',subscrptRankCode:'1',resideSenm:'해당지역',suplyHshldco:4,reqCnt:999,cmpetRate:249.75}],[{houseTy:'084.9500A',resideSenm:'해당지역',lwetScore:'56',topScore:'74',avrgScore:'0'}]);
-  assert.deepEqual(sections[0].rows[0],['84.95㎡ · A','1순위','해당지역','4','999','249.75 : 1']);
+  assert.deepEqual(sections[0].rows[0],['84.95㎡ · A','1순위','해당지역','4','999','250 : 1']);
   assert.deepEqual(sections[1].rows[0],['84.95㎡ · A','해당지역','56점','74점','미공개']);
   const cancelled=competitionImageSections('cancel-resupply',[{houseTy:'059',normalHshldco:0,normalReqCnt:0,normalCmpetRate:0,mnychCmpetRate:'3.5'}]);
-  assert.deepEqual(cancelled[0].rows[0],['59㎡','0','0','—','3.50 : 1','—']);
+  assert.deepEqual(cancelled[0].rows[0],['59㎡','0','0','—','3.5 : 1','—']);
   assert.equal(competitionImageSections('apt',[{cmpetRate:'(△3)'}])[0].rows[0].at(-1),'미달 3세대');
 });
 test('detail exports preserve complete unit highest prices rather than implying minimum prices',()=>{

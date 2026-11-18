@@ -30,8 +30,29 @@ import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Copyright from './Copyright';
 import MobileTabBar from './MobileTabBar';
 import BrandLogo from './BrandLogo';
-import { LoginPage } from '@/views/login/LoginPage';
-import { SignUp, FindPassword } from '@/views/signup';
+import Skeleton from '@mui/material/Skeleton';
+import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
+
+// 로그인·회원가입·비밀번호 찾기 창은 열 때 내려받는다(대부분의 방문은 로그인 없이 둘러보므로 첫 화면 JS에서 뺀다).
+const LoginPage = React.lazy(() => import('@/views/login/LoginPage').then(module => ({ default: module.LoginPage })));
+const SignUp = React.lazy(() => import('@/views/signup/SignUp').then(module => ({ default: module.SignUp })));
+const FindPassword = React.lazy(() => import('@/views/signup/FindPassword').then(module => ({ default: module.FindPassword })));
+
+/** 계정 창 내용을 내려받는 동안: 제목·입력칸·버튼 자리를 잡아 창 크기가 덜컥 바뀌지 않게 한다. */
+function AccountDialogSkeleton() {
+  return (
+    <Box role="status" aria-label="불러오는 중" aria-busy="true" sx={{ pt: 1 }}>
+      <Skeleton variant="text" width="45%" height={36} sx={{ mb: 2 }} />
+      <Skeleton variant="rounded" height={48} sx={{ mb: 1.5, borderRadius: 2 }} />
+      <Skeleton variant="rounded" height={48} sx={{ mb: 2.5, borderRadius: 2 }} />
+      <Skeleton variant="rounded" height={44} sx={{ borderRadius: 2 }} />
+    </Box>
+  );
+}
+/** 계정 창 내용: 파일을 받지 못하거나 오류가 나도 창 안에서만 안내한다. */
+function AccountDialogBody({ children }) {
+  return <SectionErrorBoundary compact title="창을 열지 못했어요"><React.Suspense fallback={<AccountDialogSkeleton />}>{children}</React.Suspense></SectionErrorBoundary>;
+}
 
 export function MainLayout() {
   const [overlay, setOverlay] = useHistoryOverlay('layout');
@@ -168,7 +189,7 @@ export function MainLayout() {
             position: 'absolute',
             top: 16,
             right: 16,
-            color: '#94a3b8',
+            color: '#64748b',
             bgcolor: '#f8fafc',
             border: '1px solid #e2e8f0',
             transition: 'all 0.15s ease',
@@ -177,15 +198,17 @@ export function MainLayout() {
         >
           <CloseIcon fontSize="small" />
         </IconButton>
-        <LoginPage
-          handleCloseModal={() => setLoginModalOpen(false)}
-          handleSignUpModalOpen={() => {
-            setSignUpModalOpen(true);
-          }}
-          handleFindPwModalOpen={() => {
-            setFindPwModalOpen(true);
-          }}
-        />
+        <AccountDialogBody>
+          <LoginPage
+            handleCloseModal={() => setLoginModalOpen(false)}
+            handleSignUpModalOpen={() => {
+              setSignUpModalOpen(true);
+            }}
+            handleFindPwModalOpen={() => {
+              setFindPwModalOpen(true);
+            }}
+          />
+        </AccountDialogBody>
       </Dialog>
 
       {/* 회원가입 다이얼로그 */}
@@ -218,7 +241,7 @@ export function MainLayout() {
             position: 'absolute',
             top: 16,
             right: 16,
-            color: '#94a3b8',
+            color: '#64748b',
             bgcolor: '#f8fafc',
             border: '1px solid #e2e8f0',
             transition: 'all 0.15s ease',
@@ -227,12 +250,14 @@ export function MainLayout() {
         >
           <CloseIcon fontSize="small" />
         </IconButton>
-        <SignUp
-          handleCloseModal={() => setSignUpModalOpen(false)}
-          handleOpenLogin={() => {
-            setLoginModalOpen(true);
-          }}
-        />
+        <AccountDialogBody>
+          <SignUp
+            handleCloseModal={() => setSignUpModalOpen(false)}
+            handleOpenLogin={() => {
+              setLoginModalOpen(true);
+            }}
+          />
+        </AccountDialogBody>
       </Dialog>
 
       {/* 비밀번호 찾기 다이얼로그 */}
@@ -265,7 +290,7 @@ export function MainLayout() {
             position: 'absolute',
             top: 16,
             right: 16,
-            color: '#94a3b8',
+            color: '#64748b',
             bgcolor: '#f8fafc',
             border: '1px solid #e2e8f0',
             transition: 'all 0.15s ease',
@@ -274,13 +299,15 @@ export function MainLayout() {
         >
           <CloseIcon fontSize="small" />
         </IconButton>
-        <FindPassword
-          open={findPwModalOpen}
-          handleCloseModal={() => setFindPwModalOpen(false)}
-          handleOpenLogin={() => {
-            setLoginModalOpen(true);
-          }}
-        />
+        <AccountDialogBody>
+          <FindPassword
+            open={findPwModalOpen}
+            handleCloseModal={() => setFindPwModalOpen(false)}
+            handleOpenLogin={() => {
+              setLoginModalOpen(true);
+            }}
+          />
+        </AccountDialogBody>
       </Dialog>
       <Snackbar open={sessionExpired} autoHideDuration={8000} onClose={(_, reason) => { if (reason !== 'clickaway') setSessionExpired(false); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} sx={{ bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', md: 24 } }}

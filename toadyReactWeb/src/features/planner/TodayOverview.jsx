@@ -3,9 +3,12 @@ import { Alert, Box, Button, Chip, Paper, Stack, ToggleButton, ToggleButtonGroup
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { shiftMonth, uniqueInMonth } from './browseState';
-import { safeRead, ID_PATTERN } from './plannerUtils';
+import { safeRead, ID_PATTERN, koreaToday } from './plannerUtils';
 import { usePlanner } from './usePlanner';
 import TodaySummary from './TodaySummary';
+import NextEvent from './NextEvent';
+import InterestAreaPicker from './InterestAreaPicker';
+import { nextPlannerEvent } from './nextEventRules';
 
 export function rememberViewed(detail) {
   if (!ID_PATTERN.test(detail?.subscriptSeq || '') || !detail?.houseNm) return;
@@ -15,14 +18,22 @@ export function rememberViewed(detail) {
     window.dispatchEvent(new Event('toady-recent'));
   } catch { /* 최근 본 공고는 기기에 저장할 수 있는 경우에만 제공한다. */ }
 }
-export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month, onMonthChange, isLoading,isError,onResetFilters }) {
+/**
+ * searchTargets·onApplyAreas는 Main의 검색 조건(paramInfo.citys)과 그 변경 함수다.
+ * 넘겨주지 않으면 관심 지역 고르기 줄은 나오지 않는다.
+ */
+export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month, onMonthChange, isLoading,isError,onResetFilters,searchTargets,onApplyAreas }) {
   const planner=usePlanner();
   const [recent,setRecent]=useState(() => safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));
   useEffect(() => { const refresh=()=>setRecent(safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));window.addEventListener('toady-recent',refresh);return()=>window.removeEventListener('toady-recent',refresh); },[]);
   // 조회 범위는 달력 앞뒤 칸 때문에 이전·다음 달 일부를 포함한다. 건수와 목록은 고른 달의 일정만 센다(달마다 같은 공고가 겹치지 않게).
   const unique=uniqueInMonth(items,month);
   const list=unique;
+  // 저장한 공고가 있으면 가장 가까운 일정 한 줄, 없으면 처음 방문자에게 관심 지역 고르기를 보여 준다.
+  const nextEvent=planner.items.length ? nextPlannerEvent(planner.items,koreaToday()) : null;
   return <>
+  {nextEvent ? <NextEvent event={nextEvent} variant="line" onOpen={onOpen} />
+    : !planner.isLoading && <InterestAreaPicker savedCount={planner.items.length} searchTargets={searchTargets} onApply={onApplyAreas} />}
   <TodaySummary savedCount={planner.items.length} />
   <Paper variant="outlined" sx={{p:1.5,mt:1.5,borderRadius:2}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>

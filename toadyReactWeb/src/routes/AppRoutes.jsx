@@ -36,6 +36,9 @@ function PageLoading() {
 class PageErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { failed: false }; }
   static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error, info) { console.error('[PageErrorBoundary]', error, info?.componentStack); }
+  // 주소가 바뀌면(다른 메뉴·공고로 이동) 실패 표시를 지우고 다시 그린다.
+  componentDidUpdate(previousProps) { if (this.state.failed && previousProps.resetKey !== this.props.resetKey) this.setState({ failed: false }); }
   render() {
     if (!this.state.failed) return this.props.children;
     return <Box sx={{ textAlign: 'center', py: 8, px: 2 }} role="alert">
@@ -51,6 +54,14 @@ function Page({ children }) {
   return <PageErrorBoundary key={pathname}><Suspense fallback={<PageLoading />}>{children}</Suspense></PageErrorBoundary>;
 }
 const page = element => <Page>{element}</Page>;
+/**
+ * 홈(청약 캘린더)과 공고 상세는 같은 Main을 계속 쓴다(상세를 열고 닫아도 달력·검색 상태가 그대로 남게).
+ * 그래서 주소마다 key를 바꾸지 않고 같은 경계를 유지하되, 주소가 바뀌면 실패 표시만 지운다.
+ */
+function MainPage() {
+  const { pathname } = useLocation();
+  return <PageErrorBoundary resetKey={pathname}><Main /></PageErrorBoundary>;
+}
 
 /**
  * 예전 단독 /login 주소: 메인 화면 위에 로그인 팝업을 히스토리 층으로 연다.
@@ -92,9 +103,9 @@ export const AppRoutes = () => {
     <Routes>
       {/* 기본 레이아웃 하위 페이지 */}
       <Route path="/" element={<MainLayout />}>
-        <Route index element={<Main />} />
-        <Route path="showSubscriptDetail" element={<Main />} />
-        <Route path="announcements/:type/:house/:notice" element={<Main />} />
+        <Route index element={<MainPage />} />
+        <Route path="showSubscriptDetail" element={<MainPage />} />
+        <Route path="announcements/:type/:house/:notice" element={<MainPage />} />
         <Route path="my" element={page(<MyPlanner />)} />
         <Route path="account" element={page(<AccountPage />)} />
         <Route path="messages" element={page(<MessagesPage />)} />
@@ -104,6 +115,9 @@ export const AppRoutes = () => {
         <Route path="faq" element={page(<FaqPage />)} />
         <Route path="this-week" element={page(<ThisWeekPage />)} />
         <Route path="regions" element={page(<RegionsPage />)} />
+        {/* 지역별 청약 공개 주소: 사람에게도 같은 주소에서 그 지역으로 거른 청약 캘린더를 보여 준다(봇은 nginx가 서버 HTML). */}
+        <Route path="regions/:sido" element={<MainPage />} />
+        <Route path="regions/:sido/:district" element={<MainPage />} />
         {/* 이전 주소(생활권별 청약)는 지역별 청약으로 옮긴다. */}
         <Route path="living-areas" element={<Navigate to="/regions" replace />} />
         <Route path="areas" element={<PublicPathRedirect to="/regions" />} />

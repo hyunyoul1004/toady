@@ -25,7 +25,7 @@ import './match.css';
 
 const SEO = {
   match: { title: '내게 맞는 청약 · 넣을 수 있는 공고만 모아보기 · TOADY', description: '사는 곳·무주택·통장·가족 조건을 30초 만에 고르면 지금 접수 중이거나 곧 접수할 아파트 청약 중 넣을 수 있는 공고와 가능한 특별공급을 알려 드려요.', path: '/match' },
-  zupzup: { title: '무순위·줍줍 청약 모아보기 · 접수 중 잔여세대 · TOADY', description: '전국 APT 무순위·잔여세대·임의공급(줍줍) 공고를 접수 일정·분양가와 함께 모았어요. 새 줍줍 공고가 올라오면 알림으로 받아 보세요.', path: '/match/zupzup' }
+  zupzup: { title: '무순위·줍줍 청약 모아보기 · 접수 중 잔여세대 · TOADY', description: '전국 APT 무순위·잔여세대·임의공급(줍줍) 공고를 접수 일정·분양가와 함께 모았어요. 새 줍줍 공고가 올라오면 알림으로 받아 보세요.', path: '/zupzup' }
 };
 
 function profileSummary(profile) {

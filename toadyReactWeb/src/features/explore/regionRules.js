@@ -1,3 +1,4 @@
+import { isDistrictOf } from './districts.js';
 import Citys from '../../views/main/Citys.js';
 
 /**
@@ -74,6 +75,32 @@ export function searchLabel(cityName, districtName) {
   return districtName ? `${cityName} ${districtName}` : cityName;
 }
 
+/** 예전 이름·흔한 표기(서버 Regions.ALIASES와 같은 목록). '광주시'는 경기 광주시와 헷갈리므로 넣지 않는다. */
+const CITY_ALIASES = { 서울시: '서울', 부산시: '부산', 대구시: '대구', 인천시: '인천', 대전시: '대전', 울산시: '울산', 세종시: '세종', 강원도: '강원', 전라북도: '전북', 제주도: '제주' };
+/** 시·군·구 글자 모양: 실제 이름은 '동대문구'·'남양주시'처럼 짧고, '검단신도시'·'평택고덕국제화지구' 같은 지구·신도시 이름은 받지 않는다. */
+/**
+ * 지역별 청약 주소(/regions/{시·도}[/{시·군·구}])의 조각 → 캘린더 검색 대상(검색 목록 FLAT_CITY_OPTIONS와 같은 모양).
+ * 서버 공개 페이지(Regions.java)와 같은 기준: 시·도는 정확한 이름·줄임말·예전 이름만, 시·군·구는 그 시·도의 이름으로만 거른다.
+ * 검색 목록(Citys)에 없는 시·군·구도 글자 검색이 아니라 같은 시·도 안의 낱말 비교(matchesRegionTarget)로 거른다.
+ * 시·도를 모르면 null, 그 시·도의 실제 시·군·구(districts.js, 서버와 같은 목록)가 아니면 시·도만 돌려준다.
+ */
+export function regionTargetOf(sidoSegment, districtSegment) {
+  const head = String(sidoSegment || '').trim();
+  const city = head && (strictCity(head) || strictCity(CITY_ALIASES[head] || ''));
+  if (!city) return null;
+  const district = String(districtSegment || '').trim();
+  if (district && isDistrictOf(city.cityName, district)) {
+    const label = searchLabel(city.cityName, district);
+    return { type: 'district', key: label, label, cityName: city.cityName, districtName: district };
+  }
+  return { type: 'city', key: city.cityName, label: city.cityName, cityName: city.cityName };
+}
+/** 검색 대상의 지역별 청약 주소('/regions/경기도/파주시', 각 조각은 퍼센트 인코딩). */
+export function regionPath(target) {
+  if (!target?.cityName) return '/regions';
+  return `/regions/${encodeURIComponent(target.cityName)}${target.districtName ? `/${encodeURIComponent(target.districtName)}` : ''}`;
+}
+
 const hasWord = (text, word) => ` ${String(text || '').replace(/[(),]/g, ' ').replace(/\s+/g, ' ').trim()} `.includes(` ${word} `);
 /**
  * 캘린더 검색의 시·도/시·군·구 대상과 공고가 맞는지. 글자 포함이 아니라 같은 시·도 안의 낱말 단위로 비교한다
@@ -85,6 +112,7 @@ export function matchesRegionTarget(item, target) {
   const sameCity = found ? found.cityName === target.cityName : hasWord(`${location} ${address}`, target.cityName);
   if (!target.districtName) return sameCity;
   if (!sameCity) return false;
-  if (found?.districtName) return found.districtName === target.districtName;
+  // 일반구가 있는 시는 검색 목록에서 '청주시 상당구'처럼 구까지 붙어 나온다. 시 단위 주소(/regions/충청북도/청주시)는 그 구들도 포함한다.
+  if (found?.districtName) return found.districtName === target.districtName || found.districtName.startsWith(`${target.districtName} `);
   return hasWord(location, target.districtName) || hasWord(address, target.districtName);
 }

@@ -33,7 +33,9 @@ async function harness(fetch, initialStorage = {}) {
     '@/utils/date.util': { formatDate: value => value, formatDateRange: (start, end) => `${start || ''}~${end || ''}` }
   };
   const cache = new Map();
-  async function load(specifier) {
+  // '@/…'(확장자 없음)와 상대 경로('../../utils/money.util.js') 둘 다 읽는다. 상대 경로는 가져오는 모듈 위치 기준이다.
+  async function load(specifier, referrer) {
+    if (specifier.startsWith('.') && referrer?.identifier) specifier = new URL(specifier, referrer.identifier).href;
     if (cache.has(specifier)) return cache.get(specifier);
     let module;
     if (mocks[specifier]) {
@@ -42,8 +44,8 @@ async function harness(fetch, initialStorage = {}) {
         for (const [key, value] of Object.entries(values)) this.setExport(key, value);
       }, { context });
     } else {
-      const path = specifier.replace(/^@\//, 'src/');
-      module = new vm.SourceTextModule(await fs.readFile(new URL(`../${path}.js`, import.meta.url), 'utf8'), { context });
+      const url = specifier.startsWith('file:') ? new URL(specifier) : new URL(`../${specifier.replace(/^@\//, 'src/')}.js`, import.meta.url);
+      module = new vm.SourceTextModule(await fs.readFile(url, 'utf8'), { context, identifier: url.href });
     }
     cache.set(specifier, module);
     return module;

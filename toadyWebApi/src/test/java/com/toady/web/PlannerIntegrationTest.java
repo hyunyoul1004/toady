@@ -33,6 +33,7 @@ class PlannerIntegrationTest {
     @Autowired ReminderUnsubscribe unsubscribe;
     @MockitoBean EmailUtilService mail;
     @Autowired com.toady.web.app.planner.ScoreBenchmarks benchmarks;
+    @Autowired com.toady.web.app.planner.PublicAnnouncementIndex announcementIndex;
     @BeforeEach void setup() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_FAVORITE (USER_SEQ BIGINT,ANNOUNCEMENT_TYPE VARCHAR(20),HOUSE_MANAGE_NO VARCHAR(40),PBLANC_NO VARCHAR(40),NOTE VARCHAR(2000),CHECKLIST INT,EMAIL_ENABLED BOOLEAN,REG_DT TIMESTAMP,PRIMARY KEY(USER_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (ID INT PRIMARY KEY)");
@@ -46,6 +47,7 @@ class PlannerIntegrationTest {
         org.mockito.Mockito.reset(mail);
         com.toady.web.app.planner.PublicPagesCache.clear();
         com.toady.web.app.planner.PublicPagesCache.clear(benchmarks);
+        com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
     }
     UserEntity user(String email) {
         return users.save(UserEntity.builder().userEmail(email).userNicName(email.substring(0,email.indexOf('@'))).userPassword(passwords.encode("Password123!"))
@@ -144,7 +146,7 @@ class PlannerIntegrationTest {
         assertEquals("파주시",regions.get(0).path("districts").get(0).path("name").asText());
         com.toady.web.app.planner.PublicPagesCache.clear(benchmarks); com.toady.web.app.planner.PublicPagesCache.clear();
         String area=html(mvc.perform(get("/api/v1/public/areas/unjeong")).andExpect(status().isOk()));
-        assertTrue(area.contains("운정 최근 공개 당첨가점") && area.contains("최저 47점 · 최고 74점") && area.contains("/announcements/apt/S1/N1?tabType=rate"),area);
+        assertTrue(area.contains("운정 최근 공개 당첨가점") && area.contains("최저 47점 · 최고 74점") && area.contains("/announcements/apt/S1/N1'"),area);
     }
     @Test void eligibilityFeedListsActiveAnnouncementsWithSupplyConditions() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
@@ -238,6 +240,98 @@ class PlannerIntegrationTest {
         String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/areas.xml")).andExpect(status().isOk()));
         assertTrue(sitemap.contains("/zupzup") && sitemap.contains("/weekly") && sitemap.contains("/score"));
         assertFalse(sitemap.contains("/match/zupzup"),"같은 내용의 앱 주소는 사이트맵에 따로 넣지 않는다");
+    }
+    void apt(String house,String name,String address,java.time.LocalDate start,java.time.LocalDate end,java.time.LocalDate winner) {
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE,RCRIT_PBLANC_DE) VALUES (?,?,?,?,?,?,?,?)",
+            house,"N1",name,address,start.toString(),end.toString(),winner==null?null:winner.toString(),start.minusDays(7).toString());
+    }
+    static String enc(String value) { return java.net.URLEncoder.encode(value,java.nio.charset.StandardCharsets.UTF_8); }
+    @Test void regionHubsLinkRecentAnnouncementsAndAnnouncementPagesLinkBack() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        apt("H1","파주 예정 단지","경기도 파주시 야당동 10",today.plusDays(5),today.plusDays(7),today.plusDays(14));
+        apt("H2","파주 지난 단지","경기도 파주시 문산읍 1",today.minusDays(40),today.minusDays(38),today.minusDays(30));
+        apt("H3","강남 예정 단지","서울특별시 강남구 역삼동 1",today.plusDays(5),today.plusDays(7),today.plusDays(14));
+        // 시·도 없이 시로 시작하는 주소는 공급지역명으로 시·도를 정한다(경기 광주시 ≠ 광주광역시).
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,SUBSCRPT_AREA_CODE_NM,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('H4','N1','오포 단지','광주시 오포읍 1','경기',?,?)",
+            today.plusDays(3).toString(),today.plusDays(4).toString());
+        for(int i=0;i<25;i++) apt("S"+i,"강서 지난 단지 "+i,"서울특별시 강서구 마곡동 "+i,today.minusDays(30+i),today.minusDays(29+i),null);
+        com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
+
+        String index=html(mvc.perform(get("/api/v1/public/regions")).andExpect(status().isOk()));
+        assertTrue(index.contains("/regions/"+enc("경기도")+"'") && index.contains("/regions/"+enc("경기도")+"/"+enc("파주시")+"'"),index);
+        assertTrue(index.contains("/regions/"+enc("경기도")+"/"+enc("광주시")) && !index.contains("/regions/"+enc("광주광역시")),"경기 광주시를 광주광역시로 보지 않는다");
+        assertTrue(index.contains("\"BreadcrumbList\"") && index.contains("\"ItemList\""));
+
+        String paju=html(mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","파주시")).andExpect(status().isOk()));
+        assertTrue(paju.contains("/announcements/apt/H1/N1") && paju.contains("/announcements/apt/H2/N1") && paju.contains("/announcements/apt/P1/N1"),paju);
+        assertFalse(paju.contains("/announcements/apt/H3/N1") || paju.contains("/announcements/apt/H4/N1"),"다른 지역 공고는 넣지 않는다");
+        assertTrue(paju.contains("<title>경기도 파주시 청약 일정·분양 공고 · 접수 중·예정 1건 · TOADY</title>"),paju);
+        assertTrue(paju.contains("rel='canonical' href='https://www.toady.co.kr/regions/"+enc("경기도")+"/"+enc("파주시")+"'"));
+        assertTrue(paju.indexOf("/announcements/apt/H1/N1")<paju.indexOf("/announcements/apt/H2/N1"),"접수 예정 공고를 지난 공고보다 먼저");
+        assertTrue(paju.contains("/?search="+enc("경기도").replace("+","%20")+"%20"+enc("파주시")),"앱 캘린더 지역 검색으로 잇는다");
+        assertTrue(paju.contains("\"BreadcrumbList\"") && paju.contains("\"ItemList\""));
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기","파주시")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","없는시")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/regions/{sido}","없는도")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","파주시").param("page","2")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","파주시").param("page","x")).andExpect(status().isNotFound());
+        // 지난 공고는 20건씩 최신순으로 나눈다.
+        String gangseo=html(mvc.perform(get("/api/v1/public/regions/{sido}/{district}","서울특별시","강서구")).andExpect(status().isOk()));
+        assertTrue(gangseo.contains("/announcements/apt/S0/N1") && !gangseo.contains("/announcements/apt/S24/N1") && gangseo.contains("rel='next'"),gangseo);
+        String second=html(mvc.perform(get("/api/v1/public/regions/{sido}/{district}","서울특별시","강서구").param("page","2")).andExpect(status().isOk()));
+        assertTrue(second.contains("/announcements/apt/S24/N1") && second.contains("rel='prev'") && second.contains("?page=2'"),second);
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","서울특별시","강서구").param("page","3")).andExpect(status().isNotFound());
+        String seoul=html(mvc.perform(get("/api/v1/public/regions/{sido}","서울특별시")).andExpect(status().isOk()));
+        assertTrue(seoul.contains("/regions/"+enc("서울특별시")+"/"+enc("강남구")) && seoul.contains("/announcements/apt/H3/N1"));
+        // 생활권 목록에서도 지역 페이지로 이어진다.
+        assertTrue(html(mvc.perform(get("/api/v1/public/areas"))).contains("/regions/"+enc("경기도")));
+
+        String detail=html(mvc.perform(get("/api/v1/public/announcements/apt/H1/N1")).andExpect(status().isOk()));
+        assertTrue(detail.contains("<a href='https://www.toady.co.kr/regions/"+enc("경기도")+"/"+enc("파주시")+"'>파주시</a>"),"빵부스러기에 시·군·구");
+        assertTrue(detail.contains("같은 시·군·구의 다른 공고") && detail.contains("/announcements/apt/H2/N1") && detail.contains("/announcements/apt/P1/N1"),detail);
+        assertFalse(detail.contains("/announcements/apt/H3/N1"));
+        assertTrue(detail.contains("\"BreadcrumbList\""));
+        assertFalse(detail.contains("subscriptSeq"),"앱 링크도 공고 대표 주소를 쓴다");
+        assertTrue(detail.contains("data-app href='https://www.toady.co.kr/announcements/apt/H1/N1'"),detail);
+
+        String sitemap=html(mvc.perform(get("/api/v1/public/sitemaps/regions.xml")).andExpect(status().isOk()));
+        assertTrue(sitemap.contains("/regions/"+enc("경기도")+"/"+enc("파주시")+"</loc>"),sitemap);
+        assertTrue(html(mvc.perform(get("/api/v1/public/sitemaps/apt/0.xml"))).contains("<lastmod>"),"공고 사이트맵에 lastmod");
+    }
+    @Test void publishedResultsTargetResultSearchesWithPerHouseTypeTable() throws Exception {
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_CMPET (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,SUBSCRPT_RANK_CODE,RESIDE_SECD,HOUSE_TY,SUPLY_HSHLDCO,REQ_CNT,CMPET_RATE) VALUES "
+            +"('P1','N1','01','1','01','084.9800A','120','1,500','12.5'),('P1','N1','01','1','03','084.9800A','120','300','30.1'),('P1','N1','02','1','01','059.9900B','40','10','(△2)'),('P1','N1','01','2','01','084.9800A','120','9','80')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_SCORE (HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDE_SECD,HOUSE_TY,LWET_SCORE,TOP_SCORE) VALUES ('P1','N1','01','01','084.9800A','48','69')");
+        String detail=html(mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andExpect(status().isOk()));
+        assertTrue(detail.contains("<title>&lt;운정 테스트&gt; 청약 경쟁률·당첨가점 결과 · TOADY</title>"),detail);
+        assertTrue(detail.contains("content='1순위 최고 30.1 대 1 · 당첨가점 최저 48점 · 최고 69점 · "),"검색 설명 앞에 결과");
+        assertTrue(detail.contains("주택형별 1순위 경쟁률·당첨가점") && detail.contains("<th scope='row'>084.9800A</th><td>120세대</td><td>1,800건</td><td>30.1 : 1</td><td>48~69점</td>"),detail);
+        assertTrue(detail.contains("<th scope='row'>059.9900B</th><td>40세대</td><td>10건</td><td>미달</td><td>-</td>"),"전부 미달 표기면 미달");
+    }
+    @Test void botHomeScoreAndMatchPagesHaveTheirOwnTitlesAndAnnouncementLinks() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        apt("WK","이번주 접수 단지","인천광역시 서구 불로동 1",today,today.plusDays(1),today.plusDays(8));
+        com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
+        String home=html(mvc.perform(get("/api/v1/public/home")).andExpect(status().isOk()));
+        assertTrue(home.contains("/announcements/apt/WK/N1") && home.contains("rel='canonical' href='https://www.toady.co.kr/'"),home);
+        for(String link:List.of("/regions'","/weekly'","/zupzup'","/areas'","/help/faq'","/regions/"+enc("인천광역시")))
+            assertTrue(home.contains("https://www.toady.co.kr"+link),link);
+        assertTrue(home.contains("\"SearchAction\""));
+        String score=html(mvc.perform(get("/api/v1/public/score")).andExpect(status().isOk()));
+        String match=html(mvc.perform(get("/api/v1/public/match")).andExpect(status().isOk()));
+        assertTrue(score.contains("rel='canonical' href='https://www.toady.co.kr/score'") && score.contains("<h1>청약 가점 계산기</h1>"));
+        assertTrue(match.contains("rel='canonical' href='https://www.toady.co.kr/match'") && match.contains("/announcements/apt/WK/N1"));
+        java.util.Set<String> titles=new java.util.HashSet<>();
+        for(String page:List.of(home,score,match)) titles.add(page.substring(page.indexOf("<title>"),page.indexOf("</title>")));
+        assertEquals(3,titles.size(),"주소마다 다른 제목");
+    }
+    @Test void livingAreaWithoutActiveAnnouncementsDescribesRecentClosings() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        jdbc.update("DELETE FROM TB_APT_LTTOT_PBLANC_DETAIL");
+        apt("D1","동탄 마감 단지","경기도 화성시 청계동 1",today.minusDays(20),today.minusDays(18),today.minusDays(10));
+        String page=html(mvc.perform(get("/api/v1/public/areas/dongtan")).andExpect(status().isOk()));
+        assertFalse(page.contains("접수 중 0건"),"진행 공고가 없으면 0건으로 알리지 않는다");
+        assertTrue(page.contains("최근 6개월 마감 1건 · 최근 동탄 마감 단지"),page);
     }
     @Test void ratePollAcceptsOneChangeableVoteUntilCloseAndRevealsActualBucket() throws Exception {
         java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));

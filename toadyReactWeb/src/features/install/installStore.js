@@ -10,6 +10,8 @@ import { installMode } from './installSupport';
  */
 let deferred = null;
 let installed = false;
+/** 이번 방문에서 설치 창을 띄웠다가 닫았는지(브라우저는 같은 창을 다시 주지 않는다). */
+let promptDismissed = false;
 let version = 0;
 const listeners = new Set();
 function emit() { version += 1; listeners.forEach(listener => listener()); }
@@ -17,6 +19,10 @@ function subscribe(listener) { listeners.add(listener); return () => listeners.d
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', event => { deferred = event; emit(); });
+  // 이미 이 기기에 설치돼 있으면(브라우저 탭으로 다시 연 경우) 메뉴를 숨긴다. manifest의 related_applications(webapp)와 짝이다.
+  try {
+    window.navigator.getInstalledRelatedApps?.().then(apps => { if (apps?.length) { installed = true; emit(); } }).catch(() => {});
+  } catch { /* 지원하지 않는 브라우저 */ }
   window.addEventListener('appinstalled', () => { deferred = null; installed = true; trackAction('app_install', 'tool/install-done'); emit(); });
 }
 
@@ -29,6 +35,7 @@ export async function promptInstall() {
   try {
     event.prompt();
     const { outcome } = await event.userChoice;
+    if (outcome !== 'accepted') { promptDismissed = true; emit(); }
     trackAction('app_install', outcome === 'accepted' ? 'tool/install-accepted' : 'tool/install-dismissed');
     return outcome;
   } catch {
@@ -43,6 +50,7 @@ export function useInstallMode() {
   if (installed) return 'installed';
   return installMode(detectPlatform(window.navigator, window), {
     canPrompt: Boolean(deferred),
+    promptDismissed,
     android: /Android/i.test(window.navigator.userAgent || '')
   });
 }

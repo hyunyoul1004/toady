@@ -2,6 +2,7 @@
  * 위치 탭 '주변 실거래가' 지도의 필터·표시 규칙(화면 없이 테스트한다). 금액 단위는 만원.
  * 서버(ComplexPriceService)가 단지별로 묶어 준 최근 신고 거래 안에서만 고르고 계산한다. 호가·시세 추정은 하지 않는다.
  */
+import { formatManwon } from '../../../utils/money.util.js';
 const PYEONG = 3.305785;
 /**
  * 공급면적 ÷ 전용면적 추정 비율. 실거래 자료에는 전용면적만 있어 분양 광고의 '평형'(공급면적 기준)을 이 비율로 추정한다.
@@ -54,13 +55,9 @@ function priceRange(min, max) {
   const low = clamp(min, PRICE_RANGE.min), high = clamp(max, PRICE_RANGE.max);
   return low <= high ? { priceMin: low, priceMax: high } : { priceMin: high, priceMax: low };
 }
-/** 슬라이더용 금액 글자: 290,000 → '29억', 29,000 → '2억 9,000만', 0 → '0'. */
+/** 슬라이더용 금액 글자(원 없이): 290,000 → '29억', 29,000 → '2억 9,000만', 0 → '0'. */
 export function rangePrice(manwon) {
-  const value = Math.round(Number(manwon) || 0);
-  if (value <= 0) return '0';
-  const eok = Math.floor(value / 10000), rest = value % 10000;
-  if (!eok) return `${rest.toLocaleString('ko-KR')}만`;
-  return rest ? `${eok}억 ${rest.toLocaleString('ko-KR')}만` : `${eok}억`;
+  return formatManwon(Math.round(Number(manwon) || 0), { won: false, empty: '0' });
 }
 /** 매매가 범위 글자(네이버 방식): '전체', '~2억 9,000만', '5억~', '5억~10억'. */
 export function priceRangeText(filters) {
@@ -121,19 +118,11 @@ export function normalizeFilters(raw) {
 
 /** 지도 말풍선용 짧은 금액: 78,000 → '7.8억', 120,000 → '12억', 8,500 → '8,500만'. */
 export function shortPrice(manwon) {
-  const value = Math.round(Number(manwon) || 0);
-  if (value <= 0) return '—';
-  if (value < 10000) return `${value.toLocaleString('ko-KR')}만`;
-  const eok = value / 10000;
-  return `${eok >= 10 ? Math.round(eok * 10) / 10 : Math.round(eok * 10) / 10}억`.replace(/\.0억$/, '억');
+  return formatManwon(manwon, { compact: true });
 }
 /** 목록·상세용 금액: 78,500 → '7억 8,500만원', 120,000 → '12억원'. */
 export function fullPrice(manwon) {
-  const value = Math.round(Number(manwon) || 0);
-  if (value <= 0) return '—';
-  const eok = Math.floor(value / 10000), rest = value % 10000;
-  if (!eok) return `${rest.toLocaleString('ko-KR')}만원`;
-  return rest ? `${eok}억 ${rest.toLocaleString('ko-KR')}만원` : `${eok}억원`;
+  return formatManwon(Math.round(Number(manwon) || 0));
 }
 /** 면적 글자: ㎡는 전용면적 정수, 평은 추정 공급 평형(예: 84.9㎡ → '34평형'). */
 export function areaText(area, unit = 'm2') {

@@ -87,3 +87,38 @@ test('new mobile visitors start with listings while explicit viewing preferences
  assert.equal(initialBrowseState(saved,'2026-11-12','list').viewMode,'calendar');
  assert.equal(initialBrowseState(saved,'2026-11-12','list').month,'2026-11');
 });
+
+test('내 다음 일정: 저장한 공고 전체에서 가장 가까운 일정을 행동 문구로', async () => {
+  const { nextPlannerEvent, eventAction, dayWord, weeklyPicks } = await import('../src/features/planner/nextEventRules.js');
+  const item = (id, houseNm, events) => ({ id, summary: { houseNm, events } });
+  const items = [
+    item('apt/2/1', '나중 단지', [{ label: '당첨자 발표', date: '2026-11-25' }]),
+    item('apt/1/1', '가까운 단지', [{ label: '접수 시작', date: '2026-11-10' }, { label: '1순위 해당지역', date: '2026-11-19' }, { label: '1순위 기타지역', date: '2026-11-19' }])
+  ];
+  const next = nextPlannerEvent(items, '2026-11-18');
+  assert.equal(next.id, 'apt/1/1');
+  assert.equal(next.text, '내일 1순위 접수');
+  assert.equal(next.houseNm, '가까운 단지');
+  assert.equal(nextPlannerEvent([items[0]], '2026-11-18').text, '25일 당첨자 발표');
+  assert.equal(nextPlannerEvent([], '2026-11-18'), null);
+  assert.equal(nextPlannerEvent([item('apt/3/1', '지난 단지', [{ label: '접수 마감', date: '2026-11-01' }])], '2026-11-18'), null);
+  assert.equal(eventAction('특별공급 시작'), '특별공급 접수');
+  assert.equal(dayWord('2026-11-18', '2026-11-18'), '오늘');
+  assert.equal(dayWord('2026-12-03', '2026-11-18'), '12월 3일');
+  const weekly = { current: [{ id: 'a', status: 'CLOSED' }, { id: 'b', status: 'UPCOMING', start: '2026-11-20' }, { id: 'c', status: 'OPEN', start: '2026-11-17' }, { id: 'd', status: 'OPEN', start: '2026-11-16' }] };
+  assert.deepEqual(weeklyPicks(weekly, ['d']).map(x => x.id), ['c', 'b']);
+});
+
+test('관심 지역 고르기: 처음 상태에서만, 최대 3곳, 생활권 검색과 같은 조건으로', async () => {
+  const { interestAreaTargets, showInterestPicker, toggleInterest } = await import('../src/features/planner/interestAreaRules.js');
+  const areas = [{ label: '운정', terms: ['운정', '파주시 동패동'] }, { label: '동탄', terms: ['동탄'] }, { label: '다산', terms: ['다산'] }, { label: '검단', terms: ['검단'] }];
+  assert.deepEqual(interestAreaTargets(areas, ['운정', '없는곳']), [{ type: 'living_area', label: '운정', key: 'area_운정', terms: ['운정', '파주시 동패동'] }]);
+  assert.equal(interestAreaTargets(areas, ['운정', '동탄', '다산', '검단']).length, 3);
+  assert.equal(showInterestPicker({ savedCount: 0, searchTargets: [], areaCount: 4 }), true);
+  assert.equal(showInterestPicker({ savedCount: 1, searchTargets: [], areaCount: 4 }), false);
+  assert.equal(showInterestPicker({ savedCount: 0, searchTargets: ['파주'], areaCount: 4 }), false);
+  assert.equal(showInterestPicker({ savedCount: 0, searchTargets: [], areaCount: 4, dismissed: true }), false);
+  const three = ['운정', '동탄', '다산'];
+  assert.equal(toggleInterest(three, '검단'), three);
+  assert.deepEqual(toggleInterest(three, '동탄'), ['운정', '다산']);
+});

@@ -22,11 +22,12 @@ function safeUrl(value) {
  */
 const SPA_PATHS = ['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/living-areas', '/certify', '/login', '/showSubscriptDetail', '/account', '/messages'];
 const ANNOUNCEMENT_PATH = /^\/announcements\/(apt|urban|remaining|public-rental|optional)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,40}$/;
+const REGION_PATH = /^\/regions\/[^/]{1,80}(\/[^/]{1,80})?$/;
 function isSpaUrl(value) {
   try {
     const url = new URL(value, self.location.origin);
     const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
-    return url.origin === self.location.origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path));
+    return url.origin === self.location.origin && (SPA_PATHS.includes(path) || ANNOUNCEMENT_PATH.test(path) || REGION_PATH.test(path));
   } catch { return false; }
 }
 

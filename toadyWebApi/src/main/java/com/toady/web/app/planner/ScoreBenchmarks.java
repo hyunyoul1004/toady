@@ -189,28 +189,9 @@ public class ScoreBenchmarks {
     static final List<String> SIDO = List.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주");
     private static int sidoOrder(String sido) { int index = SIDO.indexOf(sido); return index < 0 ? SIDO.size() : index; }
 
-    /** 주소 앞부분으로 [시·도 약칭, 시·군·구]를 정한다. 확인할 수 없으면 null. 세종은 시·군·구가 없다. */
+    /** 주소 앞부분으로 [시·도 약칭, 시·군·구]를 정한다(지역별 공개 페이지와 같은 Regions 규칙). 확인할 수 없으면 null. 세종은 시·군·구가 없다. */
     static String[] region(String address) {
-        if (address == null) return new String[]{null, null};
-        String[] tokens = address.replaceAll("\\([^)]*\\)", " ").trim().split("\\s+");
-        if (tokens.length == 0 || tokens[0].isEmpty()) return new String[]{null, null};
-        String sido = sido(tokens[0]);
-        if (sido == null) return new String[]{null, null};
-        String district = null;
-        if (!"세종".equals(sido) && tokens.length > 1 && tokens[1].matches(".+(시|군|구)")) district = tokens[1];
-        return new String[]{sido, district};
-    }
-    static String sido(String token) {
-        String t = token.trim();
-        if (t.startsWith("충청북") || t.startsWith("충북")) return "충북";
-        if (t.startsWith("충청남") || t.startsWith("충남")) return "충남";
-        if (t.startsWith("전라북") || t.startsWith("전북")) return "전북";
-        if (t.startsWith("전라남") || t.startsWith("전남")) return "전남";
-        if (t.startsWith("경상북") || t.startsWith("경북")) return "경북";
-        if (t.startsWith("경상남") || t.startsWith("경남")) return "경남";
-        for (String name : List.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "제주"))
-            if (t.startsWith(name)) return name;
-        return null;
+        return Regions.of(address).map(found -> new String[]{found.sido().shortName(), found.district()}).orElse(new String[]{null, null});
     }
     private static Double min(Double a, Double b) { return a == null ? b : b == null ? a : Math.min(a, b); }
     private static Double max(Double a, Double b) { return a == null ? b : b == null ? a : Math.max(a, b); }

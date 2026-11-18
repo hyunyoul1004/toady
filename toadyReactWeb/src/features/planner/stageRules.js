@@ -1,4 +1,5 @@
 import { daysUntil } from './plannerUtils.js';
+import { formatCompetitionRate } from '../../utils/rate.util.js';
 
 /** 관심 공고의 청약 진행 단계. 서버(TB_FAVORITE.STAGE)와 같은 번호를 쓴다. */
 export const STAGES = [
@@ -12,7 +13,8 @@ export const STAGES = [
 const APPLYHOME_URL = 'https://www.applyhome.co.kr';
 export function normalizeStage(value) { const n = Number(value); return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 0; }
 const md = date => (date ? `${Number(date.slice(5, 7))}.${Number(date.slice(8, 10))}` : '');
-export const formatRate = rate => (Number.isFinite(rate) ? `${rate >= 100 ? Math.round(rate).toLocaleString('ko-KR') : String(Math.round(rate * 100) / 100)} : 1` : '');
+/** 경쟁률 표기는 공통 규칙(utils/rate.util)을 따른다. */
+export const formatRate = rate => (Number.isFinite(rate) ? formatCompetitionRate(rate) : '');
 
 /** 공개된 결과 한 줄: 1순위 최고 경쟁률과 당첨가점 범위(내 가점과 비교). 공개 전이면 빈 배열. */
 export function resultFacts(result, myScore) {

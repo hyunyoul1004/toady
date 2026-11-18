@@ -5,20 +5,78 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.HtmlUtils;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** 공고·생활권 공개 페이지가 같은 문구 규칙과 스타일을 쓰도록 모은다. 검색 봇과 사람이 같은 HTML을 본다. */
 final class PublicHtml {
     private PublicHtml() { }
     static String esc(String value) { return HtmlUtils.htmlEscape(value == null ? "" : value, "UTF-8"); }
     static String date(LocalDate value) { return value == null ? "미제공" : value.toString(); }
-    static String shortDate(LocalDate value) { return value == null ? "미제공" : "%d.%02d".formatted(value.getMonthValue(), value.getDayOfMonth()); }
+    /** 올해 날짜는 '12.08', 다른 해는 '2025.12.08'(지난 공고가 올해 일정처럼 읽히지 않게). */
+    static String shortDate(LocalDate value) { return shortDate(value, LocalDate.now(KST)); }
+    static String shortDate(LocalDate value, LocalDate today) {
+        if (value == null) return "미제공";
+        String day = "%d.%02d".formatted(value.getMonthValue(), value.getDayOfMonth());
+        return value.getYear() == today.getYear() ? day : value.getYear() + "." + "%02d.%02d".formatted(value.getMonthValue(), value.getDayOfMonth());
+    }
+    static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final ObjectMapper JSON = new ObjectMapper();
+    /** 구조화 데이터(JSON-LD) 한 덩어리. <·>·&는 유니코드 이스케이프로 바꿔 </script> 조기 종료와 HTML 해석을 막는다(JSON 구조 문자에는 쓰이지 않는다). */
+    static String jsonLd(Map<String, Object> root) {
+        try { return "<script type='application/ld+json'>" + JSON.writeValueAsString(root).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026") + "</script>"; }
+        catch (JsonProcessingException failed) { throw new IllegalStateException(failed); }
+    }
+    /** 이름·절대 주소 한 쌍. url이 null이면 링크 없는 현재 위치. */
+    record Crumb(String name, String url) { }
+    /** 빵부스러기 HTML(마지막은 링크 없이)과 같은 내용의 BreadcrumbList 구조화 데이터. */
+    static String breadcrumb(List<Crumb> crumbs) {
+        StringBuilder out = new StringBuilder("<nav aria-label='현재 위치'>");
+        for (int i = 0; i < crumbs.size(); i++) {
+            Crumb crumb = crumbs.get(i);
+            if (i > 0) out.append("<span>›</span>");
+            if (crumb.url() == null || i == crumbs.size() - 1) out.append("<span>").append(esc(crumb.name())).append("</span>");
+            else out.append("<a href='").append(esc(crumb.url())).append("'>").append(esc(crumb.name())).append("</a>");
+        }
+        return out.append("</nav>").toString();
+    }
+    static String breadcrumbLd(List<Crumb> crumbs, String currentUrl) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (int i = 0; i < crumbs.size(); i++) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("@type", "ListItem"); item.put("position", i + 1); item.put("name", crumbs.get(i).name());
+            item.put("item", crumbs.get(i).url() == null ? currentUrl : crumbs.get(i).url());
+            items.add(item);
+        }
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("@context", "https://schema.org"); root.put("@type", "BreadcrumbList"); root.put("itemListElement", items);
+        return jsonLd(root);
+    }
+    /** 목록 페이지의 ItemList 구조화 데이터(이름·주소만). */
+    static String itemListLd(String name, List<Crumb> items) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("@type", "ListItem"); item.put("position", i + 1); item.put("name", items.get(i).name()); item.put("url", items.get(i).url());
+            list.add(item);
+        }
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("@context", "https://schema.org"); root.put("@type", "ItemList"); root.put("name", name);
+        root.put("numberOfItems", items.size()); root.put("itemListElement", list);
+        return jsonLd(root);
+    }
     /** 만원 단위 금액을 4억 2,000만원 형식으로 표시한다. */
     static String manwon(long amount) {
         long eok = amount / 10000, rest = amount % 10000;
@@ -43,7 +101,7 @@ final class PublicHtml {
      * get(key, loader)는 같은 키를 동시에 한 번만 만들어, 만료 순간 요청이 몰려도 쿼리가 겹치지 않는다.
      */
     private static final Cache<String, ResponseEntity<String>> PAGES = CacheBuilder.newBuilder()
-            .maximumSize(200).expireAfterWrite(Duration.ofMinutes(5)).build();
+            .maximumSize(600).expireAfterWrite(Duration.ofMinutes(5)).build();
     static ResponseEntity<String> cached(String key, Supplier<ResponseEntity<String>> render) {
         return load(PAGES, key, render::get);
     }
@@ -100,7 +158,7 @@ final class PublicHtml {
     }
     /** 공개 페이지끼리 서로 이어지도록 하단에 같은 탐색 묶음을 둔다. current는 지금 페이지라 링크에서 뺀다. */
     static String explore(String domain, String current) {
-        String[][] links = { {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"}, {"/help/faq", "청약 자주 묻는 질문"} };
+        String[][] links = { {"/regions", "지역별 청약"}, {"/areas", "생활권별 청약"}, {"/zupzup", "무순위·줍줍 청약"}, {"/weekly", "이번 주 청약 일정"}, {"/match", "내게 맞는 청약"}, {"/score", "청약 가점 계산기"}, {"/help/faq", "청약 자주 묻는 질문"} };
         StringBuilder out = new StringBuilder("<section class='card'><h2>더 알아보기</h2><div class='chips'>");
         for (String[] link : links) if (!link[0].equals(current))
             out.append("<a class='chip' href='").append(esc(domain + link[0])).append("'>").append(esc(link[1])).append("</a>");
@@ -133,6 +191,9 @@ final class PublicHtml {
         .stats div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px}.stats strong{display:block;font-size:20px;color:#2563eb}.stats span{font-size:12px;color:#64748b}
         .row{display:flex;gap:8px;flex-wrap:wrap}.row .cta{flex:1;min-width:200px}.when{float:right;font-size:12px;font-weight:700;color:#1d4ed8}
         .site-foot{border-top:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;padding:20px 0 28px}.site-foot p{margin:0 0 6px}.site-foot strong{color:#0f172a}
+        .table{overflow-x:auto;margin:0 -4px}table{width:100%;border-collapse:collapse;font-size:13px;min-width:420px}th,td{padding:9px 6px;border-bottom:1px solid #f1f5f9;text-align:right;white-space:nowrap}
+        th{font-size:12px;color:#64748b;font-weight:700}th:first-child,td:first-child{text-align:left}tbody tr:last-child td{border-bottom:0}
+        .pager{display:flex;justify-content:space-between;gap:8px;margin-top:12px}.pager a{font-weight:700;text-decoration:none}
         .foot-links{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:8px}.foot-links a{display:inline-flex;align-items:center;min-height:40px;color:#475569;font-weight:600;text-decoration:none}.foot-links a:hover{color:#1d4ed8}
         </style>""";
 }

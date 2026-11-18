@@ -55,18 +55,27 @@ export const DRAWER_WIDTH = 240;
 export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }) {
   const location = useLocation();
   const pushDot = usePushAttention();
+  const navigate = useNavigate();
   const installMode = useInstallMode();
+  // 값: 안내 종류('guide' 또는 설치를 마친 뒤 'done'). 히스토리 한 단계로 열어 뒤로가기 한 번에 닫힌다.
   const [installGuide, setInstallGuide] = useHistoryOverlay('install-guide');
-  // 설치 창을 띄울 수 있으면 누른 순간 바로 띄우고(사용자 동작 안), 아니면 기기별 추가 방법을 보여 준다.
-  const addToHome = () => {
-    if (installMode === 'prompt') { void promptInstall(); return; }
-    trackAction('app_install', 'tool/install-guide');
-    // 모바일 메뉴(히스토리 한 단계)를 먼저 닫고 안내를 연다. 메뉴 위에 겹치지 않고, 뒤로가기 한 번에 안내만 닫힌다.
-    if (!mobileOpen) { setInstallGuide(true); return; }
-    window.addEventListener('popstate', () => setTimeout(() => setInstallGuide(true), 0), { once: true });
+  // 모바일 메뉴(히스토리 한 단계)를 먼저 닫고 안내를 연다. 메뉴 위에 겹치지 않고, 뒤로가기 한 번에 안내만 닫힌다.
+  const openInstallGuide = (kind) => {
+    if (!mobileOpen) { setInstallGuide(kind); return; }
+    window.addEventListener('popstate', () => setTimeout(() => setInstallGuide(kind), 0), { once: true });
     navigate(-1);
   };
-  const navigate = useNavigate();
+  // 설치 창을 띄울 수 있으면 누른 순간 바로 띄우고(사용자 동작 안), 설치하면 아이콘이 어디에 생기는지 알려 준다.
+  // 띄울 수 없으면 기기·브라우저별 추가 방법을 보여 준다.
+  const addToHome = () => {
+    if (installMode === 'prompt') {
+      promptInstall().then(outcome => { if (outcome === 'accepted') openInstallGuide('done'); });
+      return;
+    }
+    trackAction('app_install', 'tool/install-guide');
+    openInstallGuide('guide');
+  };
+
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const logout = useAuthStore(state => state.logout);
@@ -185,7 +194,8 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         <Typography variant="caption" sx={{ px: 1.5, mt: 2, mb: 1, display: 'block', fontWeight: 700, color: '#94a3b8', fontSize: '0.72rem' }}>더보기</Typography>
         <List disablePadding>
           {MORE_NAV.map(item => {
-            const selected = !item.overlay && location.pathname === item.path;
+            // 지역 주소(/regions/경기도/파주시)도 '지역별 청약'으로 표시한다.
+            const selected = !item.overlay && (location.pathname === item.path || (item.path === '/regions' && location.pathname.startsWith('/regions/')));
             return <ListItem key={item.key} disablePadding sx={{ mb: 0.25 }}>
               <ListItemButton aria-current={selected ? 'page' : undefined} selected={selected} onClick={() => openMore(item)}
                 sx={{ borderRadius: 1.5, py: 0.75, px: 1.5, bgcolor: selected ? '#eff6ff' : 'transparent', color: selected ? '#2563eb' : '#475569', '&:hover': { bgcolor: selected ? '#eff6ff' : '#f8fafc' } }}>
@@ -345,7 +355,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
       >
         {drawerContent}
       </Drawer>
-      <InstallGuideDialog open={Boolean(installGuide)} onClose={() => setInstallGuide(false)} mode={installMode} />
+      <InstallGuideDialog open={Boolean(installGuide)} onClose={() => setInstallGuide(false)} mode={installGuide === 'done' ? 'done' : installMode} />
     </Box>
   );
 }

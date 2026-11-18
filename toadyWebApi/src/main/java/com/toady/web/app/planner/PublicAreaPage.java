@@ -133,9 +133,16 @@ public class PublicAreaPage {
             .append(esc(area.label())).append(" 청약</strong><span class='muted'>").append(esc(area.description())).append("</span></a>");
         String title = "생활권별 청약 일정 · TOADY";
         String description = "운정·동탄·다산·검단·위례·광교 등 생활권 이름으로 아파트 청약 일정과 분양가, 경쟁률을 찾아보세요.";
-        return html("", title, description, domain + "/areas",
-            "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>생활권</span></nav><section class='card'><h1>생활권별 청약 일정</h1><p class='muted'>"
-                + esc(description) + "</p></section><section class='card list'>" + links + "</section>");
+        // 행정구역(시·도) 지역 페이지로도 이어지게 해 생활권 밖 공고까지 링크로 닿게 한다.
+        StringBuilder regions = new StringBuilder("<section class='card'><h2>시·도별 청약</h2><div class='chips'>");
+        for (Regions.Sido sido : Regions.ALL) regions.append("<a class='chip' href='").append(esc(domain + sido.path())).append("'>").append(esc(sido.shortName())).append("</a>");
+        regions.append("</div><a class='cta secondary' href='").append(esc(domain + "/regions")).append("'>시·군·구별 청약 전체 보기</a></section>");
+        List<PublicHtml.Crumb> crumbs = List.of(new PublicHtml.Crumb("TOADY", domain + "/"), new PublicHtml.Crumb("생활권", null));
+        List<PublicHtml.Crumb> items = LivingAreas.all().stream().map(area -> new PublicHtml.Crumb(area.label() + " 청약", domain + "/areas/" + area.slug())).toList();
+        return PublicHtml.page(domain, "", title, description, domain + "/areas",
+            PublicHtml.breadcrumb(crumbs) + "<section class='card'><h1>생활권별 청약 일정</h1><p class='muted'>"
+                + esc(description) + "</p></section><section class='card list'>" + links + "</section>" + regions + PublicHtml.explore(domain, "/areas"),
+            PublicHtml.breadcrumbLd(crumbs, domain + "/areas") + PublicHtml.itemListLd("생활권별 청약", items));
     }
 
     /** 앱 '생활권별 청약' 화면용: 생활권마다 접수 중·예정 건수와 캘린더에서 열 달. 10분 캐시. */
@@ -166,25 +173,40 @@ public class PublicAreaPage {
         Groups groups = groups(area, today);
         String app = domain + "/?area=" + area.slug() + "&month=" + groups.month(today);
         String title = area.label() + " 청약 일정·분양 정보 · TOADY";
-        String description = area.description().split(" · ")[0] + " 아파트 청약 · 접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size()
-            + "건 · 분양가·경쟁률·당첨가점과 동네 실거래가를 한 화면에서 확인하세요.";
+        boolean quiet = groups.open().isEmpty() && groups.upcoming().isEmpty();
+        // 접수 중·예정이 없을 때 '접수 중 0건'으로 알리지 않고 최근 마감·공개 결과를 앞에 둔다.
+        String description = area.description().split(" · ")[0] + " 아파트 청약 · " + (quiet ? quietSummary(area, groups) : "접수 중 " + groups.open().size() + "건, 접수 예정 " + groups.upcoming().size() + "건")
+            + " · 분양가·경쟁률·당첨가점과 동네 실거래가를 한 화면에서 확인하세요.";
         StringBuilder others = new StringBuilder();
         for (var other : LivingAreas.all()) if (!other.slug().equals(area.slug()))
             others.append("<a class='chip' href='").append(esc(domain + "/areas/" + other.slug())).append("'>").append(esc(other.label())).append("</a> ");
-        String body = "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><a href='" + esc(domain) + "/areas'>생활권</a><span>›</span><span>" + esc(area.label()) + "</span></nav>"
+        List<PublicHtml.Crumb> crumbs = List.of(new PublicHtml.Crumb("TOADY", domain + "/"), new PublicHtml.Crumb("생활권", domain + "/areas"), new PublicHtml.Crumb(area.label(), null));
+        String body = PublicHtml.breadcrumb(crumbs)
             + "<section class='card'><span class='chip'>생활권</span><h1>" + esc(area.label()) + " 청약 일정</h1><p class='muted'>" + esc(area.description().split(" · ")[0])
             + "의 청약 공고를 주소·단지명 기준으로 모았어요. 분양가·경쟁률·당첨가점과 동네 실거래가는 캘린더에서 공고를 눌러 확인하세요.</p>"
             + "<a class='cta' data-app href='" + esc(app) + "'>" + esc(area.label()) + " 청약 캘린더 열기</a>"
             + AreaCalendar.subscribeLinks(domain, area) + "</section>"
             // 진행·예정이 모두 없으면 빈 카드를 두 번 보여주지 않고 한 번만 안내한다.
             + (groups.open().isEmpty() && groups.upcoming().isEmpty()
-                ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 " + esc(area.label()) + "에서 접수 중이거나 예정된 공고가 없어요. 새 공고는 매일 반영됩니다.</p></section>"
+                ? "<section class='card'><h2>접수 중·예정 공고</h2><p class='empty'>지금 " + esc(area.label()) + "에서 접수 중이거나 예정된 공고가 없어요. "
+                    + (groups.closed().isEmpty() ? "" : "최근 6개월 동안 " + groups.closed().size() + (groups.closed().size() >= 12 ? "건 이상이" : "건이") + " 마감됐고, 공개된 경쟁률·당첨가점은 아래 공고에서 확인할 수 있어요. ") + "새 공고는 매일 반영됩니다.</p></section>"
                 : (groups.open().isEmpty() ? "" : section("접수 중", groups.open(), "")) + (groups.upcoming().isEmpty() ? "" : section("접수 예정", groups.upcoming(), "")))
             + section("최근 마감", groups.closed(), "최근 6개월 안에 마감된 공고가 없습니다.")
             + scoreSection(area)
             + "<section class='card'><h2>다른 생활권</h2><div class='chips'>" + others + "</div></section>" + PublicHtml.explore(domain, "")
             + "<small>출처: 청약홈 공개 데이터. 생활권은 행정 경계가 아니며, 주소·단지명 기준으로 분류해 일부 공고가 빠지거나 포함될 수 있습니다.</small>";
-        return html("", title, description, domain + "/areas/" + area.slug(), body);
+        List<PublicHtml.Crumb> items = new ArrayList<>();
+        Stream.of(groups.open(), groups.upcoming(), groups.closed()).flatMap(List::stream)
+            .forEach(item -> items.add(new PublicHtml.Crumb(item.source().houseNm(), domain + "/announcements/" + item.id())));
+        return PublicHtml.page(domain, "", title, description, domain + "/areas/" + area.slug(), body,
+            PublicHtml.breadcrumbLd(crumbs, domain + "/areas/" + area.slug()) + PublicHtml.itemListLd(area.label() + " 청약 공고", items));
+    }
+    /** 접수 중·예정이 없는 생활권의 검색 설명: 최근 마감 건수와 가장 최근 공고. */
+    static String quietSummary(LivingAreas.Area area, Groups groups) {
+        if (groups.closed().isEmpty()) return "최근 6개월 공고 없음 · 새 공고는 매일 반영";
+        Item last = groups.closed().get(0);
+        // 최근 마감 목록은 12건까지만 받으므로 꽉 차면 '이상'으로 쓴다.
+        return "최근 6개월 마감 " + groups.closed().size() + (groups.closed().size() >= 12 ? "건 이상" : "건") + " · 최근 " + last.source().houseNm() + " " + PublicHtml.shortDate(last.start()) + " 접수 · 경쟁률·당첨가점 결과 확인";
     }
 
     static final int AREA_SCORES = 5;
@@ -197,7 +219,7 @@ public class PublicAreaPage {
         StringBuilder out = new StringBuilder("<section class='card list'><h2>").append(esc(area.label())).append(" 최근 공개 당첨가점</h2>");
         for (ScoreBenchmarks.Item item : items) {
             String range = (item.low() == null ? "" : "최저 " + score(item.low()) + "점") + (item.low() != null && item.high() != null ? " · " : "") + (item.high() == null ? "" : "최고 " + score(item.high()) + "점");
-            out.append("<a href='").append(esc(domain + "/announcements/" + item.id() + "?tabType=rate")).append("'><strong><span class='when'>").append(esc(range))
+            out.append("<a href='").append(esc(domain + "/announcements/" + item.id())).append("'><strong><span class='when'>").append(esc(range))
                 .append("</span>").append(esc(item.houseNm())).append("</strong><span class='muted'>").append(esc(item.receiptDate().substring(0, 7).replace('-', '.'))).append(" 접수</span></a>");
         }
         return out.append("<div class='row' style='margin-top:12px'><a class='cta' data-app href='").append(esc(domain + "/score")).append("'>내 가점 계산하고 비교하기</a>")
@@ -219,7 +241,4 @@ public class PublicAreaPage {
         return list.append("</section>").toString();
     }
 
-    private ResponseEntity<String> html(String current, String title, String description, String canonical, String body) {
-        return PublicHtml.page(domain, current, title, description, canonical, body);
-    }
 }

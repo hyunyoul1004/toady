@@ -19,6 +19,8 @@ function track(path) {
 /** 공고 상세는 공유 주소(/announcements/…)든 앱 안 주소(?subscriptSeq=)든 같은 '/announcements'로 센다. */
 function logicalPath(pathname, search) {
   if (pathname.startsWith('/announcements/')) return '/announcements';
+  // 지역 캘린더(/regions/경기도/파주시)는 지역별 청약 화면으로 센다.
+  if (pathname.startsWith('/regions/')) return '/regions';
   if (new URLSearchParams(search).has('subscriptSeq')) return '/announcements';
   return pathname;
 }
