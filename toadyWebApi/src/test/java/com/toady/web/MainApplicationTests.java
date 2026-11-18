@@ -172,9 +172,15 @@ class MainApplicationTests {
                 """, "RATE-APT", "RATE-APT", "01", "1", "01", "84A", "10", "서울", "125", "12.5");
         jdbcTemplate.update("""
                 insert into TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET
-                    (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, HOUSE_TY, REQ_CNT, CMPET_RATE)
-                values (?, ?, ?, ?, ?, ?)
-                """, "RATE-URBAN", "RATE-URBAN", "01", "59A", "50", "5.0");
+                    (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, HOUSE_TY, RESIDNT_PRIOR_AT, REQ_CNT, CMPET_RATE)
+                values (?, ?, ?, ?, ?, ?, ?)
+                """, "RATE-URBAN", "RATE-URBAN", "01", "59A", "Y", "50", "5.0");
+        // 같은 주택형의 '기타' 줄도 따로 남아야 한다(기본키에 거주자 우선 여부 포함, database.sql 31번).
+        jdbcTemplate.update("""
+                insert into TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET
+                    (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, HOUSE_TY, RESIDNT_PRIOR_AT, REQ_CNT, CMPET_RATE)
+                values (?, ?, ?, ?, ?, ?, ?)
+                """, "RATE-URBAN", "RATE-URBAN", "01", "59A", "N", "30", "3.0");
         jdbcTemplate.update("""
                 insert into TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET
                     (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, SPSPLY_KND_CODE, HOUSE_TY, REQ_CNT, CMPET_RATE)
@@ -209,7 +215,14 @@ class MainApplicationTests {
                 """, "RATE-APT", "RATE-APT", "84A", "20", "5", "10", "접수");
 
         assertCompetitionRate("apt", "RATE-APT", "12.5");
-        assertCompetitionRate("urban", "RATE-URBAN", "5.0");
+        // 오피스텔·도시형은 같은 주택형의 거주자 우선(Y)·기타(N) 두 줄이 모두 나오고, 거주자 우선이 먼저다.
+        mockMvc.perform(get("/api/v1/urban/announcements/RATE-URBAN/RATE-URBAN/competition-rates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].residntPriorAt").value("Y"))
+                .andExpect(jsonPath("$.data[0].cmpetRate").value("5.0"))
+                .andExpect(jsonPath("$.data[1].residntPriorAt").value("N"))
+                .andExpect(jsonPath("$.data[1].cmpetRate").value("3.0"));
         assertCompetitionRate("public-rental", "RATE-RENTAL", "4.0");
         assertCompetitionRate("cancel-resupply", "RATE-CANCEL", null);
         assertCompetitionRate("remaining", "RATE-REMAIN", "2.0");

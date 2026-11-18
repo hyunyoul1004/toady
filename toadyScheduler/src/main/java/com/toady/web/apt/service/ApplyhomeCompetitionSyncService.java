@@ -44,7 +44,8 @@ public class ApplyhomeCompetitionSyncService {
 			"TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET",
 			List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "HOUSE_TY", "SUPLY_HSHLDCO",
 					"RESIDNT_PRIOR_AT", "RESIDENT_PRIOR_SENM", "REQ_CNT", "CMPET_RATE"),
-			List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO"));
+			// 주택형마다 거주자 우선(Y)·기타(N) 두 줄이 와서 거주자 우선 여부까지 키에 넣는다(database.sql 31번).
+			List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "RESIDNT_PRIOR_AT"));
 	private static final TableSpec PRIVATE_RENT_RATE = new TableSpec("getPblPvtRentLttotPblancCmpet",
 			"TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET",
 			List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "SPSPLY_KND_CODE", "HOUSE_TY",

@@ -104,10 +104,18 @@ public class ApplyhomeCompetitionPersistenceService {
 			}
 		});
 	}
-    /** 대문자 키를 먼저 찾고, 없으면 소문자 키로 다시 찾는다(응답 키 대소문자가 섞여 오는 경우 대비). */
+    /**
+     * DB 컬럼 이름과 청약홈 응답 필드 이름이 다른 곳. 오피스텔·도시형 경쟁률의 공급구분명은 DB가 RESIDENT_PRIOR_SENM,
+     * 청약홈이 RESIDNT_PRIOR_SENM이라 그대로 찾으면 늘 비어 저장됐다(API·웹이 이 컬럼 이름을 써서 DB 이름은 그대로 둔다).
+     */
+    static final java.util.Map<String, String> SOURCE_FIELDS = java.util.Map.of("RESIDENT_PRIOR_SENM", "RESIDNT_PRIOR_SENM");
+
+    /** 대문자 키를 먼저 찾고, 없으면 소문자 키로, 그래도 없으면 청약홈 쪽 이름(SOURCE_FIELDS)으로 다시 찾는다. */
     private JsonNode field(JsonNode row, String name) {
         JsonNode value = row.get(name);
-        return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
+        if (value == null) value = row.get(name.toLowerCase(Locale.ROOT));
+        String source = SOURCE_FIELDS.get(name);
+        return value == null && source != null ? row.get(source) : value;
     }
 
 }

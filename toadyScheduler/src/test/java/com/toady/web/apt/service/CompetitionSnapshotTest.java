@@ -49,4 +49,17 @@ class CompetitionSnapshotTest {
         service.upsert("ALL_KEY_TEST", allKeys, allKeys, List.of(row));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM ALL_KEY_TEST", Integer.class));
     }
+    @Test void urbanRatesKeepResidentPriorityAndOtherRowsAndTheirSupplyName() throws Exception {
+        // 청약홈 오피스텔·도시형 경쟁률: 주택형마다 거주자 우선(Y)·기타(N) 두 줄, 공급구분명 필드 철자는 RESIDNT_PRIOR_SENM.
+        jdbc.execute("DROP TABLE IF EXISTS URBAN_TEST");
+        jdbc.execute("CREATE TABLE URBAN_TEST (HOUSE_MANAGE_NO VARCHAR(40), PBLANC_NO VARCHAR(40), MODEL_NO VARCHAR(4), RESIDNT_PRIOR_AT VARCHAR(1) NOT NULL, RESIDENT_PRIOR_SENM VARCHAR(200), CMPET_RATE VARCHAR(20), PRIMARY KEY(HOUSE_MANAGE_NO,PBLANC_NO,MODEL_NO,RESIDNT_PRIOR_AT))");
+        var mapper = new ObjectMapper();
+        var rows = List.of(
+            mapper.readTree("{\"HOUSE_MANAGE_NO\":\"h\",\"PBLANC_NO\":\"n\",\"MODEL_NO\":\"01\",\"RESIDNT_PRIOR_AT\":\"Y\",\"RESIDNT_PRIOR_SENM\":\"거주자우선\",\"CMPET_RATE\":\"7.50\"}"),
+            mapper.readTree("{\"HOUSE_MANAGE_NO\":\"h\",\"PBLANC_NO\":\"n\",\"MODEL_NO\":\"01\",\"RESIDNT_PRIOR_AT\":\"N\",\"RESIDNT_PRIOR_SENM\":\"기타\",\"CMPET_RATE\":\"3.80\"}"));
+        List<String> cols = List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "RESIDNT_PRIOR_AT", "RESIDENT_PRIOR_SENM", "CMPET_RATE");
+        service.replace("URBAN_TEST", cols, List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "RESIDNT_PRIOR_AT"), "h", "n", rows);
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM URBAN_TEST", Integer.class));
+        assertEquals("기타", jdbc.queryForObject("SELECT RESIDENT_PRIOR_SENM FROM URBAN_TEST WHERE RESIDNT_PRIOR_AT='N'", String.class));
+    }
 }

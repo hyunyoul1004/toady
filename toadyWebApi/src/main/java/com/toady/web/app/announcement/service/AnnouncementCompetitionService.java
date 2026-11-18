@@ -45,7 +45,7 @@ public class AnnouncementCompetitionService {
                             houseManageNo, pblancNo
                     );
             case URBAN -> urbanCompetitionRepository
-                    .findByHouseManageNoAndPblancNoOrderByModelNoAsc(houseManageNo, pblancNo);
+                    .findByHouseManageNoAndPblancNoOrderByModelNoAscResidntPriorAtDesc(houseManageNo, pblancNo);
             case PUBLIC_RENTAL -> publicRentalCompetitionRepository
                     .findByHouseManageNoAndPblancNoOrderByModelNoAscSpsplyKndCodeAsc(
                             houseManageNo, pblancNo

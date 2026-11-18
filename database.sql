@@ -94,12 +94,12 @@ CREATE TABLE IF NOT EXISTS TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET (
     MODEL_NO VARCHAR(2) NOT NULL COMMENT '모델번호',
     HOUSE_TY VARCHAR(17) COMMENT '주택형',
     SUPLY_HSHLDCO VARCHAR(10) COMMENT '공급세대수',
-    RESIDNT_PRIOR_AT VARCHAR(1) COMMENT '거주자 우선여부',
-    RESIDENT_PRIOR_SENM VARCHAR(200) COMMENT '공급구분명',
+    RESIDNT_PRIOR_AT VARCHAR(1) NOT NULL COMMENT '거주자 우선여부(Y 거주자 우선, N 기타)',
+    RESIDENT_PRIOR_SENM VARCHAR(200) COMMENT '공급구분명(청약홈 필드 RESIDNT_PRIOR_SENM)',
     REQ_CNT VARCHAR(20) COMMENT '접수건수',
     CMPET_RATE VARCHAR(20) COMMENT '경쟁률',
     REG_DT DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '등록일시',
-    PRIMARY KEY (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO)
+    PRIMARY KEY (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, RESIDNT_PRIOR_AT)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='오피스텔/도시형 등 경쟁률';
 
 CREATE TABLE IF NOT EXISTS TB_PBL_PVT_RENT_LTTOT_PBLANC_CMPET (
@@ -898,3 +898,16 @@ CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (
 -- ALTER TABLE TB_OPT_LTTOT_PBLANC_DETAIL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 -- ALTER TABLE TB_OPT_LTTOT_PBLANC_MDL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 -- ALTER TABLE TB_ANNOUNCEMENT_OVERRIDE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+-- ============================================================================
+-- 31. 오피스텔·도시형 경쟁률 기본키에 거주자 우선 여부 추가 (운영 DB에서 관리 계정으로 한 번 실행)
+-- ============================================================================
+-- 청약홈은 주택형(모델번호)마다 '거주자 우선(Y)'과 '기타(N)' 두 줄을 준다. 기본키가 모델번호까지라 한 줄이 다른 줄을 덮어써
+-- 경쟁률의 절반이 사라지고 있었다(2026-11-18 확인: 14줄 응답 → 7줄 저장). 기본키에 RESIDNT_PRIOR_AT을 넣는다.
+-- 기존 행은 모두 Y·N 값이 있지만, 혹시 빈 값이 있으면 먼저 채운다. 실행 후 관리자 › 수집 작업에서 '전체 수집'을 다시 돌리면
+-- 사라졌던 줄이 다시 채워진다(공고 단위로 지우고 다시 넣는다). 수집이 도는 정각·10분 단위는 피한다.
+-- UPDATE TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET SET RESIDNT_PRIOR_AT = 'N' WHERE RESIDNT_PRIOR_AT IS NULL OR RESIDNT_PRIOR_AT = '';
+-- ALTER TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_CMPET
+--     MODIFY RESIDNT_PRIOR_AT VARCHAR(1) NOT NULL COMMENT '거주자 우선여부(Y 거주자 우선, N 기타)',
+--     DROP PRIMARY KEY,
+--     ADD PRIMARY KEY (HOUSE_MANAGE_NO, PBLANC_NO, MODEL_NO, RESIDNT_PRIOR_AT);
