@@ -712,7 +712,7 @@ CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (
     ADMIN_NAME VARCHAR(100) NOT NULL,
     UPDATE_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='공고 숨김·정정 안내';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='공고 숨김·정정 안내';
 
 -- 앱 계정: 위 네 테이블 중 TB_USER_SANCTION(SELECT, UPDATE SEEN_DT), TB_MODERATION_RULE·TB_ANNOUNCEMENT_OVERRIDE(SELECT)만 쓴다.
 -- 관리자 계정(19번에 추가):
@@ -879,3 +879,22 @@ CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='결과 즉시 알림 발송 기록';
 -- 앱 계정: SELECT, INSERT, DELETE(발송이 일시 실패하면 선점 기록을 지워 다시 보냄) / 스케줄러 계정: DELETE(보관 기간)
 -- GRANT SELECT, DELETE ON toady.TB_PUSH_RESULT_SENT TO 'toady_sources'@'%';
+
+-- ============================================================================
+-- 30. 공고 테이블 문자 비교 규칙(collation) 통일 (운영 DB에서 관리 계정으로 한 번 실행)
+-- ============================================================================
+-- MariaDB 11.x는 COLLATE 없이 만든 테이블에 utf8mb4_uca1400_ai_ci를 붙인다. 아래 9개 테이블만 그렇게 만들어져
+-- 나머지 수집 테이블(utf8mb4_general_ci)과 주택관리번호를 비교하는 순간 'Illegal mix of collations' 오류가 난다.
+-- 일정 맞춤 경쟁률·가점 수집이 무순위 공고(TB_REMNDR_LTTOT_PBLANC_DETAIL)와 취소후재공급 경쟁률(TB_CANC_RESPL_LTTOT_PBLANC_CMPET)을
+-- 비교하다 이 오류로 작업 전체가 실패했다(2026-11-18 확인). 데이터는 그대로 두고 비교 규칙만 바꾼다(행 수천 건, 몇 초).
+-- 실행 중 테이블이 잠깐 잠기므로 수집이 도는 정각·10분 단위를 피한다. H2 테스트가 이 파일을 실행하므로 주석으로 둔다.
+-- 확인: SELECT TABLE_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='HOUSE_MANAGE_NO';
+-- ALTER TABLE TB_REMNDR_LTTOT_PBLANC_DETAIL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_REMNDR_LTTOT_PBLANC_MDL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_DETAIL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_URBTY_OFCTL_LTTOT_PBLANC_MDL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_PBL_PVT_RENT_LTTOT_PBLANC_DETAIL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_PBL_PVT_RENT_LTTOT_PBLANC_MDL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_OPT_LTTOT_PBLANC_DETAIL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_OPT_LTTOT_PBLANC_MDL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_ANNOUNCEMENT_OVERRIDE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
