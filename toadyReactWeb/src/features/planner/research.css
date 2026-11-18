@@ -117,7 +117,7 @@
 .announcement-header-actions{padding:12px 20px 6px;background:#fff;flex-shrink:0}
 .announcement-header-actions .research-primary-actions{padding:0;gap:8px}
 .announcement-header-actions .research-storage-note{padding:0;margin:7px 0 0;font-size:10px}
-@media(max-width:600px){.announcement-header-actions{padding:10px 16px 6px}.announcement-header-actions .research-storage-note{display:none}}
+@media(max-width:600px){.announcement-header-actions{padding:10px 16px 6px}.announcement-header-actions .research-storage-note{margin-top:5px}}
 
 .announcement-header-actions .research-primary-actions .MuiButton-root{min-height:30px;min-width:0;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;line-height:20px;letter-spacing:0}
 .announcement-header-actions .research-primary-actions .MuiButton-startIcon{margin-left:0;margin-right:5px}

@@ -478,6 +478,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 시·군·구가 없는 값(예: 공급지역명 '경기')은 주소가 아니다. 오피스텔·도시형 일부는 청약홈 자료에 주소가 없어 이렇게 온다.
   const rawAddress=detail.hssplyAdres || detail.supplyLocation || '';
   const hasAddress=municipality(rawAddress).length>0;
+  // 모바일은 공급위치를 한 줄로 줄여 보여 주고, 누르면 전체 주소를 펼친다(잘린 채로 끝까지 볼 수 없던 문제).
+  const [addressOpen,setAddressOpen]=useState(false);
   const original=hasAddress?rawAddress:(rawAddress && rawAddress!=='-'?`${rawAddress} (상세 주소 미제공)`:'공급위치 미제공');
   const tradesOff=priceMap.capabilities.data && priceMap.capabilities.data.tradesEnabled!==true;
   const unsupported=priceMap.query.data?.status==='UNSUPPORTED';
@@ -561,7 +563,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     {/* 공급위치와 위치 판정 결과를 한 카드로(모바일 첫 화면에서 주소가 여러 번 반복되지 않게). */}
     <Paper variant="outlined" className="loc-summary" sx={{p:1.5,mb:1,borderRadius:2,bgcolor:'#f8fafc'}}>
       <Typography variant="caption" color="text.secondary">모집공고 공급위치</Typography>
-      <Typography sx={{fontSize:14,fontWeight:700,mt:.25,overflowWrap:'anywhere'}}>{original}</Typography>
+      <Typography className={`loc-original${addressOpen?' is-open':''}`} role="button" tabIndex={0} aria-expanded={addressOpen} title={original}
+        onClick={()=>setAddressOpen(open=>!open)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setAddressOpen(open=>!open);}}}
+        sx={{fontSize:14,fontWeight:700,mt:.25,overflowWrap:'anywhere',cursor:'pointer'}}>{original}</Typography>
       {location.data?.status==='ADDRESS' && <Typography className="loc-status is-exact" variant="caption" component="p">지번 확인 · {location.data.address}</Typography>}
       {location.data?.status==='UNRESOLVED' && <Typography className="loc-status is-approx" variant="caption" component="p">
         {hasAddress?'지구·블록 단위 주소라 정확한 부지는 확인되지 않았어요.':'청약홈 자료에 공급 위치(주소)가 없어 지도에 표시할 수 없어요. 모집공고 원문에서 확인해 주세요.'}

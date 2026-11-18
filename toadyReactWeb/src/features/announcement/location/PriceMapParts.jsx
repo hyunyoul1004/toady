@@ -246,7 +246,7 @@ export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale 
           return <div role="row" key={group.area}>
             <span role="cell">{text.main}{text.sub && <small>{text.sub}</small>}</span>
             <span role="cell"><b>{text.price}</b><small>{text.per}</small></span>
-            {!noCompare && <span role="cell">{gap.loading ? <small>불러오는 중…</small> : gap.failed ? <small>불러오지 못했어요</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
+            {!noCompare && <span role="cell"><small className="pm-cell-label" aria-hidden="true">주변 시세</small>{gap.loading ? <small>불러오는 중…</small> : gap.failed ? <small>불러오지 못했어요</small> : row ? <>{shortPrice(row.q1)}{row.q1 !== row.q3 ? `~${shortPrice(row.q3)}` : ''}
               <small>{row.basis === 'new' ? '신축' : '전체 연식'} {row.basisCount}건 · {row.scope === 'DONG' ? (gap.precise?.dong || '같은 동') : '같은 시·군·구'}</small>
               <small className={`pm-gap is-${gapTone(row)}`}>{gapText(row)}</small></> : <small>비교할 거래 부족</small>}</span>}
           </div>;
@@ -280,11 +280,13 @@ export function NearbySummary({ query, onFocus }) {
     const place = data.places.find(item => item.kind === kind);
     return { kind, place, text: place ? nearbyText(place) : null };
   });
-  return <Box className="pm-nearby" role="group" aria-label="가까운 시설">
+  return <><Box className="pm-nearby" role="group" aria-label="가까운 시설">
     {found.map(({ kind, place, text }) => <button key={kind} type="button" disabled={!place} onClick={() => place && onFocus(place)}>
       <i className={`pm-nearby-icon is-${kind.toLowerCase()}`} aria-hidden="true">{NEARBY_KIND[kind].short}</i>
       <span><small>가까운 {NEARBY_KIND[kind].label}</small><b>{text ? text.name : `반경 ${measureText(data.radius)} 안에 없어요`}</b>{text && <small>{text.distance}</small>}</span>
     </button>)}
-    <Typography variant="caption" color="text.secondary" component="p" sx={{ m: 0, flexBasis: '100%' }}>카카오 지도 기준 직선거리예요. 실제 걷는 길·학교 배정(학군)은 다를 수 있어요.</Typography>
-  </Box>;
+  </Box>
+    {/* 칩 줄 밖에 둬서 모바일(가로로 밀어 보는 칩 줄)에서도 학군 배정 안내가 보이게 한다. */}
+    <Typography className="pm-nearby-note" variant="caption" component="p">카카오 지도 기준 직선거리예요. 실제 걷는 길·학교 배정(학군)은 다를 수 있어요.</Typography>
+  </>;
 }
