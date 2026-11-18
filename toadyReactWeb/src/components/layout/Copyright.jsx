@@ -12,11 +12,13 @@ import './footer.css';
 function Copyright() {
   return (
     <div className="site-footer">
+      {/* 넓은 화면: 왼쪽 서비스 소개, 오른쪽 링크 두 묶음. 아래 줄에 데이터 안내와 저작권(좁은 화면은 위에서 아래로 쌓임). */}
       <div className="site-footer-brand">
         <strong>TOADY</strong>
         <p>청약 공고 찾기부터 경쟁률·당첨가점, 위치, 동네 실거래까지 한 화면에서 확인하는 청약 정보 서비스</p>
       </div>
       <nav className="site-footer-links" aria-label="사이트 바로가기">
+        <span className="site-footer-heading">바로가기</span>
         <RouterLink to="/">청약 캘린더</RouterLink>
         <RouterLink to="/match">맞춤 청약</RouterLink>
         <RouterLink to="/score">가점 계산기</RouterLink>
@@ -26,12 +28,15 @@ function Copyright() {
         <RouterLink to="/faq">자주 묻는 질문</RouterLink>
       </nav>
       <nav className="site-footer-links is-policy" aria-label="정책">
+        <span className="site-footer-heading">정책·문의</span>
         <RouterLink to="/privacy"><b>개인정보처리방침</b></RouterLink>
         <RouterLink to="/terms">이용약관</RouterLink>
         <a href="mailto:dukkeoba@gmail.com">문의 dukkeoba@gmail.com</a>
       </nav>
-      <p className="site-footer-note">청약홈·국토교통부 공개 데이터를 바탕으로 한 참고 정보입니다. 청약 신청과 자격 확인은 청약홈과 공식 모집공고에서 해 주세요.</p>
-      <p className="site-footer-copy">© {new Date().getFullYear()} TOADY</p>
+      <div className="site-footer-bottom">
+        <p className="site-footer-note">청약홈·국토교통부 공개 데이터를 바탕으로 한 참고 정보입니다. 청약 신청과 자격 확인은 청약홈과 공식 모집공고에서 해 주세요.</p>
+        <p className="site-footer-copy">© {new Date().getFullYear()} TOADY</p>
+      </div>
     </div>
   );
 }
