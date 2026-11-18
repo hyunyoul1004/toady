@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, regionFit, rank1Months, shortSido, monthsFromAccountIndex, profileComplete, rankFeed } from '../src/features/match/eligibilityRules.js';
+import { evaluate, regionFit, rank1Months, shortSido, monthsFromAccountIndex, profileComplete, rankFeed, parseBirthYear } from '../src/features/match/eligibilityRules.js';
 import { normalizeProfile } from '../src/features/match/eligibilityProfile.js';
 import { fundPlan, acquisitionTax } from '../src/features/match/fundRules.js';
 
@@ -317,4 +317,30 @@ test('지역 주소의 시·군·구 목록은 서버(Regions.java)와 같고, �
   assert.equal(cheongju.type, 'district');
   assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 청주시 상당구 용암동 1', regionName: '충북' }, cheongju), true);
   assert.equal(matchesRegionTarget({ hssplyAdres: '충청북도 충주시 연수동 1', regionName: '충북' }, cheongju), false);
+});
+
+test('출생 연도는 1921년~올해만 확정하고, 범위 밖 입력은 지우지 않고 오류로 알린다', () => {
+  assert.deepEqual(parseBirthYear('1991', 2026), { text: '1991', value: 1991, invalid: false, complete: true });
+  assert.deepEqual(parseBirthYear('', 2026), { text: '', value: null, invalid: false, complete: false });
+  assert.deepEqual(parseBirthYear('199', 2026), { text: '199', value: null, invalid: true, complete: false }, '입력 중인 값은 글자 그대로 남는다');
+  assert.equal(parseBirthYear('1920', 2026).invalid, true);
+  assert.equal(parseBirthYear('1921', 2026).value, 1921);
+  assert.equal(parseBirthYear('2026', 2026).value, 2026);
+  const future = parseBirthYear('2027', 2026);
+  assert.equal(future.value, null);
+  assert.equal(future.text, '2027', '범위 밖 값도 화면에서 사라지지 않는다');
+  assert.equal(future.complete && future.invalid, true);
+  assert.equal(parseBirthYear('19a91x', 2026).value, 1991, '숫자만 남긴다');
+});
+
+test('저장값의 출생 연도도 진단 화면과 같은 범위로 확인한다', () => {
+  const thisYear = new Date().getFullYear();
+  assert.equal(normalizeProfile({ birthYear: 1991 }).birthYear, 1991);
+  assert.equal(normalizeProfile({ birthYear: '1991' }).birthYear, 1991);
+  assert.equal(normalizeProfile({ birthYear: thisYear }).birthYear, thisYear);
+  assert.equal(normalizeProfile({ birthYear: thisYear + 1 }).birthYear, null);
+  assert.equal(normalizeProfile({ birthYear: 1920 }).birthYear, null);
+  assert.equal(normalizeProfile({ birthYear: '19' }).birthYear, null);
+  assert.equal(normalizeProfile({ birthYear: 1990.5 }).birthYear, null);
+  assert.equal(normalizeProfile({ birthYear: null }).birthYear, null);
 });

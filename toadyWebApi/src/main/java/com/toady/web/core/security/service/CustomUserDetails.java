@@ -49,19 +49,6 @@ public class CustomUserDetails implements UserDetails {
 
 
 
-    // 주의: 이 생성자만 (password, username) 순서다. 다른 생성자와 순서가 반대이니 쓸 때 헷갈리지 않게 한다(지금은 쓰는 곳 없음)
-    public CustomUserDetails(String password, String username, Collection<? extends GrantedAuthority> authorities, boolean accountNonExpired, boolean accountNonLocked, boolean credentialsNonExpired, boolean enabled, Long userSeq, String userNicName) {
-        this.password = password;
-        this.username = username;
-        this.authorities = Collections.unmodifiableSet(sortAuthorities(authorities));
-        this.accountNonExpired = accountNonExpired;
-        this.accountNonLocked = accountNonLocked;
-        this.credentialsNonExpired = credentialsNonExpired;
-        this.enabled = enabled;
-        this.userSeq = userSeq;
-        this.userNicName = userNicName;
-    }
-
     /** 계정 상태 플래그를 모두 true로 두는 간단한 생성자. 상태 검사는 SimpleUserDetailsService·JwtProviderImpl이 먼저 한다. */
     public CustomUserDetails(String username, String password, Collection<? extends GrantedAuthority> authorities) {
         this(username, password, true, true, true, true, authorities);

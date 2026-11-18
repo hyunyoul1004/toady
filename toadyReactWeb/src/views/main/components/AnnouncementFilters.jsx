@@ -23,6 +23,16 @@ function groupPressed(groupList, selectedRegions) {
   return count === groupList.length ? true : count > 0 ? 'mixed' : false;
 }
 
+// 검색 후보 종류별 표시 칩 [라벨, 배경, 글자, 테두리]. 생활권(예: 운정)은 여러 시·구에 걸친 묶음이라 '구/군'으로 표시하지 않는다.
+// 정해진 종류가 아닌 값은 칩 없이 이름만 보인다.
+const OPTION_CHIPS = {
+  global_announcement: ['과거/전체', '#f3e8ff', '#7e22ce', '#d8b4fe'],
+  apartment: ['단지명', '#fef3c7', '#d97706', '#fde68a'],
+  living_area: ['생활권', '#ecfdf5', '#047857', '#a7f3d0'],
+  city: ['시/도', '#eff6ff', '#2563eb', '#bfdbfe'],
+  district: ['구/군', '#f8fafc', '#64748b', '#e2e8f0']
+};
+
 /**
  * 홈 화면 맨 위의 검색·필터 카드.
  * - 검색창(MUI Autocomplete, 여러 개 선택): 생활권·시·도·시·군·구·단지명·직접 입력을 칩으로 고른다. 고른 값은 paramInfo.citys에 들어간다.
@@ -242,19 +252,14 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                         }
 
                         const isGlobal = option.type === 'global_announcement';
-                        const isApt = option.type === 'apartment';
                         const isCity = option.type === 'city';
-
-                        const chipLabel = isGlobal ? '과거/전체' : isApt ? '단지명' : isCity ? '시/도' : '구/군';
-                        const chipBg = isGlobal ? '#f3e8ff' : isApt ? '#fef3c7' : isCity ? '#eff6ff' : '#f8fafc';
-                        const chipColor = isGlobal ? '#7e22ce' : isApt ? '#d97706' : isCity ? '#2563eb' : '#64748b';
-                        const chipBorder = isGlobal ? '1px solid #d8b4fe' : isApt ? '1px solid #fde68a' : isCity ? '1px solid #bfdbfe' : '1px solid #e2e8f0';
+                        const optionChip = OPTION_CHIPS[option.type];
 
                         return (
                           <li {...props} key={option.key || option.label}>
                             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 0.4, overflow: 'hidden' }}>
-                              <Chip
-                                label={chipLabel}
+                              {optionChip && <Chip
+                                label={optionChip[0]}
                                 size="small"
                                 sx={{
                                   height: 20,
@@ -262,15 +267,15 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                                   fontWeight: 700,
                                   mr: 1,
                                   flexShrink: 0,
-                                  bgcolor: chipBg,
-                                  color: chipColor,
-                                  border: chipBorder
+                                  bgcolor: optionChip[1],
+                                  color: optionChip[2],
+                                  border: `1px solid ${optionChip[3]}`
                                 }}
-                              />
+                              />}
                               <Typography
                                 sx={{
                                   fontSize: '0.85rem',
-                                  fontWeight: isCity || isGlobal ? 800 : 600,
+                                  fontWeight: isCity || isGlobal || option.type === 'living_area' ? 800 : 600,
                                   color: '#0f172a',
                                   whiteSpace: 'nowrap',
                                   mr: 1

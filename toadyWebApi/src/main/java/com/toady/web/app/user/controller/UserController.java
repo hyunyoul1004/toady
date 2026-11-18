@@ -8,6 +8,7 @@ import com.toady.web.core.security.LoginAttemptLimiter;
 import com.toady.web.core.security.RequestLimitFilter;
 import com.toady.web.core.util.CmnUtils;
 import com.toady.web.core.util.email.EmailDeliveryException;
+import com.toady.web.core.response.ApiExceptionHandler;
 import com.toady.web.core.util.email.MailGate;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
@@ -128,6 +129,8 @@ public class UserController {
         try {
             return mailGate.run(() -> userService.regUser(param));
         } catch (EmailDeliveryException e) {
+            // 하루 메일 발송량이 다 찬 경우는 설정 문제가 아니므로 '잠시 후 다시' 안내(429)로 돌려준다
+            if (EmailDeliveryException.quotaReached(e)) return ApiExceptionHandler.mailQuotaResponse();
             log.error("회원가입 인증 이메일 발송 실패", e);
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(
                     ResData.of(

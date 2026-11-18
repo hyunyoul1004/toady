@@ -9,12 +9,10 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.validation.annotation.Validated;
@@ -46,8 +44,6 @@ import java.util.concurrent.TimeUnit;
 public class PriceGapSnapshots {
     private static final Logger log = LoggerFactory.getLogger(PriceGapSnapshots.class);
     static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180, MAX_MINUTES = 20;
-    // @Configuration + @EnableScheduling: 아래 @Scheduled 메서드가 실제로 돌도록 스케줄링 기능을 켠다.
-    @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc;
     private final PriceGapStore store;
     private final EligibilityFeed feed;

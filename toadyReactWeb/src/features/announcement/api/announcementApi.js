@@ -123,7 +123,14 @@ const KEY_PART = /^[a-zA-Z0-9_-]{1,40}$/;
  */
 function announcementPath(type, houseManageNo, pblancNo) {
   if (!TYPE_PART.test(type || '') || !KEY_PART.test(houseManageNo || '') || !KEY_PART.test(pblancNo || '')) throw new Error('공고 주소가 올바르지 않습니다.');
-  return `/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}`;
+  // 형식 검사를 통과한 값만 쓰지만, 경로 조각은 항상 인코딩해 둔다(검사 규칙이 바뀌어도 경로가 깨지지 않게).
+  return `/api/v1/${encodeURIComponent(type)}/announcements/${encodeURIComponent(houseManageNo)}/${encodeURIComponent(pblancNo)}`;
+}
+/** 댓글 하나의 API 경로. 댓글 번호는 양의 정수만 받는다(빈 값·'1/../x' 같은 값으로 다른 경로를 부르지 않게). */
+function commentPath(type, houseManageNo, pblancNo, commentSeq) {
+  const seq = String(commentSeq ?? '');
+  if (!/^[1-9][0-9]{0,18}$/.test(seq)) throw new Error('댓글 번호가 올바르지 않습니다.');
+  return `${announcementPath(type, houseManageNo, pblancNo)}/comments/${encodeURIComponent(seq)}`;
 }
 /** parseSubscriptId의 마지막 확인: 형식이 틀리면 빈 값으로 돌려 상세를 열지 않는다. */
 function safeParts(parts) {
@@ -464,7 +471,7 @@ export const announcementApi = {
     const commentSeq = params.commentSeq || params.subscriptCommentSeq;
 
     const payload = { content: params.content };
-    const res = await apiClient.patch(`${announcementPath(type, houseManageNo, pblancNo)}/comments/${commentSeq}`, payload);
+    const res = await apiClient.patch(commentPath(type, houseManageNo, pblancNo, commentSeq), payload);
     return {
       ...res,
       resultCode: res.resultCode || 'SUCCESS',
@@ -484,7 +491,7 @@ export const announcementApi = {
     type = type || 'apt';
     const commentSeq = params.commentSeq || params.subscriptCommentSeq;
 
-    const res = await apiClient.delete(`${announcementPath(type, houseManageNo, pblancNo)}/comments/${commentSeq}`);
+    const res = await apiClient.delete(commentPath(type, houseManageNo, pblancNo, commentSeq));
     return {
       ...res,
       resultCode: res?.resultCode || 'SUCCESS',
@@ -521,7 +528,7 @@ export const announcementApi = {
     if (params.houseManageNo) houseManageNo = params.houseManageNo;
     if (params.pblancNo) pblancNo = params.pblancNo;
 
-    const res = await apiClient.get(`/api/v1/apt/announcements/${houseManageNo}/${pblancNo}/scores`);
+    const res = await apiClient.get(`${announcementPath('apt', houseManageNo, pblancNo)}/scores`);
     const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
     return {
       resultCode: res.data?.resultCode || 'SUCCESS',
@@ -560,7 +567,7 @@ export const announcementApi = {
     if (params.houseManageNo) houseManageNo = params.houseManageNo;
     if (params.pblancNo) pblancNo = params.pblancNo;
 
-    const res = await apiClient.get(`/api/v1/apt/announcements/${houseManageNo}/${pblancNo}/special-supply-status`);
+    const res = await apiClient.get(`${announcementPath('apt', houseManageNo, pblancNo)}/special-supply-status`);
     const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
     return {
       resultCode: res.data?.resultCode || 'SUCCESS',

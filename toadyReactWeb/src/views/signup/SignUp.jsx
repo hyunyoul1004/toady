@@ -70,6 +70,14 @@ export const SignUp = (props) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setErrorMessage(null);
+    // 고친 칸의 오류 표시는 바로 지운다. 비밀번호를 바꾸면 '확인과 불일치' 안내도 더는 맞지 않으므로 함께 지운다.
+    const cleared = name === 'userPassword' ? [name, 'userPasswordConfirm'] : [name];
+    setValidationInfo((prev) => {
+      if (cleared.every((key) => prev[`${key}Check`] !== false)) return prev;
+      const next = { ...prev };
+      cleared.forEach((key) => { next[`${key}Check`] = true; next[`${key}Msg`] = null; });
+      return next;
+    });
   };
 
   // 위에서부터 한 칸씩 검사해 처음 걸린 칸에만 오류를 표시하고 커서를 옮긴다. 모두 통과하면 가입을 요청한다.

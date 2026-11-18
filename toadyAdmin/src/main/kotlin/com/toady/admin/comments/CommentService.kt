@@ -83,7 +83,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 	 * 관리자가 숨긴 댓글만 기록해 두어, 작성자가 직접 지운 댓글(같은 DELETE_YN='Y')을 되살리지 않게 한다.
 	 */
 	// @Transactional: 댓글 숨김과 숨김 기록을 한 트랜잭션으로 묶는다. 다른 빈에서 부를 때만 적용된다
-	// (같은 클래스 안의 hideAllBy가 부르면 스프링 프록시를 거치지 않아 트랜잭션이 걸리지 않는다).
+	// (같은 클래스 안에서 부르면 스프링 프록시를 거치지 않으므로, hideAllBy는 자기 트랜잭션을 따로 건다).
 	@Transactional
 	fun hide(seq: Long, admin: String): Int {
 		val now = Timestamp.valueOf(Kst.now())
@@ -104,6 +104,9 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 	}
 
 	/** 한 회원이 쓴 보이는 이야기를 모두 숨긴다(원글이면 답글도 함께). 숨긴 건수를 돌려준다. */
+	// @Transactional: 안에서 부르는 hide()는 같은 클래스 호출이라 트랜잭션이 따로 걸리지 않는다.
+	// 그래서 여기서 한 번에 묶어, 중간에 실패하면 앞서 숨긴 댓글과 숨김 기록까지 모두 되돌린다(한 번에 최대 1000건이라 짧게 끝난다).
+	@Transactional
 	fun hideAllBy(userSeq: Long, admin: String): Int {
 		val roots = jdbc.queryForList("SELECT COMMENT_SEQ FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N' ORDER BY COMMENT_SEQ LIMIT 1000", Long::class.java, userSeq)
 		return roots.sumOf { hide(it, admin) }

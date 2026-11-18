@@ -8,6 +8,8 @@ import com.toady.web.app.push.PushSubscriptions;
 import com.toady.web.app.push.WebPushSender;
 import com.toady.web.app.user.repository.UserRepository;
 import com.toady.web.app.user.service.AccountService;
+import com.toady.web.core.util.email.EmailDeliveryException;
+import com.toady.web.core.util.email.MailGate;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mail.MailException;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -49,12 +52,13 @@ public class InternalAdminController {
     private final CertifyService certify;
     private final AccountService accounts;
     private final DailyCounter counter;
+    private final MailGate mailGate;
 
     // 생성자 주입. @Value로 받은 토큰이 32자 미만이면 null로 두어 모든 요청을 거부한다
     public InternalAdminController(@Value("${toady.admin.internal-token:}") String token, PushSubscriptions subscriptions, WebPushSender sender, ObjectMapper mapper,
-                                   UserRepository users, CertifyService certify, AccountService accounts, DailyCounter counter) {
+                                   UserRepository users, CertifyService certify, AccountService accounts, DailyCounter counter, MailGate mailGate) {
         this.token = token == null || token.trim().length() < 32 ? null : token.trim().getBytes(StandardCharsets.UTF_8);
-        this.subscriptions = subscriptions; this.sender = sender; this.mapper = mapper; this.users = users; this.certify = certify; this.accounts = accounts; this.counter = counter;
+        this.subscriptions = subscriptions; this.sender = sender; this.mapper = mapper; this.users = users; this.certify = certify; this.accounts = accounts; this.counter = counter; this.mailGate = mailGate;
     }
 
     // MessageDigest.isEqual: 글자를 하나씩 비교하다 일찍 끝나지 않는 비교. 응답 시간으로 토큰을 추측하지 못하게 한다
@@ -93,14 +97,26 @@ public class InternalAdminController {
         return ResponseEntity.ok(result);
     }
 
-    /** 가입 인증 메일 다시 보내기(인증 전 회원만). 메일 한도·재요청 간격 규칙은 회원이 직접 요청할 때와 같다. */
+    /** 가입 인증 메일 다시 보내기(인증 전 회원만). 메일 한도·재요청 간격 규칙은 회원이 직접 요청할 때와 같다. 발송량이 다 차면 429, 발송 실패는 503. */
     @PostMapping("/members/{userSeq}/resend-verification")
     public ResponseEntity<Map<String, Object>> resend(@RequestHeader(value = "X-Admin-Token", required = false) String header, @PathVariable long userSeq) {
         if (denied(header)) return ResponseEntity.notFound().build();
         var user = users.findById(userSeq).orElse(null);
         if (user == null || !"N".equals(user.getWithdrawalYn())) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "회원을 찾을 수 없습니다."));
         if ("Y".equals(user.getEmailCertifyYn())) return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "이미 인증을 마친 회원입니다."));
-        var response = certify.resendAccountVerification(new CertifyDTO.UserInfo(user.getUserEmail()));
+        ResponseEntity<?> response;
+        try {
+            // 회원이 직접 요청할 때(CertifyController)와 같은 MailGate를 거쳐 동시 발송 수를 제한한다. 하루 발송량은 EmailUtilImpl 안의 MailBudget이 센다
+            response = mailGate.run(() -> certify.resendAccountVerification(new CertifyDTO.UserInfo(user.getUserEmail())));
+        } catch (EmailDeliveryException | MailException failure) {
+            // 회원 화면과 달리 관리자에게는 가입 여부를 숨길 필요가 없으므로 실패 이유를 그대로 알려 준다
+            if (EmailDeliveryException.quotaReached(failure)) {
+                log.warn("관리자 인증 메일 재발송: 오늘 메일 발송량을 모두 사용함 userSeq={}", userSeq);
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", "오늘 보낼 수 있는 메일 양을 모두 사용했습니다. 내일 다시 시도해 주세요."));
+            }
+            log.error("관리자 인증 메일 재발송 실패: userSeq={}", userSeq, failure);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("message", "인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        }
         Object body = response.getBody();
         String message = body instanceof com.toady.web.core.response.ResData<?> data ? data.getResultMessage() : "요청을 보냈습니다.";
         return ResponseEntity.ok(Map.of("message", message == null ? "요청을 보냈습니다." : message));

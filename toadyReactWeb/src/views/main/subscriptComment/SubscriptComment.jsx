@@ -145,10 +145,16 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   const [feedback, setFeedback] = useState(null);
   // 안내 문구는 마지막 메시지 기준으로 3.5초 뒤에 지운다(이전 타이머가 새 메시지를 일찍 지우지 않게).
   const feedbackTimer = useRef(null);
-  const hideFeedbackLater = () => { clearTimeout(feedbackTimer.current); feedbackTimer.current = setTimeout(() => setFeedback(null), 3500); };
+  // 성공·삭제 안내만 잠시 보였다가 사라진다. 지울 때도 그 안내가 그대로 떠 있을 때만 지워, 사이에 뜬 오류를 지우지 않게 한다.
+  const showNotice = (severity, text) => {
+    clearTimeout(feedbackTimer.current);
+    const notice = { severity, text };
+    setFeedback(notice);
+    feedbackTimer.current = setTimeout(() => setFeedback(current => (current === notice ? null : current)), 3500);
+  };
   useEffect(() => () => clearTimeout(feedbackTimer.current), []);
-  // 오류·입력 안내는 브라우저 alert 대신 목록 위 안내 문구로 보여 준다.
-  const showError = text => { clearTimeout(feedbackTimer.current); setFeedback({ severity: 'error', text }); };
+  // 오류·입력 안내는 브라우저 alert 대신 목록 위 안내 문구로 보여 준다. 오류는 사용자가 닫을 때까지 남고, 기존 숨김 타이머도 멈춘다.
+  const showError = text => { clearTimeout(feedbackTimer.current); feedbackTimer.current = null; setFeedback({ severity: 'error', text }); };
   // 삭제 확인 창은 히스토리 한 단계로 연다(뒤로가기로 닫힘). 값은 지울 댓글 번호다.
   const [deleteTarget, setDeleteTarget] = useHistoryOverlay('comment:delete');
   const [deleting, setDeleting] = useState(false);
@@ -214,10 +220,9 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         content: rootContent.trim()
       });
       setRootContent('');
-      setFeedback({ severity: 'success', text: '댓글이 성공적으로 등록되었습니다.' });
-      hideFeedbackLater();
+      showNotice('success', '댓글이 성공적으로 등록되었습니다.');
     } catch (err) {
-      setFeedback({ severity: 'error', text: err.message || '댓글 등록에 실패했습니다.' });
+      showError(err.message || '댓글 등록에 실패했습니다.');
     }
   };
 
@@ -243,8 +248,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         content: replyState.content.trim()
       });
       setReplyState({ parentCommentSeq: null, content: '', show: false });
-      setFeedback({ severity: 'success', text: '답글이 성공적으로 등록되었습니다.' });
-      hideFeedbackLater();
+      showNotice('success', '답글이 성공적으로 등록되었습니다.');
     } catch (err) {
       showError(err.message || '답글 등록에 실패했습니다.');
     }
@@ -268,8 +272,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         content: modifyState.content.trim()
       });
       setModifyState({ commentSeq: null, content: '', show: false });
-      setFeedback({ severity: 'success', text: '댓글이 수정되었습니다.' });
-      hideFeedbackLater();
+      showNotice('success', '댓글이 수정되었습니다.');
     } catch (err) {
       showError(err.message || '댓글 수정에 실패했습니다.');
     }
@@ -288,8 +291,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         pblancNo: subscriptDetail?.pblancNo,
         commentSeq
       });
-      setFeedback({ severity: 'info', text: '댓글이 삭제되었습니다.' });
-      hideFeedbackLater();
+      showNotice('info', '댓글이 삭제되었습니다.');
     } catch (err) {
       showError(err.message || '댓글 삭제에 실패했습니다.');
     } finally {

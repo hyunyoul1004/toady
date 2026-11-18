@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -35,6 +36,7 @@ class AdminSiteTest {
 	@Autowired lateinit var mvc: MockMvc
 	@Autowired lateinit var jdbc: JdbcTemplate
 	@Autowired lateinit var metrics: MetricsService
+	@Autowired lateinit var comments: com.toady.admin.comments.CommentService
 	private val admin = user("operator").roles("ADMIN")
 
 	@BeforeEach fun setup() {
@@ -83,7 +85,9 @@ class AdminSiteTest {
 			.with { it.remoteAddr = "198.51.100.21"; it }).andExpect(redirectedUrl("/admin/")).andReturn().response.getCookie("TOADY_ADMIN_REMEMBER")
 		assertTrue(remembered != null && remembered.maxAge == 14 * 24 * 60 * 60 && remembered.isHttpOnly, "14일짜리 HttpOnly 쿠키")
 		assertEquals("Strict", remembered!!.getAttribute("SameSite"))
-		assertTrue(mvc.perform(get("/admin/login")).andReturn().response.contentAsString.contains("name=\"remember\""), "키가 있으면 체크박스를 보여 준다")
+		val loginPage = mvc.perform(get("/admin/login")).andReturn().response.contentAsString
+		assertTrue(loginPage.contains("name=\"remember\""), "키가 있으면 체크박스를 보여 준다")
+		assertTrue(loginPage.contains("이 브라우저에서 14일"), "안내 기간은 설정값(remember-days)을 따른다")
 		// 키가 없거나 짧으면 로그인 유지를 끈다(비밀번호로 키를 만들지 않는다).
 		assertFalse(com.toady.admin.security.SecurityConfig.rememberEnabled("") || com.toady.admin.security.SecurityConfig.rememberEnabled("short"))
 		// 세션 없이 쿠키만으로 다시 로그인된다(세션 30분이 지난 경우와 같다).
@@ -491,6 +495,21 @@ class AdminSiteTest {
 		mvc.perform(post("/admin/members/2/withdraw").with(admin).with(csrf()).param("confirm", "탈퇴 처리")).andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("ADMIN_API_TOKEN")))
 		mvc.perform(post("/admin/push").with(admin).with(csrf()).param("title", "알림 제목").param("body", "알림 내용입니다").param("url", "/this-week")).andExpect(flash().attribute("error", org.hamcrest.Matchers.containsString("전체 발송")))
 		mvc.perform(post("/admin/push").with(admin).with(csrf()).param("title", "알림 제목").param("body", "알림 내용입니다").param("url", "https://evil.example")).andExpect(flash().attributeExists("error"))
+	}
+
+	@Test fun hidingAllOfAMembersStoriesIsAllOrNothing() {
+		jdbc.update("INSERT INTO TB_LTTOT_PBLANC_COMMENT (COMMENT_SEQ,ANNOUNCEMENT_TYPE,HOUSE_MANAGE_NO,PBLANC_NO,CONTENT,CREATE_USER_SEQ) VALUES (12,'APT','H1','P1','둘째 글',1)")
+		// 둘째 글을 숨길 때 DB 오류가 나게 해, 앞서 숨긴 첫 글(10)과 답글(11)·숨김 기록까지 되돌려지는지 본다.
+		jdbc.execute("ALTER TABLE TB_LTTOT_PBLANC_COMMENT ADD CONSTRAINT TEST_FAIL_HIDE CHECK (COMMENT_SEQ<>12 OR DELETE_YN='N')")
+		try {
+			assertFailsWith<org.springframework.dao.DataAccessException> { comments.hideAllBy(1, "operator") }
+		} finally { jdbc.execute("ALTER TABLE TB_LTTOT_PBLANC_COMMENT DROP CONSTRAINT TEST_FAIL_HIDE") }
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'"))
+		assertEquals(0L, count("SELECT COUNT(*) FROM TB_COMMENT_ADMIN_HIDE"))
+		// 오류가 없으면 원글·답글을 모두 숨기고 건마다 숨김 기록을 남긴다.
+		assertEquals(3, comments.hideAllBy(1, "operator"))
+		assertEquals(3L, count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE DELETE_YN='Y'"))
+		assertEquals(3L, count("SELECT COUNT(*) FROM TB_COMMENT_ADMIN_HIDE WHERE ADMIN_NAME='operator'"))
 	}
 
 	@Test fun insightsShowSearchSharesAndStories() {

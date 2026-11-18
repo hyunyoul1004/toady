@@ -141,7 +141,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
       <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{hasSupply?supply.toLocaleString('ko-KR'):'미제공'}{hasSupply && <em>세대</em>}</strong><small>{summary.housingType || '모집공고 기준'}</small></div>
     </div>
     {showTabs && <ResearchTabs value={tab} onChange={setTab}/>}
-    <div className="research-tab-content" role="tabpanel" aria-label={tab==='info'?'청약 정보':tab==='prices'?'주택형과 공급금액':'같은 법정동의 실제 매매 거래'}>
+    <div className="research-tab-content" role="tabpanel" aria-label={tab==='info'?'청약 정보':'같은 법정동의 실제 매매 거래'}>
       {tab==='info' && <>
         <Box sx={{display:'flex',justifyContent:'flex-end',mb:1.5}}><ImageExportButton detail={detail} sections={detailImageSections(detail)} label="청약정보 이미지 저장"/></Box>
         {amounts.length>0 && <div className="announcement-price-highlight"><span>주택형별 최고 공급금액</span><strong>{formatManwon(min)}{min!==max && <> ~ {formatManwon(max)}</>}</strong><div><span>{units.length}개 주택형 · 층·타입별 금액은 원문 확인</span><Button size="small" onClick={()=>unitSection.current?.scrollIntoView({behavior:'smooth',block:'start'})}>주택형별 보기 ↓</Button></div></div>}

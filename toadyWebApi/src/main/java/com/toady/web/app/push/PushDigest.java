@@ -14,13 +14,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.sql.Timestamp;
@@ -45,8 +43,6 @@ import java.util.function.Supplier;
 // @ConditionalOnProperty: 설정 값 toady.push.digest-enabled가 "true"일 때만 이 빈을 만든다. 아니면 클래스 전체가 없는 것과 같다
 @ConditionalOnProperty(name = "toady.push.digest-enabled", havingValue = "true")
 public class PushDigest {
-    // @Configuration + @EnableScheduling: @Scheduled 메서드를 실제로 돌게 하는 스위치. 이 빈이 켜질 때만 함께 켜지도록 안쪽에 둔다
-    @Configuration @EnableScheduling static class Scheduling { }
     private static final Logger log = LoggerFactory.getLogger(PushDigest.class);
     /** 생활권 새 공고 기록을 처음 만들 때 기존 공고를 '새 공고'로 보내지 않기 위한 기준 시각. */
     static final LocalDateTime BASELINE = LocalDateTime.of(2000, 1, 1, 0, 0);

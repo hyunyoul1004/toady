@@ -59,6 +59,13 @@ class PlannerIntegrationTest {
         return "Bearer "+json.readTree(body).path("data").path("accessToken").asText();
     }
     static String feedToken(String body) { var matcher=java.util.regex.Pattern.compile("/calendar/([A-Za-z0-9_-]{43})\\.ics").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
+    /** 관심 공고 삭제도 저장과 같은 경로 값 검사(@Pattern)를 거친다. */
+    @Test void favoriteDeleteValidatesPathLikeSave() throws Exception {
+        user("delete-check@example.test");String auth=token("delete-check@example.test");
+        mvc.perform(delete("/api/v1/me/favorites/house/P1/N1").header("Authorization",auth)).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/v1/me/favorites/apt/P1/"+"N".repeat(41)).header("Authorization",auth)).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/v1/me/favorites/apt/P1/N1").header("Authorization",auth)).andExpect(status().isOk());
+    }
     @Test void calendarFeedIsPrivateRotatableAndStopsForWithdrawnAccounts() throws Exception {
         UserEntity owner=user("feed@example.test");String auth=token("feed@example.test");
         mvc.perform(get("/api/v1/me/calendar-feed")).andExpect(status().isUnauthorized());

@@ -103,7 +103,7 @@ public class AnnouncementSearchService {
         String normalizedKeyword = keyword.trim().toLowerCase(Locale.ROOT);
         List<AnnouncementSuggestionResponse> suggestions = new ArrayList<>();
         suggestions.addAll(findSuggestions(
-                aptRepository, "rceptBgnde", "hssplyAdres",
+                AnnouncementType.APT, aptRepository, "rceptBgnde", "hssplyAdres",
                 normalizedKeyword, limit,
                 item -> new AnnouncementSuggestionResponse(
                         AnnouncementType.APT.getPath(), item.getHouseManageNo(), item.getPblancNo(),
@@ -112,7 +112,7 @@ public class AnnouncementSearchService {
                 )
         ));
         suggestions.addAll(findSuggestions(
-                urbanRepository, "subscrptRceptBgnde", "hssplyHshldco",
+                AnnouncementType.URBAN, urbanRepository, "subscrptRceptBgnde", "hssplyHshldco",
                 normalizedKeyword, limit,
                 item -> new AnnouncementSuggestionResponse(
                         AnnouncementType.URBAN.getPath(), item.getHouseManageNo(), item.getPblancNo(),
@@ -121,7 +121,7 @@ public class AnnouncementSearchService {
                 )
         ));
         suggestions.addAll(findSuggestions(
-                remainingRepository, "subscrptRceptBgnde", "hssplyAdres",
+                AnnouncementType.REMAINING, remainingRepository, "subscrptRceptBgnde", "hssplyAdres",
                 normalizedKeyword, limit,
                 item -> new AnnouncementSuggestionResponse(
                         AnnouncementType.REMAINING.getPath(), item.getHouseManageNo(), item.getPblancNo(),
@@ -130,7 +130,7 @@ public class AnnouncementSearchService {
                 )
         ));
         suggestions.addAll(findSuggestions(
-                publicRentalRepository, "subscrptRceptBgnde", "hssplyAdres",
+                AnnouncementType.PUBLIC_RENTAL, publicRentalRepository, "subscrptRceptBgnde", "hssplyAdres",
                 normalizedKeyword, limit,
                 item -> new AnnouncementSuggestionResponse(
                         AnnouncementType.PUBLIC_RENTAL.getPath(), item.getHouseManageNo(), item.getPblancNo(),
@@ -139,7 +139,7 @@ public class AnnouncementSearchService {
                 )
         ));
         suggestions.addAll(findSuggestions(
-                optionalRepository, "subscrptRceptBgnde", "hssplyAdres",
+                AnnouncementType.OPTIONAL, optionalRepository, "subscrptRceptBgnde", "hssplyAdres",
                 normalizedKeyword, limit,
                 item -> new AnnouncementSuggestionResponse(
                         AnnouncementType.OPTIONAL.getPath(), item.getHouseManageNo(), item.getPblancNo(),
@@ -148,8 +148,8 @@ public class AnnouncementSearchService {
                 )
         ));
 
+        // 숨긴 공고는 유형별 조회(findSuggestions → visible)에서 이미 뺐다.
         return suggestions.stream()
-                .filter(item -> !overrides.hidden(AnnouncementType.fromPath(item.type()).name(), item.houseManageNo(), item.pblancNo()))
                 .sorted(Comparator
                         .comparing(
                                 (AnnouncementSuggestionResponse item) -> normalizedDate(item.rceptBgnde()),
@@ -163,11 +163,12 @@ public class AnnouncementSearchService {
     }
 
     /**
-     * 한 유형에서 자동완성 후보를 최대 limit개 읽는다. 유형마다 접수일·주소 필드 이름이 달라 이름을 인자로 받는다.
+     * 한 유형에서 숨기지 않은 자동완성 후보를 최대 limit개 읽는다. 유형마다 접수일·주소 필드 이름이 달라 이름을 인자로 받는다.
      * findBy(spec, q -> q.limit(n).all()): Spring Data의 Fluent 조회. count 쿼리 없이 앞에서 n개만 가져온다.
      * 정렬: 접수일 없는 공고는 뒤로, 그다음 접수일 최신순, 같으면 번호순.
      */
-    private static <T> List<AnnouncementSuggestionResponse> findSuggestions(
+    private <T> List<AnnouncementSuggestionResponse> findSuggestions(
+            AnnouncementType type,
             JpaSpecificationExecutor<T> repository,
             String receptionStartDateProperty,
             String addressProperty,
@@ -188,7 +189,8 @@ public class AnnouncementSearchService {
             );
             return builder.or(matches.toArray(Predicate[]::new));
         };
-        return repository.findBy(specification, query -> query.limit(limit).all())
+        // 숨긴 공고는 조회 조건에서 빼야 유형마다 limit개를 온전히 채운다(읽은 뒤 거르면 limit보다 적게 나온다).
+        return repository.findBy(visible(type, specification), query -> query.limit(limit).all())
                 .stream()
                 .map(mapper)
                 .toList();

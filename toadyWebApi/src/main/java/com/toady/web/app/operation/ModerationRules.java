@@ -23,7 +23,13 @@ public class ModerationRules {
     public enum Scope { STORY, DM }
     /** 처리 방식: BLOCK(저장 거부) / FLAG(쪽지에 표시만). */
     public enum Action { BLOCK, FLAG }
-    record Rule(String compact, String scope, Action action) { }
+    record Rule(String compact, String scope, Action action) {
+        /** SCOPE가 비어 있으면(NULL·공백) 기본값 ALL로 본다. 대소문자·앞뒤 공백도 무시한다. */
+        boolean appliesTo(Scope target) {
+            String value = scope == null ? "" : scope.strip().toUpperCase(Locale.ROOT);
+            return value.isEmpty() || value.equals("ALL") || value.equals(target.name());
+        }
+    }
 
     private final JdbcTemplate jdbc;
     private volatile List<Rule> rules = List.of();
@@ -37,7 +43,7 @@ public class ModerationRules {
         if (compact.isEmpty()) return null;
         Action found = null;
         for (Rule rule : current()) {
-            if (!rule.scope().equals("ALL") && !rule.scope().equals(scope.name())) continue;
+            if (!rule.appliesTo(scope)) continue;
             if (!compact.contains(rule.compact())) continue;
             if (rule.action() == Action.BLOCK) return Action.BLOCK;
             // 쪽지 표시(FLAG)는 쪽지에만 쓴다.
@@ -58,7 +64,9 @@ public class ModerationRules {
             try {
                 rules = jdbc.query("SELECT PATTERN, SCOPE, ACTION FROM TB_MODERATION_RULE WHERE USE_YN='Y'", (r, i) -> {
                     String compact = normalize(r.getString(1));
-                    Action action = "FLAG".equals(r.getString(3)) ? Action.FLAG : Action.BLOCK;
+                    // ACTION이 비어 있거나 모르는 값이면 더 안전한 BLOCK으로 본다
+                    String actionValue = r.getString(3);
+                    Action action = actionValue != null && "FLAG".equalsIgnoreCase(actionValue.strip()) ? Action.FLAG : Action.BLOCK;
                     return compact.length() < 2 ? null : new Rule(compact, r.getString(2), action);
                 }).stream().filter(java.util.Objects::nonNull).toList();
             } catch (DataAccessException missing) {

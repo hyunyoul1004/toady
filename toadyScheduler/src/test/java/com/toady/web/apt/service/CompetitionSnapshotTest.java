@@ -39,4 +39,14 @@ class CompetitionSnapshotTest {
         assertThrows(RuntimeException.class, () -> service.replace("SNAPSHOT_TEST", columns, keys, "house", "notice", List.of(row)));
         assertEquals("1", jdbc.queryForObject("SELECT RATE FROM SNAPSHOT_TEST WHERE MODEL_NO='old'", String.class));
     }
+    @Test void tablesWhoseColumnsAreAllKeysCanBeUpsertedTwice() throws Exception {
+        jdbc.execute("DROP TABLE IF EXISTS ALL_KEY_TEST");
+        jdbc.execute("CREATE TABLE ALL_KEY_TEST (HOUSE_MANAGE_NO VARCHAR(20), PBLANC_NO VARCHAR(20), PRIMARY KEY(HOUSE_MANAGE_NO,PBLANC_NO))");
+        List<String> allKeys = List.of("HOUSE_MANAGE_NO", "PBLANC_NO");
+        var row = new ObjectMapper().readTree("{\"HOUSE_MANAGE_NO\":\"house\",\"PBLANC_NO\":\"notice\"}");
+        service.upsert("ALL_KEY_TEST", allKeys, allKeys, List.of(row));
+        // 같은 행을 다시 받아도 오류 없이 한 행으로 남는다.
+        service.upsert("ALL_KEY_TEST", allKeys, allKeys, List.of(row));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM ALL_KEY_TEST", Integer.class));
+    }
 }

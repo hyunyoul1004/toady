@@ -305,7 +305,7 @@ public class AnnouncementController {
     @Secured("ROLE_USER")
     @Operation(
             summary = "공고 댓글 삭제",
-            description = "로그인한 작성자가 본인의 댓글을 삭제 처리합니다. 실제 데이터의 보존/삭제 방식은 서버 설정에 따릅니다."
+            description = "로그인한 작성자가 본인의 댓글을 삭제 처리합니다. 행을 지우지 않고 DELETE_YN='Y'로 표시하는 소프트 삭제이며, 원댓글을 지우면 답글도 함께 삭제 처리됩니다. 운영자가 숨긴 공고에서도 본인 댓글은 지울 수 있습니다."
     )
     public ResponseEntity<ResData<?>> deleteComment(
             @Parameter(description = "공고 유형: apt, urban, remaining, public-rental, optional", example = "apt")

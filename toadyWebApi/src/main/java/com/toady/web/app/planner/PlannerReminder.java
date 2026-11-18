@@ -5,7 +5,6 @@ import com.toady.web.core.util.email.EmailUtilService;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.MailSendException;
 import org.springframework.scheduling.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,9 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @ConditionalOnProperty(name="toady.planner.reminders-enabled",havingValue="true")
 public class PlannerReminder {
-    // @Configuration + @EnableScheduling: @Scheduled 메서드가 실제로 돌도록 스케줄링 기능을 켜는 작은 설정 클래스.
-    // 다른 클래스(PriceGapSnapshots 등)에도 같은 설정이 있지만 여러 번 켜도 한 번만 적용된다.
-    @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc; private final PlannerService planner; private final UserRepository users;
     private final EmailUtilService mail; private final String domain; private final ReminderUnsubscribe unsubscribe;
     /** 회원별로 '오늘 보낼 일정 없음'을 확인한 관심 공고 상태. 날짜·관심 공고가 바뀌면 다시 확인한다. */

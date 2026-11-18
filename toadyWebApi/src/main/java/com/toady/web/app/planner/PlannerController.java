@@ -42,8 +42,11 @@ public class PlannerController {
         service.save(user.getUserSeq(),type,house,notice,request.note(),request.checklist(),request.emailEnabled(),request.stage());
         return ResData.of(null,"SUCCESS","저장했습니다.");
     }
-    // @DeleteMapping: DELETE 요청으로 관심 공고 하나를 지운다.
-    @DeleteMapping("/{type}/{house}/{notice}") public ResData<?> delete(@AuthenticationPrincipal CustomUserDetails user,@PathVariable String type,@PathVariable String house,@PathVariable String notice) {
+    // @DeleteMapping: DELETE 요청으로 관심 공고 하나를 지운다. 경로 값은 저장(save)과 같은 @Pattern으로 검사한다.
+    @DeleteMapping("/{type}/{house}/{notice}") public ResData<?> delete(@AuthenticationPrincipal CustomUserDetails user,
+            @PathVariable @Pattern(regexp="apt|urban|remaining|public-rental|optional") String type,
+            @PathVariable @Pattern(regexp="[a-zA-Z0-9_-]{1,40}") String house,
+            @PathVariable @Pattern(regexp="[a-zA-Z0-9_-]{1,40}") String notice) {
         service.delete(user.getUserSeq(),type,house,notice); return ResData.of(null,"SUCCESS","삭제했습니다.");
     }
     // 내 모든 관심 공고의 이메일 알림을 한 번에 끈다.

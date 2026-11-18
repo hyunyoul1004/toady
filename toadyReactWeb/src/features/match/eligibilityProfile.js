@@ -4,7 +4,7 @@
  * 서버 API는 쓰지 않는다.
  */
 import { createLocalStore } from '../../utils/localStore.js';
-import { SIDO } from './eligibilityRules.js';
+import { SIDO, parseBirthYear } from './eligibilityRules.js';
 
 // 저장된 값이 꼭 true/false인지, 정해진 범위의 정수인지 확인하는 작은 도우미. 아니면 null(모름)로 바꾼다.
 const bool = value => (value === true || value === false ? value : null);
@@ -14,7 +14,8 @@ export function normalizeProfile(raw = {}) {
   if (!raw || typeof raw !== 'object') return {};
   return {
     sido: SIDO.includes(raw.sido) ? raw.sido : null,
-    birthYear: int(raw.birthYear, 1920, 2015),
+    // 진단 화면과 같은 규칙(1921년~올해)으로 확인한다. 범위를 벗어난 값은 저장하지 않는다.
+    birthYear: Number.isInteger(Number(raw.birthYear)) ? parseBirthYear(raw.birthYear).value : null,
     householder: bool(raw.householder),
     homeless: bool(raw.homeless),
     homes: int(raw.homes, 1, 2),

@@ -12,6 +12,7 @@ import com.toady.web.core.security.jwt.JwtProvider;
 import com.toady.web.core.security.service.CustomUserDetails;
 import com.toady.web.core.security.service.SimpleUserDetailsService;
 import com.toady.web.core.util.email.EmailDeliveryException;
+import com.toady.web.app.planner.MailQuotaException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -192,7 +193,8 @@ public class UserService {
 
             certifyService.saveCertify(new CertifyDTO.Save(userParam.getUserSeq(), userParam.getUserEmail(), userParam.getUserNicName(), "ACCOUNT", "EMAIL"));
 
-        } catch (EmailDeliveryException e) {
+        } catch (EmailDeliveryException | MailQuotaException e) {
+            // 메일 실패·하루 발송량 초과는 감싸지 않고 그대로 올려 컨트롤러·ApiExceptionHandler가 502·429 안내를 고르게 한다(500으로 바뀌지 않게)
             throw e;
         } catch (PessimisticLockingFailureException e) {
             // 거의 동시에 들어온 가입(버튼 두 번 누름, 같은 범위의 다른 새 이메일)은 MariaDB 갭 잠금 교착으로 한쪽이 되돌려진다.

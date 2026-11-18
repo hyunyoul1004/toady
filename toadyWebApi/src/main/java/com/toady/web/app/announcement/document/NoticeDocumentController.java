@@ -22,6 +22,8 @@ public class NoticeDocumentController {
     }
     // @Pattern: 유형은 정해진 값만, 번호는 숫자만 받는다. 어기면 400.
     // 반환값 record(Result)는 그대로 JSON이 된다(ResData로 감싸지 않는다).
+    // 다른 API와 달리 감싸지 않는 이유: 웹(toadyReactWeb NoticeDocuments.jsx)이 응답의 status·documents를 바로 읽는다.
+    // ResData로 바꾸려면 웹의 읽는 쪽(data.data.status)을 같은 배포에서 함께 바꿔야 한다.
     @GetMapping("/{type}/{house}/{notice}")
     public NoticeDocumentService.Result documents(
             @PathVariable @Pattern(regexp="apt|urban|remaining|public-rental|optional") String type,

@@ -440,7 +440,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     return()=>{active=false;clearTimeout(timer);};
   },[text]);
   // useMemo: 의존성이 그대로면 지난 계산 결과를 다시 쓴다. 단지가 수백 곳이라 글자를 칠 때마다 새로 거르지 않게 한다.
-  const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel,districtNames:priceMap.districtNames}):[],[showPrices,priceMap.complexes,priceMap.sales,text]);
+  const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel,districtNames:priceMap.districtNames}):[],[showPrices,priceMap.complexes,priceMap.sales,priceMap.districtNames,text]);
   const suggestions=React.useMemo(()=>{
     const names=new Set(localSuggestions.map(item=>item.label));
     const fresh=remote.text===text.trim()?remote.items.filter(item=>!names.has(item.label)):[];

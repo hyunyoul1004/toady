@@ -80,6 +80,12 @@ public class ApplyhomeCompetitionPersistenceService {
 				.filter(column -> !keys.contains(column))
 				.map(column -> column + " = VALUES(" + column + ")")
 				.collect(Collectors.joining(", "));
+		// 모든 컬럼이 키인 표는 고칠 값이 없어 UPDATE 절이 비면 문법 오류가 난다.
+		// 키 컬럼 하나를 자기 값으로 두어 겹치는 행은 그대로 두고 넘어간다(INSERT IGNORE와 달리 다른 오류는 숨기지 않는다).
+		if (updates.isEmpty()) {
+			String firstKey = keyColumns.get(0);
+			updates = firstKey + " = " + firstKey;
+		}
 		String sql = "INSERT INTO " + table + " (" + columnSql + ") VALUES (" + placeholders
 				+ ") ON DUPLICATE KEY UPDATE " + updates;
 

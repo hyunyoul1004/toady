@@ -1,7 +1,7 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button, MenuItem, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import LockOutlined from '@mui/icons-material/LockOutlined';
-import { SIDO } from './eligibilityRules';
+import { SIDO, parseBirthYear } from './eligibilityRules';
 
 // 통장 가입 기간 선택지: [최소 개월 수, 화면 문구]. -1은 통장이 없다는 뜻이다.
 export const ACCOUNT_CHOICES = [[-1, '없어요'], [0, '6개월 미만'], [6, '6개월~1년'], [12, '1~2년'], [24, '2년 이상']];
@@ -48,9 +48,20 @@ export default function EligibilityForm({ initial, onSave, onCancel }) {
   }));
   // 바뀐 칸만 덮어쓰는 도우미. 이전 값(previous)을 받아 합치므로 연달아 불러도 값이 섞이지 않는다.
   const set = patch => setForm(previous => ({ ...previous, ...patch }));
+  // 출생 연도 칸의 오류 표시 여부. 4자리를 다 쓰기 전에는 입력 중일 수 있어서, 칸을 떠나거나 저장을 누를 때 보여준다.
+  const [birthChecked, setBirthChecked] = useState(false);
+  const birthRef = useRef(null);
+  const birth = parseBirthYear(form.birthYear);
+  const birthError = birth.invalid && (birth.complete || birthChecked);
   const ready = formReady(form);
-  const thisYear = new Date().getFullYear();
-  return <form className="match-form" onSubmit={event => { event.preventDefault(); if (ready) onSave(form); }}>
+  const submit = event => {
+    event.preventDefault();
+    if (!ready) return;
+    // 잘못된 출생 연도는 말없이 버리지 않고, 칸으로 돌아가 고치게 한다.
+    if (birth.invalid) { setBirthChecked(true); birthRef.current?.focus(); return; }
+    onSave({ ...form, birthYear: birth.value });
+  };
+  return <form className="match-form" onSubmit={submit}>
     {/* 제어 컴포넌트: 입력칸 값은 항상 form 상태에서 오고, 바뀌면 set으로 상태를 고친다. */}
     <fieldset>
       <legend><span>1</span>사는 곳과 청약통장</legend>
@@ -58,10 +69,14 @@ export default function EligibilityForm({ initial, onSave, onCancel }) {
         <TextField select size="small" label="사는 곳(주민등록 기준)" value={form.sido || ''} onChange={event => set({ sido: event.target.value })} required>
           {SIDO.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
         </TextField>
-        {/* 출생 연도: 숫자만 받고, 4자리 정상 연도면 숫자로, 입력 중이면 글자 그대로 둔다(지우는 중에도 칸이 비지 않게). */}
-        <TextField size="small" label="출생 연도(선택)" placeholder="예: 1991" inputProps={{ inputMode: 'numeric', maxLength: 4, pattern: '[0-9]*' }}
-          value={form.birthYear ?? ''} InputLabelProps={{ shrink: true }} helperText="청년 특별공급 확인에만 써요"
-          onChange={event => { const digits = event.target.value.replace(/\D/g, '').slice(0, 4); const year = Number(digits); set({ birthYear: digits.length === 4 && year > 1920 && year <= thisYear ? year : digits ? digits : null }); }} />
+        {/* 출생 연도: 숫자만 받고, 4자리 정상 연도면 숫자로, 입력 중이거나 범위 밖이면 글자 그대로 둔다(입력이 사라지지 않게).
+            범위 밖이면 오류 안내를 보여주고 저장을 막는다. */}
+        <TextField size="small" label="출생 연도(선택)" placeholder="예: 1991" inputRef={birthRef}
+          inputProps={{ inputMode: 'numeric', maxLength: 4, pattern: '[0-9]*', 'aria-invalid': birthError || undefined }}
+          value={form.birthYear ?? ''} InputLabelProps={{ shrink: true }} error={birthError}
+          helperText={birthError ? '출생 연도를 확인해 주세요 (예: 1991)' : '청년 특별공급 확인에만 써요'}
+          onBlur={() => setBirthChecked(true)}
+          onChange={event => { const next = parseBirthYear(event.target.value); setBirthChecked(false); set({ birthYear: next.value ?? (next.text || null) }); }} />
       </div>
       <Choice label="청약통장 가입 기간" value={form.accountMonths} onChange={value => set({ accountMonths: value })} options={ACCOUNT_CHOICES} />
     </fieldset>

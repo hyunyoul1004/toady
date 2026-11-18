@@ -50,6 +50,8 @@ export const LoginPage = (props) => {
     const { name, value } = e.target;
     setLoginInfo((prev) => ({ ...prev, [name]: value }));
     setErrorMessage(null);
+    // 고친 칸의 빨간 표시·안내는 바로 지운다(다시 제출할 때 새로 검사한다).
+    setValidationInfo((prev) => (prev[`${name}Check`] === false ? { ...prev, [`${name}Check`]: true, [`${name}Msg`]: null } : prev));
   };
 
   // form 제출(버튼 클릭·엔터). 기본 동작인 페이지 새로고침을 막고 직접 검사·요청한다.

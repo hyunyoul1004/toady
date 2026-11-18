@@ -118,4 +118,31 @@ class OperationRulesTest {
         String sitemap = mvc.perform(get("/api/v1/public/sitemaps/apt/0.xml")).andReturn().getResponse().getContentAsString();
         assertFalse(sitemap.contains("OP1"), sitemap);
     }
+
+    @Test void hiddenAnnouncementsBlockEditingStoriesButStillAllowDeletingThem() throws Exception {
+        String created = write("숨기기 전에 쓴 이야기");
+        long seq = json.readTree(created).path("data").path("commentSeq").asLong();
+        assertTrue(seq > 0, created);
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','OP1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        overrides.refresh();
+        // 숨긴 공고에는 고치기도 쓰기와 같은 안내로 막는다.
+        mvc.perform(patch(COMMENTS + "/" + seq).header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("content", "숨긴 뒤 고친 내용")))).andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultMessage").value(org.hamcrest.Matchers.containsString("숨긴 공고")));
+        assertEquals("숨기기 전에 쓴 이야기", jdbc.queryForObject("SELECT CONTENT FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=?", String.class, seq));
+        // 본인 글 지우기는 숨긴 공고에서도 된다.
+        mvc.perform(delete(COMMENTS + "/" + seq).header("Authorization", bearer)).andExpect(status().isOk());
+        assertEquals("Y", jdbc.queryForObject("SELECT DELETE_YN FROM TB_LTTOT_PBLANC_COMMENT WHERE COMMENT_SEQ=?", String.class, seq));
+    }
+
+    @Test void suggestionsFillTheLimitEvenWhenNewerAnnouncementsAreHidden() throws Exception {
+        // OP1(숨김)과 OP3(숨김)이 OP2보다 접수일이 늦다. 읽은 뒤 거르면 limit=1에서 결과가 비어 버린다.
+        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE='2026-12-01' WHERE HOUSE_MANAGE_NO='OP1'");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP3','N3','운영 세번째 단지','경기도 파주시 목동동','2026-12-05','2026-12-06')");
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','OP1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','OP3','N3','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        overrides.refresh();
+        mvc.perform(get("/api/v1/announcements/suggestions").param("keyword", "운영").param("limit", "1")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(1)).andExpect(jsonPath("$.data[0].houseManageNo").value("OP2"));
+    }
 }

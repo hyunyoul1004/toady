@@ -348,3 +348,27 @@ test('map SDK script that failed to download is attached again once', async () =
   assert.match(appended[0].src, /appkey=k/);
   assert.match(appended[0].src, /retry=\d+/);
 });
+
+test('comment, score and special-supply paths are validated before any request is sent', async () => {
+  const urls = [];
+  const h = await harness(async (url, options = {}) => { urls.push(`${options.method || 'GET'} ${new URL(url, 'http://localhost').pathname}`); return response({ data: [] }); });
+  const id = { type: 'apt', houseManageNo: '2026000001', pblancNo: '2026000001' };
+  await h.api.updateComment({ ...id, commentSeq: 7, content: 'x' });
+  await h.api.deleteComment({ ...id, commentSeq: '8' });
+  await h.api.getAptScores(id);
+  await h.api.getAptSpecialSupplyStatus(id);
+  assert.deepEqual(urls, [
+    'PATCH /api/v1/apt/announcements/2026000001/2026000001/comments/7',
+    'DELETE /api/v1/apt/announcements/2026000001/2026000001/comments/8',
+    'GET /api/v1/apt/announcements/2026000001/2026000001/scores',
+    'GET /api/v1/apt/announcements/2026000001/2026000001/special-supply-status'
+  ]);
+  urls.length = 0;
+  await assert.rejects(h.api.updateComment({ ...id, commentSeq: '1/../../admin', content: 'x' }), /댓글 번호가 올바르지 않습니다/);
+  await assert.rejects(h.api.deleteComment({ ...id, commentSeq: undefined }), /댓글 번호가 올바르지 않습니다/);
+  await assert.rejects(h.api.deleteComment({ ...id, houseManageNo: '../x', commentSeq: 1 }), /공고 주소가 올바르지 않습니다/);
+  await assert.rejects(h.api.updateComment({ ...id, type: 'admin', commentSeq: 1, content: 'x' }), /공고 주소가 올바르지 않습니다/);
+  await assert.rejects(h.api.getAptScores({ houseManageNo: '1?x=1', pblancNo: '1' }), /공고 주소가 올바르지 않습니다/);
+  await assert.rejects(h.api.getAptSpecialSupplyStatus({ houseManageNo: '1', pblancNo: 'a'.repeat(41) }), /공고 주소가 올바르지 않습니다/);
+  assert.deepEqual(urls, [], '형식이 틀리면 요청을 보내지 않는다');
+});

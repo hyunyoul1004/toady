@@ -144,4 +144,32 @@ class ContentOperationsTest {
         assertEquals("Y", jdbc.queryForObject("SELECT WITHDRAWAL_YN FROM TB_USER WHERE USER_SEQ=?", String.class, member.getUserSeq()));
         org.mockito.Mockito.verifyNoInteractions(mail);
     }
+
+    /** 관리자 인증 메일 재발송: 하루 발송량이 다 차면 429, 메일 서버 실패는 503으로 알려 준다(500이 아니다). 실제 메일은 보내지 않는다(mock). */
+    @Test void adminResendReportsMailQuotaAndDeliveryFailures() throws Exception {
+        jdbc.update("DELETE FROM TB_CERTIFY");
+        UserEntity member = users.save(UserEntity.builder().userEmail("wait@example.test").userNicName("인증대기").userPassword("x").emailCertifyYn("N").lockYn("N").withdrawalYn("N").build());
+        String path = "/internal/admin/members/" + member.getUserSeq() + "/resend-verification";
+        org.mockito.Mockito.doThrow(new com.toady.web.app.planner.MailQuotaException())
+            .doThrow(new org.springframework.mail.MailSendException("SMTP unavailable"))
+            .doNothing()
+            .when(mail).sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        mvc.perform(post(path).header("X-Admin-Token", TOKEN)).andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("메일 양")));
+        mvc.perform(post(path).header("X-Admin-Token", TOKEN)).andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("보내지 못했습니다")));
+        // 실패한 시도는 코드 기록이 롤백되어 4분을 기다리지 않고 바로 다시 보낼 수 있다.
+        mvc.perform(post(path).header("X-Admin-Token", TOKEN)).andExpect(status().isOk());
+        org.mockito.Mockito.verify(mail, org.mockito.Mockito.times(3)).sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    /** 회원가입 중 하루 메일 발송량이 다 차면 500·502가 아니라 '잠시 후 다시' 안내(429)를 돌려주고, 가입은 되돌린다. */
+    @Test void signupReturnsFriendly429WhenTheMailQuotaIsUsedUp() throws Exception {
+        org.mockito.Mockito.doThrow(new com.toady.web.app.planner.MailQuotaException())
+            .when(mail).sendSignupEmail(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        mvc.perform(post("/webApi/user/regUser").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                "userEmail", "quota@example.test", "userPassword", "Password123!", "userPasswordConfirm", "Password123!", "userNicName", "한도시험"))))
+            .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.resultCode").value("ERR-429"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER WHERE USER_EMAIL='quota@example.test'", Integer.class));
+    }
 }

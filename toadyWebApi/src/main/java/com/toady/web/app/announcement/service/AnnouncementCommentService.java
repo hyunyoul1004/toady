@@ -32,6 +32,8 @@ import java.time.LocalDateTime;
 // 쓰기 메서드에는 따로 @Transactional을 붙여 읽기·쓰기 트랜잭션으로 덮어쓴다.
 @Transactional(readOnly = true)
 public class AnnouncementCommentService {
+    /** 숨긴 공고에 쓰기·고치기를 막을 때 보여 주는 안내. */
+    static final String HIDDEN_MESSAGE = "운영자가 숨긴 공고라 이야기를 쓸 수 없어요.";
     private final AnnouncementCommentRepository commentRepository;
     private final AnnouncementService announcementService;
     private final UserRepository userRepository;
@@ -96,7 +98,7 @@ public class AnnouncementCommentService {
     ) {
         requireAnnouncement(type, houseManageNo, pblancNo);
         // 운영자가 숨긴 공고에는 새 이야기를 받지 않는다.
-        if (overrides.hidden(type.name(), houseManageNo, pblancNo)) throw new AccessDeniedException("운영자가 숨긴 공고라 이야기를 쓸 수 없어요.");
+        if (overrides.hidden(type.name(), houseManageNo, pblancNo)) throw new AccessDeniedException(HIDDEN_MESSAGE);
         checkWriter(userSeq, request.content());
 
         if (request.parentCommentSeq() != null) {
@@ -136,6 +138,8 @@ public class AnnouncementCommentService {
         AnnouncementCommentEntity comment = ownedComment(
                 commentSeq, userSeq, type, houseManageNo, pblancNo
         );
+        // 숨긴 공고에는 글을 고칠 수도 없게 한다(쓰기와 같은 규칙). 지우기는 본인 글을 정리할 수 있게 그대로 둔다.
+        if (overrides.hidden(comment.getAnnouncementType(), comment.getHouseManageNo(), comment.getPblancNo())) throw new AccessDeniedException(HIDDEN_MESSAGE);
         checkWriter(userSeq, request.content());
         comment.setContent(request.content());
         comment.setUpdateDt(LocalDateTime.now());

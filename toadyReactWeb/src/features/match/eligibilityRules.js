@@ -17,6 +17,20 @@ export function profileComplete(profile) {
   return Boolean(profile) && REQUIRED.every(key => profile[key] !== null && profile[key] !== undefined && profile[key] !== '');
 }
 
+/**
+ * 출생 연도 입력 해석. 숫자만 남겨 최대 4자리로 자르고, 1921년~올해 사이 4자리면 숫자(value)로 확정한다.
+ * 아직 입력 중(4자리 미만)이거나 범위를 벗어나면 글자 그대로(text) 두고 invalid로 알려,
+ * 화면이 입력을 말없이 지우지 않고 '확인해 주세요'를 보여줄 수 있게 한다. 빈 칸은 선택 항목이라 정상이다.
+ */
+export const BIRTH_YEAR_MIN = 1921;
+export function parseBirthYear(input, thisYear = new Date().getFullYear()) {
+  const text = String(input ?? '').replace(/\D/g, '').slice(0, 4);
+  if (!text) return { text: '', value: null, invalid: false, complete: false };
+  const year = Number(text);
+  const valid = text.length === 4 && year >= BIRTH_YEAR_MIN && year <= thisYear;
+  return { text, value: valid ? year : null, invalid: !valid, complete: text.length === 4 };
+}
+
 /** 가점 계산기의 통장 가입기간 선택 순번 → 최소 가입 개월 수. 0: 6개월 미만, 1: 6개월~1년, 2: 1~2년 … */
 export function monthsFromAccountIndex(index) {
   if (!Number.isInteger(index) || index < 0) return null;

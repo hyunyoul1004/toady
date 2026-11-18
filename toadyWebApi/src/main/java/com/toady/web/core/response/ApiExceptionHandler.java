@@ -39,6 +39,16 @@ public class ApiExceptionHandler {
     ResponseEntity<ResData<?>> conflict(Exception exception) {
         return ResponseEntity.status(409).body(ResData.of(null, ResultCode.VALID_ERROR.getCode(), "이미 사용 중이거나 저장할 수 없는 정보입니다."));
     }
+    /** 하루 메일 발송량(MailBudget)이 다 찬 경우 → 429. 서버 고장이 아니므로 잠시 후 다시 시도하라고 안내한다. */
+    @ExceptionHandler(com.toady.web.app.planner.MailQuotaException.class)
+    ResponseEntity<ResData> mailQuota(Exception exception) {
+        log.warn("메일 발송량 제한에 걸린 요청");
+        return mailQuotaResponse();
+    }
+    /** 메일 발송량 초과 응답. 예외를 직접 잡는 컨트롤러(UserController 회원가입)도 같은 모양을 쓴다. */
+    public static ResponseEntity<ResData> mailQuotaResponse() {
+        return ResponseEntity.status(429).body(ResData.of("ERR-429", "지금은 메일을 보낼 수 없어요. 잠시 후 다시 시도해 주세요."));
+    }
     /** 그 밖의 모든 예외 → 500. 원인은 서버 로그에만 남긴다. */
     @ExceptionHandler(Exception.class)
     ResponseEntity<ResData<?>> unexpected(Exception exception) {
