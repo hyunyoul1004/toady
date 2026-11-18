@@ -13,7 +13,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
-import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, summarizeRates } from './rateFormat';
+import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, specialApplicants, summarizeRates } from './rateFormat';
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import Button from '@mui/material/Button';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -558,8 +558,8 @@ export function SubscriptRate({ subscriptDetail }) {
                       <TableCell align="center" rowSpan={2} sx={headerCellStyle}>주택형</TableCell>
                       <TableCell align="center" rowSpan={2} sx={headerCellStyle}>배정세대</TableCell>
                       <TableCell align="center" colSpan={3} sx={headerCellStyle}>다자녀가구 (접수)</TableCell>
-                      <TableCell align="center" rowSpan={2} sx={headerCellStyle}>신혼부부</TableCell>
-                      <TableCell align="center" rowSpan={2} sx={headerCellStyle}>생애최초</TableCell>
+                      <TableCell align="center" rowSpan={2} sx={headerCellStyle}>신혼부부 (접수)</TableCell>
+                      <TableCell align="center" rowSpan={2} sx={headerCellStyle}>생애최초 (접수)</TableCell>
                       <TableCell align="center" rowSpan={2} sx={{ ...headerCellStyle, borderRight: 0 }}>접수결과</TableCell>
                     </TableRow>
                     <TableRow>
@@ -576,8 +576,9 @@ export function SubscriptRate({ subscriptDetail }) {
                         <TableCell align="center" sx={gridCellStyle}>{formatCount(row.crspareaMnychCnt)}</TableCell>
                         <TableCell align="center" sx={gridCellStyle}>{formatCount(row.ctprvnMnychCnt)}</TableCell>
                         <TableCell align="center" sx={gridCellStyle}>{formatCount(row.etcAreaMnychCnt)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.nwwdsNmtwHshldco)}</TableCell>
-                        <TableCell align="center" sx={gridCellStyle}>{formatCount(row.lfeFrstHshldco)}</TableCell>
+                        {/* 신혼부부·생애최초: 접수 건수 합계(해당+기타경기+기타지역), 아래 작은 글씨로 배정 세대 */}
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(specialApplicants(row, 'NwwdsNmtw'))}<Box component="small" sx={{ display: 'block', color: '#64748b', fontSize: '0.7rem' }}>배정 {formatCount(row.nwwdsNmtwHshldco)}</Box></TableCell>
+                        <TableCell align="center" sx={gridCellStyle}>{formatCount(specialApplicants(row, 'LfeFrst'))}<Box component="small" sx={{ display: 'block', color: '#64748b', fontSize: '0.7rem' }}>배정 {formatCount(row.lfeFrstHshldco)}</Box></TableCell>
                         <TableCell align="center" sx={{ ...gridCellStyle, borderRight: 0 }}>
                           <Chip
                             label={row.subscrptResultNm || '-'}

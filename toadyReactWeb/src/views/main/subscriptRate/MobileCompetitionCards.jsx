@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { validScore } from '@/features/announcement/export/exportData';
-import { formatCount, formatUnit, parseRate } from './rateFormat';
+import { formatCount, formatUnit, parseRate, specialApplicants } from './rateFormat';
 import './competition.css';
 
 /** 공개 범위 안의 가점만 점수로 보여 주고, 0·빈 값은 미공개로 둔다. */
@@ -96,6 +96,8 @@ export function MobileRateRowCards({table}) {
 
 /** 특별공급 신청현황의 모바일 카드. 유형별(다자녀·신혼부부·생애최초) 신청 건수를 정의 목록으로 보여 준다. */
 export function MobileSpecialSupplyCards({items}) {
-  const fields=[['다자녀 · 해당지역','crspareaMnychCnt'],['다자녀 · 기타경기','ctprvnMnychCnt'],['다자녀 · 기타지역','etcAreaMnychCnt'],['신혼부부','nwwdsNmtwHshldco'],['생애최초','lfeFrstHshldco']];
-  return <div className="competition-mobile-cards" aria-label="특별공급 신청현황 카드">{items.map((item,index)=><section className="competition-mobile-card" key={index}><header><h3>{formatUnit(item.houseTy,item.modelNo)}</h3><span>배정 {formatCount(item.spsplyHshldco)}세대</span></header><dl className="special-supply-counts">{fields.map(([label,key])=><div key={key}><dt>{label}</dt><dd>{formatCount(item[key])}건</dd></div>)}</dl><p className="competition-card-result">{item.subscrptResultNm || '접수 결과 미제공'}</p></section>)}</div>;
+  // 신혼부부·생애최초는 접수 건수 합계에 배정 세대를 함께 적는다(배정 세대를 접수 건수로 보이게 하지 않는다).
+  const fields=[['다자녀 · 해당지역',item=>item.crspareaMnychCnt],['다자녀 · 기타경기',item=>item.ctprvnMnychCnt],['다자녀 · 기타지역',item=>item.etcAreaMnychCnt],
+    ['신혼부부',item=>specialApplicants(item,'NwwdsNmtw'),'nwwdsNmtwHshldco'],['생애최초',item=>specialApplicants(item,'LfeFrst'),'lfeFrstHshldco']];
+  return <div className="competition-mobile-cards" aria-label="특별공급 신청현황 카드">{items.map((item,index)=><section className="competition-mobile-card" key={index}><header><h3>{formatUnit(item.houseTy,item.modelNo)}</h3><span>배정 {formatCount(item.spsplyHshldco)}세대</span></header><dl className="special-supply-counts">{fields.map(([label,value,allotted])=><div key={label}><dt>{label}{allotted && <small> 배정 {formatCount(item[allotted])}</small>}</dt><dd>{formatCount(value(item))}건</dd></div>)}</dl><p className="competition-card-result">{item.subscrptResultNm || '접수 결과 미제공'}</p></section>)}</div>;
 }

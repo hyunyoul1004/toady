@@ -1,6 +1,7 @@
 import { summaryOf, normalizeScheduleEvents } from '../../planner/plannerUtils.js';
 import { unitLabel, formatManwon } from '../../planner/researchUtils.js';
 import { formatCompetitionRate } from '../../../utils/rate.util.js';
+import { specialApplicants } from '../../../views/main/subscriptRate/rateFormat.js';
 
 /**
  * 이미지 저장(ImageExportButton)에 넣을 표 데이터를 만든다. 표 하나는 { title, note?, columns, weights?, rows } 모양이다.
@@ -46,7 +47,7 @@ export function competitionImageSections(type, rates=[], scores=[], special=[]) 
   return [
     {title:'청약 경쟁률',note:'공급 세대수는 행별 표시값이며 중복 합산하지 않습니다. — 는 미공개 또는 경쟁률 표시 대상이 아닌 값입니다.',columns,rows:rows.map(row=>row.map(text))},
     ...(type==='apt'?[{title:'당첨가점',note:'주택형·거주지역별 공개 점수입니다. 미공개 점수는 0점으로 표시하지 않습니다.',columns:['주택형','지역','최저 가점','최고 가점','평균 가점'],rows:scores.map(row=>[unitLabel(row.houseTy,row.modelNo),row.resideSenm || text(row.resideSecd),score(row.lwetScore),score(row.topScore),score(row.avrgScore)])},
-    {title:'특별공급 신청현황',columns:['주택형','배정 세대','다자녀 해당','다자녀 경기','다자녀 기타','신혼부부','생애최초'],rows:special.map(row=>[unitLabel(row.houseTy,row.modelNo),count(row.spsplyHshldco),count(row.crspareaMnychCnt),count(row.ctprvnMnychCnt),count(row.etcAreaMnychCnt),count(row.nwwdsNmtwHshldco),count(row.lfeFrstHshldco)])}]:[])
+    {title:'특별공급 신청현황',columns:['주택형','배정 세대','다자녀 해당','다자녀 경기','다자녀 기타','신혼부부 접수','생애최초 접수'],rows:special.map(row=>[unitLabel(row.houseTy,row.modelNo),count(row.spsplyHshldco),count(row.crspareaMnychCnt),count(row.ctprvnMnychCnt),count(row.etcAreaMnychCnt),count(specialApplicants(row,'NwwdsNmtw')),count(specialApplicants(row,'LfeFrst'))])}]:[])
   ].filter(section=>section.rows.length);
 }
 /** 긴 표도 행을 누락하지 않고 페이지별 PNG로 나눈다. 페이지마다 표 머리글과 출처를 반복한다. */

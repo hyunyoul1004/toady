@@ -219,3 +219,14 @@ export function resultLabel(itemsByRank = {}) {
   if (first.some(row => parseRate(row.cmpetRate, row.reqCnt).kind === 'shortage')) return '1순위 미달';
   return '1순위 마감\n(청약 접수 종료)'; // 줄바꿈은 CSS white-space:pre-line으로 화면에 그대로 보인다
 }
+
+/**
+ * 특별공급 유형별 접수 건수 합계(해당지역 + 기타경기 + 기타지역). base는 청약홈 필드의 유형 부분이다
+ * (신혼부부 'NwwdsNmtw', 생애최초 'LfeFrst', 다자녀 'Mnych'). 세 값이 모두 비어 있으면 null(미공개).
+ * 배정 세대(nwwdsNmtwHshldco 등)와 헷갈리지 않게, 화면·이미지 저장이 모두 이 함수로 접수 건수를 센다.
+ */
+export function specialApplicants(row, base) {
+  const parts = ['crsparea', 'ctprvn', 'etcArea'].map(area => row?.[`${area}${base}Cnt`]);
+  if (parts.every(value => value == null || value === '')) return null;
+  return parts.reduce((sum, value) => sum + (Number(String(value ?? 0).replace(/,/g, '')) || 0), 0);
+}

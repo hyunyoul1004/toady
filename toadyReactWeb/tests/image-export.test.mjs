@@ -28,3 +28,13 @@ test('share text describes only published minimum and maximum scores',()=>{
   assert.equal(scoreShareText([{lwetScore:'0',topScore:'-',avrgScore:70}]),'');
   assert.equal(scoreShareText([{lwetScore:'56',topScore:'74'},{lwetScore:'61',topScore:'70'}]),'공개 당첨가점 · 최저 56점 / 최고 74점 (공개 주택형·지역 전체 기준)');
 });
+
+test('특별공급 신혼부부·생애최초는 배정 세대가 아니라 접수 건수 합계를 쓴다', async () => {
+  const { specialApplicants } = await import('../src/views/main/subscriptRate/rateFormat.js');
+  // 창원 센트럴 아이파크(2025000601) 청약홈 값: 신혼부부 배정 8, 접수 959+0+164 / 생애최초 배정 3, 접수 1629+0+300
+  const row = { nwwdsNmtwHshldco: '8', crspareaNwwdsNmtwCnt: '959', ctprvnNwwdsNmtwCnt: '0', etcAreaNwwdsNmtwCnt: '164',
+    lfeFrstHshldco: '3', crspareaLfeFrstCnt: '1629', ctprvnLfeFrstCnt: '0', etcAreaLfeFrstCnt: '300' };
+  assert.equal(specialApplicants(row, 'NwwdsNmtw'), 1123);
+  assert.equal(specialApplicants(row, 'LfeFrst'), 1929);
+  assert.equal(specialApplicants({}, 'LfeFrst'), null);
+});
