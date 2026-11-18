@@ -255,3 +255,10 @@ test('서비스 워커는 페이지 이동만 네트워크로 받고, 끊기면 
   listeners.fetch({ request: { mode: 'cors', method: 'GET' }, respondWith: value => { responded = value; } });
   assert.equal(responded, null);
 });
+
+test('Chrome으로 열기 주소는 같은 페이지를 install=1과 함께 Chrome intent로 연다', async () => {
+  const { chromeIntentUrl } = await import('../src/features/install/installSupport.js');
+  const url = chromeIntentUrl('https://www.toady.co.kr/my?tab=a');
+  assert.ok(url.startsWith('intent://www.toady.co.kr/my?tab=a&install=1#Intent;scheme=https;package=com.android.chrome;'));
+  assert.match(url, /S\.browser_fallback_url=https%3A%2F%2Fwww\.toady\.co\.kr%2Fmy%3Ftab%3Da%26install%3D1;end$/);
+});

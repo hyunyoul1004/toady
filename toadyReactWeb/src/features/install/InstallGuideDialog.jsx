@@ -4,10 +4,11 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded';
-import MenuRounded from '@mui/icons-material/MenuRounded';
 import CheckCircleRounded from '@mui/icons-material/CheckCircleRounded';
+import AddToHomeScreenRounded from '@mui/icons-material/AddToHomeScreenRounded';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import HomeScreenGuide from '@/features/push/HomeScreenGuide';
-import { androidBrowser } from './installSupport';
+import { androidBrowser, chromeIntentUrl } from './installSupport';
 import '@/features/push/push.css';
 
 // 화면 속 버튼 모양을 흉내 낸 작은 표시(아이콘 + 이름)와 번호 붙은 단계 한 줄.
@@ -25,7 +26,7 @@ const ANDROID_STEPS = {
     { title: '홈 화면의 TOADY 아이콘으로 열어요', note: APP_DRAWER_NOTE }
   ],
   samsung: [
-    { title: <>화면 아래 오른쪽의 <Key icon={<MenuRounded fontSize="inherit" />}>줄 세 개</Key>를 눌러요</> },
+    { title: <>화면 맨 아래 오른쪽 끝의 <Key icon={<MoreVertRounded fontSize="inherit" />}>점 세 개</Key>를 눌러요</> },
     { title: '‘현재 페이지 추가’를 누르고 ‘홈 화면’을 골라요', note: '메뉴 첫 화면에 없으면 ‘도구’ 안에 있어요.' },
     { title: '‘추가’를 눌러요', note: APP_DRAWER_NOTE }
   ],
@@ -53,7 +54,7 @@ const ANDROID_STEPS = {
  * 'prompt'(설치 창을 바로 띄울 수 있음)일 때는 이 창 대신 브라우저 설치 창이 뜬다(installStore.promptInstall).
  * 'android'와 그 밖의 값은 맨 아래 else에서 안드로이드 브라우저별 순서를 보여 준다.
  */
-export default function InstallGuideDialog({ open, onClose, mode }) {
+export default function InstallGuideDialog({ open, onClose, mode, onInstall }) {
   const [copied, setCopied] = useState(false);
   // 주소 복사. 클립보드 API는 https와 사용자 동작 안에서만 되고, 일부 앱 안 브라우저는 막아 둔다(실패하면 조용히 넘어간다).
   const copy = async () => {
@@ -61,7 +62,20 @@ export default function InstallGuideDialog({ open, onClose, mode }) {
   };
   let body;
   const onAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
-  if (mode === 'done') body = <div className="push-guide">
+  const browser = androidBrowser(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+  // Chrome이 아닌 안드로이드 브라우저(삼성 인터넷 등)·앱 안 브라우저: 메뉴를 찾게 하는 대신 Chrome으로 옮겨 한 번에 설치하게 한다.
+  const openInChrome = onAndroid && (mode === 'in-app' || (mode === 'android' && browser !== 'chrome'))
+    ? <div className="install-chrome">
+      <Button fullWidth size="large" variant="contained" disableElevation startIcon={<OpenInNewRounded />}
+        href={typeof window === 'undefined' ? '/' : chromeIntentUrl(window.location.href)}>Chrome으로 열어 바로 설치</Button>
+      <p className="push-help">Chrome에서 열리면 ‘설치’ 버튼 한 번으로 홈 화면에 추가돼요.</p>
+    </div>
+    : null;
+  if (mode === 'prompt') body = <div className="push-guide">
+    <p className="push-guide-lead">TOADY를 홈 화면에 추가하면 <strong>앱처럼 바로</strong> 열 수 있어요. 따로 받을 앱은 없어요.</p>
+    <Button fullWidth size="large" variant="contained" disableElevation startIcon={<AddToHomeScreenRounded />} onClick={onInstall}>홈 화면에 설치</Button>
+  </div>;
+  else if (mode === 'done') body = <div className="push-guide">
     <div className="push-status on"><CheckCircleRounded /><div><strong>설치했어요</strong><span>이제 TOADY 아이콘으로 앱처럼 바로 열 수 있어요.</span></div></div>
     <p className="push-help">{onAndroid ? APP_DRAWER_NOTE : '바탕화면이나 시작 메뉴(맥은 응용 프로그램 폴더·Dock)의 TOADY로 열 수 있어요.'}</p>
   </div>;
@@ -75,6 +89,7 @@ export default function InstallGuideDialog({ open, onClose, mode }) {
   else if (mode === 'ios' || mode === 'ios-safari') body = <HomeScreenGuide mode={mode === 'ios' ? 'ios-home' : 'ios-safari'} purpose="install" />;
   else if (mode === 'in-app') body = <div className="push-guide">
     <p className="push-guide-lead">카카오톡·네이버 같은 <strong>앱 안의 브라우저</strong>에서는 홈 화면에 추가할 수 없어요. Chrome이나 Safari에서 열어 주세요.</p>
+    {openInChrome}
     <ol className="push-steps">
       <Step no={1} title="아래 버튼으로 주소를 복사해요" />
       <Step no={2} title="Chrome(아이폰은 Safari)을 열고 주소창에 붙여 넣어요" />
@@ -83,9 +98,11 @@ export default function InstallGuideDialog({ open, onClose, mode }) {
     <Button fullWidth variant="outlined" startIcon={<ContentCopyRounded />} onClick={copy}>{copied ? '주소를 복사했어요' : 'TOADY 주소 복사'}</Button>
   </div>;
   else {
-    const steps = ANDROID_STEPS[androidBrowser(typeof navigator === 'undefined' ? '' : navigator.userAgent)];
+    const steps = ANDROID_STEPS[browser];
     body = <div className="push-guide">
       <p className="push-guide-lead">TOADY를 홈 화면에 추가하면 <strong>앱처럼 바로</strong> 열 수 있어요. 따로 받을 앱은 없어요.</p>
+      {openInChrome}
+      {openInChrome && <p className="install-manual-title">지금 브라우저에서 직접 추가하려면</p>}
       <ol className="push-steps">{steps.map((step, index) => <Step key={index} no={index + 1} {...step} />)}</ol>
     </div>;
   }
