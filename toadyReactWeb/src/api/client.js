@@ -53,7 +53,8 @@ export async function handleResponse(response, requestToken = null) {
     if (response.status === 401 && requestToken && useAuthStore.getState().accessToken === requestToken) {
       // 401 Unauthorized 시 토큰 만료 처리. 요청 때 쓴 토큰이 지금 토큰과 같을 때만 지운다(이미 새로 로그인했으면 그대로 둔다).
       // auth-logout 이벤트는 useAuthStore가 받아 로그아웃 상태로 바꾼다.
-      localStorage.removeItem('user');
+      // 저장소가 막혀 있어도 이벤트는 보내 화면이 로그아웃 상태로 바뀌게 한다.
+      try { localStorage.removeItem('user'); } catch { /* 저장소 접근 불가 */ }
       window.dispatchEvent(new Event('auth-logout'));
     }
 

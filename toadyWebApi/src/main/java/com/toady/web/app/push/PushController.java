@@ -29,6 +29,10 @@ public class PushController {
     private static final Duration TEST_INTERVAL = Duration.ofSeconds(30);
     private final PushSubscriptions store; private final WebPushSender sender; private final PlannerSummary summaries; private final ObjectMapper mapper;
     private final Clock clock = Clock.system(PushSubscriptions.KST);
+    /** 운영자가 숨긴 공고. 빈이 없으면(일부 테스트) 숨김 없이 동작한다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.toady.web.app.planner.HiddenAnnouncements hidden;
     // 시험 발송 마지막 시각(구독 해시별). 여러 요청이 동시에 쓰므로 ConcurrentHashMap. 메모리에만 둔다
     private final Map<String, Instant> lastTest = new ConcurrentHashMap<>();
 
@@ -103,6 +107,8 @@ public class PushController {
         lastTest.put(row.get().hash(), now);
         if (lastTest.size() > 10_000) lastTest.entrySet().removeIf(entry -> entry.getValue().plus(TEST_INTERVAL).isBefore(now));
         String houseNm = null, id = request.announcementId();
+        // 숨긴 공고는 이름·상세 링크 없이 일반 시험 알림으로 보낸다.
+        if (id != null && hidden != null && hidden.hiddenId(id)) id = null;
         if (id != null) {
             String[] parts = id.split("/");
             try { houseNm = summaries.get(parts[0], parts[1], parts[2]).houseNm(); } catch (EntityNotFoundException | IllegalArgumentException missing) { id = null; }

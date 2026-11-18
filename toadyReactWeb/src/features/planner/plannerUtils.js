@@ -17,6 +17,16 @@ export function isoDate(value) {
 }
 /** 오늘 한국 날짜('YYYY-MM-DD'). 'sv-SE' 로케일이 YYYY-MM-DD 꼴로 찍어 줘서 쓴다. 기기 시간대가 달라도 한국 기준이다. */
 export function koreaToday() { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date()); }
+/**
+ * 한국 날짜('YYYY-MM-DD' 또는 'YYYYMMDD')가 토·일요일인지. Date는 UTC로만 계산해 기기 시간대와 상관없다.
+ * 주말 판정은 이 함수 하나만 쓴다(오늘의 요약 주말 문구, 달력 날짜 선택, 목록 건수의 평일 칸 판정). 날짜가 아니면 false.
+ */
+export function isWeekendDay(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  if (digits.length !== 8) return false;
+  const day = new Date(Date.UTC(Number(digits.slice(0, 4)), Number(digits.slice(4, 6)) - 1, Number(digits.slice(6, 8)))).getUTCDay();
+  return day === 0 || day === 6;
+}
 /** 같은 공고·날짜는 한 일정으로 묶고, 상세 접수 일정이 있는 날의 일반 시작/마감은 생략한다. */
 export function normalizeScheduleEvents(events = []) {
   const days = new Map();
@@ -77,6 +87,11 @@ export function summaryOf(detail = {}) {
 export function mergeGuestSummary(saved, latest) {
   if (!latest) return saved;
   if (latest.unavailable && saved) return { ...saved, unavailable: true };
+  // 예전 서버 요약에는 receiptChannel(접수처) 필드가 없다. 그때는 저장해 둔 요약의 접수처를 지킨다
+  // (LH청약플러스 접수 공고가 '청약홈에서 신청하세요'로 바뀌지 않게). 필드가 있으면(null 포함) 서버 값을 쓴다.
+  if (saved && !Object.prototype.hasOwnProperty.call(latest, 'receiptChannel') && saved.receiptChannel !== undefined) {
+    return { ...latest, receiptChannel: saved.receiptChannel };
+  }
   return latest;
 }
 /** storage에서 JSON을 읽는다. 없거나 깨졌거나 저장소가 막혀 있으면 fallback. */

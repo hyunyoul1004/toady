@@ -564,6 +564,51 @@ class PlannerIntegrationTest {
         assertFalse(budget.reserve(MailBudget.Kind.REMINDER));
         assertTrue(budget.reserve(MailBudget.Kind.AUTH),"비밀번호 찾기 메일 몫은 남아 있다");
     }
+    /** 숨긴 공고는 비회원 요약에서 원본 없는 공고와 같은 모양이고, 주소로 열어도 관심 공고로 새로 저장되지 않는다. */
+    @Test void hiddenAnnouncementIsNotSummarizedOrNewlySaved() throws Exception {
+        user("hidden-save@example.test");String auth=token("hidden-save@example.test");
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','P1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        reloadOverrides();
+        try {
+            mvc.perform(post("/api/v1/planner/summaries").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/P1/N1\"]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value("apt/P1/N1")).andExpect(jsonPath("$[0].unavailable").value(true))
+                .andExpect(jsonPath("$[0].houseNm").value("원본을 찾을 수 없는 공고")).andExpect(jsonPath("$[0].events.length()").value(0));
+            mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",auth).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":0}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.resultCode").value("NOT_FOUND"));
+            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE",Integer.class));
+        } finally { jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides(); }
+        // 숨김을 풀면 다시 요약·저장된다.
+        mvc.perform(post("/api/v1/planner/summaries").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/P1/N1\"]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].houseNm").value("<운정 테스트>")).andExpect(jsonPath("$[0].unavailable").value(false));
+        mvc.perform(post("/api/v1/me/favorites/apt/P1/N1").header("Authorization",auth).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"\",\"checklist\":0}"))
+            .andExpect(status().isOk());
+    }
+    /** 관심 공고 요약(회원 목록·비회원 요약)에 목록과 같은 접수처 판정(receiptChannel)을 넣는다. */
+    @Test void favoriteSummariesCarryReceiptChannel() throws Exception {
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,BSNS_MBY_NM,HMPG_ADRES) VALUES ('LH1','N1','LH 접수 단지','경기도 파주시 야당동 1','2026-11-12','2026-11-13','한국토지주택공사','https://apply.lh.or.kr')");
+        var both=json.readTree(mvc.perform(post("/api/v1/planner/summaries").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/LH1/N1\",\"apt/P1/N1\"]}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals("LH",both.path(0).path("receiptChannel").asText());
+        assertTrue(both.path(1).path("receiptChannel").isNull() || both.path(1).path("receiptChannel").isMissingNode(),"청약홈 접수는 null");
+        var account=user("receipt@example.test");String auth=token("receipt@example.test");
+        planner.save(account.getUserSeq(),"apt","LH1","N1","",0,false,null);
+        mvc.perform(get("/api/v1/me/favorites").header("Authorization",auth)).andExpect(status().isOk()).andExpect(jsonPath("$.data[0].summary.receiptChannel").value("LH"));
+    }
+    /** 공고 페이지의 '같은 지역의 다른 공고'는 지역 페이지와 같은 범위(listed)만 쓴다. 180일보다 먼 예정 공고는 넣지 않는다. */
+    @Test void nearbyAnnouncementsSkipFarUpcomingAndDoNotLinkToEmptyDistrictPages() throws Exception {
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        apt("H1","파주 예정 단지","경기도 파주시 야당동 10",today.plusDays(5),today.plusDays(7),today.plusDays(14));
+        apt("F1","파주 먼 예정 단지","경기도 파주시 야당동 20",today.plusDays(200),today.plusDays(202),today.plusDays(210));
+        apt("F2","연천 먼 예정 단지","경기도 연천군 전곡읍 1",today.plusDays(200),today.plusDays(202),today.plusDays(210));
+        com.toady.web.app.planner.PublicPagesCache.clear(announcementIndex);
+        String detail=html(mvc.perform(get("/api/v1/public/announcements/apt/H1/N1")).andExpect(status().isOk()));
+        assertTrue(detail.contains("같은 시·군·구의 다른 공고") && detail.contains("/announcements/apt/P1/N1"),detail);
+        assertFalse(detail.contains("/announcements/apt/F1/N1"),"180일보다 먼 예정 공고는 넣지 않는다");
+        assertTrue(detail.contains("/regions/"+enc("경기도")+"/"+enc("파주시")+"'>"),"목록이 있는 지역은 전체 보기로 잇는다");
+        String far=html(mvc.perform(get("/api/v1/public/announcements/apt/F2/N1")).andExpect(status().isOk()));
+        mvc.perform(get("/api/v1/public/regions/{sido}/{district}","경기도","연천군")).andExpect(status().isNotFound());
+        assertFalse(far.contains("cta secondary' href='https://www.toady.co.kr/regions/"+enc("경기도")+"/"+enc("연천군")+"'"),"404인 시·군·구 페이지로 잇지 않는다");
+    }
     @Test void missingAnnouncementCannotBeSaved() throws Exception {
         var account=user("missing@example.test");
         assertThrows(jakarta.persistence.EntityNotFoundException.class,()->planner.save(account.getUserSeq(),"apt","missing","missing","",0,false,null));

@@ -64,6 +64,8 @@ public class PlannerService {
         users.findByEmailForUpdate(account.getUserEmail()); // 수량 제한과 동시 저장을 계정 단위로 직렬화한다.
         boolean exists=jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAVORITE WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",Integer.class,user,type,house,notice)>0;
         // 원본 공고 확인은 새로 추가할 때만 한다. 이미 저장한 공고는 원본이 사라져도 준비 노트·단계를 계속 고칠 수 있다.
+        // 운영자가 숨긴 공고는 주소로 직접 열어도 새로 저장하지 않는다(원본이 없는 공고와 같은 404 NOT_FOUND).
+        if(!exists && hidden!=null && hidden.hidden(type,house,notice)) throw new EntityNotFoundException("숨긴 공고");
         if(!exists) summaries.get(type,house,notice);
         boolean withStage=stage!=null && stageColumn();
         if(exists) {

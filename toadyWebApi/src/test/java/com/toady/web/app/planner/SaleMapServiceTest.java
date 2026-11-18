@@ -41,6 +41,13 @@ class SaleMapServiceTest {
         assertFalse(SaleMapService.inRegion("경기도 수원시 권선구 1", List.of("수원시", "영통구"), "경기"), "시·군·구 이름이 모두 있어야 한다");
         assertFalse(SaleMapService.inRegion("부산광역시 중구 중앙동 1", List.of("중구"), "서울"), "같은 이름의 구라도 시·도가 다르면 다른 지역");
         assertTrue(SaleMapService.inRegion("서울특별시 중구 중림동 157-2", List.of("중구"), "서울"));
+        // 통합특별시 주소는 Regions와 같게 옛 시·도로 판정한다(광주 북구 ↔ 전남광주통합특별시 북구).
+        assertTrue(SaleMapService.inRegion("전남광주통합특별시 북구 운암동 1", List.of("북구"), "광주 북구"));
+        assertTrue(SaleMapService.inRegion("광주광역시 북구 운암동 1", List.of("북구"), "전남광주통합특별시 북구"));
+        assertFalse(SaleMapService.inRegion("전남광주통합특별시 북구 운암동 1", List.of("북구"), "대구 북구"), "다른 시·도의 같은 이름 구는 다른 지역");
+        assertFalse(SaleMapService.inRegion("전남광주통합특별시 목포시 옥암동 1", List.of("목포시"), "광주"), "목포시는 전남");
+        assertTrue(SaleMapService.inRegion("전남 목포시 옥암동 1", List.of("목포시"), "전남광주통합특별시 목포시"));
+        assertTrue(SaleMapService.inRegion("경기도 파주시 1", List.of("파주시"), null), "시·도를 모르면 시·군·구로만 본다");
     }
 
     @Test void pastCandidatesKeepFinishedAnnouncementsInTheDistrictOnly() {

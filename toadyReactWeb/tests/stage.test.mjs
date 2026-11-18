@@ -87,3 +87,17 @@ test('가점이 오르는 다음 날짜와 캘린더 파일', async () => {
   assert.match(ics, /SUMMARY:청약 가점 \+1점 \(청약통장 가입기간\)/);
   assert.match(ics, /TRIGGER:PT9H/);
 });
+
+test('LH청약플러스 접수 공고는 신청·결과 확인 안내가 LH청약플러스를 가리킨다', () => {
+  const lh = { ...summary, receiptChannel: 'LH' };
+  const open = nextStep(1, lh, '2026-11-17');
+  assert.match(open.text, /LH청약플러스에서 신청하세요/);
+  assert.equal(open.action.href, 'https://apply.lh.or.kr/');
+  const announced = nextStep(2, lh, '2026-11-25');
+  assert.match(announced.text, /LH청약플러스에서 결과를 확인/);
+  assert.deepEqual(announced.action, { label: 'LH청약플러스', href: 'https://apply.lh.or.kr/' });
+  // 접수처가 없거나 null이면 청약홈 그대로.
+  const home = nextStep(2, { ...summary, receiptChannel: null }, '2026-11-25');
+  assert.match(home.text, /청약홈에서 결과를 확인/);
+  assert.equal(home.action.href, 'https://www.applyhome.co.kr');
+});

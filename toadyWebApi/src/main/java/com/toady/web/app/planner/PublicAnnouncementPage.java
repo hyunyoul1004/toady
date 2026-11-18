@@ -154,21 +154,28 @@ public class PublicAnnouncementPage {
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).body(html);
     }
     static final int NEARBY = 8;
-    /** 같은 시·군·구(없으면 시·도)의 다른 공고: 접수 중·예정 먼저, 그다음 최근 공고. 지역 공개 페이지로 이어지는 링크도 둔다. */
+    /**
+     * 같은 시·군·구(없으면 시·도)의 다른 공고: 접수 중·예정 먼저, 그다음 최근 공고. 지역 공개 페이지로 이어지는 링크도 둔다.
+     * 지역 페이지와 같은 범위(Entry.listed)만 쓴다. 180일보다 먼 접수 예정 공고는 맨 앞에 오지 않게 빼고,
+     * 그 지역에 목록에 보이는 공고가 하나도 없으면(시·군·구 페이지가 404) '전체 보기' 링크를 두지 않는다.
+     */
     String nearby(String id,Regions.Region region) {
         if(region==null || index==null) return "";
-        List<PublicAnnouncementIndex.Entry> same;
+        java.time.LocalDate today;
+        List<PublicAnnouncementIndex.Entry> inRegion;
         try {
-            same=index.recent().stream().filter(entry -> !entry.id().equals(id) && entry.region()!=null && entry.region().sido().equals(region.sido())
+            today=index.today();
+            inRegion=index.recent().stream().filter(entry -> entry.listed(today) && entry.region()!=null && entry.region().sido().equals(region.sido())
                 && (region.district()==null || region.district().equals(entry.region().district()))).toList();
         } catch(RuntimeException unavailable) { return ""; }
+        List<PublicAnnouncementIndex.Entry> same=inRegion.stream().filter(entry -> !entry.id().equals(id)).toList();
         String label=region.district()==null?region.sido().name():region.district();
         StringBuilder out=new StringBuilder("<section class='card list'><h2>같은 ").append(region.district()==null?"시·도":"시·군·구").append("의 다른 공고 <span class='muted'>")
             .append(esc(label)).append("</span></h2>");
-        java.time.LocalDate today=index.today();
         var picked=PublicAnnouncementIndex.ordered(same,today).stream().limit(NEARBY).toList();
         if(picked.isEmpty()) out.append("<p class='empty'>최근 1년 안에 이 지역의 다른 공고가 없어요.</p>");
         for(var entry:picked) out.append(PublicRegionPages.item(domain,entry,today));
+        if(inRegion.isEmpty() && region.district()!=null) return out.append("</section>").toString();
         return out.append("<a class='cta secondary' href='").append(esc(domain+region.path())).append("'>").append(esc(region.label())).append(" 청약 전체 보기</a></section>").toString();
     }
     // @GetMapping: 공유 카드 PNG. produces로 image/png를 알리고, 그린 결과는 메모리(최대 64MB)에 10분 둔다.

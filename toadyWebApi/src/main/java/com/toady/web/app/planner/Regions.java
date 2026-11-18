@@ -162,7 +162,7 @@ public final class Regions {
      * '전남광주통합특별시'처럼 시·도 줄임말을 이어 붙인 통합특별시 이름 → 옛 시·도 목록(전남, 광주). 아니면 빈 목록.
      * 지역별 청약·검색은 옛 시·도 단위 그대로 쓴다(공급지역명·지난 공고와 묶이도록).
      */
-    static List<Sido> merged(String token) {
+    public static List<Sido> merged(String token) {
         String text = token == null ? "" : token.trim();
         if (!text.endsWith(MERGED_SUFFIX)) return List.of();
         String rest = text.substring(0, text.length() - MERGED_SUFFIX.length());

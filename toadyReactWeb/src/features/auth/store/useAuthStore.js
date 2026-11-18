@@ -44,6 +44,17 @@ function readStoredToken() {
 }
 
 /**
+ * 로그인 정보를 저장하거나(token) 지운다(null). 저장소가 막혀 있어도(사생활 보호 모드·차단 설정) 오류로 멈추지 않는다.
+ * 지우기가 실패해도 화면의 로그아웃 상태는 그대로 반영된다(호출한 쪽이 이어서 set을 부른다).
+ */
+function writeStoredToken(accessToken) {
+  try {
+    if (accessToken) localStorage.setItem('user', JSON.stringify({ accessToken }));
+    else localStorage.removeItem('user');
+  } catch { /* 저장소 접근 불가 */ }
+}
+
+/**
  * 로컬 스토리지에서 기존 인증 정보를 로드합니다.
  * @param {boolean} [dropExpired=false] 앱 시작 시에는 만료(exp)가 지난 토큰을 로그아웃 상태로 보고 지운다.
  *   실행 중 동기화에서는 시계 오차로 멀쩡한 세션을 끊지 않도록 서버의 401 응답에 맡긴다.
@@ -108,7 +119,7 @@ export const useAuthStore = create((set, get) => ({
     }
 
     if (!userProfile?.sub || userProfile.userSeq == null) throw new Error('유효하지 않은 로그인 응답입니다. 다시 로그인해 주세요.');
-    localStorage.setItem('user', JSON.stringify({ accessToken }));
+    writeStoredToken(accessToken);
     set({
       accessToken,
       user: userProfile,
@@ -135,7 +146,7 @@ export const useAuthStore = create((set, get) => ({
     } catch {
       return;
     }
-    localStorage.setItem('user', JSON.stringify({ accessToken }));
+    writeStoredToken(accessToken);
     set({ accessToken, user, isAuthenticated: true });
   },
 
@@ -150,7 +161,7 @@ export const useAuthStore = create((set, get) => ({
     const notifyServer = !(options && options.server === false);
     if (notifyServer) revokeOnServer(get().accessToken);
     if (options?.clearDrafts ?? notifyServer) clearAllDrafts();
-    localStorage.removeItem('user');
+    writeStoredToken(null);
     set({
       accessToken: null,
       user: null,

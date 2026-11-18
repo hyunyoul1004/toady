@@ -88,9 +88,22 @@ class AdminConsoleTest {
     }
 
     @Test void manualRunsAreLimitedToAboutOneYear() {
-        var refused = assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), "operator", "MANUAL"));
+        // 시작·종료 사이 일수가 MANUAL_MAX_DAYS(366)를 넘으면 거절한다.
+        var refused = assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 2), "operator", "MANUAL"));
         assertTrue(refused.getMessage().contains("나눠 실행"), refused.getMessage());
         assertTrue(repository.active().isEmpty(), "거절된 실행은 이력을 남기지 않는다");
+    }
+
+    @Test void theLongestSavedScheduleCanBeRerunManually() {
+        // 자동 일정이 저장할 수 있는 가장 긴 조회 일수의 기간(오늘 - N일 ~ 오늘)을 '다시 실행'(수동)해도 거절하지 않는다.
+        AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.MANUAL_MAX_DAYS);
+        assertThrows(IllegalArgumentException.class,
+                () -> AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.MANUAL_MAX_DAYS + 1));
+        LocalDate today = AdminJobService.today();
+        LocalDate start = AdminScheduleManager.scheduleStart(today, AdminJobService.MANUAL_MAX_DAYS);
+        String id = jobs.submit(JobKind.ANNOUNCEMENTS, start, today, "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
+        assertEquals("SUCCEEDED", repository.find(id).orElseThrow().status());
     }
 
     @Test void recordsFailureAndAllowsALaterJob() {

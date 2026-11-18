@@ -3,7 +3,6 @@
  * @description 청약 일정 달력 컴포넌트(데스크톱: FullCalendar를 지연 로딩, 모바일: MobileApplyhomeCalendar)
  * - 쓰이는 곳: Main.jsx의 캘린더 보기. 공고 목록(subscriptList)은 Main이 조회·필터해서 넘겨준다. 이 컴포넌트는 API를 부르지 않는다.
  * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶는다. 접수 기간이 여러 날인 공고는 이튿날부터 연한 '접수 중' 줄로 매일 보인다. 하루 일정은 모두 펼쳐 보여 준다(DesktopFullCalendar의 dayMaxEventRows=false).
- *   '+N건 더보기'를 누르면 FullCalendar 기본 팝오버 대신 히스토리와 연결된 날짜 목록(Popover)을 연다.
  * - 주말(토/일) 제외 (weekends: false)
  * - 날짜 이동 시 onMonthChange로 월을 알리고, 조회 기간은 Main이 계산한다
  * - 화면 폭이 md(900px) 미만이면 모바일 달력으로 바꾼다(useMediaQuery).
@@ -14,13 +13,9 @@ import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-import Popover from '@mui/material/Popover';
-import ButtonBase from '@mui/material/ButtonBase';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import CloseIcon from '@mui/icons-material/Close';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Tooltip from '@mui/material/Tooltip';
 import Skeleton from '@mui/material/Skeleton';
 import useMediaQuery from '@mui/material/useMediaQuery';
@@ -28,11 +23,9 @@ import { useTheme } from '@mui/material/styles';
 
 import MonthDatePicker from '@/components/datePicker/MonthDatePicker';
 import { dayjs } from '@/utils/date.util';
-import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
 import MobileApplyhomeCalendar from './MobileApplyhomeCalendar';
 import { koreaToday } from '@/features/planner/plannerUtils';
-import { groupCalendarSchedules, groupsByDate, usedRceptSes, hasOngoing, foldOngoing, describeGroup, describeStages, rceptSeMeta, receiptTag } from './calendarGroup';
-import StageBadges from './StageBadges';
+import { groupCalendarSchedules, usedRceptSes, hasOngoing, rceptSeMeta } from './calendarGroup';
 import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
 import './SubscriptionCalendar.css';
 
@@ -51,9 +44,8 @@ function DesktopCalendarSkeleton() {
   );
 }
 
-// 날짜별 더보기 목록의 히스토리 레이어 이름(location.state.overlayLayers 안에서 이 id로 찾는다).
-const DAY_OVERLAY_ID = 'calendar-day';
-const isDateKey = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+// 예전 날짜별 더보기 목록의 히스토리 레이어 이름. 옛 방문 기록에 남은 레이어를 지울 때만 쓴다.
+const LEGACY_DAY_OVERLAY_ID = 'calendar-day';
 
 export function SubscriptionCalendar(props) {
   const theme = useTheme();
@@ -70,27 +62,12 @@ export function SubscriptionCalendar(props) {
   // 1. 같은 날 같은 공고의 단계(특별공급/1순위/2순위)를 한 줄로 묶은 뒤 FullCalendar 이벤트로 변환
   // useMemo로 목록이 바뀔 때만 다시 묶는다. 새 배열을 매번 만들면 FullCalendar가 일정을 매 렌더마다 다시 그린다.
   const groups = useMemo(() => groupCalendarSchedules(props.subscriptList), [props.subscriptList]);
-  const groupMap = useMemo(() => groupsByDate(groups), [groups]);
   const legendCodes = useMemo(() => usedRceptSes(groups), [groups]);
   const showOngoingLegend = useMemo(() => hasOngoing(groups), [groups]);
 
   // '접수 기간 중' 줄(시작일 다음 날부터)은 흰 바탕·옅은 글자로 그려 시작일·순위 접수 줄과 구분한다.
-  // 한 칸의 접수 중 줄이 4개를 넘으면 3개만 그리고 나머지는 '접수 중 N건 더' 한 줄로 접는다(누르면 그날 목록).
-  // 운영 데이터(2026-08-19~11-19 평일 67일)에서 접수 중 줄은 하루 최대 6개, 4개 초과는 3일이었다.
-  const events = useMemo(() => {
-    const { shown, folded } = foldOngoing(groups);
-    const moreEvents = Object.entries(folded).map(([date, count]) => ({
-      id: `${date}|ongoing-more`,
-      title: `접수 중 ${count}건 더`,
-      start: date,
-      allDay: true,
-      backgroundColor: '#ffffff',
-      borderColor: '#ffffff',
-      textColor: '#2563eb',
-      classNames: ['tc-ongoing-more'],
-      extendedProps: { more: { date, count }, order: 1000 }
-    }));
-    return [...shown.map((group) => {
+  // 줄을 접지 않고 하루 일정을 모두 보여 준다(사용자 요청: 칸마다 접힘 여부가 달라 헷갈림).
+  const events = useMemo(() => groups.map((group) => {
     const meta = rceptSeMeta(group.primaryRceptSe);
     return {
       id: group.key,
@@ -103,19 +80,19 @@ export function SubscriptionCalendar(props) {
       classNames: group.ongoing ? ['tc-ongoing'] : [],
       extendedProps: { group, order: group.order }
     };
-    }), ...moreEvents];
-  }, [groups]);
+  }), [groups]);
 
-  // 날짜별 '더보기' 목록: 히스토리 한 단계로 열어 뒤로가기로 닫히고, 앞으로가기로 다시 열린다.
-  const wrapperRef = useRef(null);
-  const [overlayDate, setOverlayDate] = useHistoryOverlay(DAY_OVERLAY_ID);
-  // undefined: 칸을 찾는 중, null: 화면에 그 칸이 없음(가운데 표시), 요소: 그 칸에 붙여 표시
-  const [dayAnchor, setDayAnchor] = useState(undefined);
-  // 데스크톱 달력 파일을 받아 첫 화면을 그렸는지. 그 전에는 날짜 칸이 없으므로 '칸 없음'으로 오판하지 않고 기다린다.
-  const [desktopReady, setDesktopReady] = useState(false);
-  // 앞뒤 달이 섞인 첫·마지막 주 칸도 열 수 있도록 월 대신 '지금 화면에 그 날짜 칸이 있는지'로 판단한다(아래 dayAnchor).
-  const openDate = isDateKey(overlayDate) ? overlayDate : null;
-  const dayGroups = openDate ? groupMap[openDate] || [] : [];
+  // 예전 버전의 날짜별 '더보기' 목록(히스토리 레이어 'calendar-day')은 없앴다. 하루 일정을 모두 펼쳐 보여 주므로 쓰지 않는다.
+  // 그 시절 방문 기록으로 돌아와 레이어가 복원되면, 보이지 않는 레이어가 남아 뒤로가기·상세 닫기 칸 수가 어긋나지 않게
+  // 지금 기록에서 조용히 지운다(replace라 뒤로가기 횟수가 늘지 않는다).
+  const location = useLocation(), navigate = useNavigate();
+  const hasLegacyDayLayer = (location.state?.overlayLayers || []).some((layer) => layer?.id === LEGACY_DAY_OVERLAY_ID);
+  useEffect(() => {
+    if (!hasLegacyDayLayer) return;
+    const layers = (location.state?.overlayLayers || []).filter((layer) => layer?.id !== LEGACY_DAY_OVERLAY_ID);
+    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, overlayLayers: layers } });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLegacyDayLayer]);
 
   // 월 이동 공통 핸들러 (모바일 & 데스크톱 공통 API 조회 파라미터 갱신)
   // useCallback: 의존성(onMonthChange)이 그대로면 같은 함수를 돌려줘, 이 함수를 의존성으로 쓰는 아래 effect가 괜히 다시 돌지 않게 한다.
@@ -148,10 +125,8 @@ export function SubscriptionCalendar(props) {
   }, [props.jumpToDate, changeMonth]);
 
   // 2. FullCalendar 날짜 범위 변경 시 부모 컴포넌트(Main)에 조회 파라미터 전달
-  // 처음 그려질 때도 한 번 불리므로 '데스크톱 달력 준비 완료' 표시로도 쓴다.
   const handleDatesSet = useCallback(
     (dateInfo) => {
-      setDesktopReady(true);
       const api = calendarRef.current?.getApi();
       if (api) {
         const viewDate = api.getDate();
@@ -179,16 +154,13 @@ export function SubscriptionCalendar(props) {
     changeMonth(new Date(`${koreaToday()}T12:00:00`));
   };
 
-  // 휴대폰에서 데스크톱 폭으로 바뀌면 달력을 새로 받아 그리므로 준비 표시를 되돌린다.
-  useEffect(() => { if (isMobile) setDesktopReady(false); }, [isMobile]);
-
   const moveDate = (date) => {
     if (date) {
       changeMonth(date);
     }
   };
 
-  // 4. 일정 클릭 시 상세 열기 (더보기 목록에서 고른 경우도 같은 핸들러)
+  // 4. 일정 클릭 시 상세 열기
   const openDetail = (subscriptSeq) => {
     if (subscriptSeq && typeof props.handleOpen === 'function') {
       props.handleOpen(subscriptSeq);
@@ -196,53 +168,6 @@ export function SubscriptionCalendar(props) {
   };
 
   // 5. 일정 칸 표시(단계 뱃지·단지명 2줄·이야기 수)와 마우스 올림 안내는 DesktopFullCalendar가 맡는다.
-
-  // 6. '+N건 더보기': FullCalendar 기본 팝오버 대신 히스토리와 연결된 목록을 연다.
-  const handleMoreLinkClick = (arg) => {
-    const cellDate = arg.jsEvent?.target?.closest?.('.fc-daygrid-day')?.getAttribute('data-date');
-    // toISOString 은 UTC 기준이라 한국 시간 자정 날짜가 전날로 바뀐다. 로컬 날짜로 만든다.
-    const date = isDateKey(cellDate) ? cellDate : dayjs(arg.date).format('YYYY-MM-DD');
-    setOverlayDate(date);
-    return true; // 'popover'나 뷰 이름이 아니면 FullCalendar는 아무 동작도 하지 않는다.
-  };
-
-  // 열린 날짜의 칸을 기준점으로 잡는다(뒤로가기·앞으로가기·새로고침으로 복원될 때도 같은 칸에 붙는다).
-  // 다른 달로 이동했거나 모바일 달력으로 바뀌어 그 칸이 없으면 화면 가운데에 띄워, 보이지 않는 히스토리 레이어가 남지 않게 한다.
-  useEffect(() => {
-    if (!openDate) {
-      setDayAnchor(undefined);
-      return undefined;
-    }
-    if (isMobile) {
-      setDayAnchor(null);
-      return undefined;
-    }
-    if (!desktopReady) {
-      setDayAnchor(undefined);
-      return undefined;
-    }
-    const find = () => wrapperRef.current?.querySelector(`.fc-daygrid-day[data-date="${openDate}"]`) || null;
-    const found = find();
-    if (found) {
-      setDayAnchor(found);
-      return undefined;
-    }
-    const frame = requestAnimationFrame(() => setDayAnchor(find()));
-    return () => cancelAnimationFrame(frame);
-  }, [openDate, events, isMobile, currentTitle, desktopReady]);
-  // 예전 방문 기록으로 다른 달의 날짜 목록이 복원되면(칸도 없고 지금 데이터에 그 날 일정도 없음) 빈 창을 띄우지 않고
-  // 그 레이어를 현재 기록에서 조용히 지운다(replace라 뒤로가기 횟수가 늘지 않는다).
-  const location = useLocation(), navigate = useNavigate();
-  useEffect(() => {
-    if (!openDate || dayAnchor !== null || dayGroups.length > 0) return;
-    const layers = (location.state?.overlayLayers || []).filter((layer) => layer.id !== DAY_OVERLAY_ID);
-    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, overlayLayers: layers } });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openDate, dayAnchor, dayGroups.length]);
-  // 붙일 날짜 칸이 없을 때(모바일 등) 목록을 띄울 화면 가운데 좌표.
-  const centerPosition = typeof window === 'undefined' ? { top: 0, left: 0 } : { top: Math.round(window.innerHeight / 2), left: Math.round(window.innerWidth / 2) };
-
-  const closeDayList = () => setOverlayDate(null);
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -412,80 +337,16 @@ export function SubscriptionCalendar(props) {
           <Suspense fallback={<DesktopCalendarSkeleton />}>
             <DesktopFullCalendar
               calendarRef={calendarRef}
-              wrapperRef={wrapperRef}
               initialDate={currentDate}
               events={events}
               legendCodes={legendCodes}
               showOngoingLegend={showOngoingLegend}
               onEventOpen={openDetail}
-              onMoreLinkClick={handleMoreLinkClick}
-              onDayListOpen={setOverlayDate}
               onDatesSet={handleDatesSet}
             />
           </Suspense>
         </SectionErrorBoundary>
       )}
-
-          {/* 날짜별 더보기 목록. 열림 상태는 useHistoryOverlay 값(overlayDate)이라 뒤로가기로 닫힌다. 칸 위치를 찾는 중(undefined)에는 열지 않는다. */}
-          <Popover
-            open={Boolean(openDate) && dayAnchor !== undefined && (dayAnchor !== null || dayGroups.length > 0)}
-            anchorReference={dayAnchor ? 'anchorEl' : 'anchorPosition'}
-            anchorEl={dayAnchor || null}
-            anchorPosition={centerPosition}
-            onClose={closeDayList}
-            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-            transformOrigin={{ vertical: dayAnchor ? 'top' : 'center', horizontal: 'center' }}
-            slotProps={{ paper: { sx: { width: 340, maxWidth: 'calc(100vw - 32px)', borderRadius: 2.5, boxShadow: '0 12px 32px rgba(15,23,42,0.16)', border: '1px solid #e2e8f0' } } }}
-          >
-            {openDate && (
-              <Box role="dialog" aria-label={`${dayjs(openDate).format('M월 D일')} 청약 일정`}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, pt: 1.5, pb: 1, borderBottom: '1px solid #f1f5f9' }}>
-                  <Typography sx={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
-                    {dayjs(openDate).format('M월 D일')} ({['일', '월', '화', '수', '목', '금', '토'][dayjs(openDate).day()]})
-                    <Box component="span" sx={{ ml: 0.8, fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>{dayGroups.length}건</Box>
-                  </Typography>
-                  <IconButton size="small" onClick={closeDayList} aria-label="닫기" sx={{ color: '#64748b' }}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-                <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0.75, maxHeight: 'min(60vh, 440px)', overflowY: 'auto' }}>
-                  {dayGroups.map((group) => {
-                    const meta = rceptSeMeta(group.primaryRceptSe);
-                    return (
-                      <li key={group.key}>
-                        <ButtonBase
-                          onClick={() => openDetail(group.subscriptSeq)}
-                          aria-label={`${describeGroup(group)} 상세 보기`}
-                          sx={{
-                            width: '100%', justifyContent: 'flex-start', textAlign: 'left', gap: 1.2,
-                            px: 1.25, py: 1, borderRadius: 1.5, borderLeft: group.ongoing ? `3px dashed ${meta.accent}` : `3px solid ${meta.accent}`,
-                            mb: 0.5, bgcolor: '#ffffff',
-                            '&:hover, &.Mui-focusVisible': { bgcolor: meta.tint }
-                          }}
-                        >
-                          <StageBadges group={group} size="md" />
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.35, wordBreak: 'keep-all' }}>
-                              {group.houseNm}
-                            </Typography>
-                            <Typography sx={{ fontSize: '0.74rem', color: '#64748b', mt: 0.2 }}>
-                              {describeStages(group)}
-                              {receiptTag(group) && <span className="tc-receipt-text"> · {receiptTag(group)}</span>}
-                            </Typography>
-                          </Box>
-                          {group.commentCount > 0 && (
-                            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, fontSize: '0.72rem', fontWeight: 700, color: '#64748b', flexShrink: 0 }}>
-                              <ChatBubbleOutlineIcon sx={{ fontSize: 13 }} aria-hidden="true" />{group.commentCount}
-                            </Box>
-                          )}
-                        </ButtonBase>
-                      </li>
-                    );
-                  })}
-                </Box>
-              </Box>
-            )}
-          </Popover>
     </Box>
   );
 }

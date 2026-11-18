@@ -45,4 +45,16 @@ class DmRulesTest {
             assertFalse(DmRules.flagged(text), text);
         }
     }
+
+    /** 운영자가 숨긴 공고에서 시작한 대화는 단지 이름 대신 일반 문구를 보여 준다(DB를 읽지 않는다). */
+    @Test void hiddenAnnouncementNameIsNotShownInDirectMessages() {
+        var jdbc = org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        var dm = new DmService(jdbc, null, null, null, null, 0, false, 5, 50);
+        var hidden = org.mockito.Mockito.mock(com.toady.web.app.planner.HiddenAnnouncements.class);
+        org.mockito.Mockito.when(hidden.hiddenId("apt/H1/N1")).thenReturn(true);
+        dm.hidden = hidden;
+        assertEquals(DmService.HIDDEN_HOUSE_NAME, dm.houseName("apt/H1/N1"));
+        org.mockito.Mockito.verifyNoInteractions(jdbc);
+        assertNull(dm.houseName(null));
+    }
 }

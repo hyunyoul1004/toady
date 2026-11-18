@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyDays, applySchedules, canApplyOn, scheduleRows, appliesToday, periodDays } from '../src/features/announcement/applyDays.js';
-import { groupCalendarSchedules, groupsByDate, describeGroup, hasOngoing, foldOngoing } from '../src/views/main/calendar/calendarGroup.js';
+import { groupCalendarSchedules, groupsByDate, describeGroup, hasOngoing } from '../src/views/main/calendar/calendarGroup.js';
 import { summaryNumbers } from '../src/features/planner/todaySummaryRules.js';
 import { weeklyStatus, byStatus } from '../src/features/explore/exploreRules.js';
 
@@ -95,18 +95,3 @@ test('여러 날 특별공급의 접수 중 줄은 특별공급 마감일을 보
   assert.equal(describeGroup(day18), 'SP · 특별공급 접수 기간 중(~11.18 마감)');
 });
 
-test('하루 접수 중 줄이 4개를 넘으면 3개만 그리고 나머지는 접는다(시작 줄은 접지 않는다)', () => {
-  const items = Array.from({ length: 6 }, (_, i) => other('remaining', `R${i}`, '2026-11-16', '2026-11-20'))
-    .concat([other('remaining', 'NEW', '2026-11-18', '2026-11-18')]);
-  const groups = groupCalendarSchedules(calendarRows(items));
-  const { shown, folded } = foldOngoing(groups);
-  const day18 = shown.filter((group) => group.date === '2026-11-18');
-  assert.equal(day18.filter((group) => group.ongoing).length, 3);
-  assert.ok(day18.some((group) => group.subscriptSeq === 'remaining/NEW/NEW'));
-  assert.equal(folded['2026-11-18'], 3);
-  assert.equal(folded['2026-11-16'], undefined, '시작일은 접수 중 줄이 없다');
-  // 날짜 목록(팝오버)은 접기 전 전체 묶음을 쓴다.
-  assert.equal(groupsByDate(groups)['2026-11-18'].length, 7);
-  // 4개 이하면 접지 않는다.
-  assert.deepEqual(foldOngoing(groupCalendarSchedules(calendarRows(items.slice(0, 4)))).folded, {});
-});

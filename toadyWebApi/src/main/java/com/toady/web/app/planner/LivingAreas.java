@@ -31,6 +31,8 @@ public class LivingAreas {
     @GetMapping("/api/v1/planner/settings") public Map<String,Object> settings() { return Map.of("remindersEnabled",remindersEnabled,"maxFavorites",50); }
     // @Autowired: 스프링이 PlannerSummary 빈을 필드에 직접 넣는다(필드 주입).
     @Autowired private PlannerSummary summaries;
+    // @Autowired(required=false): 숨김 기능 빈이 있을 때만 넣는다. 없으면 숨김 없이 동작한다.
+    @Autowired(required=false) HiddenAnnouncements hidden;
     /** 요약을 받을 공고 키 목록(최대 50개). 로그인 없이 브라우저에 저장한 관심 공고도 같은 요약을 받을 수 있다. */
     public record SummaryKeys(@NotNull @Size(max=50)
         List<@NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
@@ -38,6 +40,8 @@ public class LivingAreas {
     @PostMapping("/api/v1/planner/summaries")
     public List<PlannerSummary.Summary> summaries(@Valid @RequestBody SummaryKeys request) {
         return request.ids().stream().distinct().map(id -> {
+            // 운영자가 숨긴 공고는 원본이 없는 공고와 같은 모양으로 돌려준다(이름·일정을 내보내지 않는다).
+            if(hidden!=null && hidden.hiddenId(id)) return PlannerSummary.Summary.missing(id);
             String[] parts=id.split("/");
             try { return summaries.get(parts[0],parts[1],parts[2]); }
             catch(EntityNotFoundException missing) { return PlannerSummary.Summary.missing(id); }

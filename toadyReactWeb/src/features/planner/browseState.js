@@ -3,7 +3,7 @@
  * 쓰는 곳: views/main/Main.jsx, MobileApplyhomeCalendar.jsx, TodayOverview.jsx(shiftMonth·uniqueInMonth).
  * 날짜는 한국 날짜 문자열(YYYY-MM-DD)로 다루고, Date는 UTC로만 계산해 기기 시간대에 흔들리지 않게 한다.
  */
-import { isoDate, safeRead, koreaToday } from './plannerUtils.js';
+import { isoDate, safeRead, koreaToday, isWeekendDay } from './plannerUtils.js';
 
 /** 조회 기간은 달력의 렌더링 여부와 무관하게 항상 준비한다. */
 // 달력에는 앞뒤 달의 날짜 칸도 보이므로, 그 달 1일의 7일 전부터 다음 달 14일까지를 조회 범위로 잡는다.
@@ -37,29 +37,20 @@ export function shiftMonth(month, offset) {
 /** 일정이 없는 오늘을 반복 선택하지 않고, 현재 검색 결과에서 볼 수 있는 날짜를 선택한다. */
 export function calendarSelection(month,eventDates,today=koreaToday(),previous='',fallback=`${month}-01`) {
   const dates=[...new Set(eventDates)].filter(date=>{
-    if(!isoDate(date) || !date.startsWith(month+'-'))return false;
-    // 주말 날짜는 고르지 않는다. 요일은 정오(UTC)로 만든 Date로 구해 시간대 영향을 받지 않게 한다.
-    const weekday=new Date(date+'T12:00:00Z').getUTCDay();
-    return weekday!==0 && weekday!==6;
+    // 주말 날짜는 고르지 않는다(isWeekendDay: 공통 주말 판정, 기기 시간대와 무관).
+    return isoDate(date) && date.startsWith(month+'-') && !isWeekendDay(date);
   }).sort();
   if(dates.includes(previous))return previous;
   if(month===today.slice(0,7))return dates.find(date=>date>=today) || dates.at(-1) || fallback;
   return dates[0] || fallback;
 }
 
-// 'YYYY-MM-DD'(또는 'YYYYMMDD')가 토·일요일인지. 기기 시간대와 무관하게 UTC로 계산한다.
-const isWeekend = value => {
-  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
-  if (digits.length !== 8) return false;
-  const day = new Date(Date.UTC(Number(digits.slice(0, 4)), Number(digits.slice(4, 6)) - 1, Number(digits.slice(6, 8)))).getUTCDay();
-  return day === 0 || day === 6;
-};
 /**
  * 고른 달(YYYY-MM)에 일정(inDate)이 있는 공고를 공고 단위로 한 번씩. 목록 보기의 건수·목록이 쓴다.
  * weekdaysOnly: 달력(데스크톱·모바일 모두 평일 칸만 그림)에 보이는 공고만 센다. 주말에만 일정이 있는 공고는 달력에 없으므로 빼고 센다.
  */
 export function uniqueInMonth(items = [], month = '', { weekdaysOnly = false } = {}) {
-  const inMonth = items.filter(x => String(x.inDate || '').startsWith(month) && !(weekdaysOnly && isWeekend(x.inDate)));
+  const inMonth = items.filter(x => String(x.inDate || '').startsWith(month) && !(weekdaysOnly && isWeekendDay(x.inDate)));
   return [...new Map(inMonth.map(x => [x.subscriptSeq, x])).values()];
 }
 

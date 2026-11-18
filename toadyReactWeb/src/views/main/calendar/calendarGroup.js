@@ -145,27 +145,6 @@ export function usedRceptSes(groups) {
   return Array.from(used).sort((a, b) => rceptSeMeta(a).order - rceptSeMeta(b).order);
 }
 
-/**
- * 데스크톱 달력 칸이 과하게 길어지지 않게 '접수 중' 줄만 접는다. 한 날짜의 접수 중 줄이 limit개를 넘으면
- * 앞의 keep개만 남기고 나머지 개수를 folded[날짜]에 담는다(시작·순위 접수 줄은 접지 않는다).
- * 접힌 줄은 '접수 중 N건 더'를 누르면 여는 날짜 목록(전체 묶음)에서 본다.
- * 반환: { shown: 달력에 그릴 묶음, folded: { 'YYYY-MM-DD': 접힌 개수 } }
- */
-export function foldOngoing(groups, limit = 4, keep = 3) {
-  const ongoingByDate = {};
-  (groups || []).forEach((group) => { if (group.ongoing) ongoingByDate[group.date] = (ongoingByDate[group.date] || 0) + 1; });
-  const seen = {};
-  const folded = {};
-  const shown = (groups || []).filter((group) => {
-    if (!group.ongoing || ongoingByDate[group.date] <= limit) return true;
-    seen[group.date] = (seen[group.date] || 0) + 1;
-    if (seen[group.date] <= keep) return true;
-    folded[group.date] = (folded[group.date] || 0) + 1;
-    return false;
-  });
-  return { shown, folded };
-}
-
 /** 범례용: 목록에 '접수 중' 줄이 있는지 */
 export function hasOngoing(groups) {
   return (groups || []).some((group) => group.ongoing);

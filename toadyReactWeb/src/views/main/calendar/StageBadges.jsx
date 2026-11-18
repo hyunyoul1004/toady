@@ -1,7 +1,7 @@
 /**
  * @file StageBadges.jsx
- * @description 공고 단계 뱃지 묶음(특·1·2). 데스크톱 달력 칸과 날짜 목록이 함께 쓴다.
- * - 쓰이는 곳: DesktopFullCalendar(일정 한 줄, size='sm'), SubscriptionCalendar의 '+N건 더보기' 목록(size='md').
+ * @description 공고 단계 뱃지 묶음(특·1·2).
+ * - 쓰이는 곳: DesktopFullCalendar(일정 한 줄, size='sm'). size='md'는 전체 단계 흐름을 크게 보여 줄 때 쓴다.
  * - 색은 calendarGroup의 RCEPT_SE_META에서 받아 CSS 변수(--tc-accent 등)로 넘긴다. 실제 칠하기는 SubscriptionCalendar.css가 한다.
  */
 import { rceptSeMeta } from './calendarGroup';
@@ -14,7 +14,7 @@ import { rceptSeMeta } from './calendarGroup';
  */
 export function StageBadges({ group, size = 'sm' }) {
   const active = new Set(group.stages.map((stage) => stage.rceptSe));
-  // 달력 칸(sm)에서는 그날 해당하는 단계만 보여 단지명 자리를 넓힌다. 전체 단계 흐름은 날짜 목록·상세에서 본다.
+  // 달력 칸(sm)에서는 그날 해당하는 단계만 보여 단지명 자리를 넓힌다. 전체 단계 흐름은 상세에서 본다.
   const shown = size === 'sm' ? group.allStages.filter(({ rceptSe }) => active.has(rceptSe)) : group.allStages;
   return (
     <span className={`tc-stages tc-stages-${size}`} aria-hidden="true">

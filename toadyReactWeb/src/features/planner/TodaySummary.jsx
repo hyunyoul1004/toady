@@ -7,7 +7,7 @@ import { koreaToday } from './plannerUtils';
 import { profileComplete, rankFeed } from '@/features/match/eligibilityRules';
 import { useEligibilityProfile } from '@/features/match/eligibilityProfile';
 import { useEligibilityFeed } from '@/features/match/matchShared';
-import { summaryNumbers, todayLabel, openTodayText } from './todaySummaryRules';
+import { summaryNumbers, summaryDay, todayLabel, openTodayText } from './todaySummaryRules';
 import './todaySummary.css';
 
 /**
@@ -33,8 +33,10 @@ export default function TodaySummary({ savedCount, filtered = false }) {
   const weeklyReady = !weekly.isLoading && !weekly.isError;
   // 불러오는 중이거나 오류면 0 대신 '–'를 보여 준다.
   const value = (number, ready) => (ready ? number : '–');
-  const dateText = todayLabel(today);
-  const openText = openTodayText(today);
+  // 날짜·주말 문구는 숫자를 계산한 weekly-summary의 기준일(today)을 따른다(자정 직후 캐시와 기기 날짜가 달라도 맞게).
+  const labelDay = summaryDay(weekly.data, today);
+  const dateText = todayLabel(labelDay);
+  const openText = openTodayText(labelDay);
 
   return <section className="today-summary" aria-labelledby="today-summary-title">
     <div className="today-summary-head">

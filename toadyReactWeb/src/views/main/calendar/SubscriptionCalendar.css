@@ -148,11 +148,6 @@
   color: #1d4f8a;
 }
 
-.tc-receipt-text {
-  color: #1d4f8a;
-  font-weight: 700;
-}
-
 /* 단계 뱃지(특·1·2): 그날 단계는 채움, 같은 공고의 다른 단계는 옅게
    색은 StageBadges가 style로 넣는 CSS 변수(--tc-accent, --tc-text)에서 가져온다. */
 .tc-stages {
@@ -194,24 +189,6 @@
   font-size: 11px;
 }
 
-/* '+N건 더보기' 링크 */
-.subscription-calendar-wrapper .fc-daygrid-more-link {
-  display: inline-block;
-  margin: 2px 4px 4px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #2563eb;
-  background-color: #eff6ff;
-  text-decoration: none;
-}
-
-.subscription-calendar-wrapper .fc-daygrid-more-link:hover,
-.subscription-calendar-wrapper .fc-daygrid-more-link:focus-visible {
-  background-color: #dbeafe;
-  color: #1d4ed8;
-}
 
 /* 날짜 칸(셀) 최소 높이 확보 */
 .subscription-calendar-wrapper .fc-daygrid-day-frame {
@@ -263,14 +240,3 @@
   background: #ffffff;
 }
 
-/* '접수 중 N건 더': 하루 접수 중 줄이 많을 때 접힌 나머지. 누르면 그날 목록이 열린다. */
-.tc-event-more {
-  padding: 1px 6px 1px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #2563eb;
-}
-
-.subscription-calendar-wrapper .fc-daygrid-event.tc-ongoing-more:hover .tc-event-more {
-  text-decoration: underline;
-}

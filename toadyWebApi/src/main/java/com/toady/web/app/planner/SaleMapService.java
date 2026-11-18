@@ -89,7 +89,8 @@ public class SaleMapService {
         String lawd5 = bcode.substring(0, 5);
         List<String> names = municipalityNames(region);
         // '서울 중구'와 '부산 중구'처럼 같은 이름의 구·군이 섞이지 않도록 시·도도 맞춘다.
-        String province = AddressLocator.province(region == null ? "" : region);
+        // 시·도 비교는 AddressLocator.provinces(통합특별시는 옛 시·도로 푼다)로 하므로 region 글자를 그대로 넘긴다.
+        String province = region == null ? "" : region.trim();
         LocalDate today = LocalDate.now(clock);
         @SuppressWarnings("unchecked")
         List<EligibilityFeed.Item> items = (List<EligibilityFeed.Item>) feed.cached(today).get("items");
@@ -175,11 +176,14 @@ public class SaleMapService {
         return !YearMonth.parse(moveIn).isBefore(now);
     }
 
-    /** 주소에 시·군·구 이름이 모두 들어 있고, 시·도를 알면 시·도도 같을 때. */
+    /**
+     * 주소에 시·군·구 이름이 모두 들어 있고, 시·도를 알면 시·도도 같을 때. province: 시·도로 시작하는 글자('경기', '경기 파주시').
+     * '전남광주통합특별시 북구'는 광주로 보아 '광주 북구'와 같은 지역, '전남 …'과는 다른 지역이다(Regions와 같은 판정).
+     */
     static boolean inRegion(String address, List<String> names, String province) {
         if (address == null || !(names.isEmpty() || names.stream().allMatch(address::contains))) return false;
-        String found = AddressLocator.province(address);
-        return province == null || found == null || province.equals(found);
+        if (province == null || AddressLocator.provinces(province).isEmpty() || AddressLocator.provinces(address).isEmpty()) return true;
+        return AddressLocator.sameProvince(province, address);
     }
 
     /** 공고 주소가 정정되거나 운영자 확인 주소가 바뀌면 다시 확인하도록 두 주소를 키에 넣는다. */

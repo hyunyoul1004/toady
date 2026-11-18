@@ -108,6 +108,27 @@ class PushIntegrationTest {
         return new PushDigest(store, sender, jdbc, planner, summaries, areas, users, json, results, gapStore, collections, Clock.fixed(LocalDateTime.parse(kst).atZone(ZoneId.of("Asia/Seoul")).toInstant(), ZoneId.of("Asia/Seoul")));
     }
 
+    @Autowired com.toady.web.app.operation.AnnouncementOverrides overrides;
+    /** 숨긴 공고로 시험 알림을 요청하면 단지 이름·상세 링크 없이 일반 시험 알림을 보낸다. */
+    @Test void testNotificationDoesNotNameHiddenAnnouncement() throws Exception {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE VARCHAR(20) NOT NULL, HOUSE_MANAGE_NO VARCHAR(40) NOT NULL, PBLANC_NO VARCHAR(40) NOT NULL,"
+            + " HIDDEN_YN VARCHAR(1) DEFAULT 'N' NOT NULL, NOTICE VARCHAR(500), ADMIN_NAME VARCHAR(100) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL, PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO))");
+        jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE");
+        jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','P1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(overrides, "refresh");
+        try {
+            String endpoint = "https://fcm.googleapis.com/fcm/send/hidden1";
+            mvc.perform(put("/api/v1/push/subscription").contentType(MediaType.APPLICATION_JSON).content(body(endpoint))).andExpect(status().isOk());
+            mvc.perform(post("/api/v1/push/test").contentType(MediaType.APPLICATION_JSON).content("{\"endpoint\":\"" + endpoint + "\",\"announcementId\":\"apt/P1/N1\"}")).andExpect(status().isOk());
+            assertEquals(1, SENT.size());
+            JsonNode payload = decrypt(SENT.get(0).body());
+            assertFalse(payload.toString().contains("운정 푸시 테스트"), payload.toString());
+            assertEquals("/my", payload.path("url").asText());
+        } finally {
+            jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE");
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(overrides, "refresh");
+        }
+    }
     @Test void subscribeLookupTestSendAndUnsubscribe() throws Exception {
         String endpoint = "https://fcm.googleapis.com/fcm/send/abc123";
         mvc.perform(get("/api/v1/push/config")).andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true))

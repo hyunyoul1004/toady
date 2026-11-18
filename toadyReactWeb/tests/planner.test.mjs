@@ -132,3 +132,17 @@ test('guest summary keeps saved name and schedule when the server cannot find th
   assert.equal(mergeGuestSummary(saved,fresh),fresh);
   assert.equal(mergeGuestSummary(saved,undefined),saved);
 });
+
+test('guest summary keeps saved receiptChannel when an older server omits the field', async () => {
+  const { mergeGuestSummary } = await import('../src/features/planner/plannerUtils.js');
+  const saved={id:'apt/1/2',houseNm:'신혼희망타운',receiptChannel:'LH',events:[],unavailable:false};
+  // 예전 서버: receiptChannel 필드 자체가 없으면 저장해 둔 'LH'를 지킨다.
+  const old={id:'apt/1/2',houseNm:'신혼희망타운',events:[],unavailable:false};
+  assert.equal(mergeGuestSummary(saved,old).receiptChannel,'LH');
+  assert.equal(mergeGuestSummary(saved,old).houseNm,'신혼희망타운');
+  // 새 서버: 필드가 있으면(null 포함) 서버 값을 따른다.
+  assert.equal(mergeGuestSummary(saved,{...old,receiptChannel:null}).receiptChannel,null);
+  assert.equal(mergeGuestSummary(saved,{...old,receiptChannel:'LH'}).receiptChannel,'LH');
+  // 저장 요약에도 접수처가 없으면 서버 요약을 그대로 쓴다.
+  assert.equal(mergeGuestSummary({id:'apt/1/2'},old),old);
+});

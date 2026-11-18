@@ -48,4 +48,23 @@ class AddressLocatorTest {
         assertTrue(AddressLocator.sameRegion("부산광역시 중구 중앙대로 100", "부산 중구 중앙대로 100"));
         assertTrue(AddressLocator.sameRegion("세종특별자치시 한누리대로 100", "세종특별자치시 한누리대로 100"));
     }
+    /** 통합특별시 표기는 Regions와 같게 다음 낱말로 옛 시·도를 정한다(늘 '전남'으로 보지 않는다). */
+    @Test void mergedSpecialCityUsesTheSameProvinceAsRegions() {
+        assertEquals("광주", AddressLocator.province("전남광주통합특별시 북구 운암동 100"));
+        assertEquals("전남", AddressLocator.province("전남광주통합특별시 목포시 옥암동 100"));
+        assertEquals(java.util.Set.of("전남", "광주"), AddressLocator.provinces("전남광주통합특별시 어느지구 A1블록"));
+        assertNull(AddressLocator.province("전남광주통합특별시 어느지구 A1블록"), "옛 시·도를 못 정하면 하나로 확정하지 않는다");
+        assertTrue(AddressLocator.sameRegion("전남광주통합특별시 북구 운암동 100", "광주 북구 운암동 100"));
+        assertTrue(AddressLocator.sameRegion("광주광역시 북구 운암동 100", "전남광주통합특별시 북구 운암동 100"));
+        assertTrue(AddressLocator.sameRegion("전남광주통합특별시 목포시 옥암동 100", "전남 목포시 옥암동 100"));
+        assertFalse(AddressLocator.sameRegion("전남광주통합특별시 북구 운암동 100", "전남 목포시 옥암동 100"));
+        assertFalse(AddressLocator.sameRegion("전남광주통합특별시 북구 운암동 100", "대구 북구 운암동 100"), "다른 시·도의 같은 이름 구는 여전히 다르다");
+        assertEquals(List.of("북구"), AddressLocator.municipality("전남광주통합특별시 북구 운암동 100"), "통합특별시 이름을 시·군·구로 보지 않는다");
+        assertEquals(List.of(), AddressLocator.municipality("전남광주통합특별시 어느지구 A1블록"));
+        // 기존 시·도 판정은 그대로다.
+        assertEquals("경기", AddressLocator.province("경기도 파주시 동패동 1"));
+        assertEquals("전남", AddressLocator.province("전라남도 순천시 1"));
+        assertNull(AddressLocator.province("파주시 동패동 1"));
+        assertFalse(AddressLocator.sameRegion("부산광역시 중구 중앙대로 100", "서울 중구 중앙대로 100"));
+    }
 }

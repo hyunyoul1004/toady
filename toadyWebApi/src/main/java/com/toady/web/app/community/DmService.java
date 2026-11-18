@@ -422,9 +422,17 @@ public class DmService {
         return view;
     }
 
-    /** 대화가 시작된 공고 id로 단지 이름을 읽는다. 테이블 이름은 DETAIL_TABLES의 고정 값만 쓴다. */
+    /** 운영자가 숨긴 공고에서 시작한 대화에 단지 이름 대신 보여 주는 문구. */
+    static final String HIDDEN_HOUSE_NAME = "공개되지 않은 공고";
+    /** 운영자가 숨긴 공고. 빈이 없으면(일부 테스트) 숨김 없이 동작한다. */
+    // @Autowired(required=false): 빈이 있을 때만 넣는다.
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.toady.web.app.planner.HiddenAnnouncements hidden;
+
+    /** 대화가 시작된 공고 id로 단지 이름을 읽는다. 숨긴 공고면 이름 대신 일반 문구. 테이블 이름은 DETAIL_TABLES의 고정 값만 쓴다. */
     String houseName(String contextId) {
         if (contextId == null) return null;
+        if (hidden != null && hidden.hiddenId(contextId)) return HIDDEN_HOUSE_NAME;
         String[] id = contextId.split("/");
         String table = id.length == 3 ? DETAIL_TABLES.get(id[0]) : null;
         if (table == null) return null;

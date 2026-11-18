@@ -57,7 +57,11 @@ export function nextStep(stage, summary = {}, today, result) {
   }
   if (stage === 2) {
     if (winner !== null && winner > 0) return { tone: 'info', text: `당첨자 발표 D-${winner} (${md(summary.winnerDate)})${result?.ratePublished ? ' · 경쟁률이 공개됐어요' : ''}`, action: result?.ratePublished ? { label: '경쟁률 보기', tab: 'rate' } : null };
-    if (winner !== null) return { tone: 'urgent', text: '당첨자가 발표됐어요. 청약홈에서 결과를 확인하고 기록해 두세요.', action: { label: '청약홈', href: APPLYHOME_URL } };
+    if (winner !== null) {
+      // 결과 확인도 신청한 곳(접수처)에서 한다: LH청약플러스 접수 공고는 LH청약플러스로 안내한다.
+      const place = receiptPlaceName(summary.receiptChannel), placeUrl = summary.receiptChannel === 'LH' ? LH_APPLY_URL : APPLYHOME_URL;
+      return { tone: 'urgent', text: `당첨자가 발표됐어요. ${place}에서 결과를 확인하고 기록해 두세요.`, action: { label: place, href: placeUrl } };
+    }
     return { tone: 'info', text: '발표일이 공개되면 알려 드릴게요.' };
   }
   if (stage === 3) {

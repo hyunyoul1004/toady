@@ -3,6 +3,7 @@ package com.toady.web.app.planner;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.toady.web.app.announcement.AnnouncementType;
+import com.toady.web.app.announcement.ReceiptChannel;
 import com.toady.web.app.announcement.service.AnnouncementService;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -23,17 +24,25 @@ public class PlannerSummary {
     public PlannerSummary(AnnouncementService announcements, ObjectMapper mapper) { this.announcements = announcements; this.mapper = mapper; }
     /** 일정 하나(라벨 + 날짜). */
     public record Event(String label, LocalDate date) { }
-    /** minPriceManwon/maxPriceManwon은 APT 주택형별 최고 공급금액 중 최저·최고값이다. 최저 분양가가 아니다. */
+    /**
+     * minPriceManwon/maxPriceManwon은 APT 주택형별 최고 공급금액 중 최저·최고값이다. 최저 분양가가 아니다.
+     * receiptChannel: 접수처. LH청약플러스에서 접수하는 APT 공고면 "LH", 청약홈 접수면 null(ReceiptChannel, 목록 응답과 같은 판정).
+     */
     public record Summary(String id, String houseNm, String address, String supply, String housingType,
             LocalDate startDate, LocalDate endDate, LocalDate winnerDate, String priceSummary, List<Event> events, boolean unavailable,
-            Long minPriceManwon, Long maxPriceManwon, String moveInMonth) {
+            Long minPriceManwon, Long maxPriceManwon, String moveInMonth, String receiptChannel) {
+        /** 접수처 없이 만드는 모양(청약홈 접수로 본다). */
+        public Summary(String id, String houseNm, String address, String supply, String housingType, LocalDate startDate, LocalDate endDate, LocalDate winnerDate,
+                String priceSummary, List<Event> events, boolean unavailable, Long minPriceManwon, Long maxPriceManwon, String moveInMonth) {
+            this(id, houseNm, address, supply, housingType, startDate, endDate, winnerDate, priceSummary, events, unavailable, minPriceManwon, maxPriceManwon, moveInMonth, null);
+        }
         /** 입주 예정월 없이 만드는 기존 모양(캘린더·테스트용). */
         public Summary(String id, String houseNm, String address, String supply, String housingType, LocalDate startDate, LocalDate endDate, LocalDate winnerDate,
                 String priceSummary, List<Event> events, boolean unavailable, Long minPriceManwon, Long maxPriceManwon) {
-            this(id, houseNm, address, supply, housingType, startDate, endDate, winnerDate, priceSummary, events, unavailable, minPriceManwon, maxPriceManwon, null);
+            this(id, houseNm, address, supply, housingType, startDate, endDate, winnerDate, priceSummary, events, unavailable, minPriceManwon, maxPriceManwon, null, null);
         }
         /** 원본 공고가 사라진 저장 항목을 화면·메일·캘린더에서 같은 모양으로 표시한다. */
-        public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null,null); }
+        public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null,null,null); }
     }
     /**
      * 원본 공고를 읽어 요약을 만든다. 공고가 없으면 AnnouncementService가 EntityNotFoundException을 던진다.
@@ -66,7 +75,9 @@ public class PlannerSummary {
             if(amounts.getCount()>0) { min=amounts.getMin(); max=amounts.getMax(); }
         }
         return new Summary(id,value(a,"houseNm"),value(a,"hssplyAdres","hssplyHshldco"),value(a,"totSuplyHshldco"),value(a,"houseSecdNm"),start,end,winner,prices,ScheduleEvents.normalize(events),false,min,max,
-            moveInMonth(value(a,"mvnPrearngeYm")));
+            moveInMonth(value(a,"mvnPrearngeYm")),
+            // 접수처 판정은 목록(AnnouncementListMapper)과 같이 APT만 한다.
+            type.equals("apt") ? ReceiptChannel.of(value(a,"bsnsMbyNm"),value(a,"hmpgAdres"),value(a,"spsplyRceptBgnde")) : null);
     }
     /** 입주 예정월 '202901' → '2029-01'. 형식이 다르면 null(당첨·계약 뒤 화면이 입주까지 남은 기간을 보여 준다). */
     static String moveInMonth(String value) {

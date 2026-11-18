@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS TB_SCHEDULER_ADMIN_JOB (
     PRIMARY KEY (JOB_ID),
     UNIQUE (ACTIVE_SLOT),
     UNIQUE (TRIGGER_KEY)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 앱은 없는 종류의 기본값만 최초 등록한다. 이후 화면에서 저장한 설정은 재시작해도 유지된다.
 CREATE TABLE IF NOT EXISTS TB_SCHEDULER_ADMIN_SCHEDULE (
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS TB_SCHEDULER_ADMIN_SCHEDULE (
     LOOKBACK_DAYS INT NOT NULL,
     UPDATED_AT DATETIME NOT NULL,
     PRIMARY KEY (JOB_KIND)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 -- 최초 스케줄은 앱이 환경 설정을 기준으로 INSERT합니다.
 -- ACTIVE_SLOT=1은 전체 관리자 인스턴스에서 하나의 작업만 실행되도록 보장합니다.
 
@@ -310,7 +310,7 @@ CREATE TABLE IF NOT EXISTS TB_FAVORITE (
 
 CREATE TABLE IF NOT EXISTS TB_MAIL_BUDGET (
     ID INT NOT NULL PRIMARY KEY COMMENT 'Gmail 공통 발송 잠금 행'
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 INSERT IGNORE INTO TB_MAIL_BUDGET (ID) VALUES (1);
 
 CREATE TABLE IF NOT EXISTS TB_MAIL_ATTEMPT (
@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS TB_MAIL_ATTEMPT (
     MAIL_KIND VARCHAR(10) NOT NULL COMMENT 'AUTH, SIGNUP 또는 REMINDER',
     REG_DT DATETIME(6) NOT NULL COMMENT 'UTC 발송 시도 시각',
     INDEX IX_MAIL_ATTEMPT_TIME (REG_DT, MAIL_KIND)
-) ENGINE=InnoDB COMMENT='Gmail 최근 24시간 발송 시도량';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Gmail 최근 24시간 발송 시도량';
 
 CREATE TABLE IF NOT EXISTS TB_REMINDER_DELIVERY (
     USER_SEQ BIGINT NOT NULL,
@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS TB_REMINDER_DELIVERY (
     UPDATED_AT DATETIME(6) NOT NULL COMMENT 'UTC 갱신 시각',
     PRIMARY KEY (USER_SEQ, SEND_DATE),
     INDEX IX_REMINDER_STATUS (STATUS, UPDATED_AT)
-) ENGINE=InnoDB COMMENT='일별 묶음 알림 중복 발송 방지';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='일별 묶음 알림 중복 발송 방지';
 -- 알림 상태 점검: SELECT SEND_DATE,STATUS,COUNT(*) FROM TB_REMINDER_DELIVERY GROUP BY SEND_DATE,STATUS;
 -- 보관: 스케줄러(DataRetentionJob)가 90일 지난 행을 자동 삭제한다(14번 권한 필요). 수동 정리: DELETE FROM TB_REMINDER_DELIVERY WHERE SEND_DATE < CURRENT_DATE - INTERVAL 90 DAY LIMIT 10000;
 
@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS TB_CALENDAR_FEED (
     LAST_READ_DT DATETIME(6) NULL COMMENT '캘린더 앱이 마지막으로 가져간 한국시간',
     PRIMARY KEY (USER_SEQ),
     UNIQUE (FEED_TOKEN)
-) ENGINE=InnoDB COMMENT='회원별 캘린더 구독 주소';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원별 캘린더 구독 주소';
 -- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE, DELETE 권한이 필요합니다.
 
 -- 12. 경쟁률 예상 투표 (API 배포 전에 생성)
@@ -373,7 +373,7 @@ CREATE TABLE IF NOT EXISTS TB_RATE_POLL (
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 투표·변경 시각',
     PRIMARY KEY (ANNOUNCEMENT_ID, VISITOR_ID),
     INDEX IX_RATE_POLL_CHOICE (ANNOUNCEMENT_ID, CHOICE)
-) ENGINE=InnoDB COMMENT='공고별 경쟁률 예상 투표';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='공고별 경쟁률 예상 투표';
 -- 앱 계정에는 이 테이블의 SELECT, INSERT, UPDATE 권한이 필요합니다.
 
 -- 13. 웹 푸시 구독 (API 배포 전에 생성, 미적용 시 알림 켜기 화면만 숨겨진다)
@@ -518,7 +518,7 @@ CREATE TABLE IF NOT EXISTS TB_COMMENT_ADMIN_HIDE (
     COMMENT_SEQ BIGINT NOT NULL PRIMARY KEY,
     ADMIN_NAME VARCHAR(100) NOT NULL COMMENT '숨긴 관리자',
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 숨긴 시각'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='관리자가 숨긴 댓글';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='관리자가 숨긴 댓글';
 
 -- ============================================================================
 -- 22. 실거래 단지 좌표 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
@@ -532,7 +532,7 @@ CREATE TABLE IF NOT EXISTS TB_APT_COMPLEX_LOCATION (
     LONGITUDE DECIMAL(10,7) NULL,
     STATUS VARCHAR(12) NOT NULL COMMENT 'FOUND 또는 NOT_FOUND',
     CHECKED_DT DATETIME(6) NOT NULL COMMENT '한국시간 확인 시각'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 단지 좌표(카카오 주소 검색 결과)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='실거래 단지 좌표(카카오 주소 검색 결과)';
 
 -- ============================================================================
 -- 23. 회원 프로필 캐릭터 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
@@ -543,7 +543,7 @@ CREATE TABLE IF NOT EXISTS TB_USER_PROFILE (
     USER_SEQ BIGINT NOT NULL PRIMARY KEY,
     PROFILE_ICON VARCHAR(30) NOT NULL COMMENT '캐릭터 키(화면 ProfileAvatar.jsx와 같은 목록)',
     UPDATE_DT DATETIME(6) NOT NULL COMMENT '한국시간 변경 시각'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 프로필 캐릭터';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원 프로필 캐릭터';
 
 -- ============================================================================
 -- 24. 회원별 이야기 조회 인덱스 (API 배포 전 실행 권장, 미적용이어도 앱은 동작)
@@ -564,7 +564,7 @@ CREATE TABLE IF NOT EXISTS TB_USER_BLOCK (
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 차단 시각',
     PRIMARY KEY (USER_SEQ, BLOCKED_USER_SEQ),
     INDEX IX_USER_BLOCK_TARGET (BLOCKED_USER_SEQ)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 차단';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원 차단';
 
 -- 신고: 같은 사람이 같은 대상을 두 번 신고하지 않게 (신고자, 종류, 대상 번호)를 유일하게 둔다.
 -- 회원 신고는 TARGET_SEQ에 회원 번호를 넣는다. 운영자는 관리자 사이트의 '신고'에서 처리한다.
@@ -584,7 +584,7 @@ CREATE TABLE IF NOT EXISTS TB_USER_REPORT (
     PRIMARY KEY (REPORT_SEQ),
     UNIQUE INDEX UX_USER_REPORT_ONCE (REPORTER_SEQ, TARGET_TYPE, TARGET_SEQ),
     INDEX IX_USER_REPORT_STATUS (STATUS, REPORT_SEQ)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원·이야기·쪽지 신고';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원·이야기·쪽지 신고';
 
 -- 쪽지 대화방: 두 회원 쌍마다 하나(작은 번호를 USER_LOW에). 읽은 위치와 '대화방 나가기' 위치를 각자 쪽지 번호로 둔다.
 -- 나간 쪽은 그 번호까지의 쪽지를 보지 않고, 상대가 새 쪽지를 보내면 그 뒤부터 다시 보인다.
@@ -605,7 +605,7 @@ CREATE TABLE IF NOT EXISTS TB_DM_THREAD (
     UNIQUE INDEX UX_DM_PAIR (USER_LOW, USER_HIGH),
     INDEX IX_DM_HIGH (USER_HIGH, LAST_MESSAGE_DT),
     INDEX IX_DM_LAST (LAST_MESSAGE_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='쪽지 대화방';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='쪽지 대화방';
 
 -- 쪽지: 글자만(첨부 없음) 1,000자. 거래·연락처 유도 의심 문구는 FLAGGED로 표시해 받는 사람에게 경고를 띄운다.
 -- 스케줄러가 180일 지난 쪽지를 지운다(아래 권한).
@@ -620,7 +620,7 @@ CREATE TABLE IF NOT EXISTS TB_DM_MESSAGE (
     INDEX IX_DM_MESSAGE_THREAD (THREAD_SEQ, MESSAGE_SEQ),
     INDEX IX_DM_MESSAGE_SENDER (SENDER_SEQ, REG_DT),
     INDEX IX_DM_MESSAGE_REG (REG_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='쪽지';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='쪽지';
 
 -- 쪽지 설정: 받는 범위(ALL 모두·KNOWN 이야기로 이어진 사람만·NONE 받지 않기)와 운영자가 정한 보내기 정지 기한.
 -- 행이 없으면 ALL이며 정지 없음. 탈퇴하면 지운다.
@@ -629,7 +629,7 @@ CREATE TABLE IF NOT EXISTS TB_DM_SETTING (
     RECEIVE_POLICY VARCHAR(10) NOT NULL DEFAULT 'ALL' COMMENT 'ALL·KNOWN·NONE',
     SUSPENDED_UNTIL DATETIME(6) NULL COMMENT '한국시간 쪽지 보내기 정지 기한(운영자)',
     UPDATE_DT DATETIME(6) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원별 쪽지 설정';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원별 쪽지 설정';
 
 -- 회원별 '오늘 시작한 대화 수'(하루 5명 제한)를 프로필 카드를 열 때마다 확인하므로 인덱스를 둔다.
 CREATE INDEX IF NOT EXISTS IX_DM_STARTED ON TB_DM_THREAD (STARTED_BY, REG_DT);
@@ -664,7 +664,7 @@ CREATE TABLE IF NOT EXISTS TB_ADMIN_AUDIT (
     PRIMARY KEY (AUDIT_SEQ),
     INDEX IX_ADMIN_AUDIT_TARGET (TARGET_TYPE, TARGET_ID, AUDIT_SEQ),
     INDEX IX_ADMIN_AUDIT_TIME (REG_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='관리자 작업 이력';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='관리자 작업 이력';
 
 -- 회원 제재. WARNING(경고·안내만), STORY_BAN(이야기 쓰기 정지), NICKNAME_RESET(닉네임을 기본값으로 바꿈).
 -- 쪽지 정지는 25번 TB_DM_SETTING, 계정 잠금은 TB_USER.LOCK_YN을 그대로 쓰고 작업 이력에만 남긴다.
@@ -683,7 +683,7 @@ CREATE TABLE IF NOT EXISTS TB_USER_SANCTION (
     REG_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (SANCTION_SEQ),
     INDEX IX_USER_SANCTION_USER (USER_SEQ, KIND, CANCELED_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 제재';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원 제재';
 
 -- 금칙어. 띄어쓰기·대소문자를 무시한 부분 일치(정규식은 받지 않는다: 잘못된 식이나 느린 식으로 서비스가 멈추지 않게).
 -- SCOPE: STORY(이야기)·DM(쪽지)·ALL, ACTION: BLOCK(올리지 못함)·FLAG(쪽지만, 거래 의심 표시). 코드에 있는 기본 쪽지 규칙(DmRules)에 더해 적용된다.
@@ -699,7 +699,7 @@ CREATE TABLE IF NOT EXISTS TB_MODERATION_RULE (
     UPDATE_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (RULE_SEQ),
     UNIQUE KEY UK_MODERATION_RULE (PATTERN, SCOPE)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='금칙어';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='금칙어';
 
 -- 공고 숨김·정정 안내. HIDDEN_YN='Y'면 목록·검색·캘린더·사이트맵·RSS에서 빼고 새 이야기를 막는다(주소로 열면 안내와 함께 보인다).
 -- NOTICE는 공고 상세 위에 '운영 안내'로 보인다(예: 접수 일정 정정, 취소 공고). 공고 원본 데이터는 바꾸지 않는다.
@@ -746,7 +746,7 @@ CREATE TABLE IF NOT EXISTS TB_SITE_NOTICE (
     UPDATE_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (NOTICE_SEQ),
     INDEX IX_SITE_NOTICE_TIME (USE_YN, START_DT, END_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사이트 공지·배너';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='사이트 공지·배너';
 
 -- 자주 묻는 질문. 비어 있으면 API가 처음 한 번 코드에 있는 기본 질문으로 채운다(앱 계정 INSERT 필요).
 CREATE TABLE IF NOT EXISTS TB_FAQ_ITEM (
@@ -760,7 +760,7 @@ CREATE TABLE IF NOT EXISTS TB_FAQ_ITEM (
     ADMIN_NAME VARCHAR(100) NOT NULL,
     UPDATE_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (ITEM_ID)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자주 묻는 질문';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='자주 묻는 질문';
 
 -- 생활권. 비어 있으면 API가 처음 한 번 코드의 기본 생활권으로 채운다. SLUG는 공개 주소(/areas/{slug})라 바꾸지 않는다.
 -- ALIASES·TERMS·SCOPE는 쉼표로 나눈 목록. TERMS의 짧은 이름(공백 없음)은 SCOPE(시·군) 중 하나가 함께 있어야 인정한다.
@@ -776,7 +776,7 @@ CREATE TABLE IF NOT EXISTS TB_LIVING_AREA (
     ADMIN_NAME VARCHAR(100) NOT NULL,
     UPDATE_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (SLUG)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='생활권';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='생활권';
 
 -- 서비스 설정(쪽지 조건·한도, 메일 한도, 실거래 API 한도, 운영팀 계정 등). 행이 없으면 환경변수 값을 쓴다. API가 1분마다 다시 읽는다.
 CREATE TABLE IF NOT EXISTS TB_APP_SETTING (
@@ -784,7 +784,7 @@ CREATE TABLE IF NOT EXISTS TB_APP_SETTING (
     SETTING_VALUE VARCHAR(200) NOT NULL,
     ADMIN_NAME VARCHAR(100) NOT NULL,
     UPDATE_DT DATETIME(6) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='서비스 설정';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='서비스 설정';
 
 -- 날짜별 사용량(예: 국토부 실거래 API 호출 수). 재시작해도 이어서 센다.
 CREATE TABLE IF NOT EXISTS TB_DAILY_COUNTER (
@@ -792,7 +792,7 @@ CREATE TABLE IF NOT EXISTS TB_DAILY_COUNTER (
     COUNT_DATE DATE NOT NULL COMMENT '한국시간 날짜',
     COUNT_VALUE BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (COUNTER_KEY, COUNT_DATE)
-) ENGINE=InnoDB COMMENT='날짜별 사용량';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='날짜별 사용량';
 
 -- 운영자가 확인한 공고 위치 주소(지구·블록 주소 공고). 앱은 이 주소를 지도 검색으로 다시 검증한 뒤에만 핀을 놓는다.
 ALTER TABLE TB_ANNOUNCEMENT_OVERRIDE ADD COLUMN IF NOT EXISTS LOCATION_ADDRESS VARCHAR(200) NULL COMMENT '운영자가 확인한 지번·도로명 주소';
@@ -804,7 +804,7 @@ CREATE TABLE IF NOT EXISTS TB_SEARCH_STAT (
     EMPTY_YN VARCHAR(1) NOT NULL,
     HITS INT NOT NULL DEFAULT 0,
     PRIMARY KEY (STAT_DATE, TERM, EMPTY_YN)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='검색어 일별 통계';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='검색어 일별 통계';
 
 -- 운영팀 이야기(관리자 화면에서 운영팀 계정으로 쓴 글)와 고정 여부. 고정한 원글은 공고 이야기 맨 위에 따로 보인다.
 CREATE TABLE IF NOT EXISTS TB_COMMENT_OFFICIAL (
@@ -812,7 +812,7 @@ CREATE TABLE IF NOT EXISTS TB_COMMENT_OFFICIAL (
     PINNED_YN VARCHAR(1) NOT NULL DEFAULT 'N',
     ADMIN_NAME VARCHAR(100) NOT NULL,
     REG_DT DATETIME(6) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='운영팀 이야기';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운영팀 이야기';
 
 -- 회원 메모(문의 대응 기록). 관리자만 본다.
 CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
@@ -823,7 +823,7 @@ CREATE TABLE IF NOT EXISTS TB_MEMBER_MEMO (
     REG_DT DATETIME(6) NOT NULL,
     PRIMARY KEY (MEMO_SEQ),
     INDEX IX_MEMBER_MEMO_USER (USER_SEQ, MEMO_SEQ)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 메모';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원 메모';
 
 -- 앱 계정: 위 테이블 모두 SELECT, TB_FAQ_ITEM·TB_LIVING_AREA(처음 채우기 INSERT), TB_DAILY_COUNTER(INSERT·UPDATE), TB_SEARCH_STAT(INSERT·UPDATE).
 -- 관리자 계정(19번에 추가):
@@ -861,7 +861,7 @@ CREATE TABLE IF NOT EXISTS TB_MEMBER_VISIT_DAY (
     VISIT_DATE DATE NOT NULL COMMENT '한국시간 날짜',
     PRIMARY KEY (USER_SEQ, VISIT_DATE),
     INDEX IX_MEMBER_VISIT_DATE (VISIT_DATE)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원 방문 일자(재방문 통계)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='회원 방문 일자(재방문 통계)';
 -- 앱 계정: INSERT, DELETE(탈퇴) / 관리자 계정: SELECT / 스케줄러 계정: DELETE(보관 기간)
 -- GRANT SELECT ON toady.TB_MEMBER_VISIT_DAY TO 'toady_admin'@'%';
 -- GRANT SELECT, DELETE ON toady.TB_MEMBER_VISIT_DAY TO 'toady_sources'@'%';
@@ -876,7 +876,7 @@ CREATE TABLE IF NOT EXISTS TB_PUSH_RESULT_SENT (
     SENT_DT DATETIME NOT NULL COMMENT '한국시간',
     PRIMARY KEY (ENDPOINT_HASH, ANNOUNCEMENT_ID, RESULT_KIND),
     INDEX IX_PUSH_RESULT_SENT_DT (SENT_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='결과 즉시 알림 발송 기록';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='결과 즉시 알림 발송 기록';
 -- 앱 계정: SELECT, INSERT, DELETE(발송이 일시 실패하면 선점 기록을 지워 다시 보냄) / 스케줄러 계정: DELETE(보관 기간)
 -- GRANT SELECT, DELETE ON toady.TB_PUSH_RESULT_SENT TO 'toady_sources'@'%';
 
@@ -932,7 +932,7 @@ CREATE TABLE IF NOT EXISTS TB_WITHDRAWN_SANCTION (
     REG_DT DATETIME(6) NOT NULL COMMENT '한국시간 탈퇴 시각',
     PRIMARY KEY (EMAIL_HASH, KIND, BLOCKER_SEQ),
     INDEX IX_WITHDRAWN_SANCTION_EXPIRE (EXPIRE_DT)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='탈퇴 회원 제재·차단 기록(재가입 시 다시 적용)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='탈퇴 회원 제재·차단 기록(재가입 시 다시 적용)';
 -- 앱 계정: 이 테이블 SELECT, INSERT, DELETE. 재가입 계정에 제재를 다시 걸므로 TB_USER_SANCTION에 INSERT도 필요하다(26번은 SELECT·UPDATE만).
 -- GRANT SELECT, INSERT, DELETE ON toady.TB_WITHDRAWN_SANCTION TO '앱계정'@'%';
 -- GRANT INSERT ON toady.TB_USER_SANCTION TO '앱계정'@'%';
@@ -955,3 +955,47 @@ CREATE TABLE IF NOT EXISTS TB_WITHDRAWN_SANCTION (
 -- 27번 권한에 DELETE가 빠져 있어 이 저장이 실패했다. 27번을 예전 문구대로 적용한 DB에만 아래를 실행한다.
 -- 미적용이면 관리자 화면은 '권한 없음' 안내를 보여 주고 저장 값은 그대로 남는다.
 -- GRANT DELETE ON toady.TB_APP_SETTING TO 'toady_admin'@'%';
+
+-- ============================================================================
+-- 35. COLLATE 없이 만든 테이블의 문자 비교 규칙 통일 (운영 DB에서 관리 계정으로 한 번 실행)
+-- ============================================================================
+-- 이유: 아래 테이블은 COLLATE 없이(일부는 CHARSET도 없이) 만들어져 MariaDB 11 기본값(utf8mb4_uca1400_ai_ci)이 붙었을 수 있다.
+-- 다른 테이블과 문자 컬럼을 비교·조인하면 30번과 같은 'Illegal mix of collations'가 날 수 있어 utf8mb4_general_ci로 맞춘다.
+-- 위 CREATE TABLE에는 COLLATE를 붙였으므로 새로 만드는 DB는 해당 없음. 데이터는 그대로 두고 비교 규칙만 바꾼다.
+-- 실행 중 테이블이 잠깐 잠기므로 수집이 도는 정각·10분 단위를 피한다. H2 테스트가 이 파일을 실행하므로 주석으로 둔다.
+-- 확인: SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_COLLATION <> 'utf8mb4_general_ci';
+-- ALTER TABLE TB_SCHEDULER_ADMIN_JOB CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_SCHEDULER_ADMIN_SCHEDULE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_MAIL_BUDGET CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_REMINDER_DELIVERY CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_COMMENT_ADMIN_HIDE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_APT_COMPLEX_LOCATION CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_USER_PROFILE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_USER_BLOCK CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_USER_REPORT CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_DM_THREAD CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_DM_MESSAGE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_DM_SETTING CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_ADMIN_AUDIT CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_USER_SANCTION CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_MODERATION_RULE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_SITE_NOTICE CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_FAQ_ITEM CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_LIVING_AREA CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_APP_SETTING CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_DAILY_COUNTER CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_SEARCH_STAT CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_COMMENT_OFFICIAL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_MEMBER_MEMO CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- ALTER TABLE TB_MEMBER_VISIT_DAY CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+-- 아래 5개는 ascii_bin 컬럼(토큰·해시)이 있다. CONVERT는 그 컬럼까지 utf8mb4로 바꾸므로 같은 문장에서 원래 정의로 되돌린다.
+-- ALTER TABLE TB_MAIL_ATTEMPT CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+--     MODIFY ID CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL;
+-- ALTER TABLE TB_CALENDAR_FEED CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+--     MODIFY FEED_TOKEN CHAR(43) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '구독 주소용 무작위 토큰(base64url)';
+-- ALTER TABLE TB_RATE_POLL CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+--     MODIFY VISITOR_ID CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '브라우저 익명 방문자 ID';
+-- ALTER TABLE TB_PUSH_RESULT_SENT CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+--     MODIFY ENDPOINT_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'TB_PUSH_SUBSCRIPTION.ENDPOINT_HASH';
+-- ALTER TABLE TB_WITHDRAWN_SANCTION CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+--     MODIFY EMAIL_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'HMAC-SHA256(소문자 이메일) 16진수';

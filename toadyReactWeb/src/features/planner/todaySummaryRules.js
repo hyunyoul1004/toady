@@ -1,4 +1,5 @@
 import { appliesToday } from '../announcement/applyDays.js';
+import { isWeekendDay } from './plannerUtils.js';
 
 /**
  * '오늘의 요약' 숫자 계산(순수 함수).
@@ -21,20 +22,21 @@ export function summaryNumbers({ items = [], ranked = [], weekly = null } = {}) 
   };
 }
 
+/**
+ * '오늘의 요약' 날짜·주말 문구의 기준일. 숫자(applyToday)는 10분 캐시된 weekly-summary가 서버 날짜(today)로 계산하므로,
+ * 응답에 today('YYYY-MM-DD')가 있으면 그 날짜를 써서 자정 직후에도 날짜 문구와 숫자의 기준일을 맞춘다. 없으면 기기 기준 fallback.
+ */
+export function summaryDay(weekly, fallback) {
+  const day = weekly?.today;
+  return typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : fallback;
+}
+
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 /** '2026-11-13' → '11월 13일 (금)'. 기기 시간대와 상관없이 한국 날짜 문자열 그대로 계산한다. */
 export function todayLabel(iso) {
   const [y, m, d] = String(iso).split('-').map(Number);
   if (!y || !m || !d) return '';
   return `${m}월 ${d}일 (${WEEKDAY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
-}
-
-/** 한국 날짜 문자열('2026-11-21')이 토·일인지. koreaToday()가 이미 KST 날짜라 기기 시간대와 상관없다. */
-export function isWeekendDay(iso) {
-  const [y, m, d] = String(iso).split('-').map(Number);
-  if (!y || !m || !d) return false;
-  const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return day === 0 || day === 6;
 }
 
 /**

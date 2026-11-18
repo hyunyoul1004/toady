@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyDays, applySchedules, scheduleRows } from '../src/features/announcement/applyDays.js';
-import { groupCalendarSchedules, groupsByDate, describeGroup, foldOngoing, receiptTag } from '../src/views/main/calendar/calendarGroup.js';
+import { groupCalendarSchedules, groupsByDate, describeGroup, receiptTag } from '../src/views/main/calendar/calendarGroup.js';
 import { receiptChannel, receiptChannelOf } from '../src/features/announcement/receiptChannel.js';
 import { recruitHouseholds, supplyScale, detailSupplyScale } from '../src/features/announcement/supplyScale.js';
-import { openTodayText, isWeekendDay, browseFiltered } from '../src/features/planner/todaySummaryRules.js';
+import { openTodayText, browseFiltered, summaryDay, todayLabel } from '../src/features/planner/todaySummaryRules.js';
+import { isWeekendDay } from '../src/features/planner/plannerUtils.js';
 import { detailImageSections } from '../src/features/announcement/export/exportData.js';
 
 // 안산신길2 A-6블록 신혼희망타운(apt/2026820013) 실제 응답 모양: 특별공급 접수일 없음, 1순위 11.16~11.23, 2순위 11.24.
@@ -48,13 +49,6 @@ test('지역별 순위 기간이 다르면 시작하는 지역 이름으로 보�
   // 하루 접수일만 있고 지역별 날짜가 같으면 지역 이름을 붙이지 않는다(예전 규칙 그대로).
   const sameDay = { type: 'apt', houseManageNo: 'B', pblancNo: 'B', ...rank('2026-11-17', '2026-11-17', '2026-11-18') };
   assert.deepEqual(applySchedules(sameDay).map((row) => [row.stage, row.ongoing, row.areaLabel]), [['02', false, ''], ['03', false, '']]);
-});
-
-test('LH 순위 기간 접수 중 줄도 접수 중 줄 접기(foldOngoing)에 들어간다', () => {
-  const items = Array.from({ length: 6 }, (_, i) => ({ ...SINGIL_LH, houseManageNo: `L${i}`, pblancNo: `L${i}`, houseNm: `L${i}` }));
-  const { shown, folded } = foldOngoing(groupCalendarSchedules(calendarRows(items)));
-  assert.equal(folded['2026-11-18'], 3);
-  assert.equal(shown.filter((group) => group.date === '2026-11-16').length, 6, '첫날 순위 줄은 접지 않는다');
 });
 
 test('LH청약플러스 접수 판정: LH 사업주체 + apply.lh.or.kr + 특별공급 접수일 없음', () => {
@@ -107,4 +101,23 @@ test('검색·필터가 걸려 있으면 오늘의 요약에 전국 기준 표�
   assert.equal(browseFiltered({ paramInfo: { ...all, citys: ['운정'] }, selectedRegionCount: 17, totalRegionCount: 17 }), true);
   assert.equal(browseFiltered({ paramInfo: { ...all, rceptSe06: 'N', citys: [] }, selectedRegionCount: 17, totalRegionCount: 17 }), true);
   assert.equal(browseFiltered({ paramInfo: { ...all, citys: [] }, selectedRegionCount: 3, totalRegionCount: 17 }), true);
+});
+
+test('주말 판정은 공통 함수 하나(YYYY-MM-DD·YYYYMMDD 모두)', () => {
+  assert.equal(isWeekendDay('20261121'), true, '숫자만 있는 날짜도 읽는다');
+  assert.equal(isWeekendDay('20261120'), false);
+  assert.equal(isWeekendDay(''), false);
+  assert.equal(isWeekendDay('2026-11'), false);
+});
+
+test('오늘의 요약 기준일: weekly-summary의 today가 있으면 그 날짜로 날짜·주말 문구를 만든다', () => {
+  // 자정 직후: 기기는 토요일(11.21)인데 캐시된 숫자는 금요일(11.20) 기준이면 문구도 금요일 기준.
+  const day = summaryDay({ today: '2026-11-20', current: [] }, '2026-11-21');
+  assert.equal(day, '2026-11-20');
+  assert.equal(todayLabel(day), '11월 20일 (금)');
+  assert.equal(openTodayText(day).label, '오늘 접수');
+  // 응답이 없거나 today가 없거나 이상하면 기기 기준 날짜.
+  assert.equal(summaryDay(undefined, '2026-11-21'), '2026-11-21');
+  assert.equal(summaryDay({ current: [] }, '2026-11-21'), '2026-11-21');
+  assert.equal(summaryDay({ today: '20261120' }, '2026-11-21'), '2026-11-21');
 });

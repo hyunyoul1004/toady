@@ -14,28 +14,19 @@ import StageBadges from './StageBadges';
 const PLUGINS = [dayGridPlugin, interactionPlugin];
 
 /**
- * FullCalendar 월 보기를 그리는 부분만 맡는다. 월 이동·데이터·'+N건 더보기' 목록 같은 상태는 부모(SubscriptionCalendar)가 가진다.
+ * FullCalendar 월 보기를 그리는 부분만 맡는다. 월 이동·데이터 같은 상태는 부모(SubscriptionCalendar)가 가진다.
  * @param calendarRef 부모가 calendarRef.current.getApi()로 이전·다음 달 이동을 시키려고 넘기는 ref
- * @param wrapperRef 부모가 날짜 칸(.fc-daygrid-day)을 찾아 더보기 목록을 붙이려고 넘기는 ref
  * @param events groupCalendarSchedules 결과를 FullCalendar 이벤트 모양으로 바꾼 목록
  * @param onDatesSet 보이는 달이 바뀌면 FullCalendar가 부른다(부모가 월을 Main에 알린다)
- * @param onDayListOpen '접수 중 N건 더'를 누르면 그 날짜 목록(히스토리와 연결된 팝오버)을 연다
  */
-export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDate, events, legendCodes, showOngoingLegend = false, onEventOpen, onMoreLinkClick, onDayListOpen, onDatesSet }) {
+export default function DesktopFullCalendar({ calendarRef, initialDate, events, legendCodes, showOngoingLegend = false, onEventOpen, onDatesSet }) {
   const handleEventClick = (info) => {
     info.jsEvent?.preventDefault();
-    const more = info.event.extendedProps?.more;
-    if (more) { onDayListOpen?.(more.date); return; }
     onEventOpen(info.event.extendedProps?.group?.subscriptSeq);
   };
 
   // 말줄임된 단지명·단계·지역을 마우스 올림(title)과 스크린리더(aria-label)로 확인할 수 있게 한다.
   const handleEventDidMount = (info) => {
-    const more = info.event.extendedProps?.more;
-    if (more) {
-      info.el.setAttribute('aria-label', `접수 기간 중인 공고 ${more.count}건 더 보기`);
-      return;
-    }
     const group = info.event.extendedProps?.group;
     if (!group) return;
     const text = describeGroup(group);
@@ -46,8 +37,6 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
   // 한 줄 렌더링: 단계 뱃지(특·1·2) + 단지명(최대 2줄) + (LH청약플러스 접수면) 'LH' + 이야기 수.
   // 'GTX운정중앙역 시티프라디움 3단지/4단지'처럼 앞부분이 같은 이름은 뒤의 단지 번호가 보이도록 2줄까지 펼친다.
   const renderEventContent = (eventInfo) => {
-    const more = eventInfo.event.extendedProps?.more;
-    if (more) return <div className="tc-event-more">접수 중 {more.count}건 더</div>;
     const group = eventInfo.event.extendedProps?.group;
     if (!group) return null;
     const meta = rceptSeMeta(group.primaryRceptSe);
@@ -62,7 +51,7 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
   };
 
   return (
-    <Box className="subscription-calendar-wrapper" ref={wrapperRef}>
+    <Box className="subscription-calendar-wrapper">
       {legendCodes.length > 0 && (
         <Box className="tc-legend" component="ul" aria-label="공급 유형 범례">
           {legendCodes.map((code) => {
@@ -94,11 +83,8 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
         firstDay={1}
         height="auto"
         // 시작·순위 접수 줄은 하루 일정을 모두 펼쳐 한눈에 본다(사용자 요청). 같은 단지는 calendarGroup에서 한 줄로 묶는다.
-        // 접수 기간 중 줄은 하루 4개를 넘으면 부모(SubscriptionCalendar)가 '접수 중 N건 더'로 접어 넘긴다(foldOngoing).
+        // 접수 기간 중 줄도 접지 않고 모두 보여 준다. 접지 않으므로 '+N건 더보기'(moreLink) 설정도 두지 않는다.
         dayMaxEventRows={false}
-        moreLinkClick={onMoreLinkClick}
-        moreLinkContent={(arg) => `+${arg.num}건 더보기`}
-        moreLinkHint={(num) => `${num}건 더 보기`}
         // extendedProps.order(단계 순서) → 단지명 순으로 같은 날 일정을 쌓는다.
         eventOrder="order,title"
         events={events}

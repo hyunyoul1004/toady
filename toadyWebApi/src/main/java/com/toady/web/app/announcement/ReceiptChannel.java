@@ -10,7 +10,7 @@ import java.util.Locale;
  * 판정 근거(셋 다 맞아야 한다): ① 사업주체명(BSNS_MBY_NM)에 '한국토지주택공사' ② 홈페이지(HMPG_ADRES)가 apply.lh.or.kr
  * ③ 특별공급 접수일(SPSPLY_RCEPT_BGNDE)이 없음. 청약홈에서 받는 LH 공공분양(예: 고덕신도시 아테라)은 특별공급 접수일이 있고
  * 홈페이지가 분양 홍보 사이트라 여기에 걸리지 않는다. 확실하지 않으면 null(청약홈 접수로 본다).
- * 쓰는 곳: AnnouncementListMapper(목록 응답 receiptChannel).
+ * 쓰는 곳: AnnouncementListMapper(목록 응답 receiptChannel), PlannerSummary(관심 공고 요약 receiptChannel).
  */
 public final class ReceiptChannel {
     public static final String LH = "LH";

@@ -2,6 +2,7 @@ package com.toady.web.app.planner.research;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.toady.web.app.planner.Regions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -74,23 +75,45 @@ public class AddressLocator {
     static String normalize(String value) { return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).replaceAll("\\s+", " ").trim(); }
     private static final String[][] PROVINCES = {{"서울","서울"},{"부산","부산"},{"대구","대구"},{"인천","인천"},{"광주","광주"},{"대전","대전"},{"울산","울산"},{"세종","세종"},{"경기","경기"},{"강원","강원"},
         {"충청북","충북"},{"충북","충북"},{"충청남","충남"},{"충남","충남"},{"전북","전북"},{"전라북","전북"},{"전라남","전남"},{"전남","전남"},{"경상북","경북"},{"경북","경북"},{"경상남","경남"},{"경남","경남"},{"제주","제주"}};
-    /** 주소 첫 단어의 시·도를 짧은 이름으로('경기도' → '경기', '전남광주통합특별시' → '전남'). 모르면 null. */
+    /** 주소 첫 단어의 시·도를 짧은 이름으로('경기도' → '경기', '전남광주통합특별시 북구' → '광주'). 하나로 정하지 못하면 null. */
     public static String province(String address) {
-        String first = normalize(address).split(" ")[0];
-        for (String[] pair : PROVINCES) if (first.startsWith(pair[0])) return pair[1];
-        return null;
+        Set<String> found = provinces(address);
+        return found.size() == 1 ? found.iterator().next() : null;
+    }
+    /**
+     * 주소 첫 단어의 시·도 후보(짧은 이름). 보통은 하나이고, 모르면 빈 집합.
+     * '전남광주통합특별시'처럼 통합특별시 표기는 Regions(지역 판정 기준)와 같게 다음 낱말로 옛 시·도를 정하고('… 북구' → 광주, '… 목포시' → 전남),
+     * 정하지 못하면 통합 대상 시·도 모두(전남, 광주)를 후보로 둔다. 다른 시·도로 확정하지 않는다.
+     */
+    public static Set<String> provinces(String address) {
+        String text = normalize(address), first = text.split(" ")[0];
+        List<Regions.Sido> merged = Regions.merged(first);
+        if (!merged.isEmpty()) {
+            Optional<Regions.Region> region = Regions.of(text).filter(found -> merged.contains(found.sido()));
+            if (region.isPresent()) return Set.of(region.get().sido().shortName());
+            Set<String> group = new LinkedHashSet<>();
+            merged.forEach(sido -> group.add(sido.shortName()));
+            return Collections.unmodifiableSet(group);
+        }
+        for (String[] pair : PROVINCES) if (first.startsWith(pair[0])) return Set.of(pair[1]);
+        return Set.of();
+    }
+    /** 두 주소의 시·도 후보가 겹치는지(통합특별시를 옛 시·도로 풀어 비교한다). 어느 한쪽이라도 모르면 false. */
+    public static boolean sameProvince(String address, String other) {
+        Set<String> left = provinces(address), right = provinces(other);
+        return !left.isEmpty() && !right.isEmpty() && !Collections.disjoint(left, right);
     }
     /** 주소에서 시·군·구 낱말을 최대 2개('수원시 영통구'). '검단신도시'처럼 지구·도시로 끝나는 이름은 뺀다. */
     static List<String> municipality(String address) {
         List<String> tokens = new ArrayList<>(Arrays.asList(normalize(address).split(" ")));
-        if (province(address) != null && !tokens.isEmpty()) tokens.remove(0);
+        if (!provinces(address).isEmpty() && !tokens.isEmpty()) tokens.remove(0);
         return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구|도시)$")).limit(2).toList();
     }
     /** 카카오가 찾은 주소가 공고 주소와 같은 시·도·시·군·구인지. 이름이 같은 다른 지역 동을 확정하지 않게 한다. */
     static boolean sameRegion(String address, String found) {
-        String expected = province(address); List<String> cities = municipality(address);
-        if (expected == null && cities.isEmpty()) return false;
-        if (expected != null && !expected.equals(province(found))) return false;
+        boolean knownProvince = !provinces(address).isEmpty(); List<String> cities = municipality(address);
+        if (!knownProvince && cities.isEmpty()) return false;
+        if (knownProvince && !sameProvince(address, found)) return false;
         List<String> foundTokens = Arrays.asList(normalize(found).split(" "));
         return foundTokens.containsAll(cities);
     }
