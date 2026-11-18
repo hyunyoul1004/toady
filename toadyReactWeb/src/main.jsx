@@ -1,6 +1,7 @@
 /**
  * @file main.jsx
  * @description Vite 애플리케이션 진입점 (React 18 createRoot)
+ * index.html의 <div id="root">에 App을 그린다. 카카오 지도 SDK 스크립트도 여기서 미리 붙여 둔다.
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -9,7 +10,6 @@ import App from './App';
 import './features/install/installStore';
 import { loadKakaoMaps } from './config/loadKakaoMaps';
 
-// 전역 CSS 및 폰트 임포트 (필요한 경우)
 const rootElement = document.getElementById('root');
 
 // 배포 직후 열려 있던 탭이 지워진 이전 화면 파일을 받으려 하면 한 번만 새로고침해 새 파일 목록을 받는다(무한 새로고침 방지).

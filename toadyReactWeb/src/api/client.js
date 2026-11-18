@@ -4,6 +4,8 @@
  * - Bearer 토큰 헤더 자동 주입
  * - 401 Unauthorized 시 세션 초기화
  * - 공통 에러 핸들링 및 응답 파싱
+ * features 폴더 아래 api 파일의 함수들이 apiClient.get/post… 로 이 모듈을 거쳐 서버를 부른다.
+ * 토큰은 zustand 인증 스토어(useAuthStore)에서 getState()로 읽는다. 컴포넌트 밖이라 훅 대신 getState를 쓴다.
  */
 import config from 'config';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
@@ -49,7 +51,8 @@ export async function handleResponse(response, requestToken = null) {
 
   if (!response.ok) {
     if (response.status === 401 && requestToken && useAuthStore.getState().accessToken === requestToken) {
-      // 401 Unauthorized 시 토큰 만료 처리
+      // 401 Unauthorized 시 토큰 만료 처리. 요청 때 쓴 토큰이 지금 토큰과 같을 때만 지운다(이미 새로 로그인했으면 그대로 둔다).
+      // auth-logout 이벤트는 useAuthStore가 받아 로그아웃 상태로 바꾼다.
       localStorage.removeItem('user');
       window.dispatchEvent(new Event('auth-logout'));
     }
@@ -66,6 +69,7 @@ export async function handleResponse(response, requestToken = null) {
     return Promise.reject(error);
   }
 
+  // 서버가 응답 헤더로 새 토큰을 주면(만료가 가까운 토큰 연장) 스토어의 토큰을 바꿔 둔다.
   const authorization = response.headers.get('Authorization');
   if (requestToken && authorization?.startsWith('Bearer ')) {
     useAuthStore.getState().renewToken(requestToken, authorization.slice(7));
@@ -74,6 +78,7 @@ export async function handleResponse(response, requestToken = null) {
   return data || { resultCode: 'SUCCESS', resultMessage: '성공' };
 }
 
+// '/api/...' 같은 상대 경로는 환경별 API 주소(config.apiUrl)를 앞에 붙이고, http로 시작하면 그대로 쓴다.
 const toUrl = endpoint => (endpoint.startsWith('http') ? endpoint : `${config.apiUrl}${endpoint}`);
 
 /**

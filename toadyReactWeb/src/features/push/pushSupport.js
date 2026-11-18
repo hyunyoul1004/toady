@@ -1,9 +1,17 @@
 /**
  * 웹 푸시 지원 환경 판정(순수 함수). 아이폰·아이패드는 iOS 16.4 이상에서 '홈 화면에 추가'한 앱으로 열었을 때만
  * 푸시를 받을 수 있어, 브라우저 탭에서는 알림 켜기 대신 홈 화면 추가 방법을 안내한다.
+ * 화면·브라우저 객체를 직접 읽지 않고 인자로 받아서(순수 함수) 테스트하기 쉽게 했다.
+ * pushStore·PushBootstrap·installStore 등이 가져다 쓴다.
  */
+// 카카오톡·네이버·인스타그램 등 앱 안 브라우저의 userAgent 표시.
 const IN_APP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp/i;
 
+/**
+ * 지금 기기·브라우저 정보. nav는 window.navigator, win은 window를 넘긴다.
+ * standalone: 홈 화면 아이콘으로 연 상태(주소창 없음). 아이패드는 userAgent가 맥과 같아서 터치 지원 여부로 구분한다.
+ * api: 웹 푸시에 필요한 기능(https, 서비스 워커, PushManager, Notification)이 모두 있는지.
+ */
 export function detectPlatform(nav = {}, win = {}) {
   const ua = nav.userAgent || '';
   const ios = /iPhone|iPad|iPod/.test(ua) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
@@ -33,7 +41,10 @@ export function pushMode(p) {
   return 'unsupported';
 }
 
-/** VAPID 공개키(base64url)를 PushManager.subscribe가 받는 바이트 배열로 바꾼다. */
+/**
+ * VAPID 공개키(base64url)를 PushManager.subscribe가 받는 바이트 배열로 바꾼다.
+ * VAPID 키: 서버가 '이 구독에 알림을 보낼 수 있는 건 나뿐'임을 증명하는 키 한 쌍. 공개키만 브라우저에 주고 비밀키는 서버에 둔다.
+ */
 export function base64UrlToBytes(value) {
   const base64 = (value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);
@@ -72,6 +83,7 @@ export function scopeKey({ endpoint, userSeq, favorites, areas = [], favoriteIds
   return JSON.stringify([endpoint || '', userSeq ?? null, favorites !== false, [...areas].sort(), userSeq ? [] : [...favoriteIds].sort()]);
 }
 
+/** pushMode 결과별로 알림을 켤 수 없는 이유와 방법(알림 설정 창에 표시). */
 export const PUSH_HELP = {
   'ios-home': '아이폰에서는 TOADY를 홈 화면에 추가한 뒤, 홈 화면 아이콘으로 열어야 알림을 받을 수 있어요.',
   'ios-safari': '아이폰은 Safari에서 TOADY를 열어 홈 화면에 추가해야 알림을 받을 수 있어요.',

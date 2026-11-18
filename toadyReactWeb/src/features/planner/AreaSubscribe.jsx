@@ -9,11 +9,14 @@ import { usePushStore } from '@/features/push/pushStore';
 /** 생활권 공개 캘린더 주소. 개인 정보가 없어 로그인 없이 구독한다. */
 function areaFeedLinks(slug, origin) {
   const url = `${origin}/calendar/areas/${slug}.ics`;
+  // webcal:// 주소는 아이폰·맥 캘린더가 '구독'으로 연다. 구글 캘린더는 cid 파라미터로 같은 주소를 받는다.
   const webcal = url.replace(/^https?:\/\//, 'webcal://');
   return { url, webcal, google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}` };
 }
 
 /** 생활권 하나로 검색 중일 때만 그 생활권의 새 공고 일정을 캘린더로 받아보도록 제안한다. */
+// Main의 검색 조건(targets)에 생활권이 딱 하나일 때만 보인다. 생활권 목록은 /api/v1/living-areas(1시간 캐시).
+// 웹 푸시는 pushStore(zustand)를 쓰고, 구독 범위(scope.areas)에 이 생활권 slug를 더한다.
 export default function AreaSubscribe({ targets = [] }) {
   const areaTargets = targets.filter(target => target?.type === 'living_area');
   const label = areaTargets.length === 1 ? areaTargets[0].label : null;
@@ -21,6 +24,7 @@ export default function AreaSubscribe({ targets = [] }) {
   const area = label && Array.isArray(areas.data) ? areas.data.find(item => item.label === label && item.slug) : null;
   const push = usePushStore();
   const [pushState, setPushState] = useState(null);
+  // 훅(useQuery·useState 등)은 렌더마다 같은 순서로 불려야 한다. 그래서 일찍 return 하는 것은 훅을 모두 부른 뒤에 한다.
   if (!area) return null;
   const watching = push.subscribed && push.scope.areas.includes(area.slug);
   const canPush = push.platform.mode === 'ready' && push.enabled && push.permission !== 'denied';

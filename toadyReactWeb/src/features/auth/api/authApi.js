@@ -1,6 +1,8 @@
 /**
  * @file authApi.js
  * @description 회원 계정 및 인증 관련 API 통신 모듈
+ * 로그인(LoginPage)·가입(SignUp)·메일 인증(SignUpCertify)·비밀번호 찾기(FindPassword) 화면이 쓴다.
+ * 여기는 요청만 보내고, 받은 토큰을 저장하는 일은 useAuthStore.login이 한다.
  */
 import apiClient from '@/api/client';
 
@@ -33,6 +35,10 @@ export const authApi = {
     return publicPost('/webApi/certify/certify-check', params);
   },
 
+  /**
+   * 가입 인증 메일 다시 보내기
+   * POST /webApi/certify/resend-account-verification
+   */
   async resendAccountVerification(userEmail) {
     return publicPost('/webApi/certify/resend-account-verification', { userEmail });
   },

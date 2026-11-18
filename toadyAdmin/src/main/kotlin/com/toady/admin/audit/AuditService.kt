@@ -12,9 +12,12 @@ import java.time.LocalDateTime
 /**
  * 관리자 작업 이력(database.sql 26번 TB_ADMIN_AUDIT). 관리자 화면에서 바꾼 모든 것과 회원 상세 열람을 남긴다.
  * 기록에 실패해도(테이블 미적용 등) 원래 조치는 그대로 두고 로그로만 남긴다. 이력은 고치거나 지우지 않는다.
+ * (1년이 지난 이력은 스케줄러의 DataRetentionJob이 지운다.) 호출: 거의 모든 관리자 조치 서비스·컨트롤러.
  */
+// @Service: 업무 로직 빈. 생성자의 JdbcTemplate은 스프링이 넣어 준다.
 @Service
 class AuditService(private val jdbc: JdbcTemplate) {
+	/** 이력 한 줄. actionLabel·targetLabel은 화면에 보일 한국어 이름이다. */
 	data class Entry(val seq: Long, val admin: String, val action: String, val targetType: String, val targetId: String,
 	                 val before: String?, val after: String?, val note: String?, val at: LocalDateTime?) {
 		val actionLabel get() = ACTIONS[action] ?: action
@@ -31,6 +34,7 @@ class AuditService(private val jdbc: JdbcTemplate) {
 		}
 	}
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_ADMIN_AUDIT WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	/** 기록한다. 긴 값은 잘라 저장한다. */
@@ -66,9 +70,11 @@ class AuditService(private val jdbc: JdbcTemplate) {
 			{ r, _ -> row(r) }, targetType, targetId.toString(), limit)
 	} catch (missing: DataAccessException) { emptyList() }
 
+	/** DB 한 행을 Entry로 바꾼다. */
 	private fun row(r: java.sql.ResultSet) = Entry(r.getLong("AUDIT_SEQ"), r.getString("ADMIN_NAME"), r.getString("ACTION"), r.getString("TARGET_TYPE"),
 		r.getString("TARGET_ID"), r.getString("BEFORE_VALUE"), r.getString("AFTER_VALUE"), r.getString("NOTE"), r.getTimestamp("REG_DT")?.toLocalDateTime())
 
+	// ACTIONS·TARGETS: 저장 코드 → 화면 이름. 검색 조건도 이 목록에 있는 값만 받아 SQL에 넣는다.
 	companion object {
 		const val PAGE_SIZE = 50
 		val ACTIONS = linkedMapOf(

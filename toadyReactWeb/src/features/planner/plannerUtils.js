@@ -1,5 +1,12 @@
+/**
+ * 나의 청약·캘린더에서 같이 쓰는 순수 함수 모음(날짜, 일정 정리, .ics 파일, 생활권 판정).
+ * 쓰는 곳: planner 폴더 전체, explore/RegionsPage, intro/ServiceIntro, views/main(검색·달력) 등.
+ */
+/** 준비 체크리스트 항목. 체크 상태는 비트로 저장한다(1번 항목=1, 2번=2, 3번=4 …). 서버 checklist 값은 0~31. */
 export const CHECKS = ['모집공고 원문 확인', '신청 유형·자격 확인', '청약통장 확인', '계약금 등 자금 계획', '신청 일정 확인'];
+/** 관심 공고 ID 형식: 유형/주택관리번호/공고번호. 서버 주소 규칙과 같다. */
 export const ID_PATTERN = /^(apt|urban|remaining|public-rental|optional)\/[a-zA-Z0-9_-]{1,40}\/[a-zA-Z0-9_-]{1,40}$/;
+/** 'YYYYMMDD'·'YYYY-MM-DD'를 'YYYY-MM-DD'로. 없는 날짜(2월 30일 등)면 null. */
 export function isoDate(value) {
   const text = String(value || '').replaceAll('-', '');
   if (!/^\d{8}$/.test(text)) return null;
@@ -7,6 +14,7 @@ export function isoDate(value) {
   const date = new Date(`${formatted}T00:00:00Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10) === formatted ? formatted : null;
 }
+/** 오늘 한국 날짜('YYYY-MM-DD'). 'sv-SE' 로케일이 YYYY-MM-DD 꼴로 찍어 줘서 쓴다. 기기 시간대가 달라도 한국 기준이다. */
 export function koreaToday() { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date()); }
 /** 같은 공고·날짜는 한 일정으로 묶고, 상세 접수 일정이 있는 날의 일반 시작/마감은 생략한다. */
 export function normalizeScheduleEvents(events = []) {
@@ -32,6 +40,7 @@ export function normalizeScheduleEvents(events = []) {
   });
 }
 
+/** 오늘 이후 일정이 있는 관심 공고를 가장 가까운 일정 순으로 묶는다. 원본이 사라진 공고는 뺀다. */
 export function upcomingGroups(items, today) {
   return items.filter(item => !item.summary.unavailable).map(item => ({
     item, events: normalizeScheduleEvents(item.summary.events).filter(event => event.date >= today)
@@ -39,11 +48,13 @@ export function upcomingGroups(items, today) {
     a.events[0].date.localeCompare(b.events[0].date) || a.item.id.localeCompare(b.item.id));
 }
 
+/** today부터 date까지 남은 일수(지났으면 음수). 둘 다 UTC 자정으로 계산해 시간대 영향이 없다. 날짜가 이상하면 null. */
 export function daysUntil(date, today) {
   if (!isoDate(date) || !isoDate(today)) return null;
   return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
 }
 
+/** 공고 상세 응답 → 관심 공고에 저장할 요약(단지명·주소·주요 일정). 공고 유형마다 필드 이름이 달라 후보를 차례로 본다. */
 export function summaryOf(detail = {}) {
   const fields = [['접수 시작','rceptBgnde','subscrptRceptBgnde'],['접수 마감','rceptEndde','subscrptRceptEndde'],
     ['당첨자 발표','przwnerPresnatnDe'],['특별공급 시작','spsplyRceptBgnde'],['1순위 해당지역','gnrlRnk1CrspareaRcptde'],
@@ -56,6 +67,7 @@ export function summaryOf(detail = {}) {
       const date = isoDate(keys.map(key => detail[key]).find(Boolean)); return date ? [{ label, date }] : [];
     }), unavailable: false };
 }
+/** storage에서 JSON을 읽는다. 없거나 깨졌거나 저장소가 막혀 있으면 fallback. */
 export function safeRead(storage, key, fallback) { try { return JSON.parse(storage.getItem(key)) ?? fallback; } catch { return fallback; } }
 /**
  * 생활권 판정은 API(LivingAreas.match)와 같은 규칙을 쓴다. '검단'처럼 시·군이 없는 짧은 이름(공백 없는 term)은
@@ -72,7 +84,12 @@ export function matchesArea(text, target, areas = []) {
     return normalized.includes(value) && (value.includes(' ') || !scope.length || scope.some(name => normalized.includes(name)));
   });
 }
+// .ics 글자 규칙: 역슬래시·줄바꿈·세미콜론·쉼표는 앞에 역슬래시를 붙여야 한다.
 const escapeIcs = value => String(value || '').replaceAll('\\','\\\\').replace(/\r?\n/g,'\\n').replaceAll(';','\\;').replaceAll(',','\\,');
+/**
+ * 관심 공고 일정을 iCalendar(.ics) 문자열로 만든다. 일정 하나가 VEVENT 하나이고, 종일 일정이라 DTEND는 다음 날이다.
+ * UID를 공고·일정·날짜로 정해 두어 같은 파일을 다시 가져와도 캘린더 앱이 같은 일정으로 알아본다.
+ */
 export function calendarText(summaries, origin = 'https://www.toady.co.kr') {
   const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//TOADY//My Schedule//KO','CALSCALE:GREGORIAN'];
   for (const item of summaries) for (const event of normalizeScheduleEvents(item.events)) {
@@ -92,11 +109,13 @@ export function calendarText(summaries, origin = 'https://www.toady.co.kr') {
     return result;
   }).join('\r\n') + '\r\n';
 }
+/** .ics 파일을 내려받게 한다. Blob 주소를 만들어 숨은 링크를 누르고, 잠시 뒤 주소를 해제해 메모리를 돌려준다. */
 export function downloadCalendar(summaries) {
   const url = URL.createObjectURL(new Blob([calendarText(summaries)], { type: 'text/calendar;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = 'toady-calendar.ics'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+/** 외부 확인 링크(지도·실거래가). 지금은 테스트에서만 쓰인다. */
 export function researchLinks(detail) {
   const name = detail.houseNm || ''; const address = detail.hssplyAdres || detail.supplyLocation || detail.address || '';
   return [

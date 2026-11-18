@@ -15,8 +15,10 @@ import java.util.Locale;
  *   여러 IP로 나눠 한 계정을 노리는 분산 공격은 늦춘다.
  * 성공하면 그 이메일의 기록을 지운다. 기록은 Redis에 두어 배포·재시작 뒤에도 유지한다(없으면 메모리).
  * 확인과 기록을 묶는 synchronized는 이 API 안에서만 원자적이다. API를 여러 대 띄우면 동시 시도가 한도를 조금 넘을 수 있어,
- * 그때는 확인·기록을 Lua 스크립트 하나로 묶는다. 이메일은 길이를 제한해 키에 넣는다.
+ * 그때는 확인·기록을 Lua 스크립트 하나로 묶어야 한다(지금은 API 한 대라 synchronized로 충분하다). 이메일은 길이를 제한해 키에 넣는다.
+ * UserService의 로그인 처리에서 부른다. 실제 저장·계산은 SlidingWindows(Redis 또는 메모리)가 한다.
  */
+// @Component: 빈 하나(싱글턴)로 등록되므로 synchronized가 앱 전체의 로그인 시도를 한 줄로 세운다
 @Component
 public class LoginAttemptLimiter {
     static final Duration WINDOW = Duration.ofMinutes(15);
@@ -25,6 +27,7 @@ public class LoginAttemptLimiter {
     static final Duration TRUSTED = Duration.ofDays(30);
     private final SlidingWindows windows;
 
+    // @Autowired: 생성자가 둘이라 스프링이 쓸 생성자를 지정한다. 아래 Clock 생성자는 테스트용(메모리 저장)
     @Autowired
     public LoginAttemptLimiter(SlidingWindows windows) { this.windows = windows; }
     LoginAttemptLimiter(Clock clock) { this(SlidingWindows.inMemory(clock)); }
@@ -38,12 +41,14 @@ public class LoginAttemptLimiter {
     private static String ip(String value) { return "ip|" + RequestLimitFilter.limitKey(value); }
     private static String pair(String ip, String email) { return email(email) + "|" + RequestLimitFilter.limitKey(ip); }
 
+    /** 지금 이 IP·이메일 조합으로 로그인을 시도해도 되는지 본다(기록하지 않는다). */
     public boolean blocked(String ip, String email) {
         // 이메일 전체 한도는 이 이메일로 로그인에 성공한 적 있는 네트워크에는 적용하지 않는다.
         // 여러 IP로 남의 계정을 일부러 잠가도 평소 쓰던 기기·네트워크의 주인은 로그인할 수 있다.
         return count(ip(ip)) >= PER_IP || count(pair(ip, email)) >= PER_EMAIL_IP
             || (count(email(email)) >= PER_EMAIL && !trusted(ip, email));
     }
+    /** 실패 한 번을 IP, IP+이메일, 이메일 세 키에 모두 기록한다. */
     public void failed(String ip, String email) { add(ip(ip)); add(pair(ip, email)); add(email(email)); }
 
     /**
@@ -58,6 +63,7 @@ public class LoginAttemptLimiter {
     }
     /** tryAcquire로 미리 센 시도를 되돌린다(비밀번호 확인과 무관한 결과). */
     public synchronized void release(String ip, String email) { removeLast(ip(ip)); removeLast(pair(ip, email)); removeLast(email(email)); }
+    /** 로그인 성공: 이 이메일의 실패 기록을 지우고, 이 네트워크를 30일 동안 신뢰 목록에 올린다. */
     public synchronized void succeeded(String ip, String email) {
         windows.clear(login(email(email))); windows.clear(login(pair(ip, email)));
         // 미리 센 IP 시도도 되돌린다. 같은 사무실(NAT)의 정상 로그인이 IP 한도를 채우지 않게 한다.

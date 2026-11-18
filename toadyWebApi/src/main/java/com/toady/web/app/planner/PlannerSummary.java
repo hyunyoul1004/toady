@@ -10,12 +10,18 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/** 화면·메일·비교에서 공통으로 사용하는 원본 공고 요약. 클라이언트의 제목/날짜를 신뢰하지 않는다. */
+/**
+ * 관심 공고 키(type/house/notice)로 원본 공고를 읽어 화면·메일·캘린더에 쓸 요약(Summary)을 만든다.
+ * AnnouncementService.getDetail()이 돌려주는 청약홈 원본 필드(rceptBgnde 등)를 이 안에서만 해석한다.
+ * 클라이언트의 제목/날짜를 신뢰하지 않는다. PlannerService, LivingAreas, AreaCalendar, 공개 페이지들이 쓴다.
+ */
+// @Service: 스프링 빈으로 등록한다.
 @Service
 public class PlannerSummary {
     private final AnnouncementService announcements;
     private final ObjectMapper mapper;
     public PlannerSummary(AnnouncementService announcements, ObjectMapper mapper) { this.announcements = announcements; this.mapper = mapper; }
+    /** 일정 하나(라벨 + 날짜). */
     public record Event(String label, LocalDate date) { }
     /** minPriceManwon/maxPriceManwon은 APT 주택형별 최고 공급금액 중 최저·최고값이다. 최저 분양가가 아니다. */
     public record Summary(String id, String houseNm, String address, String supply, String housingType,
@@ -29,6 +35,10 @@ public class PlannerSummary {
         /** 원본 공고가 사라진 저장 항목을 화면·메일·캘린더에서 같은 모양으로 표시한다. */
         public static Summary missing(String id) { return new Summary(id,"원본을 찾을 수 없는 공고","","","",null,null,null,"",List.of(),true,null,null,null); }
     }
+    /**
+     * 원본 공고를 읽어 요약을 만든다. 공고가 없으면 AnnouncementService가 EntityNotFoundException을 던진다.
+     * 일정은 접수·발표·특별공급·순위별·계약 날짜를 모은 뒤 ScheduleEvents로 같은 날짜를 합친다.
+     */
     public Summary get(String type, String house, String notice) {
         Map<String,Object> data = announcements.getDetail(AnnouncementType.fromPath(type), house, notice);
         Map<String,Object> a = mapper.convertValue(data.get("announcement"), new TypeReference<>() {});
@@ -66,8 +76,10 @@ public class PlannerSummary {
         return month>=1 && month<=12 ? digits.substring(0,4)+"-"+digits.substring(4) : null;
     }
     private static void add(List<Event> events,String label,LocalDate date) { if(date != null) events.add(new Event(label,date)); }
+    // 여러 키 중 처음으로 값이 있는 것을 쓴다(공고 유형마다 같은 뜻의 필드 이름이 달라서).
     private static String value(Map<String,Object> a,String...keys) { for(String key:keys) { Object v=a.get(key); if(v!=null && !v.toString().isBlank()) return v.toString(); } return ""; }
     /** 0·음수·숫자가 아닌 금액은 공개되지 않은 값으로 본다. */
     static Long manwon(String value) { try { long amount=Long.parseLong(value.replace(",","").trim()); return amount>0?amount:null; } catch(Exception ignored) { return null; } }
+    /** '2026-01-05'·'20260105' 둘 다 받는다. 읽을 수 없으면 null. */
     static LocalDate date(String value) { try { return LocalDate.parse(value.replace("-",""),DateTimeFormatter.BASIC_ISO_DATE); } catch(Exception ignored) { return null; } }
 }

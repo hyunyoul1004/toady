@@ -1,6 +1,11 @@
 /**
  * 주택공급에 관한 규칙 별표 1의 일반공급 가점 기준(84점 만점).
  * 화면·저장·비교가 같은 표를 쓰도록 한곳에 둔다. 값은 선택지의 순번(index)으로 저장한다.
+ * 가점 = 무주택 기간(최대 32점) + 부양가족 수(최대 35점) + 청약통장 가입기간(최대 17점).
+ * - 무주택 기간: 1년 미만 2점, 그 뒤로 1년마다 2점씩, 15년 이상 32점.
+ * - 부양가족: 0명 5점, 1명마다 5점씩, 6명 이상 35점.
+ * - 통장 가입기간: 6개월 미만 1점, 6개월~1년 2점, 그 뒤로 1년마다 1점씩, 15년 이상 17점.
+ * 날짜로 구간을 고르는 계산(무주택 시작일·만 나이)과 공개 당첨가점 비교도 여기 있다.
  */
 export const MAX_SCORE = 84;
 
@@ -24,6 +29,7 @@ export const SCORE_PARTS = [
   { key: 'account', title: '청약통장 가입기간', max: 17, options: ACCOUNT_OPTIONS }
 ];
 
+// 선택 순번이 그 표 안의 올바른 정수인지 확인한다. 아니면 null.
 const pick = (options, index) => {
   if (index === null || index === undefined || index === '' || typeof index === 'boolean') return null;
   const value = Number(index);
@@ -34,6 +40,7 @@ export function normalizeSelection(selection = {}) {
   const housing = pick(HOUSING_OPTIONS, selection.housing), dependents = pick(DEPENDENT_OPTIONS, selection.dependents), account = pick(ACCOUNT_OPTIONS, selection.account);
   return housing === null || dependents === null || account === null ? null : { housing, dependents, account };
 }
+/** 선택 순번으로 항목별 점수와 총점을 계산한다. 입력이 다 차지 않았으면 null. */
 export function scoreOf(selection) {
   const valid = normalizeSelection(selection);
   if (!valid) return null;
@@ -41,6 +48,7 @@ export function scoreOf(selection) {
   return { ...parts, total: parts.housing + parts.dependents + parts.account };
 }
 
+// 청약홈 가점 값은 문자열로 오고 '-' 같은 값도 섞여 있어, 0초과 84이하의 숫자만 점수로 인정한다.
 const scoreNumber = value => {
   const text = String(value ?? '').trim();
   if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
@@ -67,12 +75,14 @@ export function compareToRange(total, range) {
   if (low !== null) return { status: 'below', gap: low - total, text: `공개 최저 당첨가점보다 ${fmt(low - total)}점 낮아요` };
   return { status: 'unknown', gap: null, text: '공개 최저 당첨가점이 없어요' };
 }
+// 점수 표시: 정수면 그대로, 소수면 한 자리(끝의 .0은 뺀다).
 export const fmt = value => Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
 
 /** 공유 주소(?h=&d=&a=)와 저장값이 같은 형식을 쓴다. */
 export function selectionFromParams(params) {
   return normalizeSelection({ housing: params.get('h'), dependents: params.get('d'), account: params.get('a') });
 }
+/** 공유 링크를 만들 때 쓴다. 입력이 덜 찼으면 빈 파라미터. */
 export function selectionToParams(selection) {
   const valid = normalizeSelection(selection);
   return valid ? new URLSearchParams({ h: String(valid.housing), d: String(valid.dependents), a: String(valid.account) }) : new URLSearchParams();
@@ -80,6 +90,7 @@ export function selectionToParams(selection) {
 
 /* ---------- 날짜로 구간 고르기 ---------- */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// 'YYYY-MM-DD' 형식이면서 실제로 있는 날짜인지(예: 2023-02-30은 거짓). 문자열 비교로 날짜 순서를 판단하므로 형식이 중요하다.
 const validDate = value => DATE.test(value || '') && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 /** YYYY-MM-DD에 n년을 더한다. 2월 29일은 다음 해 3월 1일로 넘긴다(만 나이 계산과 같다). */
 export function addYears(value, years) {
@@ -94,6 +105,7 @@ export function fullMonths(from, to) {
   if (td < fd) months -= 1;
   return Math.max(0, months);
 }
+// 개월 수를 '3년 2개월', '5개월', '2년'처럼 읽기 쉽게 만든다.
 export const periodText = months => `${Math.floor(months / 12) ? `${Math.floor(months / 12)}년` : ''}${Math.floor(months / 12) && months % 12 ? ' ' : ''}${months % 12 || !Math.floor(months / 12) ? `${months % 12}개월` : ''}`;
 const dot = value => value.replaceAll('-', '.');
 
@@ -112,6 +124,7 @@ export function housingFromDates({ birth, married, marriageDate, owned, soldDate
   if (start > today) return { index: 0, start: null, months: 0, reason: '만 30세 미만 미혼이라 무주택 기간 점수가 없어요(0점).' };
   if (owned && soldDate > start) { start = soldDate; reason = `마지막으로 무주택이 된 날(${dot(soldDate)})부터`; }
   const months = fullMonths(start, today), years = Math.floor(months / 12);
+  // 순번: 1 = 1년 미만, 2 = 1~2년 … 16 = 15년 이상. 0(해당 없음)은 위에서 따로 처리했다.
   return { index: years < 1 ? 1 : Math.min(16, years + 1), start, months, reason: `${reason} ${periodText(months)}` };
 }
 /** 청약통장 가입기간 구간을 가입일로 정한다. */
@@ -170,6 +183,7 @@ export function formatDigits(raw) {
   const digits = String(raw || '').replace(/\D/g, '').slice(0, 8);
   return [digits.slice(0, 4), digits.slice(4, 6), digits.slice(6, 8)].filter(Boolean).join('.');
 }
+/** 'YYYY.MM.DD'(화면 글자)를 'YYYY-MM-DD'로. 8자리가 아니거나 없는 날짜면 빈 값. */
 export function toIsoDate(display) {
   const digits = String(display || '').replace(/\D/g, '');
   if (digits.length !== 8) return '';

@@ -20,9 +20,14 @@ import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/** 공고·생활권 공개 페이지가 같은 문구 규칙과 스타일을 쓰도록 모은다. 검색 봇과 사람이 같은 HTML을 본다. */
+/**
+ * 서버가 직접 만드는 공개 HTML 페이지(공고·생활권·지역·모음·FAQ)의 공통 도구: 이스케이프, 날짜·금액 문구, 머리말·꼬리말·스타일, 구조화 데이터, 캐시.
+ * 이 페이지들은 주로 검색·공유 봇이 본다. 웹 컨테이너 nginx가 봇에게만 /api/v1/public/... HTML을 주고, 사람에게는 같은 주소에서 React 앱을 연다.
+ * 그래서 링크·문구는 앱과 같은 서비스로 보이게 맞추고, 앱으로 가는 링크(data-app)에는 유입처를 넘긴다.
+ */
 final class PublicHtml {
     private PublicHtml() { }
+    /** HTML 이스케이프(<, >, &, 따옴표). 사용자·공고 데이터를 HTML에 넣을 때는 반드시 거친다. */
     static String esc(String value) { return HtmlUtils.htmlEscape(value == null ? "" : value, "UTF-8"); }
     static String date(LocalDate value) { return value == null ? "미제공" : value.toString(); }
     /** 올해 날짜는 '12.08', 다른 해는 '2025.12.08'(지난 공고가 올해 일정처럼 읽히지 않게). */
@@ -84,6 +89,7 @@ final class PublicHtml {
         if (eok == 0) return String.format(Locale.ROOT, "%,d만원", rest);
         return rest == 0 ? String.format(Locale.ROOT, "%,d억원", eok) : String.format(Locale.ROOT, "%,d억 %,d만원", eok, rest);
     }
+    /** '4억 2,000만 ~ 5억 1,000만원'. 둘 중 하나라도 없으면 빈 문자열. */
     static String priceRange(Long min, Long max) {
         if (min == null || max == null) return "";
         return min.equals(max) ? manwon(min) : manwon(min).replace("만원", "만").replace("억원", "억") + " ~ " + manwon(max);
@@ -102,6 +108,7 @@ final class PublicHtml {
      */
     private static final Cache<String, ResponseEntity<String>> PAGES = CacheBuilder.newBuilder()
             .maximumSize(600).expireAfterWrite(Duration.ofMinutes(5)).build();
+    /** key별로 만든 응답을 5분 재사용한다. 생활권이 바뀌면 clearCache()로 전부, FAQ가 바뀌면 invalidate("faq")로 그 페이지만 비운다. */
     static ResponseEntity<String> cached(String key, Supplier<ResponseEntity<String>> render) {
         return load(PAGES, key, render::get);
     }
@@ -114,7 +121,7 @@ final class PublicHtml {
             throw new IllegalStateException(cause);
         }
     }
-    /** 테스트에서 데이터를 바꾼 뒤 새로 그리게 한다. */
+    /** 페이지 캐시를 모두 비운다. ContentStore가 생활권을 바꿨을 때, 테스트에서 데이터를 바꾼 뒤 부른다. */
     static void clearCache() { PAGES.invalidateAll(); }
     static void invalidate(String key) { PAGES.invalidate(key); }
 

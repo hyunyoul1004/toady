@@ -13,7 +13,10 @@ import java.time.LocalDateTime
 /**
  * 공고 데이터·주변 시세 비교·웹 푸시 운영 상태. 모두 조회 전용이다.
  * 테이블이 아직 없는 환경에서도 화면이 열리도록 항목별로 실패를 따로 처리한다.
+ * 읽는 테이블: TB_SCHEDULER_ADMIN_JOB(수집 이력), 공고·경쟁률 테이블, TB_PRICE_GAP(시세 비교), TB_PUSH_SUBSCRIPTION(푸시 구독).
+ * 호출: AdminController의 운영 상태 화면(/admin/operations)과 대시보드.
  */
+// @Service: 업무 로직 빈.
 @Service
 class OperationsService(private val jdbc: JdbcTemplate) {
 	/** 공고 유형별 저장 건수와 마지막으로 새 행이 생긴 시각(REG_DT는 기존 행을 갱신해도 바뀌지 않는다). */
@@ -36,17 +39,23 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 		val healthLabel get() = when (health) { "FAILED" -> "실패 · 확인 필요"; "INTERRUPTED" -> "중단됨"; "RUNNING" -> "실행 중"; "STALE" -> "30시간 넘게 성공 없음"; else -> "정상" }
 		val stale get() = health == "FAILED" || health == "STALE"
 	}
+	/** 시세 비교 상태별 공고 수(READY·NO_LOCATION 등은 API가 정한 값). */
 	data class GapStatus(val status: String, val count: Long, val latest: LocalDateTime?) {
 		val label get() = when (status) {
 			"READY" -> "비교 가능"; "NO_LOCATION" -> "위치 미확인"; "NO_TRADES" -> "거래 부족"; "UNAVAILABLE" -> "제공처 실패·재시도"; "LAND_LEASE" -> "토지임대부(비교 제외)"; else -> status
 		}
 	}
 	data class GapRow(val id: String, val status: String, val dong: String?, val area: Int?, val supply: Long?, val confidence: String?, val computedAt: LocalDateTime?)
+	/** 웹 푸시 구독 현황. topics는 구독자가 고른 생활권별 구독 수 상위 12개. */
 	data class Push(val total: Long, val members: Long, val withAreas: Long, val successWeek: Long, val failingToday: Long, val lastDigest: LocalDateTime?, val topics: List<Pair<String, Long>>)
 	data class Report(val runs: List<LastRun>?, val collections: List<Collection>, val gaps: List<GapStatus>?, val recentGaps: List<GapRow>, val push: Push?)
 
 	fun report(): Report = Report(runs(), collections(), gaps(), recentGaps(), push())
 
+	/**
+	 * 작업 종류마다 가장 최근 실행 1건과 마지막 성공 시각을 붙인다.
+	 * 첫 쿼리는 '같은 종류 안에서 CREATED_AT이 가장 큰 행'만 고르는 상관 하위 쿼리다.
+	 */
 	private fun runs(): List<LastRun>? = try {
 		val latest = jdbc.query("""
 			SELECT J.JOB_KIND, J.STATUS, J.FINISHED_AT, J.JOB_ID, J.JOB_SOURCE, J.MESSAGE FROM TB_SCHEDULER_ADMIN_JOB J
@@ -62,6 +71,7 @@ class OperationsService(private val jdbc: JdbcTemplate) {
 			latest.values.filter { r -> JobKind.entries.none { it.name == r.kind } }
 	} catch (missing: DataAccessException) { null }
 
+	/** 테이블별 행 수와 마지막 INSERT 시각. 없는 테이블은 값 없이 보인다. */
 	private fun collections(): List<Collection> = TABLES.map { (label, table) ->
 		try {
 			jdbc.query("SELECT COUNT(*), MAX(REG_DT) FROM $table") { r, _ -> Collection(label, r.getLong(1), r.getTimestamp(2)?.toLocalDateTime()) }.first()

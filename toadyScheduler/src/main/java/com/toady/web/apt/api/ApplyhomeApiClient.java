@@ -19,7 +19,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 청약홈 API를 호출하고 페이지 응답을 검증한다. */
+/**
+ * 청약홈 분양정보 상세 API(ApplyhomeInfoDetailSvc)를 호출하고 페이지 응답을 검증한다.
+ * 공고(APT·오피스텔·잔여세대 등)와 주택형 정보를 받는다. 호출: ApplyhomeSyncService.
+ * 인증키는 APPLYHOME_API_KEY 환경변수로 받고, 로그·예외 메시지에는 남기지 않는다.
+ */
+// @Component: 빈으로 등록한다. @Value로 application.yml의 applyhome.api.* 값을 받는다.
 @Component
 public class ApplyhomeApiClient {
 
@@ -100,6 +105,7 @@ public class ApplyhomeApiClient {
 		public int status() { return status; }
 	}
 
+	/** 이 클라이언트의 재시도 간격으로 fetchWithRetry를 부른다. */
 	private JsonNode fetch(URI uri, String endpoint) {
 		return fetchWithRetry(restClient, uri, endpoint, retryDelaysMs, "Applyhome API");
 	}

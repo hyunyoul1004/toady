@@ -17,14 +17,24 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-/** 생활권은 행정 경계와 다르다. 아래 주소·단지명 키워드는 검색 보조 기준으로만 사용한다. */
+/**
+ * 생활권(운정·동탄 같은 신도시 이름) 목록과 판정 규칙, 그리고 나의 청약 화면이 쓰는 작은 API 몇 개를 함께 둔 컨트롤러.
+ * 생활권은 행정 경계와 다르다. 아래 주소·단지명 키워드는 검색 보조 기준으로만 사용한다.
+ * 공고 검색(생활권 검색), PublicAreaPage, AnnouncementSitemap, ContentStore(TB_LIVING_AREA 반영)가 쓴다.
+ */
+// @RestController: 메서드 반환값을 JSON으로 응답한다.
 @RestController
 public class LivingAreas {
+    // @Value: 설정값 toady.planner.reminders-enabled(없으면 false)를 필드에 넣는다. 메일 알림 기능을 켰는지 화면에 알려 줄 때 쓴다.
     @Value("${toady.planner.reminders-enabled:false}") private boolean remindersEnabled;
+    // @GetMapping: GET 요청을 이 메서드에 연결한다. 나의 청약 화면 설정(알림 사용 여부, 최대 저장 수).
     @GetMapping("/api/v1/planner/settings") public Map<String,Object> settings() { return Map.of("remindersEnabled",remindersEnabled,"maxFavorites",50); }
+    // @Autowired: 스프링이 PlannerSummary 빈을 필드에 직접 넣는다(필드 주입).
     @Autowired private PlannerSummary summaries;
+    /** 요약을 받을 공고 키 목록(최대 50개). 로그인 없이 브라우저에 저장한 관심 공고도 같은 요약을 받을 수 있다. */
     public record SummaryKeys(@NotNull @Size(max=50)
         List<@NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
+    // @PostMapping: POST 본문(JSON)으로 키 목록을 받는다. @Valid로 SummaryKeys의 @Size·@Pattern 규칙을 검사한다.
     @PostMapping("/api/v1/planner/summaries")
     public List<PlannerSummary.Summary> summaries(@Valid @RequestBody SummaryKeys request) {
         return request.ids().stream().distinct().map(id -> {
@@ -63,7 +73,9 @@ public class LivingAreas {
     static List<Matcher> matchers(Area area) {
         return area.terms().stream().map(term -> new Matcher(term, term.contains(" ") ? List.of() : area.scope())).toList();
     }
+    // 화면 검색창의 생활권 칩 목록.
     @GetMapping("/api/v1/living-areas") public List<Area> areas() { return all(); }
+    /** 공개 페이지 주소의 slug로 생활권을 찾는다. */
     public static Optional<Area> bySlug(String slug) { return all().stream().filter(area -> area.slug().equals(slug)).findFirst(); }
     /** 검색과 같은 기준(주소·단지명에 생활권 보조 키워드 포함)으로 공고의 생활권을 판정한다. */
     public static Optional<Area> match(String... texts) {

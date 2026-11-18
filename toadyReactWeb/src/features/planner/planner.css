@@ -1,3 +1,4 @@
+/* 나의 청약(/my) 화면: 공고 카드, 다가오는 일정, 비교표, 캘린더 연결 창, 빈 화면 추천. MyPlanner.jsx에서 불러온다. */
 .planner-page{max-width:1120px;margin:12px auto 48px;color:#172b42;font-size:14px;--planner-line:#e5ebf2;--planner-muted:#718096;--planner-blue:#2563eb}
 .planner-page h1,.planner-page h2,.planner-page h3,.planner-page h4,.planner-page p{margin:0}
 .planner-page a{text-decoration:none;color:inherit}
@@ -92,6 +93,7 @@
 .planner-comparison .MuiTableCell-root{font-size:12px;padding:14px;color:#61748c;line-height:1.8;border-color:#eef2f7;min-width:130px}
 .planner-comparison .MuiTableHead-root .MuiTableCell-root{color:#263e5d;font-weight:700;background:#f7f9fc}
 .planner-comparison .MuiTableRow-root:last-child .MuiTableCell-root{border-bottom:0}
+/* sticky: 스크롤해도 화면 아래쪽에 붙어 있는다(부모 영역 안에서만). */
 .planner-compare-hint{position:sticky;bottom:18px;display:flex;align-items:center;justify-content:center;gap:9px;background:#203b60;color:white;padding:10px 14px;border-radius:12px;font-size:12px;box-shadow:0 6px 20px #1b365c22;max-width:450px;margin:16px auto 0;z-index:5}
 .planner-compare-hint .MuiIconButton-root{color:#cbd8ed}
 .planner-loading{display:flex;align-items:center;justify-content:center;gap:12px;padding:100px 16px;color:#718096}

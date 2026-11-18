@@ -1,4 +1,5 @@
-/* 위치 탭 '주변 실거래가' 지도 */
+/* 위치 탭 '주변 실거래가' 지도 (PriceMapParts.jsx·MapTools.jsx·components/kakao/Kakaomap.jsx가 쓰는 클래스) */
+/* 필터 줄은 휴대폰에서 가로로 밀어 본다. 스크롤바는 숨긴다(scrollbar-width는 Firefox, ::-webkit-scrollbar는 Chrome·Safari). */
 .price-map-filters{display:flex;flex-direction:column;gap:8px;margin:12px 0 10px}
 .price-map-filter-row{display:flex;gap:8px;overflow-x:auto;padding-top:6px;padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .price-map-filter-row::-webkit-scrollbar{display:none}
@@ -10,6 +11,7 @@
 @media (max-width:600px){.price-map-canvas{height:380px}}
 
 /* 지도 말풍선(카카오 CustomOverlay 안의 버튼). 글자는 textContent로만 넣는다. */
+/* ::after는 테두리 하나만 색을 칠해 만든 아래쪽 삼각 꼬리다. 색은 --pm-bg 변수로 말풍선 배경과 맞춘다. */
 .pm-bubble{position:relative;display:flex;flex-direction:column;align-items:center;min-width:52px;padding:4px 8px 5px;border:0;border-radius:9px;
   background:#475569;color:#fff;font:inherit;line-height:1.15;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.28);transform:translateY(-8px);white-space:nowrap}
 .pm-bubble::after{content:'';position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:inherit;border-top-color:var(--pm-bg,#475569)}
@@ -30,6 +32,7 @@
 .price-map-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#475569}
 .price-map-legend span{display:inline-flex;align-items:center;gap:5px}
 .price-map-legend i,.price-map-list-name i{display:inline-block;width:10px;height:10px;border-radius:3px;background:#64748b}
+/* 범례·목록의 색 점. 말풍선과 같은 색을 쓰며, 다른 규칙보다 앞서도록 !important를 둔다. */
 .tone-new{background:#0f766e!important}.tone-mid{background:#2563eb!important}.tone-old,.tone-unknown{background:#64748b!important}.tone-site{background:#111827!important}
 
 .price-map-panel{margin-top:12px;padding:16px;border-radius:12px!important;border-color:#fdba74!important}
@@ -106,7 +109,7 @@
 .pm-mode-toggle{display:inline-flex;border:1px solid #cbd5e1;border-radius:999px;background:#fff;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.15)}
 .pm-mode-toggle button{padding:6px 10px;border:0;background:none;font:inherit;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer}
 .pm-mode-toggle button.is-on{background:#111827;color:#fff}
-/* 1년 넘게 거래가 없던 단지: 흐리게 */
+/* 1년 넘게 거래가 없던 단지: 흐리게(투명도 대신 채도를 낮춰 글자는 또렷하게 둔다) */
 .pm-bubble.is-stale{opacity:1;filter:saturate(.35)}
 .pm-bubble.is-stale.is-selected{opacity:1}
 
@@ -158,6 +161,7 @@
 /* 모바일: 지도 도구를 지도 위(바깥) 한 줄 가로 스크롤로 옮겨 말풍선을 가리지 않게 하고, 누르기 쉬운 높이(36px)로 */
 @media (max-width:600px){
   .price-map-wrap:not(.is-fullscreen) .pm-fs-body{display:flex;flex-direction:column}
+  /* order:-1로 도구 줄을 지도보다 앞(위)으로, position:static으로 지도 위에 겹치지 않게 한다 */
   .price-map-wrap:not(.is-fullscreen) .pm-fs-body>.pm-toolbar{order:-1;position:static;max-width:none;margin-bottom:8px}
   .pm-toolbar-buttons{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .pm-toolbar-buttons::-webkit-scrollbar{display:none}
@@ -184,6 +188,7 @@
   .loc-summary{padding:10px 12px!important}
 }
 @media (max-width:600px){
+  /* 공고 원문 주소는 접힌 상태에서 한 줄만 보이고 넘치면 말줄임(…)으로 자른다 */
   .loc-summary>.loc-original:not(.is-open){display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
   .pm-nearby>button span>small:first-child{display:none}
   .pm-nearby>button{min-height:44px;padding:4px 10px}
@@ -228,6 +233,7 @@
 .pm-map-host{display:block}
 .pm-fs-body{position:relative}
 .pm-fs-open svg{font-size:16px}
+/* z-index 1250: MUI 대화상자(1300)보다 아래, 앱 머리글·메뉴보다 위. env(safe-area-inset-*)는 아이폰 노치·홈 막대 영역을 비킨다. */
 .pm-fs-host{position:fixed;inset:0;z-index:1250;background:#fff;display:flex;flex-direction:column;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .price-map-wrap.is-fullscreen{flex:1;display:flex;flex-direction:column;min-height:0}

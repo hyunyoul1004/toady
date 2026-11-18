@@ -13,6 +13,12 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+/**
+ * 오피스텔/도시형/민간임대 주택형별 상세 엔티티. 테이블: TB_URBTY_OFCTL_LTTOT_PBLANC_MDL.
+ * 청약홈 getUrbtyOfctlLttotPblancMdl 응답 한 행이다. 이 API는 같은 키의 주택형이 여러 번 올 수 있어
+ * 다른 주택형 테이블과 달리 복합키 대신 DB가 매기는 일련번호(ID)를 기본키로 쓴다.
+ * 저장은 ApplyhomeDataPersistenceService.upsertUrbanModels가 공고 단위로 최신 응답과 비교해 바뀐 행만 교체한다.
+ */
 @Entity
 @Table(name = "TB_URBTY_OFCTL_LTTOT_PBLANC_MDL")
 @Comment("오피스텔/도시형/민간임대 주택형별 상세")
@@ -21,6 +27,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class UrbtyOfctlLttotPblancMdl {
 
+	// @GeneratedValue(IDENTITY): 값은 DB의 AUTO_INCREMENT가 정한다.
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Comment("내부 식별자")

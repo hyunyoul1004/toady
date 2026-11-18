@@ -3,6 +3,9 @@
  * @description 회원가입 이메일 인증 확인 페이지
  * - 메일 링크(userEmail, certifyCode)와 가입 비밀번호를 함께 확인한다.
  *   링크만으로 활성화하면 남이 먼저 내 이메일로 가입해 둔 비밀번호가 그대로 활성화될 수 있기 때문이다.
+ * - 링크 없이 들어오면(로그인 창·가입 완료 화면의 '인증 메일 다시 받기') 재발송 양식만 보여 준다.
+ *   이때 미리 채울 이메일은 location.state.resendEmail로 받는다(주소에 이메일을 남기지 않기 위해).
+ * - 사용처: routes/AppRoutes.jsx의 /certify 라우트(lazy). API: authApi.verifyEmail, authApi.resendAccountVerification
  */
 import React, { useEffect, useState } from 'react';
 import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
@@ -18,6 +21,7 @@ import { authApi } from '@/features/auth/api/authApi';
 const RETRYABLE = 'ERR-205';
 
 export const SignUpCertify = () => {
+  // useSearchParams: 주소의 ?userEmail=…&certifyCode=… 값을 읽는다(메일 링크에 붙어 온다).
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -27,6 +31,7 @@ export const SignUpCertify = () => {
   const hasLink = Boolean(userEmail && certifyCode);
 
   // 인증 링크의 개인정보(이메일·코드)는 대표 주소에 넣지 않고 /certify 로만 둔다. 떠날 때 기본 SEO로 되돌린다.
+  // 빈 의존성 배열이라 처음 그려질 때 한 번 실행하고, return한 정리 함수는 화면을 떠날 때 실행된다.
   useEffect(() => {
     updatePageSeo({ title: '이메일 인증 | TOADY', description: '회원가입 이메일 인증을 완료하고 TOADY 청약 정보를 이어서 확인하세요.', path: '/certify' });
     return () => resetDefaultSeo();
@@ -38,10 +43,12 @@ export const SignUpCertify = () => {
   // 링크 없이 들어온 경우(메일 다시 받기)는 실패가 아니므로 오류를 띄우지 않고 재발송 양식만 보여 준다.
   const [resultState, setResultState] = useState(null);
 
+  // useState 초기값은 첫 렌더에서만 쓰인다. 링크의 이메일 → 이전 화면이 넘겨준 이메일 → 빈 값 순서로 채운다.
   const [resendEmail, setResendEmail] = useState(userEmail || location.state?.resendEmail || '');
   const [isSending, setIsSending] = useState(false);
   const [resendNotice, setResendNotice] = useState(null);
 
+  /** 가입 비밀번호와 링크의 인증 코드를 함께 보내 인증을 끝낸다. 비밀번호가 틀리면(ERR-205) 입력칸만 비워 다시 시도하게 한다. */
   async function verify(event) {
     event.preventDefault();
     if (!password || isChecking) return;
@@ -57,6 +64,7 @@ export const SignUpCertify = () => {
     }
   }
 
+  /** 인증 메일 재발송. 메일 발송량이 한정돼 있어 요청 중에는 버튼을 막아 중복 발송을 피한다. */
   async function resend(event) {
     event.preventDefault();
     setIsSending(true);
@@ -71,7 +79,8 @@ export const SignUpCertify = () => {
     }
   }
 
-  // 인증 화면을 메인으로 바꾼 뒤 로그인 창을 한 단계로 쌓아, 로그인 창을 닫거나 뒤로가기하면 메인에 머문다.
+  // 결과에 따라 보여 줄 양식을 정한다.
+  // 성공 → 로그인 버튼만, 비밀번호 틀림 → 비밀번호 양식 다시, 그 밖의 실패나 링크 없음 → 재발송 양식.
   const succeeded = resultState?.resultCode === 'SUCCESS';
   const retryable = resultState?.resultCode === RETRYABLE;
   const showPasswordForm = hasLink && !succeeded && (!resultState || retryable);
@@ -118,6 +127,7 @@ export const SignUpCertify = () => {
           {succeeded
             ? <Button variant="contained" disableElevation size="large" onClick={() => {
                 // 가입하던 화면이 있으면 그 화면 위에 로그인 창을 연다(없으면 첫 화면). 먼저 인증 주소를 그 화면으로 바꿔 뒤로가기가 인증 화면으로 돌아오지 않게 한다.
+                // 로그인 창은 그 위에 히스토리 한 단계로 쌓이므로, 창을 닫거나 뒤로가기하면 가입하던 화면에 머문다.
                 openLoginOver(navigate, takeSignupReturn() || '/');
               }} sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}>로그인하기</Button>
             : <Button variant="text" onClick={() => navigate('/')} sx={{ textTransform: 'none' }}>메인으로 이동</Button>}

@@ -6,6 +6,7 @@
  * 그 밖의 서버 전용 경로(/help 등)는 앱 라우터가 아닌 일반 링크(href, 같은 창)로 연다.
  */
 const SERVER_PAGE = /^\/(weekly|zupzup|areas|help)(\/|$)/;
+/** 검색용 서버 경로 → 같은 내용의 앱 화면 경로. 바꿀 것이 없으면 null. */
 export function appPath(path) {
   if (/^\/weekly\/?$/.test(path)) return '/this-week';
   if (/^\/zupzup\/?$/.test(path)) return '/match/zupzup';
@@ -13,6 +14,7 @@ export function appPath(path) {
   const area = path.match(/^\/areas\/([a-z0-9-]+)\/?$/);
   return area ? `/?area=${area[1]}` : null;
 }
+// [문구](경로) 링크 표기. 경로는 '/'로 시작하는 사이트 경로나 청약홈 주소만 받는다.
 const LINK = /\[([^\]]+)\]\(((?:\/[a-z0-9/_-]*)|(?:https:\/\/www\.applyhome\.co\.kr))\)/g;
 export function answerParts(answer = '') {
   return String(answer).split('\n').map(line => {
@@ -21,6 +23,7 @@ export function answerParts(answer = '') {
     for (const match of line.matchAll(LINK)) {
       if (match.index > last) parts.push({ text: line.slice(last, match.index) });
       const path = match[2];
+      // 청약홈 → 새 창 링크, 앱 화면이 있는 경로 → 라우터 Link, 서버 전용 경로 → 일반 링크, 나머지 → 라우터 Link.
       parts.push(!path.startsWith('/') ? { text: match[1], href: path, external: true } : appPath(path) ? { text: match[1], to: appPath(path) } : SERVER_PAGE.test(path) ? { text: match[1], href: path } : { text: match[1], to: path });
       last = match.index + match[0].length;
     }

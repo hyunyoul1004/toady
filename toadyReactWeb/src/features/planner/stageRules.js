@@ -1,3 +1,7 @@
+/**
+ * 관심 공고 카드의 '진행 단계'(관심 → 신청 예정 → … → 계약 완료)와 단계별 다음 할 일 문구를 정하는 순수 함수.
+ * 쓰는 곳: FavoriteCard.jsx, ResearchPanel.jsx(normalizeStage).
+ */
 import { daysUntil } from './plannerUtils.js';
 import { formatCompetitionRate } from '../../utils/rate.util.js';
 
@@ -11,7 +15,9 @@ export const STAGES = [
   { value: 5, label: '계약 완료' }
 ];
 const APPLYHOME_URL = 'https://www.applyhome.co.kr';
+/** 서버에서 온 단계 값을 0~5 정수로 맞춘다. 이상한 값이면 0(관심). */
 export function normalizeStage(value) { const n = Number(value); return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 0; }
+// 'YYYY-MM-DD' → '11.13' 같은 짧은 날짜.
 const md = date => (date ? `${Number(date.slice(5, 7))}.${Number(date.slice(8, 10))}` : '');
 /** 경쟁률 표기는 공통 규칙(utils/rate.util)을 따른다. */
 export const formatRate = rate => (Number.isFinite(rate) ? formatCompetitionRate(rate) : '');

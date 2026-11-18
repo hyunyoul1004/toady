@@ -11,7 +11,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Hibernate SQL과 바인딩 값을 스레드별로 모아 파라미터가 반영된 쿼리를 별도 로그로 출력합니다. */
+/**
+ * Hibernate SQL과 바인딩 값을 스레드별로 모아 파라미터가 반영된 쿼리를 별도 로그로 출력합니다.
+ * 스프링 빈이 아니라 Logback 어펜더다. logback 설정 파일에서 org.hibernate.SQL·bind 로거에 붙여 쓴다.
+ * Hibernate는 SQL 한 줄을 먼저 찍고 ? 값을 따로 한 줄씩 찍으므로, 값이 다 모이면 ?를 값으로 바꿔 com.toady.sql.bound 로거로 남긴다.
+ * 개발 중 쿼리 확인용이다.
+ */
 public class BoundSqlLoggingAppender extends AppenderBase<ILoggingEvent> {
     private static final String SQL_LOGGER = "org.hibernate.SQL";
     private static final String BIND_LOGGER = "org.hibernate.orm.jdbc.bind";
@@ -19,8 +24,10 @@ public class BoundSqlLoggingAppender extends AppenderBase<ILoggingEvent> {
     private static final Pattern BINDING_PATTERN =
             Pattern.compile("binding parameter \\((\\d+):([A-Z_]+)\\) <- \\[(.*)]", Pattern.DOTALL);
 
+    // 요청 스레드마다 SQL이 따로 진행되므로 스레드 이름을 키로 모은다. 여러 스레드가 동시에 쓰므로 ConcurrentHashMap
     private final Map<String, PendingSql> pendingByThread = new ConcurrentHashMap<>();
 
+    /** Logback이 로그 한 줄마다 부른다. SQL 로그인지 바인딩 로그인지 보고 나눠 처리한다. */
     @Override
     protected void append(ILoggingEvent event) {
         String threadName = event.getThreadName();
@@ -31,6 +38,7 @@ public class BoundSqlLoggingAppender extends AppenderBase<ILoggingEvent> {
         }
     }
 
+    /** 새 SQL이 오면 대기 목록에 올린다. ?가 없으면 바로 출력하고, 이전 SQL이 값을 다 못 받았으면 경고를 남긴다. */
     private void onSql(String threadName, String sql) {
         PendingSql previous = pendingByThread.remove(threadName);
         if (previous != null) {
@@ -46,6 +54,7 @@ public class BoundSqlLoggingAppender extends AppenderBase<ILoggingEvent> {
         pendingByThread.put(threadName, new PendingSql(sql, parameterCount));
     }
 
+    /** "binding parameter (1:VARCHAR) <- [값]" 로그를 읽어 해당 SQL에 값을 채우고, 다 모이면 완성된 SQL을 출력한다. */
     private void onBinding(String threadName, String message) {
         Matcher matcher = BINDING_PATTERN.matcher(message);
         if (!matcher.matches()) {

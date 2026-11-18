@@ -2,6 +2,8 @@
  * @file DetailSkeletons.jsx
  * @description 공고 상세 패널을 불러오는 동안 실제 배치(조사 탭·일정 카드·공급 표)와 같은 자리를 잡아 두는 뼈대 화면.
  * 내용이 들어올 때 화면이 덜컥 밀리지 않게 하고, 무엇이 나올지 미리 보여 준다.
+ * - 쓰이는 곳: Main.jsx. DetailBodySkeleton은 상세 API 응답을 기다릴 때, DetailTabSkeleton은 lazy 탭 파일을 받을 때(Suspense fallback).
+ * - API·스토어는 쓰지 않는 순수 표시 컴포넌트다.
  */
 import Box from '@mui/material/Box';
 import Skeleton from '@mui/material/Skeleton';

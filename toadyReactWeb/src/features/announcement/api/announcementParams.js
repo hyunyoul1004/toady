@@ -3,9 +3,12 @@
  * @description 공고 목록 화면 조건(paramInfo)을 서버 조회 파라미터로 바꾸는 순수 함수.
  * 목록 조회 요청과 TanStack Query 키가 같은 함수를 써서, 서버 요청이 같으면 캐시도 같게 한다.
  * (검색 지역 citys는 화면에서만 거르는 조건이라 서버 파라미터·쿼리 키에 넣지 않는다.)
+ * 사용처: api/announcementApi.js(getAnnouncements), hooks/useAnnouncements.js(announcementKeys.list)
  */
 
 /**
+ * 화면 조건 → 서버 쿼리 파라미터. 주택 유형 체크박스(rceptSe01~08)를 서버의 types 값으로 바꾼다.
+ * 전부 켜졌거나 전부 꺼졌으면 types를 보내지 않는다(유형 조건 없이 조회).
  * @param {Record<string, any>} params 화면 조건 (startStr/endStr 또는 startDate/endDate, rceptSe01~08, types, regionCode, keyword, page, size)
  * @param {(value: any) => string} [toDate] 날짜 문자열을 YYYY-MM-DD로 맞추는 함수(값이 없으면 '-' 반환)
  * @returns {Record<string, any>} 서버에 보내는 쿼리 파라미터

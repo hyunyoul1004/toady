@@ -12,7 +12,12 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/** 경쟁률 API 응답을 테이블별 복합키 기준으로 저장한다. */
+/**
+ * 경쟁률 API 응답을 테이블별 복합키 기준으로 저장한다.
+ * 엔티티 없이 JdbcTemplate으로 SQL을 직접 만든다. 테이블·컬럼 목록은 ApplyhomeCompetitionSyncService가 넘겨준다
+ * (경쟁률, 특별공급 신청현황, 당첨 가점 테이블 등).
+ */
+// @Service: 업무 로직 빈. @Transactional 메서드는 트랜잭션 안에서 실행된다.
 @Service
 public class ApplyhomeCompetitionPersistenceService {
 
@@ -30,6 +35,7 @@ public class ApplyhomeCompetitionPersistenceService {
      * 제공처가 일시적으로 0건을 돌려주면 이미 저장한 경쟁률·가점이 모두 사라지므로, 응답이 비어 있으면 교체하지 않는다.
      * @return 교체했으면 true, 빈 응답이라 기존 행을 유지했으면 false
      */
+    // @Transactional: DELETE와 INSERT를 한 트랜잭션으로 묶어, 중간에 실패하면 지운 행도 되살린다.
     @Transactional
     public boolean replace(String table, List<String> columns, List<String> keyColumns,
             String houseManageNo, String pblancNo, List<JsonNode> rows) {
@@ -56,6 +62,11 @@ public class ApplyhomeCompetitionPersistenceService {
         return true;
     }
 
+	/**
+	 * 여러 행을 한 번에 넣는 배치 upsert. INSERT ... ON DUPLICATE KEY UPDATE는 MariaDB 문법으로,
+	 * 기본키·유니크키가 겹치면 INSERT 대신 키가 아닌 컬럼만 새 값(VALUES(컬럼))으로 UPDATE한다.
+	 * batchUpdate는 500행씩 묶어 DB 왕복 횟수를 줄인다. 값은 모두 문자열로 넣는다.
+	 */
 	@Transactional
 	public void upsert(String table, List<String> columns, List<String> keyColumns, List<JsonNode> rows) {
 		if (rows.isEmpty()) {
@@ -87,6 +98,7 @@ public class ApplyhomeCompetitionPersistenceService {
 			}
 		});
 	}
+    /** 대문자 키를 먼저 찾고, 없으면 소문자 키로 다시 찾는다(응답 키 대소문자가 섞여 오는 경우 대비). */
     private JsonNode field(JsonNode row, String name) {
         JsonNode value = row.get(name);
         return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));

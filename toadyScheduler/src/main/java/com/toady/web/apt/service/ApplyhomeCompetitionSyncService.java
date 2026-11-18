@@ -20,13 +20,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 공고별 경쟁률, 당첨가점, 특별공급 신청현황을 수집한다. */
+/**
+ * 공고별 경쟁률, 당첨가점, 특별공급 신청현황을 수집한다.
+ * 순서: 공고 API로 기간 안의 공고 키를 찾고(discover) → 경쟁률 API(ApplyhomeInfoCmpetRtSvc)를 공고마다 불러 → 공고 단위로 교체 저장한다.
+ * 테이블: TB_*_LTTOT_PBLANC_CMPET(유형별 경쟁률), TB_APT_LTTOT_PBLANC_SCORE(가점), TB_APT_SPSPLY_REQST_STUS(특별공급 신청현황).
+ * 일정 맞춤 수집(synchronizeScheduled)은 외부 API 대신 DB에 저장된 공고 상세의 접수일·발표일로 대상을 고른다.
+ * 호출: ApplyhomeSyncScheduler, AdminJobService.
+ */
+// @Service: 업무 로직 빈으로 등록한다.
 @Service
 public class ApplyhomeCompetitionSyncService {
 
 	private static final Logger log = LoggerFactory.getLogger(ApplyhomeCompetitionSyncService.class);
 	private static final DateTimeFormatter COMPACT_DATE = DateTimeFormatter.BASIC_ISO_DATE;
 
+	// 항목별 설정: 경쟁률 API 경로, 저장 테이블, 저장할 컬럼, 기본키 컬럼. 컬럼 이름은 API 응답 키와 같다.
 	private static final TableSpec APT_RATE = new TableSpec("getAPTLttotPblancCmpet",
 			"TB_APT_LTTOT_PBLANC_CMPET",
 			List.of("HOUSE_MANAGE_NO", "PBLANC_NO", "MODEL_NO", "SUBSCRPT_RANK_CODE", "RESIDE_SECD",
@@ -111,7 +119,9 @@ public class ApplyhomeCompetitionSyncService {
 	 * 기존 경쟁률 수집(모집공고일 기준 최근 90일 전체)이 다시 채운다.
 	 * 날짜 컬럼은 유형마다 'yyyy-MM-dd'와 'yyyyMMdd'가 섞여 있어 하이픈을 지우고 비교한다.
 	 */
+	// APT는 특별공급 접수가 먼저 시작하므로 특별공급 접수 시작일을 우선 쓰고, 없으면 일반 접수 시작일을 쓴다.
 	private static final String APT_RECEIPT_BEGIN = "COALESCE(NULLIF(d.SPSPLY_RCEPT_BGNDE, ''), d.RCEPT_BGNDE)";
+	// 일정 맞춤 수집에서 돌 항목 목록. 잔여세대 테이블은 주택구분코드(04 잔여세대, 06 취소후재공급)로 나눠 본다.
 	static final List<ResultPhase> RESULT_PHASES = List.of(
 			ResultPhase.rate(APT_RATE, "TB_APT_LTTOT_PBLANC_DETAIL", null, APT_RECEIPT_BEGIN, "d.RCEPT_ENDDE"),
 			ResultPhase.rate(SPECIAL_SUPPLY_STATUS, "TB_APT_LTTOT_PBLANC_DETAIL", null, APT_RECEIPT_BEGIN, "d.RCEPT_ENDDE"),
@@ -169,6 +179,10 @@ public class ApplyhomeCompetitionSyncService {
 	/** hot: 결과가 나올 날이라 실행마다 받는다. 아니면 비어 있어서 다시 확인하는 공고다. */
 	record ScheduledTarget(AnnouncementKey key, boolean hot) { }
 
+	/**
+	 * 항목 하나에 대해 지금 조회할 공고를 DB에서 고른다. SQL을 조건에 따라 이어 붙이고,
+	 * hot 여부를 계산하는 CASE 식은 SELECT 절에 끼워 넣기 때문에 그 파라미터는 args 맨 앞(0번)에 넣는다.
+	 */
 	List<ScheduledTarget> scheduledTargets(ResultPhase phase, LocalDate startDate, LocalDate endDate) {
 		String start = startDate.format(COMPACT_DATE);
 		String end = endDate.format(COMPACT_DATE);
@@ -204,6 +218,7 @@ public class ApplyhomeCompetitionSyncService {
 		return jdbc.query(sql.toString(), (rs, n) -> new ScheduledTarget(new AnnouncementKey(rs.getString(1), rs.getString(2)), rs.getInt(3) == 1), args.toArray());
 	}
 
+	/** 일정 맞춤 수집의 항목 하나: 저장 테이블, 일정을 읽을 공고 상세 테이블, 주택구분 조건, 접수 시작·종료 컬럼, 가점 여부. */
 	record ResultPhase(TableSpec table, String detailTable, String houseSecd, String beginColumn, String endColumn, boolean score) {
 		static ResultPhase rate(TableSpec table, String detailTable, String houseSecd, String begin, String end) {
 			return new ResultPhase(table, detailTable, houseSecd, begin, end, false);
@@ -213,6 +228,7 @@ public class ApplyhomeCompetitionSyncService {
 		}
 	}
 
+	/** 모집공고일이 기간 안인 모든 공고의 경쟁률·가점·특별공급을 다시 받는다. 다른 수집과 겹치지 않게 DB 잠금 안에서 돈다. */
 	public void synchronize(LocalDate startDate, LocalDate endDate) {
 		if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
 			throw new IllegalArgumentException("A valid start and end date range is required");
@@ -234,6 +250,7 @@ public class ApplyhomeCompetitionSyncService {
 		return count.get();
 	}
 
+	/** 잠금을 얻은 뒤 실제로 도는 부분. 유형별 공고 키를 먼저 모두 찾고 항목별로 수집한다. */
 	private void synchronizeLocked(LocalDate startDate, LocalDate endDate) {
 		List<AnnouncementKey> aptAnnouncements = discover("getAPTLttotPblancDetail", startDate, endDate, false);
 		List<AnnouncementKey> urbanAnnouncements = discover(
@@ -269,6 +286,10 @@ public class ApplyhomeCompetitionSyncService {
 		return discover(endpoint, startDate, endDate, compactDate, null);
 	}
 
+	/**
+	 * 공고 API로 모집공고일이 기간 안인 공고 키를 모은다. 민간임대·임의공급은 날짜를 yyyyMMdd로 보내야 해서 compactDate로 고른다.
+	 * houseSecd를 주면 주택구분코드로 한 번 더 거른다(잔여세대 04, 취소후재공급 06).
+	 */
 	private List<AnnouncementKey> discover(
 			String endpoint, LocalDate startDate, LocalDate endDate, boolean compactDate, String houseSecd) {
 		DateTimeFormatter formatter = compactDate ? COMPACT_DATE : DateTimeFormatter.ISO_LOCAL_DATE;
@@ -290,6 +311,10 @@ public class ApplyhomeCompetitionSyncService {
 		return List.copyOf(keys);
 	}
 
+	/**
+	 * 공고마다 경쟁률 API를 불러 공고 단위로 교체 저장한다. 공고 하나가 실패하면 failures에 적고 넘어가며,
+	 * 인증·한도 오류나 실패가 MAX_FAILURES를 넘으면 바로 멈춘다. 반환값은 저장한 응답 행 수다.
+	 */
 	private long syncForAnnouncements(TableSpec table, List<AnnouncementKey> announcements, List<String> failures) {
 		long totalRows = 0;
 		for (AnnouncementKey key : announcements) {
@@ -331,6 +356,7 @@ public class ApplyhomeCompetitionSyncService {
 		return value != null ? value : row.get(name.toLowerCase(Locale.ROOT));
 	}
 
+	/** 경쟁률 항목 하나의 설정(API 경로, 테이블, 컬럼, 기본키 컬럼). */
 	record TableSpec(String endpoint, String table, List<String> columns, List<String> keys) {
 	}
 }

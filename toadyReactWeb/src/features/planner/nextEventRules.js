@@ -1,3 +1,7 @@
+/**
+ * '내 다음 일정'과 나의 청약 빈 화면 추천을 계산하는 순수 함수.
+ * 쓰는 곳: MyPlanner.jsx, TodayOverview.jsx(메인), WeeklyPicks.jsx.
+ */
 import { daysUntil, isoDate, upcomingGroups } from './plannerUtils.js';
 import { byStatus } from '../explore/exploreRules.js';
 
@@ -30,8 +34,10 @@ export function nextPlannerEvent(items = [], today) {
   if (!groups.length) return null;
   const { item, events } = groups[0];
   const event = events[0];
+  // 같은 날 일정 이름이 여러 개면 행동 문구로 줄이고, 3개 이상이면 앞 2개만 보여 준다.
   const actions = [...new Set(event.labels.map(eventAction))];
   const action = actions.length > 2 ? `${actions.slice(0, 2).join(' · ')} 외` : actions.join(' · ');
+  // 같은 날 첫 일정이 있는 다른 공고 수('외 N곳'에 쓴다).
   const sameDay = groups.filter(group => group.events[0].date === event.date).length - 1;
   return {
     id: item.id, houseNm: item.summary.houseNm || '공고', date: event.date, days: daysUntil(event.date, today),

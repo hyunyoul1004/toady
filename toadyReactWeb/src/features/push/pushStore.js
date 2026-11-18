@@ -4,6 +4,7 @@ import { anonymousVisitorId, trackAction } from '@/features/analytics/trackActio
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { base64UrlToBytes, detectPlatform, pushMode, scopeKey } from './pushSupport';
 
+// localStorage 키. scope: 마지막으로 저장한 구독 범위, synced: 서버와 맞춘 범위의 비교 키(PushBootstrap이 다시 보낼지 판단).
 const SCOPE_KEY = 'toady.push.scope';
 /** 서버 기록이 사라져 같은 구독을 한 번 다시 저장한 주소. 또 사라지면 만료된 구독으로 보고 새로 만든다. */
 const RELOST_KEY = 'toady.push.relost';
@@ -11,24 +12,23 @@ export const SYNCED_KEY = 'toady.push.synced';
 const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 저장소 차단 시 이번 화면에서만 유지 */ } };
 
+/** 지금 기기 판정에 알림 가능 방식(mode)을 붙인다. */
 function platform() {
   if (typeof window === 'undefined') return { mode: 'unsupported' };
   const detected = detectPlatform(navigator, window);
   return { ...detected, mode: pushMode(detected) };
 }
 function permission() { try { return typeof Notification === 'undefined' ? 'default' : Notification.permission; } catch { return 'default'; } }
+/** 등록된 서비스 워커를 찾고, 없으면 지금 등록한다(PushBootstrap이 먼저 등록하지만 실패했을 때를 대비). */
 async function registration() {
   return (await navigator.serviceWorker.getRegistration('/')) || navigator.serviceWorker.register('/sw.js', { scope: '/' });
 }
+/** 구독 객체에서 서버에 보낼 값만 꺼낸다. endpoint: 브라우저 회사 푸시 서버 주소, p256dh·auth: 알림 내용을 암호화하는 키. */
 function keys(subscription) {
   const json = subscription.toJSON();
   return { endpoint: json.endpoint, keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth } };
 }
 
-/**
- * 이 브라우저의 웹 푸시 상태. 권한 요청은 enable()에서만, 즉 사용자가 버튼을 눌렀을 때만 한다.
- * scope: 관심 공고 전날 일정(favorites)과 새 공고를 받을 생활권(areas). 비회원 관심 공고 ID는 PushBootstrap이 넣는다.
- */
 /** 기존 구독을 지우고 새로 만든다. 권한이 없거나 브라우저가 거절하면 null(화면은 꺼진 상태로 둔다). */
 async function renewSubscription(reg, subscription, publicKey) {
   try {
@@ -38,11 +38,23 @@ async function renewSubscription(reg, subscription, publicKey) {
   } catch { return null; }
 }
 
+/**
+ * 이 브라우저의 웹 푸시 상태. 권한 요청은 enable()에서만, 즉 사용자가 버튼을 눌렀을 때만 한다.
+ * scope: 관심 공고 전날 일정(favorites)과 새 공고를 받을 생활권(areas). 비회원 관심 공고 ID는 PushBootstrap이 넣는다.
+ *
+ * 상태 값: status('loading' → 'ready'), platform(기기 판정 + mode), permission(브라우저 알림 권한),
+ * enabled(서버가 푸시 기능을 켰는지), publicKey(VAPID 공개키), endpoint·subscribed(이 기기 구독), member(회원 구독인지).
+ * 쓰는 곳: PushBootstrap(init·자동 저장), PushPrompt·PushSettingsDialog(켜기·끄기·테스트), usePushAttention(점 표시).
+ * API: GET /api/v1/push/config, POST /api/v1/push/subscription/lookup, PUT /api/v1/push/subscription,
+ *      POST /api/v1/push/unsubscribe, POST /api/v1/push/test
+ * zustand create의 set은 상태 일부를 합쳐 넣고, get은 지금 상태를 읽는다(async 함수 안에서도 최신 값을 읽을 수 있다).
+ */
 export const usePushStore = create((set, get) => ({
   status: 'loading', platform: platform(), permission: permission(), enabled: false, publicKey: null,
   endpoint: null, subscribed: false, member: false, scope: read(SCOPE_KEY, { favorites: true, areas: [] }), favoriteIds: [],
   error: null,
 
+  /** 앱 시작 때 한 번(PushBootstrap). 서버 설정을 받고, 이 기기에 남은 구독이 서버에도 있는지 확인한다. 권한은 묻지 않는다. */
   async init() {
     const current = platform();
     set({ platform: current, permission: permission() });
@@ -76,18 +88,22 @@ export const usePushStore = create((set, get) => ({
   async enable(scope = {}) {
     const state = get();
     if (state.platform.mode !== 'ready' || !state.enabled) throw Error('이 환경에서는 알림을 켤 수 없어요.');
+    // 1) 브라우저 권한 창. 'granted'(허용)·'denied'(차단)·'default'(그냥 닫음) 중 하나가 온다.
     const result = await Notification.requestPermission();
     set({ permission: result });
     // 권한 거절은 다시 되돌리기 어려워 따로 센다(알림을 묻는 시점·문구가 맞는지 보는 지표).
     if (result === 'denied') trackAction('push_denied', 'tool/push');
     if (result !== 'granted') throw Error(result === 'denied' ? '알림이 차단되어 있어요. 브라우저 설정에서 TOADY 알림을 허용해 주세요.' : '알림 권한을 허용해야 받을 수 있어요.');
+    // 2) 서비스 워커가 활성화될 때까지 기다린다(구독은 서비스 워커에 붙는다).
     const reg = await registration();
     await navigator.serviceWorker.ready;
     let subscription = await reg.pushManager.getSubscription();
     // 서버에 없는 기존 구독(만료로 지워졌을 수 있음)은 버리고 새로 만든다.
     if (subscription && !state.subscribed) subscription = await renewSubscription(reg, subscription, state.publicKey);
+    // 3) 구독. userVisibleOnly: 받은 알림은 반드시 화면에 보여 준다는 약속(브라우저가 요구). applicationServerKey: VAPID 공개키.
     if (!subscription) subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(state.publicKey) });
     set({ endpoint: subscription.endpoint });
+    // 4) 구독 정보와 받을 범위를 서버에 저장한다.
     await get().save({ ...state.scope, ...scope });
     trackAction('push_enable', 'tool/push');
   },
@@ -108,6 +124,7 @@ export const usePushStore = create((set, get) => ({
     set({ subscribed: true, endpoint: subscription.endpoint, member: server?.member === true, scope: { favorites: server?.favorites !== false, areas: server?.areas || next.areas } });
   },
 
+  /** 이 기기의 알림 끄기: 서버 기록을 지우고 브라우저 구독도 해제한다. 서버 요청이 실패해도 브라우저 쪽은 끈다. */
   async disable() {
     const reg = await navigator.serviceWorker.getRegistration('/');
     const subscription = reg && await reg.pushManager.getSubscription();
@@ -119,6 +136,7 @@ export const usePushStore = create((set, get) => ({
     set({ subscribed: false, endpoint: null });
   },
 
+  /** 테스트 알림 보내기. announcementId가 있으면 알림을 눌렀을 때 그 공고로 간다. */
   async sendTest(announcementId) {
     const { endpoint } = get();
     if (!endpoint) throw Error('먼저 알림을 켜 주세요.');

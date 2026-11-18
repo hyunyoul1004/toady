@@ -23,19 +23,24 @@ import java.util.Objects;
  * 관리자 화면에서 고치는 생활권(TB_LIVING_AREA)·자주 묻는 질문(TB_FAQ_ITEM, database.sql 27번)을 1분마다 읽어 서비스에 반영한다.
  * 테이블이 비어 있으면 처음 한 번 코드의 기본 값으로 채워, 관리자가 기존 내용을 그대로 이어서 고칠 수 있게 한다.
  * 테이블이 없거나 읽지 못하면 지금 쓰던 값을 그대로 둔다(기본은 코드의 값).
+ * 생활권은 LivingAreas.replace(), 자주 묻는 질문은 PublicFaqPage.replace()로 바꿔 넣고, 바뀌면 공개 페이지 캐시도 비운다.
  */
+// @Component: 스프링 빈으로 등록한다. 그래야 아래 @EventListener·@Scheduled가 동작한다.
 @Component
 public class ContentStore {
     private static final Logger log = LoggerFactory.getLogger(ContentStore.class);
     private final JdbcTemplate jdbc;
     public ContentStore(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    // @EventListener(ApplicationReadyEvent): 서버가 다 뜬 직후 한 번 실행한다. 빈 테이블을 채우고 바로 읽어 온다.
     @EventListener(ApplicationReadyEvent.class)
     public void start() { seedIfEmpty(); refresh(); }
 
+    // @Scheduled(fixedDelay=60초): 이전 실행이 끝나고 1분 뒤에 다시 실행한다. initialDelay로 첫 실행도 1분 뒤부터.
     @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
     public void refresh() { refreshAreas(); refreshFaq(); }
 
+    /** 테이블이 비어 있으면 코드의 기본 생활권·FAQ를 넣는다. 정렬 순서는 10 간격이라 관리자가 사이에 끼워 넣기 쉽다. */
     void seedIfEmpty() {
         Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
         try {
@@ -89,6 +94,7 @@ public class ContentStore {
     }
 
     private long count(String table) { return jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class); }
+    /** 쉼표로 이은 DB 값('운정,운정역')을 목록으로. 앞뒤 공백·빈 값·중복은 뺀다. */
     static List<String> list(String csv) {
         return csv == null ? List.of() : Arrays.stream(csv.split(",")).map(String::strip).filter(value -> !value.isEmpty()).distinct().toList();
     }

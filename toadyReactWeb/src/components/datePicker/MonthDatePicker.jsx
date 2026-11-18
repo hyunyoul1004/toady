@@ -2,6 +2,8 @@
  * @file MonthDatePicker.jsx
  * @description 달력 머리글의 'YYYY년 MM월' 단추와 월 선택 팝업(연도 이동 + 12개월 단추).
  * 팝업은 히스토리 한 단계로 열어 뒤로가기로 닫히고 앞으로가기로 다시 열린다(useHistoryOverlay).
+ * 쓰는 곳: 청약 캘린더 머리글(views/main/calendar/SubscriptionCalendar.jsx). API·스토어는 쓰지 않는다.
+ * useHistoryOverlay('month-picker'): 열림 여부를 location.state.overlayLayers에 넣어 둔다. 그래서 팝업 하나가 히스토리 한 칸이 된다.
  */
 import { useState } from 'react';
 import Box from '@mui/material/Box';
@@ -36,12 +38,16 @@ const MonthDatePicker = ({ selected, moveDate }) => {
   const current = toYearMonth(selected);
   const today = toYearMonth(koreaToday());
   // 앞으로가기·새로고침으로 열린 채 복원될 때도 단추가 그려지자마자 붙도록 상태 ref로 둔다.
+  // ref={setAnchor}(콜백 ref)는 단추 DOM이 생기면 setAnchor(단추)를 불러 다시 그린다. useRef였다면 값이 들어와도 다시 그리지 않아
+  // 열린 채 복원된 첫 렌더에서 Popover가 붙을 자리를 모른다.
   const [anchor, setAnchor] = useState(null);
   const [open, setOpen] = useHistoryOverlay(OVERLAY_ID);
   const isOpen = Boolean(open);
   // 팝업 안에서 넘겨 보는 연도. 열 때마다 보고 있는 달의 연도로 맞춘다.
   const [viewYear, setViewYear] = useState(current.year);
   const [lastOpen, setLastOpen] = useState(false);
+  // 렌더 중에 '열림이 바뀐 순간'을 잡아 연도를 맞춘다(React 문서의 '이전 렌더 값과 비교해 state 조정' 방식).
+  // useEffect로 하면 한 번 그린 뒤 다시 그려 잠깐 엉뚱한 연도가 보인다.
   if (isOpen !== lastOpen) {
     setLastOpen(isOpen);
     if (isOpen) setViewYear(current.year);

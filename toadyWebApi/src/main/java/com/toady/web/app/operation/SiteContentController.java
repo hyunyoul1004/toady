@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
 /**
  * 관리자 화면에서 정한 사이트 공지(TB_SITE_NOTICE)와 검색어 통계 수집(TB_SEARCH_STAT, database.sql 27번).
  * 검색어는 방문자·회원과 연결하지 않고 날짜별 건수만 더한다.
+ * 공지는 관리자 사이트가 쓰고, 이 컨트롤러는 화면에 내보내기만 한다. 서비스 계층 없이 JdbcTemplate을 바로 쓴다.
  */
+// @RestController: JSON 응답 컨트롤러
 @RestController
 public class SiteContentController {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -41,6 +43,7 @@ public class SiteContentController {
     public SiteContentController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     /** 지금 보여 줄 공지. 1분 동안 같은 결과를 쓴다. */
+    // @GetMapping: GET 요청 처리. 응답에 Cache-Control: public, max-age=60을 붙여 브라우저도 1분 동안 다시 묻지 않게 한다
     @GetMapping("/api/v1/public/notices")
     public ResponseEntity<List<Map<String, Object>>> notices() {
         long now = System.currentTimeMillis();
@@ -52,6 +55,7 @@ public class SiteContentController {
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofMinutes(1)).cachePublic()).body(notices);
     }
 
+    // 사용 중이고 기간 안인 공지 최신 3개를 읽는다. 기간 비교는 한국 시간 기준
     List<Map<String, Object>> load() {
         Timestamp now = Timestamp.valueOf(LocalDateTime.now(KST));
         try {
@@ -71,6 +75,7 @@ public class SiteContentController {
         } catch (DataAccessException missing) { return List.of(); }
     }
 
+    /** 요청 본문: 검색어와 결과 수. @NotBlank·@Size·@Min·@Max로 값의 범위를 검사한다. */
     public record SearchStat(@NotBlank @Size(max = 60) String term, @Min(0) @Max(100000) int results) { }
 
     /** 검색 한 번을 센다. 공백을 줄이고 소문자로 바꿔 30자까지만 저장한다. 봇 요청은 세지 않는다. */
@@ -85,6 +90,7 @@ public class SiteContentController {
         Date today = Date.valueOf(LocalDateTime.now(KST).toLocalDate());
         String empty = stat.results() == 0 ? "Y" : "N";
         try {
+            // UPDATE 먼저, 행이 없으면 INSERT, 그 사이 다른 요청이 먼저 넣었으면 다시 UPDATE(간단한 upsert)
             if (jdbc.update("UPDATE TB_SEARCH_STAT SET HITS=HITS+1 WHERE STAT_DATE=? AND TERM=? AND EMPTY_YN=?", today, term, empty) == 0) {
                 try { jdbc.update("INSERT INTO TB_SEARCH_STAT (STAT_DATE, TERM, EMPTY_YN, HITS) VALUES (?,?,?,1)", today, term, empty); }
                 catch (DuplicateKeyException raced) { jdbc.update("UPDATE TB_SEARCH_STAT SET HITS=HITS+1 WHERE STAT_DATE=? AND TERM=? AND EMPTY_YN=?", today, term, empty); }

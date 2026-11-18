@@ -11,15 +11,19 @@ import java.time.LocalDateTime
 /**
  * 자주 묻는 질문(database.sql 27번 TB_FAQ_ITEM). 처음에는 API가 코드의 기본 질문으로 채운다.
  * 앱 화면(/faq)과 검색용 서버 페이지(/help/faq)가 1분 안에 같은 내용으로 바뀐다. 답의 [문구](/경로)는 사이트 안 링크가 된다.
+ * 호출: ContentController의 질문 화면(/admin/faq).
  */
+// @Service: 업무 로직 빈.
 @Service
 class FaqService(private val jdbc: JdbcTemplate) {
 	data class Item(val id: String, val groupId: String, val groupTitle: String, val question: String, val answer: String, val order: Int,
 	                val enabled: Boolean, val admin: String, val updatedAt: LocalDateTime?)
 	data class Group(val id: String, val title: String, val items: List<Item>)
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). 없으면 화면에 적용 안내를 보여 준다. */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_FAQ_ITEM WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
+	/** 모든 질문을 정렬 순서대로 읽어 묶음(GROUP_ID)별로 나눈다. */
 	fun groups(): List<Group> = try {
 		jdbc.query("SELECT * FROM TB_FAQ_ITEM ORDER BY SORT_ORDER, ITEM_ID") { r, _ ->
 			Item(r.getString("ITEM_ID"), r.getString("GROUP_ID"), r.getString("GROUP_TITLE"), r.getString("QUESTION"), r.getString("ANSWER"), r.getInt("SORT_ORDER"),
@@ -38,6 +42,7 @@ class FaqService(private val jdbc: JdbcTemplate) {
 		else -> null
 	}
 
+	/** 질문 추가. 성공하면 null, 실패하면 안내 문구. */
 	fun add(id: String, groupId: String, groupTitle: String, question: String, answer: String, order: Int, admin: String): String? {
 		invalid(id, groupId, groupTitle, question, answer)?.let { return it }
 		if (!available()) return "자주 묻는 질문 테이블이 없습니다. database.sql 27번과 관리자 계정 권한을 적용하세요."
@@ -48,6 +53,7 @@ class FaqService(private val jdbc: JdbcTemplate) {
 		} catch (duplicate: DuplicateKeyException) { "이미 있는 질문 ID입니다." }
 	}
 
+	/** 질문 수정. 성공하면 null, 실패하면 안내 문구. */
 	fun update(id: String, groupId: String, groupTitle: String, question: String, answer: String, order: Int, enabled: Boolean, admin: String): String? {
 		invalid(id, groupId, groupTitle, question, answer)?.let { return it }
 		val changed = try {

@@ -1,3 +1,10 @@
+/**
+ * @file Citys.js
+ * @description 시·도 → 시·군·구 → 동·읍·면(일부 공공주택지구 이름 포함) 계층 데이터.
+ * 구조: [{ cityName, districts: [{ districtName, towns: [...] }] }]
+ * announcementFilters.js가 이 표를 펼쳐 검색창 자동완성 후보(FLAT_CITY_OPTIONS)를 만든다.
+ * 청약 공고가 나올 만한 지역 위주로 직접 정리한 표라서, 지역을 더하려면 이 파일에 항목을 추가한다.
+ */
 const Citys = [
     {
         cityName: "서울특별시",

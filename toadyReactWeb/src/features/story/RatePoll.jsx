@@ -12,13 +12,17 @@ import './story.css';
 const visitor = () => { try { return anonymousVisitorId(); } catch { return null; } };
 
 /** 경쟁률 탭의 예상 투표. 접수 마감 전에는 고르고, 경쟁률이 공개되면 실제 구간과 맞힌 비율을 보여준다. */
+// 쓰는 곳: views/main/subscriptRate/SubscriptRate.jsx(APT 공고만). API: GET·POST /api/v1/polls/rate/apt/{주택관리번호}/{공고번호}.
 export default function RatePoll({ houseManageNo, pblancNo }) {
+  // useState(visitor): 함수를 넘겨 처음 한 번만 방문자 ID를 읽는다.
   const [visitorId] = useState(visitor);
   const [editing, setEditing] = useState(false);
   const key = ['ratePoll', houseManageNo, pblancNo];
   const client = useQueryClient();
   const path = `/api/v1/polls/rate/apt/${encodeURIComponent(houseManageNo)}/${encodeURIComponent(pblancNo)}`;
   const query = useQuery({ queryKey: key, queryFn: () => apiClient.get(path, { visitorId }, { auth: false }), enabled: Boolean(houseManageNo && pblancNo), staleTime: 60000, retry: false });
+  // useMutation: 서버 값을 바꾸는 요청(투표). onSuccess에서 응답으로 조회 캐시를 바로 바꿔(setQueryData) 다시 받지 않는다.
+  // vote.isPending(요청 중)·vote.isError(실패)를 화면에서 쓴다.
   const vote = useMutation({
     mutationFn: choice => apiClient.post(path, { visitorId, choice }, { auth: false }),
     onSuccess: (data, choice) => { client.setQueryData(key, data); setEditing(false); trackAction('poll_vote', `apt/${houseManageNo}/${pblancNo}`); }
@@ -43,6 +47,7 @@ export default function RatePoll({ houseManageNo, pblancNo }) {
       </div>
       {view.total > 0 && <span className="rate-poll-count">{view.total.toLocaleString('ko-KR')}명 참여</span>}
     </div>
+    {/* 고르는 중이면 구간 버튼, 아니면 결과 막대(비율만큼 배경 막대 너비) */}
     {choosing ? <div className="rate-poll-options" role="group" aria-label="예상 경쟁률 구간">
       {view.options.map(option => <button type="button" key={option.index} disabled={vote.isPending} className={option.mine ? 'is-mine' : ''} aria-pressed={option.mine}
         onClick={() => vote.mutate(option.index)}>{option.label}</button>)}

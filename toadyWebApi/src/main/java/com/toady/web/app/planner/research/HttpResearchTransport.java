@@ -16,6 +16,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * ResearchTransport의 실제 구현. 자바 기본 HttpClient로 국토부·카카오 API만 HTTPS로 부른다.
+ * 연결 2초, 응답 헤더 3초, 본문까지 전체 6초로 끊어서 외부가 느려도 우리 서버 스레드가 오래 묶이지 않게 한다.
+ * 응답은 최대 2MB까지만 읽는다. 리다이렉트는 따라가지 않는다(다른 주소로 새지 않게).
+ */
+// @Component: 스프링 빈으로 등록한다. ResearchTransport를 받는 곳에 이 객체가 들어간다.
 @Component
 public class HttpResearchTransport implements ResearchTransport {
     static final int TOTAL_SECONDS=6;
@@ -25,6 +31,7 @@ public class HttpResearchTransport implements ResearchTransport {
     });
     private final HttpClient client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).followRedirects(HttpClient.Redirect.NEVER).build();
     @Override public byte[] get(URI uri,Map<String,String> headers) throws Exception {
+        // 허용한 두 곳(국토부 공공데이터·카카오) 말고는 요청하지 않는다.
         if(!"https".equals(uri.getScheme()) || !Set.of("apis.data.go.kr","dapi.kakao.com").contains(uri.getHost())) throw new IOException("Unsupported provider");
         var request=HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(3)).GET();
         headers.forEach(request::header);

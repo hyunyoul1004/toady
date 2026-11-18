@@ -1,21 +1,45 @@
+/**
+ * 공고 공급 위치를 지도 좌표로 판정하는 공통 로직(카카오 지도 SDK의 services 사용, 서버 호출 없음).
+ *
+ * 위치는 세 가지로만 나눈다. 단지별 예외 데이터나 하드코딩은 쓰지 않는다.
+ * - ADDRESS(정확한 주소): 지번(동·리·로·길 + 번지)이 카카오 주소 검색과 정확히 맞고 시·군·구도 같을 때.
+ *   핀을 놓고 거리·같은 필지 계산에 쓴다.
+ * - CANDIDATE(후보): 지번이 없어 단지명 장소 검색으로 하나만 찾았을 때. '위치 확인 전'으로 표시하고 확정하지 않는다.
+ * - UNRESOLVED(미확인): 지구·블록 주소처럼 부지를 특정할 수 없을 때. 핀을 놓지 않고,
+ *   area에 법정동(없으면 시·군·구) 일대 좌표만 참고용으로 준다. 엉뚱한 곳에 확정 표시하지 않기 위해서다.
+ *
+ * 그 밖에 지도 검색창의 '지도만 옮기기'(searchArea)와 자동완성(suggestAddresses)도 여기 있다.
+ * 사용처: useAnnouncementLocation, components/kakao/Kakaomap.jsx
+ */
 import { addressCandidates } from '../../planner/researchUtils.js';
 
+// 비교 전에 글자 모양(전각·반각 등)과 공백을 하나로 맞춘다.
 const normalize=value=>String(value || '').normalize('NFKC').replace(/\s+/g,' ').trim();
+// 이름 비교용: 한글·영문·숫자만 남기고 소문자로.
 const compact=value=>normalize(value).replace(/[^가-힣a-zA-Z0-9]/g,'').toLowerCase();
+// 좌표가 숫자이고 대략 한국 범위(경도 124~132, 위도 32~40) 안인지.
 const coordinates=row=>Number.isFinite(Number(row.x)) && Number.isFinite(Number(row.y)) && Number(row.x)>=124 && Number(row.x)<=132 && Number(row.y)>=32 && Number(row.y)<=40;
+// 견본주택·홍보관은 실제 부지가 아니므로 장소 검색 후보에서 뺀다.
 const salesOffice=/견본|모델하우스|홍보관|분양사무|분양홍보|주택전시/;
+// 시·도 이름 앞부분 → 짧은 이름. '경기도'·'경기'처럼 다르게 써도 같은 시·도로 본다.
 const provinces=[['서울','서울'],['부산','부산'],['대구','대구'],['인천','인천'],['광주','광주'],['대전','대전'],['울산','울산'],['세종','세종'],['경기','경기'],['강원','강원'],['충청북','충북'],['충북','충북'],['충청남','충남'],['충남','충남'],['전북','전북'],['전라북','전북'],['전라남','전남'],['전남','전남'],['경상북','경북'],['경북','경북'],['경상남','경남'],['경남','경남'],['제주','제주']];
 function province(address) {const first=normalize(address).split(' ')[0];return provinces.find(([prefix])=>first.startsWith(prefix))?.[1];}
+/** 주소에서 시·군·구 이름(최대 2개, 예: ['안산시','단원구'])을 뽑는다. */
 export function municipality(address) {
   const tokens=normalize(address).split(' ');
   if(province(address))tokens.shift();
   // '검단신도시'·'혁신도시'·'○○지구'처럼 시·군·구로 끝나 보여도 행정구역이 아닌 이름은 뺀다(서버 AddressLocator와 같은 규칙).
   return tokens.filter(x=>/^[가-힣]+[시군구]$/.test(x) && !/(지구|특구|도시)$/.test(x)).slice(0,2);
 }
+/** 찾은 주소(found)가 공고 주소와 같은 시·도·시·군·구인지. 다른 지역의 같은 지번이 잡히는 것을 막는다. */
 export function sameRegion(address,found) {
   const expected=province(address),cities=municipality(address);
   return Boolean(expected || cities.length) && (!expected || expected===province(found)) && cities.every(part=>normalize(found).split(' ').includes(part));
 }
+/**
+ * 주소 검색에 넣을 지번 후보들. 괄호 안 지번('(동패동 1234)')도 시·군·구를 붙여 후보로 넣는다.
+ * 번지까지 있는 값만 남긴다. 번지가 없으면 후보가 비어 ADDRESS로 확정되지 않는다.
+ */
 export function parcelCandidates(address) {
   const raw=normalize(address),prefix=raw.match(/^(.+?[시군구])\s/)?.[1] || '';
   const inside=raw.match(/\(([^)]+)\)/)?.[1];
@@ -24,6 +48,7 @@ export function parcelCandidates(address) {
   // 행정동/지구/블록 이름만으로는 실제 부지를 특정하지 않는다.
   return [...new Set(values)].filter(value=>/(?:동|리|로|길)\s+(?:산\s*)?\d+(?:-\d+)?(?:\s|$)/.test(value) && sameRegion(raw,value));
 }
+/** 주소 검색 결과 한 줄이 '정확한 주소'인지: 좌표 정상 + 지번 단위 결과 + 요청한 지번과 같음 + 같은 시·군·구. */
 function precise(row,address,candidate) {
   const coord=coordinates(row);
   const actual=row.address?.address_name || row.road_address?.address_name || row.address_name;
@@ -32,6 +57,7 @@ function precise(row,address,candidate) {
   const matches=[row.address?.address_name,row.road_address?.address_name,row.address_name].some(value=>requested && parcel(value)===requested);
   return coord && ['REGION_ADDR','ROAD_ADDR'].includes(row.address_type) && matches && sameRegion(address,actual);
 }
+/** 카카오 콜백 API를 Promise로 감싼다. timeoutMs 안에 답이 없으면 오류로 끝낸다. */
 function request(service,method,query,ok,timeoutMs) {
   return new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>reject(Error('위치 검색 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.')),timeoutMs);
@@ -44,6 +70,7 @@ function request(service,method,query,ok,timeoutMs) {
     });
   });
 }
+/** 장소 검색 결과가 이 단지의 후보인지: 같은 지역, 이름이 단지명을 포함, 주소의 블록 번호(B-1블록 등)도 이름에 있음. */
 export function siteCandidate(row,address,house) {
   if(!coordinates(row) || salesOffice.test(row.place_name || '') || !sameRegion(address,row.address_name || row.road_address_name)) return false;
   const title=compact(row.place_name),name=compact(house.replace(/\([^)]*\)/g,''));
@@ -51,7 +78,13 @@ export function siteCandidate(row,address,house) {
   const blocks=[...normalize(address+' '+house).matchAll(/([a-zA-Z]+[-\s]?\d+|\d+)\s*(?:블록|블럭|BL\b)/gi)].map(m=>compact(m[1]));
   return blocks.every(block=>title.includes(block));
 }
-/** 공통 주소 검증을 통과한 공급 지번만 주소 기준 결과로 사용한다. 장소 검색은 후보로만 남긴다. */
+/**
+ * 공고 위치 판정(파일 맨 위 설명 참고). 공통 주소 검증을 통과한 공급 지번만 주소 기준 결과로 사용한다. 장소 검색은 후보로만 남긴다.
+ * 순서: ① 운영자 확인 주소 → ② 공급 주소의 지번 → ③ 단지명 장소 검색(후보) → ④ 미확인(대략 지역만).
+ * @param maps window.kakao.maps
+ * @returns ADDRESS면 { latitude, longitude, address, bcode(법정동 코드 10자리), dong, region },
+ *          CANDIDATE면 { address, latitude, longitude }, UNRESOLVED면 { area }(area는 null일 수 있다)
+ */
 export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
   const address=normalize(detail.hssplyAdres || detail.supplyLocation),house=normalize(detail.houseNm);
   const geocoder=new maps.services.Geocoder(),ok=maps.services.Status.OK;
@@ -76,6 +109,7 @@ export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
       // 시·도 + 시·군·구(예: '경기 파주시'). 주변 실거래 단지의 위치 확인 정확도를 높이는 데 쓴다.
       region:[found.address?.region_1depth_name,found.address?.region_2depth_name].filter(Boolean).join(' '),sourceUrl:''};
   }
+  // 지번으로 못 찾았으면 단지명으로 장소 검색. 후보가 딱 하나일 때만 CANDIDATE로 돌려준다(여럿이면 고르지 않는다).
   if(house) {
     const places=new maps.services.Places();
     const rows=await request(places,'keywordSearch',`${municipality(address).join(' ')} ${house}`,ok,timeoutMs);
@@ -94,6 +128,7 @@ export async function resolveLocation(maps,detail,{timeoutMs=2500}={}) {
   return {status:'UNRESOLVED',label:'지구·블록 주소 · 부지 미확정',area:approx};
 }
 
+// 법정동·읍·면·가·리로 끝나는 단어.
 const DONG_TOKEN=/^[가-힣0-9]+(동|읍|면|가|리)$/;
 /**
  * 지구·블록 주소에서 대략 위치를 찾을 검색어: 시·도 + 시·군·구 + (처음 나오는 법정동·읍·면). 동이 없으면 시·군·구만.
@@ -139,10 +174,6 @@ export async function searchArea(maps,text,regionPrefix='',{timeoutMs=2500}={}) 
   return place?{name:place.place_name || place.address_name,latitude:Number(place.y),longitude:Number(place.x),level:4}:null;
 }
 
-/**
- * 지도 검색창 자동완성의 주소·장소 후보(카카오 주소 검색과 장소 검색). center가 있으면 가까운 장소가 먼저 오도록 한다.
- * 돌려주는 항목: { kind: 'address'|'place', key, label, detail, lat, lng, exact } — exact는 번지·건물번호까지 있는 주소.
- */
 // 청약 지역을 살필 때 쓸모 있는 장소만 후보로 둔다(묘·상점 같은 잡음 제외).
 // 카카오 분류: 지하철역·학교·어린이집·대형마트·공공기관·병원·관광명소·문화시설. 아파트·주거·교통(기차역·터미널)은 분류 이름으로 고른다.
 const PLACE_GROUPS=new Set(['SW8','SC4','PS3','MT1','PO3','HP8','AT4','CT1']);
@@ -151,6 +182,10 @@ const PLACE_NOISE=/주차장|주유소|충전소|중개/;
 export const usefulPlace=row=>!PLACE_NOISE.test(row.category_name || '') && (PLACE_GROUPS.has(row.category_group_code) || PLACE_NAMES.test(row.category_name || ''));
 // 같은 검색어를 다시 입력하면(지우고 다시 쓰기 등) 카카오에 다시 묻지 않는다. 최근 50개만 기억한다.
 const suggestCache=new Map();
+/**
+ * 지도 검색창 자동완성의 주소·장소 후보(카카오 주소 검색과 장소 검색). center가 있으면 가까운 장소가 먼저 오도록 한다.
+ * 돌려주는 항목: { kind: 'address'|'place', key, label, detail, lat, lng, exact } — exact는 번지·건물번호까지 있는 주소.
+ */
 export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=2500}={}) {
   const value=normalize(text);
   if(value.length<2) return [];
@@ -165,6 +200,7 @@ export async function suggestAddresses(maps,text,{center=null,limit=5,timeoutMs=
   if(suggestCache.size>50) suggestCache.delete(suggestCache.keys().next().value);
   return result;
 }
+/** 주소 검색(3개)과 장소 검색(15개)을 동시에 묻고, 같은 이름은 한 번만 남겨 limit개로 자른다. 실패·시간 초과는 빈 목록. */
 async function askSuggestions(maps,value,{center,limit,timeoutMs}) {
   const geocoder=new maps.services.Geocoder(),places=new maps.services.Places(),ok=maps.services.Status.OK;
   const ask=(service,method,options)=>new Promise(resolve=>{

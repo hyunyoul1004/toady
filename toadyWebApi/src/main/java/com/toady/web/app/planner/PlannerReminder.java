@@ -19,10 +19,18 @@ import java.util.*;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 매일 한 회원에게 오늘/내일의 관심 일정을 묶어 한 통만 보낸다. 실제 메일 발송은 명시적 활성화 후 시작한다. */
+/**
+ * 관심 공고 일정 알림 메일 발송기. TB_FAVORITE(EMAIL_ENABLED=TRUE)를 읽고, TB_REMINDER_DELIVERY에 발송 기록을 남긴다.
+ * 매일 한 회원에게 오늘/내일의 관심 일정을 묶어 한 통만 보낸다. 실제 메일 발송은 명시적 활성화 후 시작한다.
+ * 메일은 EmailUtilService.sendReminder()로 보내며, 그 안에서 MailBudget이 하루 발송량을 확인한다.
+ */
+// @Service: 스프링 빈으로 등록한다.
+// @ConditionalOnProperty: 설정 toady.planner.reminders-enabled=true일 때만 이 빈을 만든다. 꺼져 있으면 스케줄도 돌지 않는다.
 @Service
 @ConditionalOnProperty(name="toady.planner.reminders-enabled",havingValue="true")
 public class PlannerReminder {
+    // @Configuration + @EnableScheduling: @Scheduled 메서드가 실제로 돌도록 스케줄링 기능을 켜는 작은 설정 클래스.
+    // 다른 클래스(PriceGapSnapshots 등)에도 같은 설정이 있지만 여러 번 켜도 한 번만 적용된다.
     @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc; private final PlannerService planner; private final UserRepository users;
     private final EmailUtilService mail; private final String domain; private final ReminderUnsubscribe unsubscribe;
@@ -32,6 +40,7 @@ public class PlannerReminder {
     public PlannerReminder(JdbcTemplate jdbc,PlannerService planner,UserRepository users,EmailUtilService mail,
             @Value("${toady.web.domain}") String domain,ReminderUnsubscribe unsubscribe) { this.jdbc=jdbc;this.planner=planner;this.users=users;this.mail=mail;this.domain=domain.replaceAll("/+$","");this.unsubscribe=unsubscribe; }
     /** 정시에 서버가 중단되어도 08~18시 사이 재기동 후 실행할 수 있도록 30분마다 확인한다. */
+    // @Scheduled(cron): 한국시간 8~18시, 매시 0분·30분에 send()를 부른다. cron 순서는 초 분 시 일 월 요일.
     @Scheduled(cron="0 0,30 8-18 * * *",zone="Asia/Seoul")
     public void send() {
         LocalDate today=LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -45,6 +54,10 @@ public class PlannerReminder {
             catch(Exception e) { LoggerFactory.getLogger(getClass()).warn("관심 일정 알림 처리 실패: userSeq={}, error={}",id,e.getClass().getSimpleName()); }
         }
     }
+    /**
+     * 회원 한 명 처리. 인증·탈퇴·잠금 상태를 확인하고, 오늘 이미 기록이 있으면 건너뛴다.
+     * 기록을 SENDING으로 먼저 넣고(중복 키면 다른 실행이 처리 중) 보낸 뒤 SENT/UNKNOWN/FAILED로 바꾼다.
+     */
     void sendTo(long id,LocalDate today) throws Exception {
         var account=users.findById(id).orElse(null);
         if(account==null || !"Y".equals(account.getEmailCertifyYn()) || !"N".equals(account.getWithdrawalYn()) || !"N".equals(account.getLockYn())) return;

@@ -20,7 +20,10 @@ import java.util.*;
  * 가점 계산기에서 내 점수와 비교할 공개 당첨가점 기준. 공고별로 청약홈이 공개한 주택형·거주지역 전체의
  * 최저·최고 당첨가점만 모은다(평균의 평균이나 추정치는 만들지 않는다).
  * 지역은 주소의 시·도/시·군·구로, 생활권은 공개 페이지와 같은 판정으로 나눈다.
+ * 테이블: TB_APT_LTTOT_PBLANC_SCORE(당첨가점)와 TB_APT_LTTOT_PBLANC_DETAIL(공고 상세). 가점 계산기 화면과 PublicHomePages(/score)가 쓴다.
+ * 전체 목록은 1시간 메모리 캐시, 응답은 10분 공용 캐시(Cache-Control public).
  */
+// @RestController: JSON 응답 컨트롤러.
 @RestController
 public class ScoreBenchmarks {
     static final int YEARS = 3, PER_AREA = 8, RECENT = 12;
@@ -31,10 +34,12 @@ public class ScoreBenchmarks {
     /** 전체 기간 공고별 요약. 1시간마다 다시 읽고, 같은 시점의 동시 요청은 한 번만 조회한다. */
     private final Cache<String, List<Item>> index = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofHours(1)).build();
 
+    // @Autowired: 스프링이 쓸 생성자. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
     public ScoreBenchmarks(JdbcTemplate jdbc) { this(jdbc, Clock.system(ZoneId.of("Asia/Seoul"))); }
     ScoreBenchmarks(JdbcTemplate jdbc, Clock clock) { this.jdbc = jdbc; this.clock = clock; }
 
+    /** 공고 하나의 공개 가점 요약. low/high: 공개된 주택형·지역 중 최저·최고 가점. sido·district는 Regions로 정한다. */
     public record Item(String id, String houseNm, String address, String receiptDate, String areaSlug, Double low, Double high,
                        String sido, String district) { }
 
@@ -55,6 +60,7 @@ public class ScoreBenchmarks {
      * 지역(시·도·시·군·구) 또는 생활권으로 공고를 찾는다. 결과가 적으면 기간을 넓히고, 시·군·구에 아예 없으면 같은 시·도를 제안한다.
      * years: 3·5·0(전체). sort: recent(최신순)·low(공개 최저가점 낮은 순).
      */
+    // @RequestParam(required=false): 조건을 안 주면 전국. defaultValue는 값이 없을 때 쓸 기본값.
     @GetMapping("/api/v1/public/score-benchmarks/search")
     public ResponseEntity<Map<String, Object>> search(@RequestParam(required = false) String sido, @RequestParam(required = false) String district,
             @RequestParam(required = false) String area, @RequestParam(defaultValue = "3") int years,
@@ -135,6 +141,7 @@ public class ScoreBenchmarks {
         return out;
     }
 
+    /** 지역·생활권·검색어로 거르고, 기간을 필요하면 넓힌 뒤 최저 가점 통계(중앙값·최소·최대)와 목록을 만든다. */
     static Map<String, Object> search(List<Item> all, LocalDate today, String sido, String district, String area, int years, String q, String sort) {
         String query = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
         var areaMatch = area == null || area.isBlank() ? Optional.<LivingAreas.Area>empty() : LivingAreas.bySlug(area);

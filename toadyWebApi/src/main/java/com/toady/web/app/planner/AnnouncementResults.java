@@ -16,7 +16,10 @@ import java.util.*;
 /**
  * 관심 공고들의 청약 결과(1순위 경쟁률·공개 당첨가점)를 한 번에 요약한다. 나의 청약의 진행 단계와 결과 알림이 같은 기준을 쓴다.
  * 공개 자료만 다루므로 로그인 없이 조회한다. APT 공고만 경쟁률·당첨가점이 공개된다.
+ * 읽는 테이블: TB_APT_LTTOT_PBLANC_CMPET(경쟁률), TB_APT_LTTOT_PBLANC_SCORE(당첨가점). 둘 다 스케줄러가 청약홈에서 모아 둔다.
+ * 나의 청약 화면, 공고 공개 페이지(주택형별 결과 표), 푸시 결과 알림이 쓴다.
  */
+// @RestController: JSON 응답 컨트롤러. @Validated: 검증 애너테이션을 켠다.
 @RestController
 @Validated
 public class AnnouncementResults {
@@ -35,6 +38,7 @@ public class AnnouncementResults {
     }
     public record Request(@NotNull @Size(max = 50) List<@NotNull @Pattern(regexp = "(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
 
+    // @PostMapping + @RequestBody: 본문 JSON의 ids(최대 50개)를 받는다. @Valid로 형식을 검사한다.
     @PostMapping("/api/v1/planner/results")
     public List<Result> results(@Valid @RequestBody Request request) { return List.copyOf(forIds(request.ids()).values()); }
 
@@ -102,6 +106,7 @@ public class AnnouncementResults {
         });
         return out;
     }
+    // '1,234' 같은 접수 건수를 숫자로. 숫자가 아니면 null.
     private static Long count(String value) {
         String text = value == null ? "" : value.replace(",", "").trim();
         return text.matches("[0-9]{1,9}") ? Long.parseLong(text) : null;

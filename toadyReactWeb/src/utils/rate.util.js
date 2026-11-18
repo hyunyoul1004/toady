@@ -9,6 +9,7 @@ export function rateNumber(value) {
     ? Math.round(number).toLocaleString('ko-KR')
     : (Math.round(number * 100) / 100).toLocaleString('ko-KR', { maximumFractionDigits: 2 });
 }
+/** rateNumber 뒤에 ' : 1'을 붙인 표시용 문자열. 공고 목록·경쟁률 표·공유 이미지가 함께 쓴다. */
 export function formatCompetitionRate(value) {
   const text = rateNumber(value);
   return text ? `${text} : 1` : '';

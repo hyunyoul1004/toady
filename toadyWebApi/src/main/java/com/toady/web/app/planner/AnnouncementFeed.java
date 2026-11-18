@@ -29,7 +29,10 @@ import java.util.Map;
 /**
  * 새 청약 공고 RSS(/rss.xml). 모집공고일이 오늘까지인 공고 중 최근 공고부터 담는다.
  * 검색엔진(네이버 서치어드바이저 RSS 제출 등)이 새 공고 페이지를 빨리 찾게 하는 용도라 공개 공고 데이터만 쓴다.
+ * 웹 컨테이너 nginx가 /rss.xml을 /api/v1/public/rss.xml로 넘긴다. IndexNowNotifier도 같은 목록(recentUrls)을 쓴다.
+ * 결과 XML은 30분 동안 메모리(Guava Cache)에 들고 있다.
  */
+// @RestController: 반환한 문자열(RSS XML)을 그대로 응답 본문으로 쓴다.
 @RestController
 public class AnnouncementFeed {
     private static final Logger log = LoggerFactory.getLogger(AnnouncementFeed.class);
@@ -48,10 +51,12 @@ public class AnnouncementFeed {
     private final String domain;
     private final Clock clock;
     /** 운영자가 숨긴 공고는 RSS에 넣지 않는다(database.sql 26번). 단위 테스트에서 직접 만들면 없을 수 있다. */
+    // @Autowired(required=false): 숨김 기능 빈이 있을 때만 넣는다.
     @Autowired(required = false)
     com.toady.web.app.operation.AnnouncementOverrides overrides;
     private final Cache<String, String> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(30)).maximumSize(1).build();
 
+    // @Autowired: 스프링이 쓸 생성자를 지정한다. @Value로 서비스 주소를 읽는다. 아래 생성자는 테스트용(시계 교체).
     @Autowired
     public AnnouncementFeed(JdbcTemplate jdbc, PlannerSummary summaries, @Value("${toady.web.domain}") String domain) {
         this(jdbc, summaries, domain, Clock.system(KST));
@@ -61,6 +66,7 @@ public class AnnouncementFeed {
         this.jdbc = jdbc; this.summaries = summaries; this.domain = domain.replaceAll("/+$", ""); this.clock = clock;
     }
 
+    // @GetMapping: RSS 주소. produces로 응답 형식(application/rss+xml)을 알린다.
     @GetMapping(value = "/api/v1/public/rss.xml", produces = "application/rss+xml;charset=UTF-8")
     public ResponseEntity<String> rss() {
         String xml;

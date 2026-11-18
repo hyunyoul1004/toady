@@ -12,12 +12,16 @@ import java.util.Locale;
 /**
  * 관리자 화면에서 정한 금칙어(database.sql 26번 TB_MODERATION_RULE). 1분마다 다시 읽는다.
  * 띄어쓰기·대소문자를 무시한 부분 일치만 쓴다(관리자 RuleService.normalize와 같은 규칙). 테이블이 없으면 금칙어가 없는 것으로 본다.
+ * BLOCK은 글 저장을 막고, FLAG는 쪽지에만 '주의' 표시를 붙인다. 이야기(STORY)·쪽지(DM)를 쓰는 서비스가 저장 전에 check를 부른다.
  */
+// @Component: 빈 하나로 등록되어 읽어 둔 금칙어 목록을 함께 쓴다
 @Component
 public class ModerationRules {
     private static final Logger log = LoggerFactory.getLogger(ModerationRules.class);
     private static final long REFRESH_MS = 60_000;
+    /** 금칙어를 적용할 곳: 이야기(댓글·커뮤니티 글) / 쪽지. DB의 SCOPE가 ALL이면 둘 다. */
     public enum Scope { STORY, DM }
+    /** 처리 방식: BLOCK(저장 거부) / FLAG(쪽지에 표시만). */
     public enum Action { BLOCK, FLAG }
     record Rule(String compact, String scope, Action action) { }
 
@@ -45,6 +49,7 @@ public class ModerationRules {
     /** 관리자에서 바꾼 뒤 바로 반영해야 하는 테스트용. */
     void refresh() { loadedAt = 0; }
 
+    // 1분마다 TB_MODERATION_RULE을 다시 읽는다(AppSettings와 같은 이중 확인 방식). 2글자 미만 금칙어는 오탐이 많아 버린다
     private List<Rule> current() {
         long now = System.currentTimeMillis();
         if (now - loadedAt < REFRESH_MS) return rules;
@@ -64,6 +69,7 @@ public class ModerationRules {
         }
     }
 
+    /** 소문자로 바꾸고 모든 공백을 지운다. "광 고"도 "광고"로 걸리게 하기 위해서다. */
     public static String normalize(String text) {
         return text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }

@@ -12,7 +12,9 @@ import java.util.Locale
 /**
  * 금칙어(database.sql 26번 TB_MODERATION_RULE). API가 1분마다 다시 읽어 이야기·쪽지에 적용한다.
  * 정규식은 받지 않고 '띄어쓰기·대소문자를 무시한 부분 일치'만 쓴다(API ModerationRules와 같은 규칙).
+ * 호출: AdminController의 금칙어 화면(/admin/moderation).
  */
+// @Service: 업무 로직 빈.
 @Service
 class RuleService(private val jdbc: JdbcTemplate) {
 	data class Rule(val seq: Long, val pattern: String, val scope: String, val action: String, val enabled: Boolean, val note: String?,
@@ -20,8 +22,10 @@ class RuleService(private val jdbc: JdbcTemplate) {
 		val scopeLabel get() = SCOPES[scope] ?: scope
 		val actionLabel get() = ACTIONS[action] ?: action
 	}
+	/** 추가 결과. 컨트롤러가 결과마다 다른 안내를 보여 준다. */
 	enum class Outcome { ADDED, INVALID, DUPLICATE, UNAVAILABLE }
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_MODERATION_RULE WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	fun list(): List<Rule> = try {
@@ -48,6 +52,7 @@ class RuleService(private val jdbc: JdbcTemplate) {
 		} catch (duplicate: DuplicateKeyException) { Outcome.DUPLICATE to null }
 	}
 
+	/** 사용 켬·끔. 이미 같은 상태면 바꾸지 않고 false. */
 	fun setEnabled(seq: Long, enabled: Boolean, admin: String): Boolean = try {
 		jdbc.update("UPDATE TB_MODERATION_RULE SET USE_YN=?, ADMIN_NAME=?, UPDATE_DT=? WHERE RULE_SEQ=? AND USE_YN<>?",
 			if (enabled) "Y" else "N", admin.take(100), Timestamp.valueOf(Kst.now()), seq, if (enabled) "Y" else "N") > 0

@@ -7,6 +7,12 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 동네 조사 API: 실거래(국토부), 시·군·구 단지별 시세 지도, 분양가와 주변 시세 비교.
+ * 공고 상세의 '위치'·'주변 시세' 탭이 부른다. 실제 일은 NeighborhoodResearchService와 ComplexPriceService가 한다.
+ */
+// @RestController: JSON을 돌려주는 컨트롤러. @Validated: @RequestParam의 @Pattern·@Min 같은 검증을 켠다.
+// @RequestMapping: 아래 주소 앞에 /api/v1/research가 붙는다.
 @RestController
 @Validated
 @RequestMapping("/api/v1/research")
@@ -14,7 +20,10 @@ public class ResearchController {
     private final NeighborhoodResearchService research;
     private final ComplexPriceService complexes;
     public ResearchController(NeighborhoodResearchService research,ComplexPriceService complexes) {this.research=research;this.complexes=complexes;}
+    // 국토부 키가 설정되어 실거래 기능을 쓸 수 있는지 화면에 알려 준다.
     @GetMapping("/capabilities") public Map<String,Boolean> capabilities() {return Map.of("tradesEnabled",research.tradesEnabled());}
+    // 법정동 코드(bcode, 10자리)와 동 이름으로 최근 실거래를 조회한다.
+    // @RequestParam: ?bcode=...처럼 쿼리 문자열 값을 받는다. required=false면 없어도 된다.
     @GetMapping("/transactions") public NeighborhoodResearchService.TradeResult trades(
             @RequestParam @Pattern(regexp="[0-9]{10}") String bcode,
             @RequestParam @NotBlank @Size(max=40) String dong,

@@ -2,7 +2,11 @@ package com.toady.web.app.announcement.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-/** 여러 공고 유형의 결과를 통합 목록에서 공통으로 표현합니다. */
+/**
+ * 여러 공고 유형의 결과를 통합 목록에서 공통으로 표현합니다.
+ * 유형마다 엔티티 필드 이름이 달라서 AnnouncementListMapper가 이 한 가지 모양으로 바꾼다.
+ * GET /api/v1/announcements(통합 목록) 응답의 content 항목이다. 순위별 접수일은 APT에만 있고 나머지는 null이다.
+ */
 @Schema(description = "전체 공고 통합 목록 항목")
 public record AnnouncementListItem(
         @Schema(description = "공고 유형", example = "apt")
@@ -58,6 +62,7 @@ public record AnnouncementListItem(
         @Schema(description = "삭제되지 않은 댓글과 답글 수")
         long commentCount
 ) {
+    /** 댓글 수만 채운 새 객체를 돌려준다. AnnouncementCommentCountService가 페이지를 만든 뒤 한 번에 채운다. */
     public AnnouncementListItem withCommentCount(long count) {
         return new AnnouncementListItem(
                 type, houseManageNo, pblancNo, houseNm,

@@ -13,15 +13,28 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+/**
+ * APT 분양정보 상세(공고 한 건) 엔티티. 테이블: TB_APT_LTTOT_PBLANC_DETAIL.
+ * 청약홈 getAPTLttotPblancDetail 응답 한 행이 이 객체 하나가 된다.
+ * ApplyhomeEntityMapper가 JSON을 이 클래스로 바꾸고, ApplyhomeDataPersistenceService가 저장한다.
+ * 필드 이름은 청약홈 응답 키를 snake_case → camelCase로 바꾼 것과 같아야 값이 들어온다.
+ */
+// @Entity: JPA가 관리하는 테이블 매핑 클래스라는 표시.
 @Entity
+// @Table: 연결할 실제 테이블 이름. application.yml의 PhysicalNamingStrategyStandardImpl 덕분에 이름을 바꾸지 않고 그대로 쓴다.
 @Table(name = "TB_APT_LTTOT_PBLANC_DETAIL")
+// @Comment(Hibernate): 테이블·컬럼 설명. ddl-auto가 none이라 실제 DB 스키마는 database.sql이 기준이고, 여기서는 설명용이다.
 @Comment("APT 분양정보 상세")
+// @IdClass: 기본키가 두 컬럼(주택관리번호+공고번호)이라, 키 묶음을 HouseManagePblancId 클래스로 따로 정의한다.
 @IdClass(HouseManagePblancId.class)
+// @Getter/@Setter(Lombok): 모든 필드의 getter·setter를 컴파일할 때 자동으로 만든다.
 @Getter
 @Setter
+// @NoArgsConstructor(Lombok): 매개변수 없는 생성자를 만든다. JPA와 Jackson이 객체를 만들 때 필요하다.
 @NoArgsConstructor
 public class AptLttotPblancDetail {
 
+	// @Id: 기본키 컬럼. @IdClass와 함께 두 필드에 붙여 복합키를 이룬다.
 	@Id
 	@Comment("주택관리번호")
 	@Column(name = "HOUSE_MANAGE_NO", length = 40, nullable = false)
@@ -174,6 +187,7 @@ public class AptLttotPblancDetail {
 	@Column(name = "PBLANC_URL", length = 300)
 	private String pblancUrl;
 
+	// insertable·updatable=false: DB 기본값(현재 시각)이 채우는 컬럼이라 JPA가 직접 쓰지 않는다.
 	@Comment("등록일시")
 	@Column(name = "REG_DT", insertable = false, updatable = false)
 	private LocalDateTime regDt;

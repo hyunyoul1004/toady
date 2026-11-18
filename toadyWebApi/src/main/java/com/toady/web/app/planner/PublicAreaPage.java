@@ -22,17 +22,24 @@ import java.util.Objects;
 import java.util.stream.Stream;
 import static com.toady.web.app.planner.PublicHtml.esc;
 
-/** 생활권 검색어(예: 운정 청약)로 들어오는 사용자에게 같은 기준의 공고 목록을 서버 HTML로 제공한다. */
+/**
+ * 생활권 공개 페이지(/areas, /areas/{slug})와 생활권·무순위 공고를 접수 상태로 나누는 공통 기준(groups·classify).
+ * 생활권 검색어(예: 운정 청약)로 들어오는 사용자에게 같은 기준의 공고 목록을 서버 HTML로 제공한다(봇은 웹 컨테이너 nginx를 거쳐 받는다).
+ * 공고 검색은 AnnouncementSearchService, 가점은 ScoreBenchmarks를 쓴다. AreaCalendar, PublicCollectionPages, EligibilityFeed, 웹 푸시(push 패키지)도 여기 기준을 쓴다.
+ */
+// @RestController: HTML 문자열과 JSON을 응답하는 컨트롤러.
 @RestController
 public class PublicAreaPage {
     static final int PAST_DAYS = 180, FUTURE_DAYS = 180;
     private final AnnouncementSearchService search;
     private final String domain;
     private final ScoreBenchmarks benchmarks;
+    // @Value: 서비스 주소(toady.web.domain)를 설정에서 읽는다.
     public PublicAreaPage(AnnouncementSearchService search, @Value("${toady.web.domain}") String domain, ScoreBenchmarks benchmarks) {
         this.search = search; this.domain = domain.replaceAll("/+$", ""); this.benchmarks = benchmarks;
     }
     enum Status { OPEN, UPCOMING, CLOSED }
+    /** 공고 한 건과 접수 시작·마감일, 오늘 기준 상태. */
     record Item(AnnouncementListItem source, LocalDate start, LocalDate end, Status status) {
         String id() { return source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo(); }
     }
@@ -125,6 +132,7 @@ public class PublicAreaPage {
         return new Groups(open, upcoming, closed.size() > closedLimit ? closed.subList(0, closedLimit) : closed);
     }
 
+    // 생활권 목록 HTML. 5분 페이지 캐시.
     @GetMapping(value = "/api/v1/public/areas", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> index() { return PublicHtml.cached("areas", this::renderIndex); }
     private ResponseEntity<String> renderIndex() {
@@ -149,6 +157,7 @@ public class PublicAreaPage {
     public record AreaSummary(String slug, String label, String description, int open, int upcoming, String month) { }
     private final Cache<String, List<AreaSummary>> areaSummaryCache = CacheBuilder.newBuilder()
         .maximumSize(4).expireAfterWrite(Duration.ofMinutes(10)).build();
+    // 앱 화면용 JSON. 생활권마다 검색을 돌리므로 10분 메모리 캐시 + 공용 캐시 헤더를 쓴다.
     @GetMapping("/api/v1/public/area-summaries")
     public ResponseEntity<List<AreaSummary>> areaSummaries() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -159,6 +168,7 @@ public class PublicAreaPage {
         return PublicHtml.publicJson(body, Duration.ofMinutes(10));
     }
 
+    // 생활권 한 곳의 HTML. @PathVariable로 slug를 받는다. 없는 slug는 캐시에 넣지 않고 바로 404를 준다.
     @GetMapping(value = "/api/v1/public/areas/{slug}", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> page(@PathVariable String slug) {
         if (LivingAreas.bySlug(slug).isEmpty()) return renderPage(slug);
@@ -227,6 +237,7 @@ public class PublicAreaPage {
     }
     static String score(double value) { return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value); }
 
+    /** 공고 목록 카드 하나(배지·단지명·유형·접수 기간·주소). */
     String section(String heading, List<Item> items, String empty) {
         StringBuilder list = new StringBuilder("<section class='card list'><h2>").append(esc(heading)).append(" <span class='muted'>").append(items.size()).append("건</span></h2>");
         if (items.isEmpty()) return list.append("<p class='empty'>").append(esc(empty)).append("</p></section>").toString();

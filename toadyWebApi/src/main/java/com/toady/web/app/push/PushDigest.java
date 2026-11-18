@@ -36,10 +36,16 @@ import java.util.function.Supplier;
  * 메일과 달리 발송 한도가 없지만, 알림 피로를 줄이려고 하루 1회·내용이 있을 때만 보낸다.
  * 푸시 서비스가 404·410으로 응답하면(브라우저에서 해지·만료) 구독을 바로 삭제한다.
  * 실제 발송은 PUSH_DIGEST_ENABLED=true일 때만 시작한다.
+ * 스케줄러 프로젝트가 아니라 이 API 안에서 @Scheduled로 돈다. 공고 데이터는 planner 쪽 서비스(PlannerSummary·PublicAreaPage 등)로 읽고,
+ * 구독은 PushSubscriptions, 발송은 WebPushSender, 기록은 TB_PUSH_AREA_SEEN·TB_PUSH_RESULT_SENT에 JdbcTemplate으로 남긴다.
+ * 시각은 모두 한국 시간(KST)이다.
  */
+// @Service: 서비스 빈
 @Service
+// @ConditionalOnProperty: 설정 값 toady.push.digest-enabled가 "true"일 때만 이 빈을 만든다. 아니면 클래스 전체가 없는 것과 같다
 @ConditionalOnProperty(name = "toady.push.digest-enabled", havingValue = "true")
 public class PushDigest {
+    // @Configuration + @EnableScheduling: @Scheduled 메서드를 실제로 돌게 하는 스위치. 이 빈이 켜질 때만 함께 켜지도록 안쪽에 둔다
     @Configuration @EnableScheduling static class Scheduling { }
     private static final Logger log = LoggerFactory.getLogger(PushDigest.class);
     /** 생활권 새 공고 기록을 처음 만들 때 기존 공고를 '새 공고'로 보내지 않기 위한 기준 시각. */
@@ -51,6 +57,7 @@ public class PushDigest {
     private final AnnouncementResults results;
     private final PriceGapStore gapStore;
 
+    // @Autowired: 스프링이 쓸 생성자. 아래 Clock을 받는 생성자는 테스트에서 시각을 고정할 때 쓴다
     @Autowired
     public PushDigest(PushSubscriptions store, WebPushSender sender, JdbcTemplate jdbc, PlannerService planner, PlannerSummary summaries,
             PublicAreaPage areas, UserRepository users, ObjectMapper mapper, AnnouncementResults results,
@@ -65,12 +72,15 @@ public class PushDigest {
     }
 
     static final int STALE_DAYS = 180;
+    /** 한 번 실행한 결과 수: 보냄 / 만료로 삭제 / 다시 시도 / 보낼 내용 없음. */
     public record Report(int sent, int removed, int retry, int empty) { }
+    /** 생활권·주제에서 본 공고와 그 공고를 처음 확인한 시각. */
     record Seen(AnnouncementListItem item, LocalDateTime firstSeen) {
         String id() { return item.type() + "/" + item.houseManageNo() + "/" + item.pblancNo(); }
     }
 
     /** 내일 일정을 전날 저녁에 알린다. 서버가 18시에 멈춰 있어도 20시 30분까지 재기동 후 보낼 수 있게 30분마다 확인한다. */
+    // @Scheduled(cron): "초 분 시 일 월 요일". 여기서는 18~20시의 0분·30분마다, 한국 시간 기준으로 실행한다
     @Scheduled(cron = "0 0,30 18-20 * * *", zone = "Asia/Seoul")
     public void scheduled() {
         if (!sender.enabled() || !store.ready()) return;
@@ -85,6 +95,7 @@ public class PushDigest {
      * 한 구독에 하루 한 번까지(여러 결과는 한 알림으로 묶음). 묶음 알림과 합쳐 하루 2건을 넘지 않는다.
      * 보낸 결과는 TB_PUSH_RESULT_SENT(database.sql 29번)에 남겨 묶음 알림이 다시 보내지 않는다. 테이블이 없으면 즉시 알림만 쉰다.
      */
+    // 매시 5분부터 10분 간격(5, 15, 25 ...분)으로 실행
     @Scheduled(cron = "0 5/10 * * * *", zone = "Asia/Seoul")
     public void scheduledResults() {
         if (!sender.enabled() || !store.ready()) return;
@@ -96,6 +107,7 @@ public class PushDigest {
     static final int QUIET_FROM = 22, QUIET_UNTIL = 8;
     private volatile boolean resultTableMissingLogged;
 
+    /** 결과 즉시 알림 한 번 실행. 조용한 시간이거나 새 결과가 없으면 바로 끝난다. */
     public Report runResults() {
         LocalDateTime now = PushSubscriptions.now(clock);
         if (now.getHour() >= QUIET_FROM || now.getHour() < QUIET_UNTIL) return new Report(0, 0, 0, 0);
@@ -202,6 +214,7 @@ public class PushDigest {
         }
         return claimed;
     }
+    /** claimResults로 넣은 발송 기록을 지운다(보내지 못했을 때). */
     private void releaseResults(String hash, List<PushMessage.Line> lines) {
         for (PushMessage.Line line : lines) {
             String key = resultKey(line);
@@ -210,6 +223,10 @@ public class PushDigest {
         }
     }
 
+    /**
+     * 저녁 묶음 알림 한 번 실행. 순서: 오래된 구독 정리 → 생활권·주제별 새 공고와 결과 공개 시각 기록 →
+     * 오늘 아직 안 보낸 구독마다 줄을 모아 알림 하나로 묶어 보낸다. 구독 행을 claim으로 선점해 하루 한 번만 보낸다.
+     */
     public Report run() {
         LocalDateTime now = PushSubscriptions.now(clock);
         LocalDate today = now.toLocalDate(), tomorrow = today.plusDays(1);
@@ -339,6 +356,7 @@ public class PushDigest {
             return "새 공고 · " + ("비슷".equals(value.text()) ? label + "와 비슷" : label + " 대비 " + value.text()) + "(참고)";
         }).orElse("새 공고");
     }
+    /** 주간 브리핑 한 줄 요약(예: 접수 시작 5건 · 아파트 3건 · 무순위·줍줍 2건). */
     static String weeklyText(PublicAreaPage.WeekCounts counts) {
         List<String> parts = new ArrayList<>();
         if (counts.apt() > 0) parts.add("아파트 " + counts.apt() + "건");
@@ -409,6 +427,7 @@ public class PushDigest {
         if (resultMarked.size() > 2_000) resultMarked.values().removeIf(day -> !day.equals(today));
         markSeen(slug, List.of(id), now);
     }
+    /** 공고 id(유형/주택관리번호/공고번호)의 요약을 읽는다. 이번 실행 안에서는 cache로 공고마다 한 번만 읽는다. */
     private Optional<PlannerSummary.Summary> guestSummary(String id, Map<String, Optional<PlannerSummary.Summary>> cache) {
         return cache.computeIfAbsent(id, key -> {
             String[] parts = key.split("/");
@@ -417,6 +436,7 @@ public class PushDigest {
             catch (EntityNotFoundException | IllegalArgumentException missing) { return Optional.empty(); }
         });
     }
+    /** 관심 공고의 일정 중 내일 날짜인 것을 알림 줄로 만든다. */
     static List<PushMessage.Line> favoriteLines(PlannerSummary.Summary summary, LocalDate tomorrow) {
         return summary.events().stream().filter(event -> event.date().equals(tomorrow))
             .map(event -> new PushMessage.Line("FAVORITE", summary.id(), summary.houseNm(), event.label(), null, null)).toList();

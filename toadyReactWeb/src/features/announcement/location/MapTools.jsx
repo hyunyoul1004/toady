@@ -1,3 +1,9 @@
+/**
+ * 실거래 지도의 거리 재기·반경 그리기 도구(useMapTools)와 그 단추·결과 카드(MapToolRail, MapToolbar).
+ * 카카오 지도 객체(Polyline·Circle·CustomOverlay)를 직접 만들고 지운다. React가 그리는 DOM이 아니므로
+ * 각 useEffect의 정리(cleanup) 함수에서 setMap(null)로 반드시 지도에서 떼어 낸다.
+ * 사용처: components/kakao/Kakaomap.jsx
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Tooltip, Typography } from '@mui/material';
 import AddRounded from '@mui/icons-material/AddRounded';
@@ -36,6 +42,9 @@ function label(kakao, map, point, text, className, onRemove) {
  * - 반경 그리기: 누른 곳이 원의 가운데다. 누른 채 끌어 놓거나, 한 번 누른 뒤 끝이 될 곳을 다시 누르면 원이 된다(마우스·터치 같음).
  *   원 안의 단지 수를 함께 보여 준다.
  * 둘 다 직선거리이며 실제 길 거리는 아니다. 결과는 카드의 '지우기'나 지도 위 이름표의 ✕로 지운다.
+ * @param mapRef 카카오 지도 객체 ref / kakaoRef window.kakao ref / containerRef 지도 DOM ref
+ * @param mapReady 지도가 만들어지면 바뀌는 값. ref는 바뀌어도 effect를 다시 돌리지 않으므로 이 값을 의존성에 넣는다.
+ * @param origin 공고 기준 위치. 바뀌면 재던 선과 원을 지운다.
  */
 export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }) {
   const [measuring, setMeasuring] = useState(false);
@@ -43,11 +52,14 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
   const [drawing, setDrawing] = useState(false);       // 반경 그리기 모드(지도 끌기 대신 원 그리기)
   const [circle, setCircle] = useState(null);          // { center: {lat,lng}, meters, live, anchored }
   const [drawHint, setDrawHint] = useState('');
+  // Kakaomap의 말풍선 클릭 처리기처럼 미리 등록해 둔 함수가 '지금 재는 중인지'를 최신 값으로 읽도록 ref에 매 렌더 복사해 둔다.
+  // (state는 등록 당시 값에 묶이지만 ref.current는 늘 최신이다. 값이 바뀌어도 다시 렌더링하지 않는다.)
   const measuringRef = useRef(false); measuringRef.current = measuring;
   const originKey = origin ? `${origin.lat},${origin.lng}` : '';
 
   const clearMeasure = () => setPoints([]);
   const clearCircle = () => { setCircle(null); setDrawHint(''); };
+  // 지도 이름표의 ✕ 단추가 늘 최신 지우기 함수를 부르도록 ref로 넘긴다.
   const clearRef = useRef({}); clearRef.current = { clearMeasure, clearCircle };
 
   // 기준 위치가 바뀌면(다른 공고·직접 검색) 재던 선과 원을 지운다.
@@ -56,6 +68,7 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
   const path = points;
   const segments = path.slice(1).map((point, index) => distanceMeters(path[index], point));
   const total = segments.reduce((sum, value) => sum + value, 0);
+  // 마우스 이동 처리기는 재는 동안 한 번만 등록되므로, 마지막 지점·누적 거리는 ref로 읽는다(지점마다 처리기를 다시 달지 않게).
   const lastRef = useRef({ point: null, total: 0 }); lastRef.current = { point: path[path.length - 1] || null, total };
 
   // 거리 재기: 지도를 누르면 지점을 더한다. 마우스를 움직이면 마지막 지점에서 커서까지 점선과 거리를 미리 보여 준다.
@@ -79,6 +92,7 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
       } else tip.setPosition(event.latLng);
       tip.getContent().textContent = text;
     };
+    // 정리 함수에서 같은 처리기를 떼어 낸다. 재기를 끝내거나 컴포넌트가 사라지면 클릭이 더는 지점을 더하지 않는다.
     kakao.maps.event.addListener(map, 'click', add);
     kakao.maps.event.addListener(map, 'mousemove', preview);
     kakao.maps.event.addListener(map, 'mouseout', hidePreview);
@@ -95,6 +109,7 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
   useEffect(() => {
     const map = mapRef.current, kakao = kakaoRef.current;
     if (!map || !kakao || !path.length) return undefined;
+    // 지점이 바뀔 때마다 이전에 그린 것을 모두 지우고(정리 함수) 새로 그린다. 지점이 최대 30개라 부담이 적다.
     const drawn = [];
     if (path.length > 1) drawn.push(new kakao.maps.Polyline({ map, path: path.map(p => new kakao.maps.LatLng(p.lat, p.lng)), strokeWeight: 4, strokeColor: '#e11d48', strokeOpacity: .9, strokeStyle: 'solid' }));
     let running = 0;
@@ -119,6 +134,8 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
     element.style.touchAction = 'none';   // 모바일에서 끄는 동안 화면이 스크롤되지 않게
     element.classList.add('is-drawing');
     // phase: null(가운데를 기다림) | 'drag'(가운데를 누른 채 끄는 중) | 'anchored'(가운데 고정, 끝을 기다림) | 'adjust'(끝을 누른 채 맞추는 중)
+    // 이 값들은 그리는 동안만 쓰는 지역 변수다. state로 두면 포인터가 움직일 때마다 다시 렌더링되므로 effect 안에 둔다.
+    // 화면에 보여 줄 원만 setCircle로 state에 올리고, 그것도 requestAnimationFrame으로 한 프레임에 한 번만 한다.
     let phase = null, center = null, pointerId = null, frame = 0, latest = null;
     const toLatLng = event => {
       const rect = element.getBoundingClientRect();
@@ -166,6 +183,7 @@ export function useMapTools({ mapRef, kakaoRef, containerRef, mapReady, origin }
     const cancel = () => { if (phase !== 'drag' && phase !== 'adjust') return; pointerId = null; if (phase === 'drag') { phase = null; center = null; setCircle(null); } else phase = 'anchored'; };
     // 그리는 동안·직후의 클릭이 단지 말풍선 선택으로 번지지 않게 막는다.
     const swallowClick = event => { event.stopPropagation(); event.preventDefault(); };
+    // 세 번째 인자 true(capture)로 카카오 지도보다 먼저 받아, 지도가 끌리거나 말풍선이 눌리지 않게 한다.
     element.addEventListener('pointerdown', down, true);
     element.addEventListener('pointermove', move, true);
     element.addEventListener('pointerup', up, true);
@@ -252,6 +270,7 @@ export function MapToolRail({ tools, onZoom }) {
 export function MapToolbar({ tools, rows = [], supply = null, children }) {
   const { measuring, points, total, drawing, circle, drawHint } = tools;
   const time = travelMinutes(total);
+  // 원 안 단지 요약은 원이나 단지 목록이 바뀔 때만 다시 계산한다.
   const summary = useMemo(() => (circle && !circle.live ? radiusSummary(rows, circle, supply) : { count: 0 }), [circle, rows, supply?.pyeong]);
   return <Box className="pm-toolbar" onClick={event => event.stopPropagation()}>
     {children && <Box className="pm-toolbar-buttons">{children}</Box>}

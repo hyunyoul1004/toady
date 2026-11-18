@@ -18,8 +18,12 @@ import java.util.Set;
 
 /**
  * 차단·신고·쪽지 받는 범위 설정. 신고는 관리자 사이트의 '신고'에서 운영자가 처리한다.
+ * CommunityController가 부른다. 테이블: TB_USER_BLOCK, TB_USER_REPORT, TB_DM_SETTING(database.sql 25번).
+ * @Transactional 없이 SQL 한 문장씩 실행한다. 중복은 DB의 유니크 키(DuplicateKeyException)로 걸러 낸다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 서비스 빈
 @Service
 public class SafetyService {
     public static final Set<String> REPORT_TYPES = Set.of("USER", "COMMENT", "MESSAGE");
@@ -39,6 +43,7 @@ public class SafetyService {
 
     // ---------------------------------------------------------------- 차단
 
+    /** 차단. 이미 차단했으면 같은 성공 결과를 돌려준다. */
     public Result block(long me, long target) {
         if (!community.ready()) return Result.fail("ERR-999", Community.NOT_READY);
         if (me == target) return Result.fail("ERR-401", "나 자신은 차단할 수 없어요.");
@@ -53,6 +58,7 @@ public class SafetyService {
         return Result.done("차단했어요. 서로 쪽지를 보낼 수 없고, 이 회원의 이야기는 접어서 보여요.", null);
     }
 
+    /** 차단 풀기. 차단한 적이 없어도 성공으로 본다. */
     public Result unblock(long me, long target) {
         if (!community.ready()) return Result.fail("ERR-999", Community.NOT_READY);
         jdbc.update("DELETE FROM TB_USER_BLOCK WHERE USER_SEQ=? AND BLOCKED_USER_SEQ=?", me, target);
@@ -122,10 +128,12 @@ public class SafetyService {
 
     // ---------------------------------------------------------------- 쪽지 설정
 
+    /** 쪽지 설정: 받는 범위와 운영자가 정한 쪽지 정지 종료 시각. */
     public record Setting(String policy, LocalDateTime suspendedUntil) {
         boolean suspended(LocalDateTime now) { return suspendedUntil != null && suspendedUntil.isAfter(now); }
     }
 
+    /** 설정을 읽는다. 행이나 테이블이 없으면 기본값(ALL, 정지 없음). */
     public Setting setting(long userSeq) {
         try {
             return jdbc.query("SELECT RECEIVE_POLICY, SUSPENDED_UNTIL FROM TB_DM_SETTING WHERE USER_SEQ=?", rs -> {
@@ -136,6 +144,7 @@ public class SafetyService {
         } catch (DataAccessException missing) { return new Setting("ALL", null); }
     }
 
+    /** 받는 범위 저장. UPDATE 후 행이 없으면 INSERT하는 upsert다. */
     public Result setPolicy(long me, String policy) {
         if (!community.ready()) return Result.fail("ERR-999", Community.NOT_READY);
         String value = policy == null ? "" : policy.trim().toUpperCase();

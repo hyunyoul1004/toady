@@ -1,6 +1,9 @@
 package com.toady.web.admin;
 
-/** 관리자에서 선택하는 작업 범위. 전체 경쟁률 작업에는 가점이 포함되므로 중복 자동 실행에 유의한다. */
+/**
+ * 관리자에서 선택하는 작업 범위. 전체 경쟁률 작업에는 가점이 포함되므로 중복 자동 실행에 유의한다.
+ * DB(TB_SCHEDULER_ADMIN_JOB.JOB_KIND, TB_SCHEDULER_ADMIN_SCHEDULE)에는 이 enum의 이름(name())이 문자열로 저장된다.
+ */
 public enum JobKind {
     ALL("전체 수집"),
     ANNOUNCEMENTS("공고 · 주택형"),

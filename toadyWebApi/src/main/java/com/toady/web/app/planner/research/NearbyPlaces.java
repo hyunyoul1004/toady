@@ -23,7 +23,11 @@ import java.util.concurrent.TimeUnit;
  * 위치 탭의 '가까운 시설' 요약: 공고 위치에서 가장 가까운 지하철역·초등학교·마트(카카오 로컬 카테고리 검색 MT1: 대형마트·슈퍼 포함).
  * 카카오 REST 키는 서버에만 둔다(AddressLocator와 같은 키·같은 전송 방식). 거리는 카카오가 돌려주는 직선거리(m)다.
  * 같은 지점(소수 넷째 자리, 약 10m)은 하루 동안 기억해 외부 호출을 줄인다.
+ * 캐시는 2단이다: 1단 메모리(Guava Cache, 이 서버 안에서만) → 2단 Redis(SharedCache, 재시작·배포 뒤에도 남음) → 둘 다 없으면 카카오 호출.
+ * 안쪽 Api 클래스가 /api/v1/research/nearby 요청을 받아 nearest()를 부른다.
  */
+// @Slf4j(Lombok): 'log'라는 로거 필드를 자동으로 만들어 준다.
+// @Service: 스프링 빈으로 등록한다.
 @Slf4j
 @Service
 public class NearbyPlaces {
@@ -45,13 +49,19 @@ public class NearbyPlaces {
 
     /** 메모리 다음 단의 공유 캐시(Redis). 배포 뒤에도 같은 지점의 카카오 호출(요청당 3회)을 아낀다. */
     private SharedCache shared = SharedCache.none();
+    // @Autowired(required=false) 메서드 주입: SharedCache 빈이 있으면 넣고, 없으면 기본값(none, 아무것도 저장 안 함)을 그대로 쓴다.
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void useSharedCache(SharedCache shared) { this.shared = shared; }
 
+    // @Value: 카카오 REST 키(toady.research.kakao-rest-key)를 설정에서 읽는다. 없으면 빈 문자열이고 기능이 꺼진다.
     public NearbyPlaces(ResearchTransport transport, @Value("${toady.research.kakao-rest-key:}") String key) {
         this.transport = transport; this.key = key == null ? "" : key.trim();
     }
 
+    /**
+     * 좌표를 소수 넷째 자리로 반올림해 캐시 키로 쓰고, 메모리 → Redis → 카카오 순으로 찾는다.
+     * 카카오는 카테고리마다 한 번씩(지하철역·학교·마트, 총 3번) 부른다. 실패하면 UNAVAILABLE을 돌려주고 캐시하지 않는다.
+     */
     public Result nearest(double lat, double lng) {
         if (key.isBlank()) return new Result("NOT_CONFIGURED", RADIUS, List.of());
         double y = Math.round(lat * 10000) / 10000.0, x = Math.round(lng * 10000) / 10000.0;
@@ -91,12 +101,15 @@ public class NearbyPlaces {
         return Optional.empty();
     }
 
+    /** 주변 시설 API. 서비스 클래스 안에 작은 컨트롤러를 static 중첩 클래스로 두었다. */
+    // @RestController: 스프링이 중첩 클래스도 찾아 컨트롤러로 등록한다. @Validated: @DecimalMin 같은 파라미터 검증을 켠다.
     @RestController
     @Validated
     static class Api {
         private final NearbyPlaces service;
         Api(NearbyPlaces service) { this.service = service; }
         /** 공고 위치(확정 지번 좌표)에서 가장 가까운 지하철역·초등학교·대형마트. */
+        // @RequestParam의 @DecimalMin·@DecimalMax: 한국 범위(위도 33~39, 경도 124~132) 밖 좌표는 400으로 막는다.
         @GetMapping("/api/v1/research/nearby")
         public Result nearby(@RequestParam @DecimalMin("33") @DecimalMax("39") double lat,
                              @RequestParam @DecimalMin("124") @DecimalMax("132") double lng) {

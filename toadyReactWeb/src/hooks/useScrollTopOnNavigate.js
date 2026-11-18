@@ -5,6 +5,9 @@ import { useLocation, useNavigationType } from 'react-router-dom';
  * 다른 화면으로 새로 이동하면 맨 위에서 보여준다.
  * - 뒤로가기·앞으로가기(POP)는 브라우저가 복원한 읽던 위치를 지킨다.
  * - 같은 화면에서 검색 조건·팝업만 바뀌는 경우(경로가 같음)와 #앵커 이동은 건드리지 않는다.
+ * 레이아웃(MainLayout)에서 한 번 부른다.
+ * useNavigationType: 이번 이동이 PUSH(새 이동)·REPLACE(교체)·POP(뒤로/앞으로) 중 무엇인지 알려 준다.
+ * previous는 useRef라 값이 바뀌어도 다시 렌더하지 않는다. 직전 경로를 기억하는 용도로만 쓴다.
  */
 export function useScrollTopOnNavigate() {
   const { pathname, hash } = useLocation();
@@ -20,5 +23,6 @@ export function useScrollTopOnNavigate() {
     const overList = (detail(from) && (list(pathname) || detail(pathname))) || (detail(pathname) && list(from));
     if (type === 'POP' || hash || overList) return;
     window.scrollTo(0, 0);
+    // 의존성 배열에 pathname만 둔다. 경로가 바뀔 때만 실행하고, 검색어(?)나 팝업 state 변화에는 반응하지 않는다.
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 }

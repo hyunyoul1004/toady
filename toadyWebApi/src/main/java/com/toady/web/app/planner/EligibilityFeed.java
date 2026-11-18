@@ -26,7 +26,10 @@ import java.util.stream.Collectors;
  * '내게 맞는 청약'·'줍줍' 화면용 공개 목록. 전국의 접수 중·예정 APT·무순위·임의공급 공고에
  * 자격 판정에 필요한 공고 조건(국민·민영, 투기과열·조정대상, 공급 지역, 특별공급 유형별 물량, 주택형별 최고 공급금액)을 붙인다.
  * 판정 자체는 브라우저에서 한다(입력한 개인 조건을 서버로 보내지 않는다).
+ * SaleMapService(지도 분양 공고)와 PriceGapSnapshots(주변 시세 미리 계산)도 이 목록을 함께 쓴다.
+ * 결과는 10분 동안 메모리(Guava Cache)에 두고, 브라우저·nginx도 10분 캐시할 수 있게 응답한다.
  */
+// @RestController: JSON 응답 컨트롤러.
 @RestController
 public class EligibilityFeed {
     static final int PAST_DAYS = 60, FUTURE_DAYS = 60, MAX_ITEMS = 500;
@@ -37,6 +40,7 @@ public class EligibilityFeed {
     private final PriceGapStore gapStore;
     private final Cache<String, Map<String, Object>> cache = CacheBuilder.newBuilder().expireAfterWrite(Duration.ofMinutes(10)).build();
 
+    // @Autowired: 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
     public EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore) { this(search, jdbc, gapStore, Clock.system(ZoneId.of("Asia/Seoul"))); }
     EligibilityFeed(AnnouncementSearchService search, JdbcTemplate jdbc, PriceGapStore gapStore, Clock clock) { this.search = search; this.jdbc = jdbc; this.gapStore = gapStore; this.clock = clock; }
@@ -53,6 +57,7 @@ public class EligibilityFeed {
                 youth + other.youth, newborn + other.newborn, institution + other.institution);
         }
     }
+    /** 공고 한 건의 자격 판정 재료. national: 국민주택, speculative: 투기과열지구, adjusted: 조정대상지역, priceCap: 분양가상한제. */
     public record Item(String id, String type, String houseNm, String address, String region, String status,
                        String start, String end, String specialStart, String rank1, String rank1Gg, String rank1Etc, String rank2,
                        String winner, String contract, String moveIn, Integer totalSupply,
@@ -64,6 +69,7 @@ public class EligibilityFeed {
         }
     }
 
+    // @GetMapping: 로그인 없이 부르는 공개 목록 API.
     @GetMapping("/api/v1/public/eligibility/announcements")
     public ResponseEntity<Map<String, Object>> announcements() {
         LocalDate today = LocalDate.now(clock);
@@ -77,6 +83,7 @@ public class EligibilityFeed {
     /** 테스트에서 데이터를 바꾼 뒤 다시 읽게 한다. */
     void invalidate() { cache.invalidateAll(); }
 
+    // 오늘 기준 앞뒤 60일 공고를 검색해 접수 중·예정만 남기고, 상세·주택형 정보와 주변 시세 비교 값을 붙인다.
     Map<String, Object> load(LocalDate today) {
         AnnouncementSearch query = new AnnouncementSearch();
         query.setStartDate(today.minusDays(PAST_DAYS));
@@ -133,6 +140,7 @@ public class EligibilityFeed {
         }).toList();
     }
 
+    /** DB 행(상세·주택형)을 Item으로 바꾼다. 특별공급 물량은 APT만 주택형별 값을 더한다. */
     static Item item(String id, AnnouncementListItem source, String status, Map<String, Object> detail, List<Map<String, Object>> modelRows) {
         Function<String, String> text = key -> { Object value = detail.get(key); return value == null ? null : String.valueOf(value).trim(); };
         String type = source.type();

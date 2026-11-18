@@ -32,7 +32,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 관리자 사이트가 부르는 내부 API(전체·시험 푸시 발송, 인증 메일 다시 보내기, 탈퇴 처리 대행).
  * /internal/**은 같은 서버의 컨테이너끼리만 부를 수 있고(InternalPathFilter), 여기에 더해 관리자와 같은 토큰(ADMIN_API_TOKEN, 32자 이상)을 요구한다.
  * 토큰이 설정되지 않으면 모든 요청을 404로 돌려 기능이 꺼진 것과 같다.
+ * 호출하는 쪽: toadyAdmin(관리자 사이트). 실제 처리는 PushSubscriptions·WebPushSender, CertifyService, AccountService에 맡긴다.
  */
+// @RestController: JSON 응답 컨트롤러. @RequestMapping: 공통 주소 /internal/admin
 @RestController
 @RequestMapping("/internal/admin")
 public class InternalAdminController {
@@ -48,20 +50,24 @@ public class InternalAdminController {
     private final AccountService accounts;
     private final DailyCounter counter;
 
+    // 생성자 주입. @Value로 받은 토큰이 32자 미만이면 null로 두어 모든 요청을 거부한다
     public InternalAdminController(@Value("${toady.admin.internal-token:}") String token, PushSubscriptions subscriptions, WebPushSender sender, ObjectMapper mapper,
                                    UserRepository users, CertifyService certify, AccountService accounts, DailyCounter counter) {
         this.token = token == null || token.trim().length() < 32 ? null : token.trim().getBytes(StandardCharsets.UTF_8);
         this.subscriptions = subscriptions; this.sender = sender; this.mapper = mapper; this.users = users; this.certify = certify; this.accounts = accounts; this.counter = counter;
     }
 
+    // MessageDigest.isEqual: 글자를 하나씩 비교하다 일찍 끝나지 않는 비교. 응답 시간으로 토큰을 추측하지 못하게 한다
     private boolean denied(String header) {
         return token == null || header == null || !MessageDigest.isEqual(token, header.trim().getBytes(StandardCharsets.UTF_8));
     }
 
+    /** 푸시 요청 본문. url은 사이트 안 경로만 허용한다(@Pattern). */
     public record Broadcast(@NotBlank @Size(max = 40) String title, @NotBlank @Size(max = 120) String body,
                             @NotBlank @Size(max = 200) @Pattern(regexp = "/[A-Za-z0-9/_?=&%.\\-]*") String url, Long testUserSeq) { }
 
     /** 푸시 발송. testUserSeq가 있으면 그 회원의 브라우저에만(시험 발송), 없으면 모든 구독에 보낸다. */
+    // @RequestHeader: X-Admin-Token 헤더 값을 받는다(없으면 null)
     @PostMapping("/push")
     public ResponseEntity<Map<String, Object>> push(@RequestHeader(value = "X-Admin-Token", required = false) String header, @Valid @RequestBody Broadcast request) {
         if (denied(header)) return ResponseEntity.notFound().build();
@@ -74,6 +80,7 @@ public class InternalAdminController {
         String json = new PushMessage(request.title().strip(), request.body().strip(), request.url(), request.testUserSeq() == null ? "notice" : "notice-test", List.of()).json(mapper);
         AtomicInteger sent = new AtomicInteger(), removed = new AtomicInteger(), failed = new AtomicInteger();
         for (var row : rows) {
+            // GONE(410·404): 브라우저가 구독을 끊었으므로 DB에서도 지운다
             switch (sender.send(row.target(), json, "notice")) {
                 case ACCEPTED -> sent.incrementAndGet();
                 case GONE -> { subscriptions.deleteHash(row.hash()); removed.incrementAndGet(); }

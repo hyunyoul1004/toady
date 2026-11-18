@@ -1,4 +1,5 @@
 /** 쪽지·신고 화면이 함께 쓰는 값과 규칙(외부 모듈 없이 테스트할 수 있게 따로 둔다). */
+// 신고 이유 선택지. value는 서버에 보내는 코드다.
 export const REPORT_REASONS = [
   { value: 'TRADE', label: '청약통장·분양권 거래 권유', hint: '통장 매매·양도, 분양권 전매 알선, 웃돈 거래 등' },
   { value: 'SPAM', label: '홍보·광고', hint: '분양 홍보, 대출·중개 영업, 다른 사이트로 데려가기' },
@@ -7,6 +8,7 @@ export const REPORT_REASONS = [
   { value: 'ETC', label: '기타', hint: '어떤 문제인지 짧게 적어 주세요' }
 ];
 
+// 쪽지 받는 범위 선택지(내 정보 > 쪽지·차단).
 export const RECEIVE_POLICIES = [
   { value: 'ALL', label: '모든 회원', hint: '로그인한 회원 누구나 첫 쪽지를 보낼 수 있어요.' },
   { value: 'KNOWN', label: '이야기로 이어진 회원만', hint: '내 이야기에 답글을 달았거나 내가 답글을 단 회원만 보낼 수 있어요.' },
@@ -23,7 +25,7 @@ export function parseCardValue(value) {
 }
 
 /**
- * 신고 층 값: '종류:번호:작성자' (USER·COMMENT·MESSAGE). 작성자 번호는 신고 뒤 '차단하기'를 보여 주는 데만 쓴다
+ * 신고 층 값(location.state.overlayLayers에 넣는 문자열): '종류:번호:작성자' (USER·COMMENT·MESSAGE). 작성자 번호는 신고 뒤 '차단하기'를 보여 주는 데만 쓴다
  * (신고된 회원은 서버가 대상에서 다시 찾는다).
  */
 export const reportValue = (type, seq, author) => `${type}:${seq}${author ? `:${author}` : ''}`;

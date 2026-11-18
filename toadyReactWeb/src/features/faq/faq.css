@@ -1,3 +1,4 @@
+/* 자주 묻는 질문 화면(FaqPage.jsx). */
 .faq-page{max-width:820px;margin:8px auto 48px;color:#172b42;font-size:14px}
 .faq-page h1,.faq-page h2,.faq-page p{margin:0}
 .faq-page .MuiButton-root{text-transform:none;border-radius:10px;font-weight:700}

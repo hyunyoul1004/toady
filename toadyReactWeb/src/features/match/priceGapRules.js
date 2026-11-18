@@ -4,8 +4,10 @@
  * - 범위: 기준 거래의 가운데 절반(1~3사분위)과 분양 최고가의 차이. 단정하지 않도록 한 숫자 대신 범위로 보여준다.
  * - 신뢰도: 높음(같은 동·신축 5건 이상) · 보통(3건 이상) · 참고(그 밖). '참고'는 요약·목록에 쓰지 않는다.
  * diff = 시세 − 분양가. 양수면 분양가가 시세보다 낮다.
+ * 쓰는 곳: PriceGapCard(상세의 비교 카드·요약), MatchPage(줍줍 카드 뱃지·정렬).
  */
 import { formatManwon } from '../../utils/money.util.js';
+// 신축(준공 10년 이내) 거래가 이 건수 이상일 때만 신축을 기준으로 쓴다. 너무 적으면 한두 건에 결과가 흔들린다.
 const MIN_NEW_TRADES = 3;
 /**
  * 토지임대부 분양은 건물만 분양하고 토지는 임대(월 임대료 별도)라 일반 아파트 매매가와 직접 비교하지 않는다.
@@ -14,6 +16,7 @@ const MIN_NEW_TRADES = 3;
 export const isLandLease = name => /토지\s*임대\s*부/.test(String(name || ''));
 export const LAND_LEASE_TEXT = '토지임대부 공고라 주변 아파트 매매가와 직접 비교하지 않아요. 토지는 임대(월 임대료 별도)라 같은 기준이 아니에요.';
 
+/** 비교 한 줄의 신뢰도. 같은 동·신축 거래가 많을수록 높다. */
 export function confidenceOf(row) {
   if (!row) return 'low';
   if (row.basis === 'new' && row.scope === 'DONG' && row.basisCount >= 5) return 'high';

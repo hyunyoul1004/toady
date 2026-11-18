@@ -12,6 +12,7 @@ import { noticeText } from './operationNoticeText';
 /**
  * 운영자가 정한 회원 안내(경고·이야기 쓰기 정지·닉네임 초기화). 로그인한 회원에게 화면 맨 위 띠로 보여 준다.
  * 팝업이 아니라 띠라서 뒤로가기 기록을 쌓지 않고, '확인'을 누르면 다시 보이지 않는다(이야기 정지는 기간 동안 계속 보인다).
+ * API: GET /api/v1/me/notices(목록), POST /api/v1/me/notices/{seq}/seen(확인). 회원 번호는 zustand 스토어(useAuthStore)에서 읽는다.
  */
 export default function OperationNotices() {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
@@ -23,11 +24,13 @@ export default function OperationNotices() {
     queryKey: key, enabled: userSeq != null, staleTime: 5 * 60000, refetchOnWindowFocus: true,
     queryFn: () => apiClient.get('/api/v1/me/notices').then(res => Array.isArray(res?.data) ? res.data : [])
   });
+  // 이야기 정지는 확인했어도 기간 동안 계속 보이고, 나머지는 아직 확인하지 않은 것만.
   const items = (query.data || []).filter(item => item.kind === 'STORY_BAN' || !item.seen);
   if (!userSeq || !items.length) return null;
   const confirm = async item => {
     setBusy(true);
     try { await apiClient.post(`/api/v1/me/notices/${item.seq}/seen`, {}); } catch { /* 다음에 다시 보인다 */ }
+    // 성공·실패와 상관없이 목록을 다시 받아 확인한 안내를 지운다.
     finally { setBusy(false); client.invalidateQueries({ queryKey: key }); }
   };
   return <Box sx={{ px: { xs: 2, md: 3 }, pt: 2, display: 'grid', gap: 1 }} role="region" aria-label="운영 안내">

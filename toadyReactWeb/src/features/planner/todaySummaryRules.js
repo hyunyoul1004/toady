@@ -2,8 +2,10 @@
  * '오늘의 요약' 숫자 계산(순수 함수).
  * items: 전국 접수 중·예정 공고(자격 판정 목록), ranked: 진단 결과(rankFeed),
  * weekly: 이번 주 청약 데이터(/weekly-summary). 오늘 접수 = 이번 주 접수 중 지금 접수 중인 공고(전국·전 유형).
+ * 쓰는 곳: TodaySummary.jsx.
  */
 export function summaryNumbers({ items = [], ranked = [], weekly = null } = {}) {
+  // APT가 아닌 공고를 무순위·줍줍으로 센다. possible은 진단 결과가 가능(ok)·확인 필요(check)인 공고.
   const zupzup = items.filter(item => item.type !== 'apt');
   const possible = ranked.filter(({ result }) => result.best === 'ok' || result.best === 'check');
   return {

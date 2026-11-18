@@ -22,7 +22,9 @@ import java.util.Map;
  * 한 번에 지우는 행 수를 제한해 긴 잠금과 대용량 undo 로그를 피한다(MariaDB·H2 모두 DELETE ... LIMIT 지원).
  * 테이블이 아직 없거나 스케줄러 계정에 DELETE 권한이 없으면 경고만 남기고 다음 테이블을 정리한다.
  * TB_MAIL_ATTEMPT는 API가 발송량 확인 시 직접 정리하므로 대상에서 제외한다.
+ * 관리 기능(applyhome.admin.enabled)과 상관없이 항상 등록된다.
  */
+// @Component: 빈으로 등록해 아래 @Scheduled 메서드가 타이머에 걸리게 한다.
 @Component
 public class DataRetentionJob {
     private static final Logger log = LoggerFactory.getLogger(DataRetentionJob.class);
@@ -39,16 +41,19 @@ public class DataRetentionJob {
     private final JdbcTemplate jdbc;
     private final int batchSize;
 
+    // 생성자가 두 개라 스프링이 쓸 쪽을 @Autowired로 지정한다. batchSize를 받는 생성자는 테스트용이다.
     @Autowired
     public DataRetentionJob(JdbcTemplate jdbc) { this(jdbc, BATCH_SIZE); }
     DataRetentionJob(JdbcTemplate jdbc, int batchSize) { this.jdbc = jdbc; this.batchSize = batchSize; }
 
     /** 기본 04:40(한국시간). 수집(03:15·04:15)과 겹치지 않는 시각이며 DATA_RETENTION_CRON=- 이면 끈다. */
+    // @Scheduled(cron): 설정 cron에 맞춰 호출된다. 값이 "-"이면 스프링이 이 일정을 등록하지 않는다.
     @Scheduled(cron = "${data.retention.cron:0 40 4 * * *}", zone = "Asia/Seoul")
     public void runDaily() {
         run(LocalDateTime.now(SEOUL));
     }
 
+    /** 테이블별 정리 조건과 보관 기간. 기간을 바꿀 때는 개인정보처리방침의 보관 기간도 함께 맞춘다. */
     static List<Target> targets(LocalDateTime now) {
         LocalDate today = now.toLocalDate();
         return List.of(
@@ -79,9 +84,9 @@ public class DataRetentionJob {
                 // 관리자 작업 기록·검색어 통계는 1년 보관한다(database.sql 26·27번, 개인정보처리방침 2번).
                 new Target("TB_ADMIN_AUDIT", "REG_DT < ?", List.of(Timestamp.valueOf(now.minusDays(365)))),
                 new Target("TB_SEARCH_STAT", "STAT_DATE < ?", List.of(java.sql.Date.valueOf(now.toLocalDate().minusDays(365)))),
-                // 회원 방문 일자는 30일 재방문 통계용이라 400일만 둔다(database.sql 29번, 개인정보처리방침 2번).
                 // 결과 즉시 알림 발송 기록은 같은 결과를 두 번 보내지 않는 데만 쓴다. 결과 알림 대상(접수 마감 30일 안)보다 넉넉히 60일 둔다.
                 new Target("TB_PUSH_RESULT_SENT", "SENT_DT < ?", List.of(Timestamp.valueOf(now.minusDays(60)))),
+                // 회원 방문 일자는 30일 재방문 통계용이라 400일만 둔다(database.sql 29번, 개인정보처리방침 2번).
                 new Target("TB_MEMBER_VISIT_DAY", "VISIT_DATE < ?", List.of(Date.valueOf(today.minusDays(400)))),
                 // 일정 맞춤 수집은 하루 수십 번 돌아 실행 이력이 빠르게 쌓인다. 끝난 실행만 90일 보관한다(database.sql 28번 권한).
                 new Target("TB_SCHEDULER_ADMIN_JOB", "JOB_KIND = 'SCHEDULED_RESULTS' AND STATUS IN ('SUCCEEDED','FAILED','CANCELLED','INTERRUPTED') AND CREATED_AT < ?",
@@ -93,6 +98,10 @@ public class DataRetentionJob {
         return run(targets(now));
     }
 
+    /**
+     * DELETE ... LIMIT로 batchSize행씩 반복해서 지운다. 지운 행이 batchSize보다 적으면 남은 게 없다는 뜻이라 멈춘다.
+     * 각 DELETE는 자동 커밋이라 중간에 실패해도 앞에서 지운 묶음은 그대로 남는다.
+     */
     Map<String, Long> run(List<Target> targets) {
         Map<String, Long> result = new LinkedHashMap<>();
         for (Target target : targets) {

@@ -14,11 +14,16 @@ import java.sql.Timestamp;
 import java.time.*;
 import java.util.UUID;
 
-/** 집계용 행동 이벤트. 회원 ID·메모·검색어·쿼리 문자열은 수집하지 않는다(검색어는 방문자와 연결하지 않은 일별 건수만 SiteContentController가 센다). */
+/**
+ * 집계용 행동 이벤트. 회원 ID·메모·검색어·쿼리 문자열은 수집하지 않는다(검색어는 방문자와 연결하지 않은 일별 건수만 SiteContentController가 센다).
+ * 상세 보기·관심 추가·공유 같은 행동을 TB_USAGE_EVENT에 한 줄씩 남긴다. 관리자 사이트가 이 테이블로 지표를 만든다.
+ */
+// @RestController: JSON 응답 컨트롤러
 @RestController
 public class UsageEventController {
     private final JdbcTemplate jdbc; private final boolean enabled;
     public UsageEventController(JdbcTemplate jdbc,@Value("${toady.analytics.enabled:true}") boolean enabled) { this.jdbc=jdbc;this.enabled=enabled; }
+    /** 요청 본문. action은 정해진 행동 이름, subject는 공고 주소(유형/주택관리번호/공고번호) 또는 tool/기능이름. */
     public record Event(@NotNull UUID eventId,@NotNull UUID visitorId,
         @NotNull @Pattern(regexp="detail_view|favorite_add|alert_enable|official_click|research_click|compare|share|score_save|poll_vote|push_enable|match_save|map_tool|push_open|push_denied|push_disable|app_install") String action,
         @NotNull @Pattern(regexp="(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}|tool/[a-z0-9-]{1,40}") String subject) { }
@@ -29,6 +34,7 @@ public class UsageEventController {
     static final java.util.Set<String> PUSH_OPEN=java.util.Set.of("tool/push-digest","tool/push-result","tool/push-message","tool/push-notice","tool/push-other");
     /** 홈 화면 추가: 설치 창 수락·닫기, 설치 완료, 방법 안내 열기. */
     static final java.util.Set<String> INSTALL=java.util.Set.of("tool/install-accepted","tool/install-dismissed","tool/install-done","tool/install-guide");
+    /** 행동과 대상의 조합이 맞는지 본다. 정규식만으로는 막지 못하는 '이 행동엔 이 대상만' 규칙이다. */
     static boolean validPair(String action,String subject) {
         if("app_install".equals(action)) return INSTALL.contains(subject);
         if("map_tool".equals(action)) return MAP_TOOLS.contains(subject);
@@ -37,6 +43,7 @@ public class UsageEventController {
         if(ANNOUNCEMENT_ACTIONS.contains(action)) return !subject.startsWith("tool/");
         return true;
     }
+    /** 이벤트 한 건 저장. 같은 eventId가 다시 오면(재전송) 무시한다. 시각은 서버의 한국 시간. */
     @PostMapping("/api/v1/analytics/events") public ResponseEntity<Void> record(@Valid @RequestBody Event event, HttpServletRequest request) {
         if(!enabled || BotFilter.isBot(request)) return ResponseEntity.noContent().build();
         if(!validPair(event.action(),event.subject())) return ResponseEntity.badRequest().build();

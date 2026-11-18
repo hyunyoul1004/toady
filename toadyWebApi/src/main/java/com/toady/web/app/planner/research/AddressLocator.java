@@ -19,7 +19,9 @@ import java.util.stream.Stream;
  * 공급 주소를 카카오 로컬 REST API로 확인해 법정동 코드를 얻는다. 화면(resolveLocation.js)과 같은 규칙만 쓴다.
  * - 지번(동·리·로·길 + 번지)이 있는 후보만 조회하고, 응답의 지번이 요청과 같고 시·도·시·군·구가 공고 주소와 같을 때만 확정한다.
  * - 지구·블록 이름만 있는 주소는 확정하지 않는다(엉뚱한 위치에 확정하지 않는다). 단지별 예외 규칙은 두지 않는다.
+ * 카카오 주소 검색 API(dapi.kakao.com/v2/local/search/address.json)를 부른다. SaleMapService(분양 지도 위치 확인)와 PriceGapSnapshots(주변 시세 미리 계산)가 쓴다.
  */
+// @Component: 스프링 빈으로 등록한다.
 @Component
 public class AddressLocator {
     /** lat·lng: 확인한 지번의 좌표(지도 표시용). 좌표가 없으면 NaN. */
@@ -28,6 +30,7 @@ public class AddressLocator {
     private final String key;
     private final ObjectMapper json = new ObjectMapper();
 
+    // @Value: 카카오 REST 키를 설정에서 읽는다. 비어 있으면 enabled()가 false라 조회하지 않는다.
     public AddressLocator(ResearchTransport transport, @Value("${toady.research.kakao-rest-key:}") String key) {
         this.transport = transport; this.key = key == null ? "" : key.trim();
     }
@@ -59,11 +62,13 @@ public class AddressLocator {
         for (String[] pair : PROVINCES) if (first.startsWith(pair[0])) return pair[1];
         return null;
     }
+    /** 주소에서 시·군·구 낱말을 최대 2개('수원시 영통구'). '검단신도시'처럼 지구·도시로 끝나는 이름은 뺀다. */
     static List<String> municipality(String address) {
         List<String> tokens = new ArrayList<>(Arrays.asList(normalize(address).split(" ")));
         if (province(address) != null && !tokens.isEmpty()) tokens.remove(0);
         return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구|도시)$")).limit(2).toList();
     }
+    /** 카카오가 찾은 주소가 공고 주소와 같은 시·도·시·군·구인지. 이름이 같은 다른 지역 동을 확정하지 않게 한다. */
     static boolean sameRegion(String address, String found) {
         String expected = province(address); List<String> cities = municipality(address);
         if (expected == null && cities.isEmpty()) return false;
@@ -100,10 +105,12 @@ public class AddressLocator {
         return new LinkedHashSet<>(values).stream().filter(value -> parcel.matcher(value).find() && sameRegion(raw, value)).toList();
     }
     private static final Pattern PARCEL = Pattern.compile("([가-힣\\d]+(?:동|리|로|길))\\s+(산\\s*)?(\\d+(?:-\\d+)?)");
+    /** 주소에서 '동·리·로·길 + 번지' 부분만 뽑아 비교용 문자열로 만든다(예: '야당동 123-4'). */
     static String parcel(String value) {
         Matcher m = PARCEL.matcher(normalize(value));
         return m.find() ? m.group(1) + (m.group(2) == null ? "" : m.group(2)) + m.group(3) : null;
     }
+    /** 응답 한 줄이 확정 조건(한국 좌표 범위, 주소 유형, 요청 지번과 같음, 같은 시·군·구)을 모두 만족하는지. */
     static boolean precise(JsonNode row, String address, String candidate) {
         double x = row.path("x").asDouble(Double.NaN), y = row.path("y").asDouble(Double.NaN);
         boolean coord = x >= 124 && x <= 132 && y >= 32 && y <= 40;

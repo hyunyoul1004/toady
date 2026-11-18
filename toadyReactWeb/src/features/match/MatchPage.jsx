@@ -23,11 +23,13 @@ import { priceRange, receiptBadge, shortDate, TYPE_LABEL, useEligibilityFeed } f
 import { gapBadge, sortZupzup } from './priceGapRules';
 import './match.css';
 
+// 탭별 검색엔진용 제목·설명. 상세를 열지 않았을 때만 적용한다.
 const SEO = {
   match: { title: '내게 맞는 청약 · 넣을 수 있는 공고만 모아보기 · TOADY', description: '사는 곳·무주택·통장·가족 조건을 30초 만에 고르면 지금 접수 중이거나 곧 접수할 아파트 청약 중 넣을 수 있는 공고와 가능한 특별공급을 알려 드려요.', path: '/match' },
   zupzup: { title: '무순위·줍줍 청약 모아보기 · 접수 중 잔여세대 · TOADY', description: '전국 APT 무순위·잔여세대·임의공급(줍줍) 공고를 접수 일정·분양가와 함께 모았어요. 새 줍줍 공고가 올라오면 알림으로 받아 보세요.', path: '/zupzup' }
 };
 
+/** 저장된 진단 값을 '서울 거주 · 무주택 · 세대주 …' 같은 짧은 칩 문구 목록으로 바꾼다. */
 function profileSummary(profile) {
   const account = ACCOUNT_CHOICES.find(([value]) => value === accountChoice(profile.accountMonths))?.[1];
   return [
@@ -40,6 +42,10 @@ function profileSummary(profile) {
   ].filter(Boolean);
 }
 
+/**
+ * 목록의 공고 카드 한 장. 접수 상태, 판정 요약, 공급금액, 시세 비교 뱃지, 가능한 신청 유형을 보여준다.
+ * result가 null이면(진단 전 줍줍 목록) 판정 부분은 빼고 그린다. 누르면 onOpen으로 상세를 연다.
+ */
 function FeedCard({ item, result, today, onOpen }) {
   const badge = receiptBadge(item, today);
   const price = priceRange(item.units);
@@ -59,9 +65,14 @@ function FeedCard({ item, result, today, onOpen }) {
   </button></li>;
 }
 
+// 공고를 받는 동안 보여 줄 회색 자리 표시.
 function FeedSkeleton() { return <ul className="match-list">{[0, 1, 2, 3].map(key => <li key={key}><Skeleton variant="rounded" height={128} /></li>)}</ul>; }
 
-/** 줍줍 새 공고 알림. 권한 요청은 버튼을 눌렀을 때만 한다. */
+/**
+ * 줍줍 새 공고 알림. 권한 요청은 버튼을 눌렀을 때만 한다.
+ * 푸시 구독 상태는 zustand 스토어(usePushStore)에 있다. 줍줍 주제는 구독 범위(scope.areas)에 한 칸으로 넣는다.
+ * state: null(평소) · 'busy'(저장 중) · 'done'(완료) · 그 밖의 문자열(오류 메시지).
+ */
 function ZupzupAlert() {
   const push = usePushStore();
   const [state, setState] = useState(null);
@@ -88,12 +99,22 @@ function ZupzupAlert() {
   </aside>;
 }
 
+/**
+ * 맞춤 청약 화면(/match)과 무순위·줍줍 화면(/match/zupzup). tab으로 둘을 나눈다.
+ * - match: 자격 진단 양식 → 저장 후 접수 중·예정 APT 공고를 신청 가능성 순으로 보여준다.
+ * - zupzup: 무순위·잔여세대·임의공급 공고 목록과 새 공고 알림.
+ * 공고는 useEligibilityFeed(서버), 진단 값은 이 브라우저(eligibilityProfile), 통장 기간 미리 채우기는 가점 계산기(useMyScore).
+ * 카드를 누르면 ?subscriptSeq=로 주소를 바꿔 같은 화면 위에 공고 상세(Main detailOnly)를 띄운다.
+ */
 export default function MatchPage({ tab = 'match' }) {
   const location = useLocation(), navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const detailId = searchParams.get('subscriptSeq');
   const base = tab === 'zupzup' ? '/match/zupzup' : '/match';
+  // 공유 링크로 상세가 바로 열렸을 때 목록을 한 단계 앞에 끼워 넣어, 첫 뒤로가기가 사이트 이탈 대신 상세 닫기가 되게 한다.
   useDirectDetailHistory(Boolean(detailId), 'matchDetail', base);
+  // 페이지 제목·설명을 바꾸고, 화면을 떠나거나 조건이 바뀌면 cleanup(return 함수)에서 기본값으로 되돌린다.
+  // 의존성 배열 [detailId, tab]: 이 두 값이 바뀔 때만 다시 실행된다. 상세가 열려 있으면 상세가 제목을 정하므로 건너뛴다.
   useEffect(() => {
     if (detailId) return undefined;
     updatePageSeo(SEO[tab]);
@@ -104,6 +125,8 @@ export default function MatchPage({ tab = 'match' }) {
   const profile = useEligibilityProfile();
   const complete = profileComplete(profile);
   const score = useMyScore();
+  // useHistoryOverlay: 팝업 상태를 location.state.overlayLayers에 넣고 히스토리를 한 단계 쌓는다.
+  // 그래서 브라우저 뒤로가기를 누르면 페이지를 떠나지 않고 팝업만 닫힌다.
   // 조건 수정은 히스토리 한 단계로 열어, 수정 중 뒤로가기가 페이지 이탈 대신 수정 취소가 되게 한다.
   const [editLayer, setEditLayer] = useHistoryOverlay('match-edit');
   const editing = Boolean(editLayer);
@@ -115,10 +138,11 @@ export default function MatchPage({ tab = 'match' }) {
   const setFilter = value => {
     const next = new URLSearchParams(searchParams);
     if (value === 'possible') next.delete('filter'); else next.set('filter', value);
+    // replace: 필터를 바꿀 때마다 히스토리가 쌓이지 않게 현재 항목을 바꿔 쓴다. state는 그대로 넘겨 열린 팝업 정보를 잃지 않는다.
     setSearchParams(next, { replace: true, state: location.state });
   };
   const [shareMessage, setShareMessage] = useState('');
-  /** 개인 조건은 넣지 않고, 같은 진단을 해 볼 수 있는 주소만 공유한다. */
+  /** 개인 조건은 넣지 않고, 같은 진단을 해 볼 수 있는 주소만 공유한다. 휴대폰은 기본 공유 창, 안 되면 클립보드 복사. */
   async function share(count) {
     const url = new URL(tab === 'zupzup' ? '/match/zupzup' : '/match', window.location.origin).href;
     const data = tab === 'zupzup'
@@ -127,21 +151,28 @@ export default function MatchPage({ tab = 'match' }) {
     try {
       if (navigator.share) { await navigator.share(data); trackAction('share', 'tool/match'); return; }
       await navigator.clipboard.writeText(`${data.text} ${url}`); trackAction('share', 'tool/match'); setShareMessage('공유 문구와 링크를 복사했어요.');
+    // AbortError는 사용자가 공유 창을 닫은 경우라 오류로 보지 않는다.
     } catch (error) { if (error?.name !== 'AbortError') setShareMessage('링크를 복사하지 못했어요.'); }
   }
   const feed = useEligibilityFeed();
   const items = useMemo(() => (Array.isArray(feed.data?.items) ? feed.data.items : []), [feed.data]);
 
+  // 상세 열기: 주소에 subscriptSeq를 붙여 새 히스토리로 이동한다. state.matchDetail은 '목록에서 연 상세'라는 표시다.
+  // overlayLayers를 비워 목록에서 열려 있던 팝업이 상세 위로 따라오지 않게 한다.
   const openDetail = id => {
     const next = new URLSearchParams(searchParams); next.set('subscriptSeq', id);
     navigate(`${base}?${next}`, { state: { ...location.state, overlayLayers: [], matchDetail: true } });
   };
+  // 상세 닫기: 목록에서 열었으면 그만큼 뒤로 가서(앞으로가기도 자연스럽게) 닫고,
+  // 그렇지 않으면 주소에서 상세 값만 지워 현재 항목을 바꿔 쓴다.
   const closeDetail = () => {
     if (location.state?.matchDetail) { navigate(-detailCloseSteps(location.state)); return; }
     const next = new URLSearchParams(searchParams); next.delete('subscriptSeq'); next.delete('tabType');
     setSearchParams(next, { replace: true });
   };
 
+  // useMemo: 판정·정렬은 공고 수만큼 계산하므로, 진단 값이나 공고가 바뀔 때만 다시 한다.
+  // ranked는 APT만, counts는 상태별(ok·check·no) 개수, shown은 현재 필터에 맞는 카드다.
   const ranked = useMemo(() => (complete ? rankFeed(items.filter(item => item.type === 'apt'), profile, today) : []), [complete, items, profile, today]);
   const counts = useMemo(() => ranked.reduce((all, { result }) => ({ ...all, [result.best]: (all[result.best] || 0) + 1 }), {}), [ranked]);
   const shown = ranked.filter(({ result }) => (filter === 'all' ? true : filter === 'ok' ? result.best === 'ok' : result.best === 'ok' || result.best === 'check'));
@@ -155,6 +186,7 @@ export default function MatchPage({ tab = 'match' }) {
     setSearchParams(next, { replace: true, state: location.state });
   };
 
+  // 양식 초기값: 저장된 진단이 있으면 그 값, 없으면 가점 계산기에서 고른 통장 기간만 미리 채운다.
   const prefill = useMemo(() => {
     const months = monthsFromAccountIndex(score.selection?.account);
     return profile || (months !== null ? { accountMonths: accountChoice(months) } : {});
@@ -181,6 +213,7 @@ export default function MatchPage({ tab = 'match' }) {
       <Link to="/match/zupzup" aria-current={tab === 'zupzup' ? 'page' : undefined} className={tab === 'zupzup' ? 'is-active' : ''}><BoltRounded fontSize="inherit" />무순위·줍줍{zupzup.length > 0 && <em>{zupzup.length}</em>}</Link>
     </nav>
 
+    {/* 맞춤 청약 탭: 진단 전이거나 수정 중이면 양식, 아니면 내 조건 요약 + 필터 + 공고 목록 */}
     {tab === 'match' && <>
       {showForm ? <section className="match-section" aria-label="자격 진단">
         {!complete && <div className="match-intro"><strong>30초 자격 진단</strong><span>필수 질문 6개만 답하면 돼요. 가점 계산기에서 저장한 통장 기간은 미리 채워 드려요.</span></div>}
@@ -213,6 +246,7 @@ export default function MatchPage({ tab = 'match' }) {
       </>}
     </>}
 
+    {/* 줍줍 탭: 진단을 했으면 카드마다 판정도 함께 보여준다 */}
     {tab === 'zupzup' && <>
       <ZupzupAlert />
       {zupzup.length > 0 && <div className="match-share-row">
@@ -227,6 +261,7 @@ export default function MatchPage({ tab = 'match' }) {
       <p className="match-disclaimer">2025년 6월부터 무순위(사후) 청약은 원칙적으로 무주택 세대구성원만 신청할 수 있어요. 거주지역·재당첨 제한은 공고마다 달라 원문을 확인하세요(<Link to="/faq#zupzup-who">무순위 자주 묻는 질문</Link>).{!complete && <> <Link to="/match">자격 진단</Link>을 하면 공고마다 신청 가능성을 함께 보여 드려요.</>}</p>
     </>}
 
+    {/* 주소에 subscriptSeq가 있으면 목록 위에 공고 상세를 띄운다. 목록 화면은 아래에 그대로 남아 있다. */}
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}
     <Dialog open={Boolean(clearLayer)} onClose={() => setClearLayer(null)} aria-labelledby="match-clear-title" maxWidth="xs" fullWidth>
       <DialogTitle id="match-clear-title">진단 기록을 지울까요?</DialogTitle>

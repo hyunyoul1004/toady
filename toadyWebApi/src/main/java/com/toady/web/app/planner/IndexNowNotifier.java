@@ -28,7 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * RSS와 같은 최근 공고 주소 중 아직 알리지 않은 것만 모아 한 번에 보낸다. 알린 주소는 Redis(없으면 메모리)에 60일 기억한다.
  * 소유 확인 키 파일은 웹 앱의 public/{key}.txt로 www.toady.co.kr 루트에 올라가 있다. 키는 공개 값이다.
  * 운영 주소(https://www.toady.co.kr)일 때만 보낸다(로컬·테스트 주소는 검색엔진에 알릴 수 없다).
+ * 외부 API: https://api.indexnow.org/indexnow (POST JSON). 주소 목록은 AnnouncementFeed.recentUrls()에서 받는다.
+ * Redis에는 정렬 집합(ZSET)으로 '주소 → 알린 시각'을 넣고, 60일 지난 항목은 읽을 때 지운다.
  */
+// @Component: 스프링 빈으로 등록한다. 빈이어야 아래 @Scheduled가 동작한다.
 @Component
 public class IndexNowNotifier {
     private static final Logger log = LoggerFactory.getLogger(IndexNowNotifier.class);
@@ -51,6 +54,8 @@ public class IndexNowNotifier {
     /** Redis가 없거나 멈췄을 때 쓰는 기록(주소 → 알린 시각). */
     private final Map<String, Long> sentInMemory = new ConcurrentHashMap<>();
 
+    // @Autowired: 생성자가 둘이라 스프링이 쓸 생성자를 지정한다(아래 생성자는 테스트에서 가짜 전송기·시계를 넣을 때 쓴다).
+    // @Value: IndexNow 키·켜기 여부·서비스 주소를 설정에서 읽는다. 키가 없거나 꺼져 있으면 아무것도 보내지 않는다.
     @Autowired
     public IndexNowNotifier(AnnouncementFeed feed, RedisStore redis, @Value("${toady.indexnow.key:}") String key,
                             @Value("${toady.web.domain}") String domain, @Value("${toady.indexnow.enabled:false}") boolean enabled) {
@@ -64,7 +69,8 @@ public class IndexNowNotifier {
         this.enabled = enabled && this.key.matches("[A-Za-z0-9-]{8,128}") && PRODUCTION.equals(this.domain);
     }
 
-    /** 새 공고가 들어오는 수집 시각(03:15, 04:15, 20:15) 뒤와 낮 동안 한 시간마다 확인한다. */
+    /** 기본은 매시 40분에 확인한다. 새 공고가 들어오는 수집 시각(03:15, 04:15, 20:15) 뒤에도 곧 알리게 된다. */
+    // @Scheduled(cron): 설정 toady.indexnow.cron이 있으면 그 값을, 없으면 '0 40 * * * *'(매시 40분)을 쓴다. 한국시간 기준.
     @Scheduled(cron = "${toady.indexnow.cron:0 40 * * * *}", zone = "Asia/Seoul")
     public void notifyNewAnnouncements() {
         if (!enabled) return;
@@ -107,6 +113,7 @@ public class IndexNowNotifier {
         return pending.size();
     }
 
+    // 이미 알린 주소 목록. Redis가 되면 Redis 기준, 안 되면 이 서버 메모리 기준(재시작하면 비어 한 번 더 보낼 수 있다).
     private Set<String> sentUrls() {
         long now = clock.millis();
         long oldest = now - REMEMBER.toMillis();
@@ -121,6 +128,7 @@ public class IndexNowNotifier {
         return Set.copyOf(sentInMemory.keySet());
     }
 
+    // 메모리에는 항상 적고, Redis가 되면 Redis에도 적는다. 키 전체 만료를 60일로 다시 맞춘다.
     private void remember(List<String> urls) {
         long now = clock.millis();
         urls.forEach(url -> sentInMemory.put(url, now));

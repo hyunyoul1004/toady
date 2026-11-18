@@ -13,6 +13,13 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+/**
+ * APT 분양정보 주택형별 상세 엔티티. 테이블: TB_APT_LTTOT_PBLANC_MDL.
+ * 청약홈 getAPTLttotPblancMdl 응답 한 행(공고 하나의 주택형 하나)이다.
+ * 기본키는 주택관리번호+공고번호+모델번호 세 컬럼이라 @IdClass(HouseManagePblancModelId)를 쓴다.
+ * 어노테이션 설명은 AptLttotPblancDetail과 같다.
+ */
+// @Entity·@Table: JPA 테이블 매핑. @Getter·@Setter·@NoArgsConstructor는 Lombok이 코드를 대신 만든다.
 @Entity
 @Table(name = "TB_APT_LTTOT_PBLANC_MDL")
 @Comment("APT 분양정보 주택형별 상세")

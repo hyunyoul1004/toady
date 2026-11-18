@@ -1,3 +1,4 @@
+/** 이번 주 청약·지역별 청약 화면이 같이 쓰는 표시 규칙(유형 이름, 날짜 문구, 접수 상태 정렬). 쓰는 곳: ThisWeekPage, WeeklyPicks, nextEventRules. */
 import { RCEPT_SE_META } from '../../views/main/calendar/calendarGroup.js';
 
 /** 공고 유형 이름: 달력·공급유형 필터와 같은 이름(RCEPT_SE_META)을 쓴다. */

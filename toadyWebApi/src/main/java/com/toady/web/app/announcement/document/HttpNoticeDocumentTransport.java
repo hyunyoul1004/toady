@@ -10,15 +10,23 @@ import java.time.Duration;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * 청약홈 공고 상세 페이지를 HTTP로 받아 오는 실제 구현. NoticeDocumentService → 이 클래스 → 청약홈.
+ * 청약홈 상세 주소만 허용하고, 응답 크기(2MB)와 전체 시간(6초)을 제한해 외부 사이트가 느려도 API가 묶이지 않게 한다.
+ */
+// @Component: 스프링 빈으로 등록한다. NoticeDocumentTransport 구현이 이것 하나라 서비스에 자동으로 들어간다.
 @Component
 public class HttpNoticeDocumentTransport implements NoticeDocumentTransport {
     private static final long TOTAL_SECONDS = 6;
+    // 본문 읽기 전용 스레드. 데몬 스레드라 서버 종료를 막지 않는다.
     private static final ExecutorService BODY_READERS = Executors.newCachedThreadPool(task -> {
         Thread thread = new Thread(task, "notice-body"); thread.setDaemon(true); return thread;
     });
+    // 연결 2초 제한. 리다이렉트는 따라가지 않는다(허용하지 않은 주소로 넘어가지 않게).
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2))
             .followRedirects(HttpClient.Redirect.NEVER).build();
 
+    // 다른 호스트·경로로 요청하지 못하게 청약홈 상세 페이지 주소만 받는다.
     @Override public byte[] get(URI uri) throws Exception {
         if (!"https".equals(uri.getScheme()) || !"www.applyhome.co.kr".equals(uri.getHost())
                 || uri.getPort() != -1 || !uri.getPath().startsWith("/ai/aia/select")) {
@@ -32,6 +40,7 @@ public class HttpNoticeDocumentTransport implements NoticeDocumentTransport {
             stream.set(response.body());
             return response;
         });
+        // 200 응답만 받고, 2MB를 넘으면 버린다(한 바이트 더 읽어 넘었는지 확인한다).
         var pending = arrived.thenApplyAsync(response -> {
             try (var body = response.body()) {
                 if (response.statusCode() != 200) throw new UncheckedIOException(new IOException("Notice source unavailable"));

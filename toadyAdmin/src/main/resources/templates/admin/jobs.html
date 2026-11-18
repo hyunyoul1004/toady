@@ -8,6 +8,7 @@
     <div th:replace="~{admin/fragments :: flash}"></div>
     <div class="alert error" th:if="${schedulerError}" th:text="${schedulerError}"></div>
     <th:block th:if="${state != null}">
+    <!-- execution-state·history·run-button id는 admin.js가 5초마다 새로 받아 바꿔 끼우는 영역이다. id를 바꾸면 자동 새로 고침이 멈춘다. -->
     <section id="execution-state" class="status-strip" th:if="${active != null}"><span class="pulse"></span><div><strong th:text="${active.kindLabel + ' · ' + active.statusLabel}"></strong><p th:text="${active.message}"></p></div><a href="#history">진행 내역 보기 ↓</a></section>
     <section id="execution-state" class="status-strip idle" th:if="${active == null}"><span class="status-dot"></span><div><strong>실행 대기 중</strong><p>진행 중인 수집이 없습니다. 필요한 작업을 실행할 수 있습니다.</p></div><span class="muted">한 번에 하나의 작업</span></section>
     <div class="workspace">
@@ -21,6 +22,7 @@
             </form>
         </section>
         <section class="panel schedules"><div class="section-title"><span class="section-number">02</span><div><h2>자동 스케줄</h2><p>실행 여부 · cron · 재조회 기간 설정</p></div></div>
+            <!-- 작업 종류마다 자동 일정 폼 하나. 체크박스를 끄면 enabled가 전송되지 않아 서버가 false로 받는다. -->
             <form class="schedule-item" th:each="schedule : ${state.schedules}" th:action="@{/admin/schedules/{kind}(kind=${schedule.kind})}" method="post">
                 <div class="schedule-heading"><h3 th:text="${schedule.kindLabel}"></h3><label class="toggle"><input type="checkbox" name="enabled" value="true" th:checked="${schedule.enabled}"><span>자동 실행</span></label></div>
                 <div class="schedule-fields"><label>실행 시각 · cron<input name="cron" th:value="${schedule.cronExpression}" maxlength="100" required class="mono"></label><label>재조회 일수<input name="lookbackDays" type="number" min="1" max="366" th:value="${schedule.lookbackDays}" required></label><button class="secondary" type="submit">저장</button></div>

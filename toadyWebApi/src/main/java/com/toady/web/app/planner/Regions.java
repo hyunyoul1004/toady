@@ -13,6 +13,7 @@ import java.util.Set;
  * 시·군·구는 시·도 다음 낱말이 그 시·도의 실제 시·군·구 이름(DISTRICTS)일 때만 쓴다(수원시 영통구는 수원시).
  * '검단신도시', '진주혁신도시', '평택고덕국제화지구'처럼 '시·구'로 끝나는 지구·신도시 이름은 시·군·구로 보지 않고 시·도에만 둔다.
  * 단지별 예외 규칙은 두지 않는다.
+ * 스프링 빈이 아닌 정적 도우미 클래스다. PublicAnnouncementIndex, PublicRegionPages, PublicAnnouncementPage, PublicAreaPage, ScoreBenchmarks 등이 부른다.
  */
 public final class Regions {
     private Regions() { }
@@ -79,6 +80,7 @@ public final class Regions {
         return ALL.stream().filter(sido -> sido.name().equals(text) || sido.shortName().equals(shortName)).findFirst();
     }
     /** 공급지역명('경기', '서울특별시')처럼 시·도 분류 값은 앞부분으로도 찾는다. */
+    // '충청북도'·'경상남도'처럼 줄임말로 시작하지 않는 이름은 앞부분으로 따로 맞춘다.
     static Optional<Sido> loose(String token) {
         Optional<Sido> exact = strict(token);
         if (exact.isPresent() || token == null) return exact;

@@ -11,7 +11,10 @@ import java.sql.Timestamp
 /**
  * 유입·커뮤니티 지표(3단계): 검색어(결과 0건 포함), 공유와 메신저 유입, 단지별 이야기 활성도.
  * 검색어는 방문자와 연결하지 않은 일별 건수(database.sql 27번 TB_SEARCH_STAT)만 읽는다.
+ * 읽는 테이블: TB_SEARCH_STAT, TB_USAGE_EVENT(share), TB_PAGE_VIEW(유입 사이트), TB_LTTOT_PBLANC_COMMENT, TB_USER_REPORT. 읽기 전용.
+ * 호출: AdminController의 유입·커뮤니티 화면(/admin/insights).
  */
+// @Service: 업무 로직 빈.
 @Service
 class InsightService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
 	data class Term(val term: String, val hits: Long)
@@ -20,9 +23,14 @@ class InsightService(private val jdbc: JdbcTemplate, private val announcements: 
 	data class Story(val id: String, val name: String?, val roots: Long, val replies: Long, val writers: Long, val firstReplyMinutes: Long?, val reports: Long) {
 		val adminPath get() = "/admin/announcements/$id"
 	}
+	/** 화면 전체 값. 테이블이 없는 항목은 null이라 화면에서 '준비 안 됨'으로 보인다. */
 	data class Report(val days: Int, val terms: List<Term>?, val emptyTerms: List<Term>?, val shares: List<Shared>?, val shareTotal: Long?, val inflow: List<Inflow>?,
 	                  val stories: List<Story>, val storyTotals: Story?, val excludeTest: Boolean)
 
+	/**
+	 * 최근 days일 지표를 모은다. 항목마다 따로 try로 감싸 하나가 실패해도 나머지는 보인다.
+	 * 메신저 유입은 SQL로 상위 50개 사이트를 받은 뒤 MESSENGERS 목록(하위 도메인 포함)에 맞는 것만 남긴다.
+	 */
 	fun report(days: Int, excludeTest: Boolean): Report {
 		val since = Kst.today().minusDays(days.toLong() - 1)
 		val terms = try {
@@ -49,6 +57,7 @@ class InsightService(private val jdbc: JdbcTemplate, private val announcements: 
 
 	/** 단지별 이야기: 원글·답글 수, 글쓴이 수, 원글에 첫 답글이 달리기까지 걸린 시간(중앙값, 분), 신고 수. */
 	private fun stories(since: java.time.LocalDate, excludeTest: Boolean): List<Story> {
+		// 테스트 계정(이메일이 .test로 끝남)이 쓴 글을 뺀다. 중앙값은 정렬한 목록의 가운데 값으로 구한다.
 		val testFilter = if (excludeTest) " AND C.CREATE_USER_SEQ NOT IN (SELECT USER_SEQ FROM TB_USER WHERE USER_EMAIL LIKE '%.test')" else ""
 		data class Row(val id: String, val seq: Long, val parent: Long?, val user: Long, val at: java.time.LocalDateTime?)
 		val rows = try {
@@ -78,6 +87,7 @@ class InsightService(private val jdbc: JdbcTemplate, private val announcements: 
 		}.sortedByDescending { it.roots + it.replies }
 	}
 
+	// MESSENGERS: 공유 유입으로 볼 사이트. TOOLS: 공고가 아닌 공유 대상(도구 화면)의 표시 이름.
 	companion object {
 		val MESSENGERS = listOf("kakao.com", "kakaocdn.net", "band.us", "line.me", "facebook.com", "instagram.com", "t.co", "x.com", "threads.net", "naver.com", "daum.net")
 		val TOOLS = mapOf("tool/score" to "가점 계산기", "tool/match" to "맞춤 청약", "tool/weekly" to "이번 주 청약")

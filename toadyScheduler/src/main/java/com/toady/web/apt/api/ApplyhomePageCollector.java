@@ -9,11 +9,17 @@ import java.util.Set;
 import java.util.Locale;
 import java.util.function.IntFunction;
 
-/** Do not persist a partial snapshot when an upstream result changes during pagination. */
+/**
+ * 청약홈 API의 모든 페이지를 차례로 받아 하나의 목록으로 합친다.
+ * 페이지를 넘기는 도중 원본 건수(matchCount)가 바뀌거나, 행이 모자라거나 남거나, 같은 키가 두 번 나오면 예외를 던진다.
+ * 원본이 바뀌는 중에 받은 반쪽짜리 결과를 DB에 저장하지 않기 위해서다.
+ * 호출: ApplyhomeSyncService, ApplyhomeCompetitionSyncService.
+ */
 public final class ApplyhomePageCollector {
     private ApplyhomePageCollector() {
     }
 
+    /** 전체 JSON 행 기준으로 중복을 검사하며 모든 페이지를 받는다. fetch는 페이지 번호를 받아 한 페이지를 돌려주는 함수다. */
     public static List<JsonNode> fetchAll(String endpoint, IntFunction<ApplyhomeApiPage> fetch) {
         return fetchAll(endpoint, fetch, List.of());
     }

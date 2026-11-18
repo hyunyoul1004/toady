@@ -14,7 +14,10 @@ import java.time.LocalDateTime
 /**
  * 회원 조회와 잠금/해제. 잠긴 계정은 API 로그인에서 거절된다(LOCK_YN).
  * 비밀번호·인증 코드는 다루지 않으며, 조치는 관리자 이름과 함께 로그로 남긴다.
+ * 테이블: TB_USER(조회·잠금), TB_FAVORITE·TB_PUSH_SUBSCRIPTION·TB_LTTOT_PBLANC_COMMENT(건수 조회).
+ * 호출: AdminController의 회원 목록·상세 화면.
  */
+// @Service: 업무 로직 빈.
 @Service
 class MemberService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
 	/** 관심 공고 한 줄. 회원의 비공개 메모는 관리자 화면에도 보여 주지 않는다. */
@@ -22,8 +25,10 @@ class MemberService(private val jdbc: JdbcTemplate, private val announcements: A
 		val stageLabel get() = STAGES.getOrElse(stage) { "관심" }
 		val adminPath get() = "/admin/announcements/$id"
 	}
+	/** 회원 상세 화면 값. 테이블이 없는 항목은 null. */
 	data class Detail(val member: Member, val updatedAt: LocalDateTime?, val favorites: List<Favorite>?, val pushSubscriptions: Long?)
 
+	/** 회원 한 명의 상세. 기본 정보는 search를 회원 번호 조건으로 재사용해 같은 모양으로 얻는다. */
 	fun detail(seq: Long): Detail? {
 		val member = search(null, null, 0, 1, seq).items.firstOrNull() ?: return null
 		val updated = jdbc.queryForObject("SELECT UPDATE_DT FROM TB_USER WHERE USER_SEQ=?", Timestamp::class.java, seq)?.toLocalDateTime()
@@ -38,6 +43,7 @@ class MemberService(private val jdbc: JdbcTemplate, private val announcements: A
 		return Detail(member, updated, favorites, push)
 	}
 
+	/** 목록 한 줄. status는 탈퇴 > 잠김 > 미인증 > 정상 순서로 하나만 보인다. */
 	data class Member(val seq: Long, val email: String, val nickname: String, val certified: Boolean, val locked: Boolean, val withdrawn: Boolean,
 	                  val createdAt: LocalDateTime?, val lockedAt: LocalDateTime?, val favorites: Long, val comments: Long) {
 		val status get() = when {
@@ -64,6 +70,7 @@ class MemberService(private val jdbc: JdbcTemplate, private val announcements: A
 		}
 		val total = jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER U$where", Long::class.java, *args.toTypedArray()) ?: 0
 		val safePage = page.coerceIn(0, 10_000)
+		// 관심 공고 수·이야기 수는 회원마다 하위 쿼리로 센다(한 페이지 30명이라 부담이 적다).
 		val items = jdbc.query("""
 			SELECT U.USER_SEQ,U.USER_EMAIL,U.USER_NIC_NAME,U.EMAIL_CERTIFY_YN,U.LOCK_YN,U.WITHDRAWAL_YN,U.CREATE_DT,U.LOCK_DT,
 			  (SELECT COUNT(*) FROM TB_FAVORITE F WHERE F.USER_SEQ=U.USER_SEQ) AS FAVORITES,

@@ -4,6 +4,7 @@
  * 청약홈 원본 값(주택형 `074.0000A`, 미달 표기 `(△2)`, 코드값 등)을 사람이 읽는 문구로 바꾸고,
  * 공고 유형과 관계없이 같은 방식으로 요약(최고 경쟁률·미달 주택형·공급 대비 접수)을 계산한다.
  * React·브라우저 API에 의존하지 않으므로 node:test로 검증한다.
+ * 사용처: SubscriptRate.jsx(표·요약), MobileCompetitionCards.jsx(모바일 카드).
  */
 import { unitLabel } from '../../../features/planner/researchUtils.js';
 import { formatCompetitionRate } from '../../../utils/rate.util.js';
@@ -174,6 +175,7 @@ export function summarizeRates(type,list=[]) {
     groups.forEach(({row,ranks},key)=>{
       units.add(key);
       supplyTotal=add(supplyTotal,toCount(row.suplyHshldco));
+      // Map은 넣은 순서를 지킨다. 마지막 값이 그 주택형에서 가장 나중에 접수한 순위(보통 2순위)다.
       const lastRows=[...ranks.values()].at(-1) || [];
       if(lastRows.some(item=>parseRate(item.cmpetRate,item.reqCnt).kind==='shortage'))shortageUnits.add(key);
     });
@@ -215,5 +217,5 @@ export function resultLabel(itemsByRank = {}) {
   const firstApplied = first.some(row => toCount(row.reqCnt) > 0);
   if (!firstApplied) return '-';
   if (first.some(row => parseRate(row.cmpetRate, row.reqCnt).kind === 'shortage')) return '1순위 미달';
-  return '1순위 마감\n(청약 접수 종료)';
+  return '1순위 마감\n(청약 접수 종료)'; // 줄바꿈은 CSS white-space:pre-line으로 화면에 그대로 보인다
 }

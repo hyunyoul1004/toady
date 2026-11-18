@@ -1,8 +1,11 @@
+/* 경쟁률 탭 전용 스타일. MobileCompetitionCards.jsx에서 불러온다.
+   flex·grid 자식은 기본 최소 너비가 내용 길이라 긴 글자가 있으면 화면 밖으로 밀린다. 그래서 곳곳에 min-width:0을 둔다. */
 .competition-mobile-cards{display:flex;flex-direction:column;gap:14px;min-width:0}
 .competition-mobile-card{border:1px solid #dfe7f2;background:#fff;border-radius:14px;padding:17px 15px;color:#243c59;min-width:0}
 .competition-mobile-card header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .competition-mobile-card h3{font-size:17px;margin:0;font-weight:750;letter-spacing:-.3px}
 .competition-mobile-card header>span{font-size:11px;color:#627891}
+/* resultLabel이 돌려주는 '\n'을 줄바꿈으로 보이게 pre-line을 쓴다 */
 .competition-card-result{font-size:11px;line-height:1.8;color:#637b97;white-space:pre-line;margin:10px 0}
 .competition-rank-group{margin-top:14px}
 .competition-rank-group h4{font-size:12px;margin:0 0 8px;font-weight:700}
@@ -19,16 +22,18 @@
 .special-supply-counts>div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
 .special-supply-counts dt{color:#647a93}.special-supply-counts dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
 
+/* 긴 지역명이 칸을 넘지 않도록 어느 글자에서든 줄을 바꿀 수 있게 한다 */
 .competition-card-row>*{min-width:0;overflow-wrap:anywhere}
 
-/* 경쟁률 값: 숫자 강조 · 미달 배지 · 빈 값 흐림 */
+/* 경쟁률 값: 숫자 강조 · 미달 배지 · 빈 값 흐림
+   tabular-nums는 숫자 폭을 같게 맞춰 세로로 줄 세웠을 때 자릿수가 어긋나지 않게 한다 */
 .rate-number{font-weight:800;color:#1d4f8f;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rate-number--compact{font-size:14px}
 .rate-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:750;white-space:nowrap;line-height:1}
 .rate-badge--short{background:#fff1f0;color:#c2410c;border:1px solid #fed7c7}
 .rate-muted{color:#94a3b8;font-size:12px;white-space:nowrap}
 
-/* 표 위 요약 띠 */
+/* 표 위 요약 띠. auto-fit + minmax로 폭이 되는 만큼 칸 수가 자동으로 정해진다 */
 .rate-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:0 0 12px;min-width:0}
 .rate-summary-item{display:flex;flex-direction:column;gap:3px;border:1px solid #dfe7f2;background:#fff;border-radius:12px;padding:12px 14px;min-width:0}
 .rate-summary-item--top{background:#f4f8ff;border-color:#d6e4fb}

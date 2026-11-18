@@ -1,3 +1,9 @@
+/**
+ * @file MobileCompetitionCards.jsx
+ * @description 경쟁률 탭의 작은 표시 조각 모음.
+ * 휴대폰 폭에서는 넓은 표 대신 주택형별 카드로 보여 주고, 경쟁률 한 칸(RateValue)과 요약 띠(RateSummary)는 PC 표와 함께 쓴다.
+ * 사용처: SubscriptRate.jsx. 숫자 해석은 모두 rateFormat.js가 하고 여기서는 그리기만 한다.
+ */
 import React from 'react';
 import { validScore } from '@/features/announcement/export/exportData';
 import { formatCount, formatUnit, parseRate } from './rateFormat';
@@ -64,7 +70,10 @@ function MobileScores({scores}) {
   </div>;
 }
 
-/** 작은 화면에서는 주택형·순위·지역과 수치를 같은 카드 안에서 읽는다. */
+/**
+ * 작은 화면에서는 주택형·순위·지역과 수치를 같은 카드 안에서 읽는다.
+ * groups는 SubscriptRate.jsx가 APT 경쟁률을 주택형별로 묶은 값이다(ranks: 순위 목록, itemsByRank: 순위별 행, scores: 가점).
+ */
 export function MobileCompetitionCards({groups}) {
   return <div className="competition-mobile-cards" aria-label="주택형별 경쟁률 카드">{groups.map((group,index)=><section className="competition-mobile-card" key={`${group.houseTy}/${index}`}>
     <header><h3>{formatUnit(group.houseTy,group.modelNo)}</h3><span>공급 {formatCount(group.suplyHshldco)}세대</span></header>
@@ -85,6 +94,7 @@ export function MobileRateRowCards({table}) {
   </section>)}</div>;
 }
 
+/** 특별공급 신청현황의 모바일 카드. 유형별(다자녀·신혼부부·생애최초) 신청 건수를 정의 목록으로 보여 준다. */
 export function MobileSpecialSupplyCards({items}) {
   const fields=[['다자녀 · 해당지역','crspareaMnychCnt'],['다자녀 · 기타경기','ctprvnMnychCnt'],['다자녀 · 기타지역','etcAreaMnychCnt'],['신혼부부','nwwdsNmtwHshldco'],['생애최초','lfeFrstHshldco']];
   return <div className="competition-mobile-cards" aria-label="특별공급 신청현황 카드">{items.map((item,index)=><section className="competition-mobile-card" key={index}><header><h3>{formatUnit(item.houseTy,item.modelNo)}</h3><span>배정 {formatCount(item.spsplyHshldco)}세대</span></header><dl className="special-supply-counts">{fields.map(([label,key])=><div key={key}><dt>{label}</dt><dd>{formatCount(item[key])}건</dd></div>)}</dl><p className="competition-card-result">{item.subscrptResultNm || '접수 결과 미제공'}</p></section>)}</div>;

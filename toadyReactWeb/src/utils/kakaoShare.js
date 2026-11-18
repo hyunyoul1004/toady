@@ -4,6 +4,7 @@
  * SDK는 공유를 처음 누를 때만 불러온다. 불러오지 못하거나 설정이 없으면 'unavailable'을 돌려주고, 화면은 기존 공유(링크 복사)로 넘긴다.
  */
 const SDK_URL = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+// 불러오는 중인 Promise를 모듈 변수로 기억해, 여러 번 눌러도 스크립트를 한 번만 붙인다(실패하면 null로 되돌려 다시 시도).
 let loading = null;
 
 export function kakaoShareKey() { return import.meta.env?.VITE_KAKAO_MAP_KEY || ''; }

@@ -17,9 +17,12 @@ import java.time.LocalDateTime
  * - NICKNAME_RESET: 닉네임을 '회원번호' 기본값으로 바꾸고, 회원에게 새 닉네임을 정하라고 안내한다.
  * 쪽지 정지(TB_DM_SETTING)와 계정 잠금(LOCK_YN)은 기존 기능을 그대로 쓴다.
  * 회원에게는 종류·기간·사유 항목만 보이고 관리자 메모는 보이지 않는다.
+ * 호출: AdminController의 회원 상세 화면.
  */
+// @Service: 업무 로직 빈.
 @Service
 class SanctionService(private val jdbc: JdbcTemplate) {
+	/** 제재 한 건. stateLabel은 종류·해제·종료 시각으로 화면 상태를 정한다. */
 	data class Sanction(val seq: Long, val kind: String, val reason: String, val memo: String?, val start: LocalDateTime?, val end: LocalDateTime?,
 	                    val canceledAt: LocalDateTime?, val seenAt: LocalDateTime?, val admin: String) {
 		val kindLabel get() = KINDS[kind] ?: kind
@@ -33,11 +36,14 @@ class SanctionService(private val jdbc: JdbcTemplate) {
 			else -> "끝남"
 		}
 	}
+	/** 제재 추가 결과. 컨트롤러가 결과마다 다른 안내를 보여 준다. */
 	enum class Outcome { DONE, INVALID, NOT_ACTIVE_MEMBER, UNAVAILABLE }
 	data class Added(val outcome: Outcome, val nickname: String? = null, val previousNickname: String? = null)
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_USER_SANCTION WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
+	/** 회원의 최근 제재 50건(최신순). */
 	fun list(userSeq: Long): List<Sanction> = try {
 		jdbc.query("SELECT * FROM TB_USER_SANCTION WHERE USER_SEQ=? ORDER BY SANCTION_SEQ DESC LIMIT 50", { r, _ ->
 			Sanction(r.getLong("SANCTION_SEQ"), r.getString("KIND"), r.getString("REASON"), r.getString("MEMO"), r.getTimestamp("START_DT")?.toLocalDateTime(),
@@ -52,6 +58,8 @@ class SanctionService(private val jdbc: JdbcTemplate) {
 	 * 제재를 더한다. days는 STORY_BAN에만 쓰며 1·3·7·30·-1(무기한). 이미 진행 중인 이야기 정지가 있으면 새 기간으로 바꾼다(겹쳐 쌓지 않는다).
 	 * NICKNAME_RESET은 닉네임을 '회원{번호}'로 바꾼다(이미 누가 쓰고 있으면 뒤에 글자를 붙인다).
 	 */
+	// @Transactional: 회원 행 잠금(FOR UPDATE), 기존 정지 해제, 닉네임 변경, 제재 기록을 한 트랜잭션으로 묶는다.
+	// FOR UPDATE는 같은 회원을 동시에 제재할 때 한쪽이 끝날 때까지 기다리게 한다.
 	@Transactional
 	fun add(userSeq: Long, kind: String, reason: String, days: Int, memo: String, admin: String): Added {
 		if (kind !in KINDS || reason !in REASONS || (kind == "STORY_BAN" && days !in setOf(1, 3, 7, 30, -1))) return Added(Outcome.INVALID)
@@ -84,6 +92,7 @@ class SanctionService(private val jdbc: JdbcTemplate) {
 		return changed > 0
 	}
 
+	/** 비어 있는 '회원{번호}' 닉네임을 찾는다. 이미 있으면 a~z를 붙여 보고, 모두 차면 시각 숫자를 쓴다. 15자 제한. */
 	private fun freeNickname(userSeq: Long): String {
 		val base = "회원$userSeq"
 		for (suffix in listOf("") + ('a'..'z').map { it.toString() }) {

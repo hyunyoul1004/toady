@@ -1,4 +1,8 @@
-/** 지도 JavaScript 키는 빌드 시 주입되며 브라우저에서 공개되는 값입니다. */
+/**
+ * 카카오 지도 SDK 스크립트를 <head>에 붙인다. main.jsx가 앱 시작 때 한 번 부른다.
+ * autoload=false라 스크립트만 내려받고, 실제 초기화(kakao.maps.load)는 지도를 쓰는 화면이 ensureKakaoLoaded로 한다.
+ * 지도 JavaScript 키는 빌드 시 주입되며 브라우저에서 공개되는 값입니다(카카오 콘솔의 도메인 제한으로 보호).
+ */
 export function loadKakaoMaps() {
   const appKey = import.meta.env.VITE_KAKAO_MAP_KEY;
   if (!appKey || document.getElementById('kakao-maps-sdk')) return;

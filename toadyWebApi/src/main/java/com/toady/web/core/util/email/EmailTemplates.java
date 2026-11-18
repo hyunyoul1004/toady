@@ -2,10 +2,15 @@ package com.toady.web.core.util.email;
 
 import org.springframework.web.util.HtmlUtils;
 
-/** 외부 이미지 없이 읽을 수 있는 공통 메일 레이아웃. 사용자 입력과 URL은 HTML 이스케이프한다. */
+/**
+ * 외부 이미지 없이 읽을 수 있는 공통 메일 레이아웃. 사용자 입력과 URL은 HTML 이스케이프한다.
+ * 메일 앱은 CSS 파일을 잘 못 읽어서 스타일을 태그마다 인라인으로 넣는다.
+ * 가입 인증(CertifyService)·비밀번호 재설정(AccountService)에서 본문을 만들 때 쓴다.
+ */
 public final class EmailTemplates {
     private EmailTemplates() { }
 
+    /** 가입 인증 메일. 버튼 링크와 복사용 주소를 함께 넣는다(링크 24시간 유효). */
     public static String accountVerification(String nickname, String url, String domain) {
         String body = """
                 <p style="margin:0 0 12px;color:#334155;font-size:16px;line-height:1.8;">%s님, 안녕하세요.</p>
@@ -22,6 +27,7 @@ public final class EmailTemplates {
         return frame("이메일을 인증해 주세요", "TOADY 가입을 완료하는 마지막 단계입니다. 인증 링크는 24시간 동안 유효합니다.", body, domain);
     }
 
+    /** 비밀번호 재설정 메일. 화면에 입력할 인증 코드를 보여 준다(10분 유효). */
     public static String passwordReset(String nickname, String code, String domain) {
         String body = """
                 <p style="margin:0 0 12px;color:#334155;font-size:16px;line-height:1.8;">%s님, 안녕하세요.</p>
@@ -35,6 +41,7 @@ public final class EmailTemplates {
         return frame("비밀번호를 재설정해 주세요", "비밀번호 재설정 인증코드를 안내합니다. 10분 안에 입력해 주세요.", body, domain);
     }
 
+    /** 제목·미리보기 문구·본문을 공통 틀(머리말, 안내 문구, 도메인 표시)에 끼운다. preview는 메일 목록에 보이는 요약 줄이다. */
     private static String frame(String title, String preview, String body, String domain) {
         return """
                 <!doctype html>
@@ -58,5 +65,6 @@ public final class EmailTemplates {
                 </body></html>
                 """.formatted(html(title), html(preview), html(title), body, html(domain));
     }
+    // null을 빈 문자열로 바꾸고 < > & " 같은 문자를 HTML 엔티티로 바꿔 태그 주입을 막는다
     private static String html(String value) { return HtmlUtils.htmlEscape(value == null ? "" : value); }
 }

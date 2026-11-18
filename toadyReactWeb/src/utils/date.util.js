@@ -3,6 +3,8 @@
  * @description Day.js 기반 날짜 및 시간 처리 유틸리티
  * - 날짜 포맷팅(YYYY-MM-DD, 범위 표시 등)
  * - 상대 시간(Time-ago) 포맷팅
+ * dayjs는 브라우저의 시간대(한국 사용자는 KST)로 계산한다. 서버 날짜는 대부분 'YYYYMMDD'처럼 시각 없는 문자열이라
+ * 시간대 차이로 하루가 밀리지 않는다. 여기서 만든 dayjs(플러그인·한국어 설정 적용)를 다른 파일도 가져다 쓴다.
  */
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';

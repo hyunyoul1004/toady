@@ -6,6 +6,7 @@ import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import EventAvailableOutlined from '@mui/icons-material/EventAvailableOutlined';
 import { daysUntil } from './plannerUtils';
 
+/** 공고 하나의 다가오는 일정 카드. 일정은 3개까지 보이고 펼치면 전부 보인다. */
 function ScheduleCard({ group, today }) {
   const [expanded,setExpanded] = useState(false);
   const { item, events } = group;
@@ -20,6 +21,7 @@ function ScheduleCard({ group, today }) {
     <ol className="planner-timeline" aria-label={`${item.summary.houseNm} 일정`}>
       {visible.map((event,index) => <li key={event.date} className={index===0 ? 'is-next' : ''}>
         <span className="planner-timeline-dot" />
+        {/* 올해가 아니면 연도를, 올해면 요일을 작게 붙인다. 날짜를 UTC로 읽어 요일이 하루 밀리지 않게 한다. */}
         <time dateTime={event.date}>{event.date.slice(5).replace('-','.')}<small>{event.date.slice(0,4) !== today.slice(0,4) ? event.date.slice(0,4) : new Intl.DateTimeFormat('ko-KR',{weekday:'short',timeZone:'UTC'}).format(new Date(`${event.date}T00:00:00Z`))}</small></time>
         <div className="planner-timeline-labels">{event.labels.map(label=><span key={label}>{label}</span>)}</div>
       </li>)}
@@ -30,6 +32,7 @@ function ScheduleCard({ group, today }) {
     </footer>
   </article>;
 }
+/** 나의 청약 '다가오는 일정' 구역. groups는 plannerUtils.upcomingGroups 결과. 공고는 3개까지, 더 보기로 전부. */
 export default function UpcomingSchedule({ groups,today }) {
   const [showAll,setShowAll] = useState(false);
   return <section className="planner-section" aria-labelledby="upcoming-heading">

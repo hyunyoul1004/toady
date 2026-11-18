@@ -10,7 +10,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** 청약접수 경쟁률 및 신청현황 API를 페이지 단위로 조회한다. */
+/**
+ * 청약접수 경쟁률 및 신청현황 API(ApplyhomeInfoCmpetRtSvc)를 페이지 단위로 조회한다.
+ * 경쟁률·특별공급 신청현황·당첨 가점을 받는다. 호출: ApplyhomeCompetitionSyncService.
+ * 인증키·재시도·주소 만들기는 ApplyhomeApiClient의 공용 메서드를 그대로 쓴다.
+ */
+// @Component: 빈으로 등록한다. 생성자의 @Value로 application.yml의 주소·키·페이지 크기를 받는다.
 @Component
 public class ApplyhomeCompetitionApiClient {
 
@@ -32,6 +37,7 @@ public class ApplyhomeCompetitionApiClient {
 	/** 재시도 간격(테스트에서 줄인다). 통신 오류·5xx만 다시 시도한다. */
 	long[] retryDelaysMs = {1000, 3000};
 
+	/** 한 페이지를 요청하고 응답 형식(data 배열, 건수)이 맞는지 확인해 돌려준다. */
 	public ApplyhomeApiPage getPage(String endpoint, int page, Map<String, String> filters) {
 		if (serviceKey.isBlank()) {
 			throw new IllegalStateException("APPLYHOME_API_KEY is required to call the Applyhome competition API");
@@ -59,6 +65,7 @@ public class ApplyhomeCompetitionApiClient {
 		return new ApplyhomeApiPage(List.copyOf(data), currentCount, matchCount);
 	}
 
+	/** 공고 API와 같은 방식으로 요청 주소를 만든다(테스트에서 직접 확인할 수 있게 남겨 둔 통로). */
 	static URI buildUri(String baseUrl, String endpoint, String serviceKey, int perPage, int page,
 			Map<String, String> filters) {
 		return ApplyhomeApiClient.buildUri(baseUrl, endpoint, serviceKey, perPage, page, filters);

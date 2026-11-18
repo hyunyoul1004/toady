@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
  * 쪽지 내용 규칙. 첨부 없이 글자만 받는다.
  * - 상대가 아직 답하지 않은 첫 쪽지에는 링크·전화번호·오픈채팅·계좌번호처럼 밖으로 데려가는 내용을 막는다(홍보·사기 유도 차단).
  * - 청약통장 매매·분양권 전매 알선처럼 불법 거래가 의심되는 문구는 막지 않고 받는 사람에게 경고를 붙인다(일상 대화에도 나오는 말이라).
+ * 정규식과 정적 메서드만 있는 클래스다. DmService가 쪽지를 저장하기 전에 부른다.
  */
 public final class DmRules {
     private DmRules() { }
@@ -43,6 +44,7 @@ public final class DmRules {
             + "|명의\\s*(대여|빌려|빌립)"
             + "|선입금|입금\\s*(먼저|부탁|하시면))");
 
+    /** 막는 이유: 빈 내용 / 너무 김 / 첫 쪽지에 연락처. */
     public enum Problem { EMPTY, TOO_LONG, CONTACT }
 
     /** 보내기 전에 막을 문제. 없으면 null. firstUnanswered: 상대가 아직 이 대화에서 답하지 않았을 때. */
@@ -54,7 +56,9 @@ public final class DmRules {
         return null;
     }
 
+    /** 링크·이메일·@아이디·전화번호·메신저 유도·계좌번호처럼 보이는 것이 있는지. */
     static boolean hasContact(String text) {
+        // 줄바꿈 없는 공백(NBSP)을 일반 공백으로 바꿔 정규식이 같은 기준으로 보게 한다
         String flat = text.replace(' ', ' ');
         if (LINK.matcher(flat).find() || HANDLE.matcher(flat).find() || PHONE.matcher(flat).find() || MESSENGER.matcher(flat).find()) return true;
         var runs = NUMBER_RUN.matcher(flat);
@@ -74,6 +78,7 @@ public final class DmRules {
         return content != null && TRADE.matcher(content.replaceAll("\\s+", " ")).find();
     }
 
+    /** 막은 이유를 화면에 보여 줄 문구로 바꾼다. */
     public static String message(Problem problem) {
         return switch (problem) {
             case EMPTY -> "보낼 내용을 입력해 주세요.";

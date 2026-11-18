@@ -1,3 +1,10 @@
+/**
+ * 공고 상세의 핵심 요약과 '동네 실거래' 탭. views/main/Main.jsx가 상세 화면에서 쓴다.
+ * - AnnouncementActions: 관심 공고 저장/해제, 일정(.ics) 추가, 나의 청약 이동 버튼
+ * - ResearchTabs: 청약 정보 / 동네 실거래 탭 버튼
+ * - ResearchPanel(기본 내보내기): 접수·발표·공급 규모 요약, 주택형·분양가, 동네 실거래 목록
+ * 데이터: usePlanner(관심 공고), useNeighborhoodResearch(실거래).
+ */
 import ImageExportButton from '@/features/announcement/export/ImageExportButton';
 import { detailImageSections } from '@/features/announcement/export/exportData';
 import { useEffect, useState, useRef } from 'react';
@@ -26,13 +33,17 @@ import './research.css';
 const MOLIT_TRADE_SITE='https://rt.molit.go.kr/';
 /** 이 화면에서 조회할 수 없을 때도 사용자가 같은 공식 자료로 이어서 확인할 수 있게 한다. */
 function OfficialTradeLink(){return <Button size="small" variant="outlined" component="a" href={MOLIT_TRADE_SITE} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewRounded/>}>국토교통부 실거래가 공개시스템</Button>;}
+/** 실거래를 보여 줄 수 없을 때의 안내. kind: NOT_CONFIGURED(서버에서 꺼 둠) · EMPTY(거래 없음) · UNAVAILABLE(오류). */
 function DataState({kind,onRetry}) {
   const copy={NOT_CONFIGURED:['지금은 동네 실거래를 바로 보여드리지 못해요','국토교통부 실거래가 공개시스템에서 같은 동네의 신고 거래를 확인할 수 있어요.'],EMPTY:['최근 3개월 동안 조건에 맞는 거래가 없어요','면적 조건을 넓히거나 공식 공개시스템에서 기간을 늘려 확인해 보세요.'],UNAVAILABLE:['지금은 실거래를 불러오지 못했어요','제공처 응답이 지연되고 있어요. 잠시 후 다시 확인해 주세요.']};
   const [title,description]=copy[kind] || copy.UNAVAILABLE;
   return <div className="research-data-state" data-state={kind || 'UNAVAILABLE'}><ApartmentRounded /><strong>{title}</strong><p>{description}</p><div className="research-data-actions">{(kind==='UNAVAILABLE' || !copy[kind]) && onRetry && <Button size="small" onClick={onRetry}>다시 불러오기</Button>}<OfficialTradeLink/></div></div>;
 }
+/** 실거래를 불러오는 동안 보이는 자리 표시 */
 function LoadingData(){return <div className="research-loading"><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/><Skeleton variant="rounded" height={66}/></div>;}
+// 'YYYY-MM-DD' → 'MM.DD'.
 const shortDate=date=>date?date.slice(5).replace('-','.'):'미제공';
+// 자료 확인 시각을 한국 시간 기준 월·일·시각으로.
 const checkedAt=value=>value?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'';
 
 /** 같은 면적의 공급금액과 동네 실거래 범위를 나란히 보여준다. 연식·입지가 달라 판정 문구는 쓰지 않는다. */
@@ -56,10 +67,12 @@ function Notes({items}) {
   return <details className="research-notes"><summary>자료 기준·유의사항</summary><ul>{items.map(item=><li key={item}>{item}</li>)}</ul></details>;
 }
 
+/** 상세 머리의 저장·일정·나의 청약 버튼. 해제 뒤 '되돌리기'를 위해 지운 항목을 removed에 잠시 들고 있는다. */
 export function AnnouncementActions({detail}) {
   const planner=usePlanner();
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(null),[justSaved,setJustSaved]=useState(false),[removed,setRemoved]=useState(null),[pending,setPending]=useState(null),[confirmRemove,setConfirmRemove]=useState(false);
   const summary=summaryOf(detail),saved=planner.items.some(x=>x.id===summary.id);
+  // 다른 공고로 바뀌면(summary.id) 지난 공고의 안내·되돌리기 상태를 비운다.
   useEffect(()=>{setJustSaved(false);setRemoved(null);setConfirmRemove(false);},[summary.id]);
   // 저장 버튼은 저장·해제를 오가는 토글이다(나의 청약 이동은 옆 버튼). 해제하면 메모·체크리스트·단계까지 지워지므로 바로 되돌릴 수 있게 남겨 둔다.
   // 메모·준비 체크·진행 단계를 적어 둔 공고는 해제하면 함께 지워지므로 한 번 더 확인한다(되돌리기는 이 상세를 보는 동안만 가능하다).
@@ -77,9 +90,11 @@ export function AnnouncementActions({detail}) {
     try{await planner.save({...removed,summary:removed.summary||summary});setRemoved(null);}catch(e){setMessage(e.message);}finally{setBusy(false);}
   }
   return <>
+    {/* 저장 버튼은 저장/해제 토글이다. 일정 추가는 이 공고 일정만 .ics 파일로 받는다. */}
     <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} aria-label={saved?'관심 공고 저장됨, 누르면 저장 해제':undefined} title={saved?'다시 누르면 관심 공고에서 빠져요':undefined} onClick={()=>save()}>{pending==='remove'?'해제 중…':pending==='save'?'저장 중…':saved?'관심 공고 저장됨':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
     {!planner.loggedIn && <p className="research-storage-note">로그인 없이 저장하고, 이 브라우저에서 이어볼 수 있어요.</p>}
     </div>    {justSaved && <PushPrompt compact overlayId="push-settings-detail" announcementId={summary.id} loggedIn={planner.loggedIn} onCalendar={summary.events.length ? () => downloadCalendar([summary]) : undefined} />}
+    {/* 해제 확인 → 해제 뒤 되돌리기 → 오류 순서로 안내 */}
     {confirmRemove && saved && <Alert severity="warning" sx={{my:1}} action={<><Button color="inherit" size="small" onClick={()=>setConfirmRemove(false)}>취소</Button><Button color="inherit" size="small" sx={{fontWeight:800}} disabled={busy} onClick={()=>save(true)}>해제</Button></>}>메모·준비 체크·진행 단계가 있는 공고예요. 해제하면 함께 지워져요.</Alert>}
     {removed && !saved && <Alert severity="info" sx={{my:1}} action={<Button color="inherit" size="small" disabled={busy} onClick={undoRemove}>되돌리기</Button>}>관심 공고에서 뺐어요.</Alert>}
     {message && <Alert severity="error" sx={{my:1}}>{message}</Alert>}
@@ -87,14 +102,20 @@ export function AnnouncementActions({detail}) {
   </>;
 }
 
+/** 상세 하위 탭 버튼. 탭 상태는 부모(Main)가 들고 있을 수 있어 value·onChange로 받는다. */
 export function ResearchTabs({value,onChange}) {
   const tab=value;
   return <Tabs value={tab} onChange={(_,value)=>onChange(value)} variant="fullWidth" className="research-tabs" aria-label="청약 조사 정보"><Tab value="info" label="청약 정보"/><Tab value="trades" label="동네 실거래"/></Tabs>;
 }
 
+/**
+ * 공고 상세 본문. tab을 넘기면 부모가 탭을 관리하고(제어 컴포넌트), 안 넘기면 이 안에서 관리한다.
+ * children은 일정 영역, after는 원문 영역처럼 Main이 끼워 넣는 내용이다.
+ */
 export default function ResearchPanel({detail,children,after,tab:controlledTab,onTabChange,showTabs=true,onShowMap}) {
   const unitSection=useRef(null);
   const [localTab,setLocalTab]=useState('info'),[area,setArea]=useState('');
+  // controlledTab ?? localTab: 부모가 준 값이 있으면 그것을, 없으면 내부 상태를 쓴다.
   const tab=controlledTab ?? localTab, setTab=onTabChange || setLocalTab;
   const summary=summaryOf(detail),today=koreaToday();
   const research=useNeighborhoodResearch(detail,tab,area);
@@ -103,6 +124,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
   const hasSupply=Number.isFinite(supply) && supply>0;
   const amounts=units.map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
   const min=amounts.length?Math.min(...amounts):null,max=amounts.length?Math.max(...amounts):null;
+  // 실거래 면적 필터 버튼용: 주택형 면적을 반올림해 중복을 빼고 6개까지.
   const areas=[...new Set(units.map(unit=>Math.round(unit.area)).filter(Number.isFinite))].slice(0,6);
   const closing=daysUntil(summary.endDate,today),start=daysUntil(summary.startDate,today);
   const status=start>0?`접수 D-${start}`:closing>=0 && closing!==null?'접수 중':summary.endDate?'접수 종료':'일정 확인';
@@ -111,6 +133,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
   const tradesQueryable=research.capabilities.data?.tradesEnabled===true && !research.location.error;
 
   return <section className="research-panel" aria-label="공고 핵심 정보와 동네 조사">
+    {/* 접수·발표·공급 규모 세 칸 요약 */}
     <header className="research-heading"><span className="research-eyebrow">모집공고 핵심 요약</span><Chip size="small" label={status} variant="outlined" /></header>
     <div className="research-metrics">
       <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
@@ -136,6 +159,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
         </section>
         {after}
       </>}
+      {/* 동네 실거래 탭: 불러오는 중 → 오류 → 서버에서 꺼 둠 → 위치 미확인 → 거래 목록 순서로 판단한다. */}
       {tab==='trades' && <>
         <div className="research-section-caption"><span>{research.location.data?.dong || '같은 법정동'} 아파트 매매 · 최근 3개월 거래 목록</span><span>국토교통부 신고 자료</span></div>
         {/* 위치 탭과 역할을 나눈다: 여기는 같은 법정동의 최근 거래 목록, 주변 단지별 시세(시·군·구·최근 1년)는 위치 탭 지도. */}

@@ -7,12 +7,16 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/** RFC 5545 구독용 캘린더. 하루 종일 일정에 전날 오전 9시 알림을 붙여 메일 없이도 알림을 받게 한다. */
+/**
+ * 캘린더 구독 파일(.ics, RFC 5545 형식) 본문을 만드는 도우미. CalendarFeed(개인 피드)와 AreaCalendar(생활권 피드)가 쓴다.
+ * 하루 종일 일정에 전날 오전 9시 알림(TRIGGER:-PT15H, 자정 기준 15시간 전)을 붙여 메일 없이도 알림을 받게 한다.
+ */
 final class CalendarIcs {
     private CalendarIcs() { }
     private static final DateTimeFormatter DAY = DateTimeFormatter.BASIC_ISO_DATE;
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
+    /** 개인 '나의 청약' 피드용 기본값(알림 켬). */
     static String build(List<PlannerSummary.Summary> summaries, String domain, Instant now) {
         return build(summaries, domain, now, "TOADY 나의 청약", "TOADY에 저장한 관심 공고의 청약 일정", true);
     }
@@ -53,6 +57,7 @@ final class CalendarIcs {
         line(out, "END:VCALENDAR");
         return out.toString();
     }
+    /** ics 텍스트 규칙에 맞게 역슬래시·줄바꿈·세미콜론·쉼표를 이스케이프한다. */
     static String text(String value) {
         return (value == null ? "" : value).replace("\\", "\\\\").replace("\r", "").replace("\n", "\\n").replace(";", "\\;").replace(",", "\\,");
     }

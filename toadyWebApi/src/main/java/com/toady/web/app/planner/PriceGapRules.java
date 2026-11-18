@@ -6,6 +6,7 @@ import java.util.*;
 /**
  * 분양가 vs 주변 시세 비교 규칙(화면 priceGapRules.js와 같은 기준). 금액 단위는 만원.
  * 준공 10년 이내 거래가 3건 이상이면 신축 기준, 1~3사분위 범위와 분양 최고가의 차이, 신뢰도(높음·보통·참고).
+ * 계산은 PriceGapSnapshots가 하고, 저장된 값을 화면 문구로 바꿀 때는 PriceGapStore가 이 규칙을 쓴다.
  */
 public final class PriceGapRules {
     private PriceGapRules() { }
@@ -15,13 +16,15 @@ public final class PriceGapRules {
      * 화면(priceGapRules.isLandLease)과 같은 규칙: 주택명에 '토지임대부'가 있으면 제외.
      */
     public static boolean landLease(String houseNm) { return houseNm != null && houseNm.replaceAll("\\s+", "").contains("토지임대부"); }
+    /** 면적 하나의 비교 결과. diffLow/diffHigh = 시세 1·3사분위 - 분양가(양수면 분양가가 더 싸다). */
     public record Row(int area, long supply, String scope, String basis, int basisCount, String confidence, long q1, long q3, long diffLow, long diffHigh) { }
 
+    /** 신축 기준·같은 동(DONG)·5건 이상이면 높음, 3건 이상이면 보통, 그보다 적으면 참고. */
     static String confidence(String basis, String scope, int basisCount) {
         if ("new".equals(basis) && "DONG".equals(scope) && basisCount >= 5) return "high";
         return basisCount >= 3 ? "medium" : "low";
     }
-    /** units: 전용면적(반올림) → 그 면적 주택형의 최고 공급금액. */
+    /** supplies: 전용면적(반올림) → 그 면적 주택형의 최고 공급금액. stats: 면적별 실거래 통계. */
     static List<Row> rows(Map<Integer, Long> supplies, List<NeighborhoodResearchService.AreaStat> stats) {
         List<Row> rows = new ArrayList<>();
         for (var stat : stats) {

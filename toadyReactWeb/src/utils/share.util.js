@@ -1,6 +1,7 @@
 /**
  * 공유: 휴대폰은 시스템 공유창(카카오톡 등), 안 되면 문구와 링크를 복사한다.
  * 돌려주는 값: 'shared'(공유창에서 보냄) · 'copied'(복사함) · 'cancelled'(공유창을 닫음) · 'failed'.
+ * 사용자가 공유창을 닫은 것(AbortError)이 아닌 다른 이유로 실패하면 복사로 넘어간다.
  */
 export async function shareLink({ title, text, url }) {
   if (typeof navigator !== 'undefined' && navigator.share) {

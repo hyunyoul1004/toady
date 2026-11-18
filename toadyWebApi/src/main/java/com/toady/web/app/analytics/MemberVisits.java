@@ -27,8 +27,12 @@ import java.util.concurrent.TimeUnit;
  * 익명 방문자 번호는 브라우저 저장소에 있어 아이폰 사파리(7일 미방문 시 삭제)·인앱 브라우저에서 같은 사람이 새 방문자로 잡힌다.
  * 회원 기준 재방문은 이 왜곡이 없어 관리자 지표의 30일 재방문을 회원·비회원으로 나눠 보는 데 쓴다.
  * 무엇을 봤는지는 남기지 않고 날짜만 남긴다. 탈퇴하면 지우고 400일이 지나면 스케줄러가 지운다.
+ * 서블릿 필터로 /api/·/webApi/ 요청마다 실행된다. 순서를 따로 정하지 않아 스프링 시큐리티 필터 체인 뒤에 돌므로,
+ * JwtAuthenticationFilter가 채운 로그인 사용자를 읽을 수 있다. 날짜는 한국 시간(KST) 기준이다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Component: 빈으로 등록되어 서블릿 필터 체인에 자동으로 들어간다
 @Component
 public class MemberVisits extends OncePerRequestFilter {
     static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -40,10 +44,12 @@ public class MemberVisits extends OncePerRequestFilter {
     /** 기록이 실패하면(29번 미적용, DB 일시 장애) 이 시각까지 시도를 쉰다. 회원 요청마다 실패하는 INSERT를 보내지 않게. */
     private volatile long pausedUntil;
 
+    // @Autowired: 스프링이 쓸 생성자. 아래 Clock을 받는 생성자는 테스트에서 날짜를 고정할 때 쓴다
     @org.springframework.beans.factory.annotation.Autowired
     public MemberVisits(JdbcTemplate jdbc) { this(jdbc, Clock.system(KST)); }
     MemberVisits(JdbcTemplate jdbc, Clock clock) { this.jdbc = jdbc; this.clock = clock; }
 
+    // API 요청만 본다(정적 파일·문서 요청은 건너뛴다)
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
@@ -68,6 +74,7 @@ public class MemberVisits extends OncePerRequestFilter {
             jdbc.update("INSERT INTO TB_MEMBER_VISIT_DAY (USER_SEQ, VISIT_DATE) VALUES (?, ?)", userSeq, Date.valueOf(today));
             recorded.put(key, Boolean.TRUE);
         } catch (DuplicateKeyException already) {
+            // (회원, 날짜) 기본 키가 이미 있으면 다른 요청·서버가 먼저 넣은 것이다. 정상으로 본다
             recorded.put(key, Boolean.TRUE);
         } catch (DataAccessException unavailable) {
             pausedUntil = clock.millis() + TimeUnit.MINUTES.toMillis(10);

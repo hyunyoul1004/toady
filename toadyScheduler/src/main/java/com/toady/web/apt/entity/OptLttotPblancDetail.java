@@ -13,6 +13,11 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+/**
+ * 임의공급 분양정보 상세(공고 한 건) 엔티티. 테이블: TB_OPT_LTTOT_PBLANC_DETAIL.
+ * 청약홈 getOPTLttotPblancDetail 응답 한 행이 이 객체 하나가 된다. 키: 주택관리번호+공고번호 복합키(HouseManagePblancId).
+ * 어노테이션 뜻은 AptLttotPblancDetail의 설명과 같다.
+ */
 @Entity
 @Table(name = "TB_OPT_LTTOT_PBLANC_DETAIL")
 @Comment("임의공급 분양정보 상세")

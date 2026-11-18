@@ -24,7 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * Redis가 없거나 응답하지 않으면 같은 동작을 메모리에서 한다(그동안의 기록은 Redis와 합치지 않는다).
  * tryHit은 스크립트 하나로 원자적이지만, 여러 키를 차례로 다루는 호출(로그인 제한)은 키마다 따로 실행된다.
  * 장애가 시작·끝나는 순간에는 기록 일부가 메모리에, 일부가 Redis에 남을 수 있다(제한이 잠깐 느슨하거나 엄격해질 수 있음).
+ * 쓰는 곳: RequestLimitFilter(IP별 요청 제한), LoginAttemptLimiter(로그인 실패).
+ * Redis 키는 "toady:win:{이름}"(기록), "toady:mark:{이름}"(표시)이다.
  */
+// @Component: 빈 하나로 등록된다. 메모리 대체 저장소(memory, marks)도 이 객체 하나에 들어 있다
 @Component
 public class SlidingWindows {
     /**
@@ -50,6 +53,7 @@ public class SlidingWindows {
 
     private final RedisStore redis;
     private final Clock clock;
+    // Redis를 못 쓸 때의 대체 저장소. Guava Cache로 개수(20만 키)와 기간을 제한해 메모리가 끝없이 늘지 않게 한다
     private final Cache<String, Deque<Long>> memory = CacheBuilder.newBuilder()
             .maximumSize(200_000).expireAfterAccess(1, TimeUnit.DAYS).build();
     private final Cache<String, Boolean> marks = CacheBuilder.newBuilder()
@@ -58,6 +62,7 @@ public class SlidingWindows {
     private final AtomicLong sequence = new AtomicLong();
     private final String instance = UUID.randomUUID().toString().substring(0, 8);
 
+    // @Autowired: 스프링은 이 생성자를 쓴다. 시각은 UTC 밀리초(epoch)라 시간대와 상관없다. Clock 생성자는 테스트에서 시각을 고정할 때 쓴다
     @Autowired
     public SlidingWindows(RedisStore redis) { this(redis, Clock.systemUTC()); }
     public SlidingWindows(RedisStore redis, Clock clock) { this.redis = redis; this.clock = clock; }
@@ -65,9 +70,11 @@ public class SlidingWindows {
     /** Redis 없이 메모리로만 동작한다(단위 테스트·기본 생성자). */
     public static SlidingWindows inMemory(Clock clock) { return new SlidingWindows(RedisStore.disabled(), clock); }
 
+    /** 창 하나의 한도: window 동안 최대 max번. */
     public record Limit(Duration window, int max) { }
 
     private static String key(String key) { return RedisStore.PREFIX + "win:" + key; }
+    // 정렬 집합 멤버 이름은 겹치면 덮어써지므로 "시각:서버ID:순번"으로 항상 다르게 만든다
     private String member(long now) { return now + ":" + instance + ":" + sequence.incrementAndGet(); }
 
     /** 창마다 한도 안이면 기록하고 true. 하나라도 차 있으면 기록하지 않고 false. retention은 가장 긴 창 이상이어야 한다. */
@@ -79,6 +86,7 @@ public class SlidingWindows {
             var result = redis.call(c -> c.<Long>eval(TRY_HIT, ScriptOutputType.INTEGER, new String[]{key(key)}, args.toArray(String[]::new)));
             if (result.isPresent()) return result.get() == 1L;
         }
+        // Redis가 없거나 실패했으면 메모리에서 같은 일을 한다. 키별 Deque에 synchronized를 걸어 확인과 기록을 한 번에 한다
         Deque<Long> times = deque(key);
         synchronized (times) {
             trim(times, now - retention.toMillis());
@@ -124,6 +132,7 @@ public class SlidingWindows {
         if (times != null) synchronized (times) { times.pollLast(); }
     }
 
+    /** 키의 기록을 모두 지운다(로그인 성공 시 실패 기록 초기화). */
     public void clear(String key) {
         if (redis.available() && redis.call(c -> c.del(key(key))).isPresent()) return;
         memory.invalidate(key);
@@ -135,6 +144,7 @@ public class SlidingWindows {
         marks.put(key, Boolean.TRUE);
     }
 
+    /** mark로 남긴 표시가 아직 살아 있는지. */
     public boolean marked(String key) {
         if (redis.available()) {
             var result = redis.call(c -> c.exists(RedisStore.PREFIX + "mark:" + key));

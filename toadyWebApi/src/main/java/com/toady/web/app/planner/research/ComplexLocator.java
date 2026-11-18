@@ -28,10 +28,14 @@ import java.util.regex.Pattern;
  * - 응답의 법정동 코드가 같은 시·군·구이고 지번(본번·부번·산 여부)과 동 이름이 같을 때만 좌표로 쓴다. 비슷한 주소로 확정하지 않는다.
  * - 결과는 TB_APT_COMPLEX_LOCATION(database.sql 22번)에 남겨 다시 묻지 않는다. 테이블이 없으면 메모리에만 둔다.
  * - 찾지 못한 지번은 30일 동안 다시 묻지 않고, 제공처 오류는 10분 뒤에 다시 시도한다.
+ * ComplexPriceService(시·군·구 단지별 시세 지도)가 known()으로 아는 좌표를 먼저 받고, 모르는 단지는 locate()로 맡긴다.
+ * 캐시: 메모리(Guava, 하루) → DB 테이블 → 카카오. 카카오 호출은 전용 스레드 4개로만 해서 한꺼번에 몰리지 않게 한다.
  */
+// @Slf4j(Lombok): log 필드를 자동으로 만든다. @Component: 스프링 빈으로 등록한다.
 @Slf4j
 @Component
 public class ComplexLocator {
+    /** 위도·경도. */
     public record Point(double lat, double lng) { }
     /** key: 시군구코드|법정동|지번. query: 카카오에 보낼 주소. */
     public record Target(String key, String lawd5, String dong, String jibun, String query) { }
@@ -54,11 +58,13 @@ public class ComplexLocator {
     private volatile long tableRetryAt = 0;
     private boolean tableReady() { return System.currentTimeMillis() >= tableRetryAt; }
 
+    // @Value: 카카오 REST 키. 비어 있으면 enabled()가 false라 좌표 확인을 하지 않는다.
     public ComplexLocator(ResearchTransport transport, JdbcTemplate jdbc, @Value("${toady.research.kakao-rest-key:}") String key) {
         this.transport = transport; this.jdbc = jdbc; this.key = key == null ? "" : key.trim();
         pool.allowCoreThreadTimeOut(true);
     }
     public boolean enabled() { return !key.isBlank(); }
+    // @PreDestroy: 서버가 꺼질 때 스프링이 불러 준다. 작업 스레드를 정리한다.
     @PreDestroy void close() { pool.shutdownNow(); }
 
     /** 이미 확인한 결과. 값이 없으면 아직 모른다(empty Optional은 '찾지 못함'). */
@@ -118,6 +124,7 @@ public class ComplexLocator {
     /** 아직 확인 중인지(화면은 잠시 뒤 다시 불러온다). */
     public boolean pending(String key) { return inFlight.contains(key); }
 
+    // 스레드 풀에서 도는 작업 하나. 찾았든 못 찾았든 결과를 메모리·DB에 남기고, 제공처 오류만 10분짜리 failed에 둔다.
     private void resolve(Target target) {
         try {
             Optional<Point> point = geocode(target);
@@ -142,6 +149,7 @@ public class ComplexLocator {
         return found;
     }
 
+    // 카카오 응답 중 법정동 코드 앞 5자리(시·군·구), 본번·부번, 산 여부, 동 이름이 모두 같은 첫 결과만 좌표로 쓴다.
     private Optional<Point> search(String query, Target target, String main, String sub, boolean mountain) throws Exception {
         URI uri = URI.create("https://dapi.kakao.com/v2/local/search/address.json?size=10&query=" + URLEncoder.encode(query, StandardCharsets.UTF_8));
         JsonNode body = json.readTree(transport.get(uri, Map.of("Authorization", "KakaoAK " + key)));
@@ -165,6 +173,7 @@ public class ComplexLocator {
         return words[words.length - 1];
     }
 
+    // MariaDB의 INSERT ... ON DUPLICATE KEY UPDATE: 같은 키가 있으면 갱신, 없으면 추가.
     private void save(String complexKey, Optional<Point> point) {
         if (!tableReady()) return;
         try {

@@ -1,4 +1,5 @@
-/** 운영 안내 문구. 회원에게는 종류·기간·사유만 보여 준다(관리자 메모는 서버가 보내지 않는다). */
+/** 운영 안내 문구. 회원에게는 종류·기간·사유만 보여 준다(관리자 메모는 서버가 보내지 않는다). 쓰는 곳: OperationNotices. */
+// 서버 날짜('YYYY-MM-DDTHH:mm' 또는 초까지)를 '3월 5일 18:00'처럼 바꾼다. 읽을 수 없으면 null.
 function until(value) {
   if (!value) return null;
   const date = new Date(value.length === 16 ? `${value}:00` : value);
@@ -6,6 +7,10 @@ function until(value) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * 안내 종류별 제목·본문. STORY_BAN(이야기 쓰기 정지)은 끝나는 날이 없으면 영구 정지 문구,
+ * NICKNAME_RESET(닉네임 초기화), 그 밖(WARNING)은 경고 문구.
+ */
 export function noticeText(item = {}) {
   const reason = item.reason || '운영 정책 위반';
   if (item.kind === 'STORY_BAN') {

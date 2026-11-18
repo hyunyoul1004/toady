@@ -18,8 +18,12 @@ import java.util.function.Function;
  * Redis 연결. 호스트가 비어 있으면 꺼진 상태로, 모든 호출이 빈 결과를 돌려 호출하는 쪽이 메모리로 처리한다.
  * Redis가 응답하지 않으면 사이트를 막지 않도록 짧은 시간 안에 포기하고 30초 동안 Redis를 건너뛴다(차단기).
  * 다시 붙으면 자동으로 Redis를 쓴다. 그 사이 메모리에 쌓인 기록은 합치지 않는다(요청 제한이 잠깐 느슨해질 뿐).
+ * 스프링의 RedisTemplate 대신 Lettuce 클라이언트를 직접 쓴다. SlidingWindows(요청 제한·로그인 실패)와
+ * SharedCache(외부 API 결과 캐시)가 이 클래스를 통해서만 Redis에 접근한다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Component: 빈 하나로 등록되어 앱 전체가 연결 하나를 함께 쓴다
 @Component
 public class RedisStore {
     static final Duration COMMAND_TIMEOUT = Duration.ofMillis(300);
@@ -28,10 +32,13 @@ public class RedisStore {
     public static final String PREFIX = "toady:";
 
     private final RedisClient client;
+    // volatile: 여러 요청 스레드가 읽고 쓰므로, 한 스레드가 바꾼 값을 다른 스레드가 바로 보게 한다
     private volatile StatefulRedisConnection<String, String> connection;
     private volatile long pausedUntil;
     private volatile boolean downLogged;
 
+    /** 설정 값(REDIS_HOST 등)으로 클라이언트만 만든다. 실제 연결은 첫 명령 때 connect()에서 한다. */
+    // @Autowired: 이 생성자로 빈을 만들라는 표시. @Value로 toady.redis.* 설정 값을 받는다(콜론 뒤는 기본값)
     @Autowired
     public RedisStore(@Value("${toady.redis.host:}") String host, @Value("${toady.redis.port:6379}") int port,
                       @Value("${toady.redis.password:}") String password) {
@@ -53,6 +60,7 @@ public class RedisStore {
     /** 테스트용: Redis 없이 메모리로만 동작한다. */
     public static RedisStore disabled() { return new RedisStore("", 6379, ""); }
 
+    /** REDIS_HOST가 설정돼 있는지(지금 연결되는지와는 별개). */
     public boolean configured() { return client != null; }
 
     /** 상태 확인용: OFF(설정 없음) · UP · DOWN. */
@@ -107,6 +115,8 @@ public class RedisStore {
         }
     }
 
+    /** 앱 종료 때 연결과 클라이언트 스레드를 정리한다. */
+    // @PreDestroy: 스프링이 빈을 없애기 직전(앱 종료 시) 한 번 부른다
     @PreDestroy
     public void close() {
         if (connection != null) connection.close();

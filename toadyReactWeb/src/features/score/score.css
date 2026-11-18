@@ -1,3 +1,4 @@
+/* 가점 계산기 화면과 공고 상세의 '내 가점 비교' 카드 스타일. --score-* 변수는 이 화면 전용 색 이름이다. */
 .score-page{max-width:1080px;margin:8px auto 48px;color:#172b42;font-size:14px;--score-line:#e5ebf2;--score-muted:#6b7c93;--score-blue:#2563eb;--score-teal:#0d9488;--score-amber:#d97706}
 .score-page h1,.score-page h2,.score-page p{margin:0}
 .score-page .MuiButton-root{text-transform:none;border-radius:10px;font-weight:700}
@@ -21,6 +22,7 @@
 .score-option-points{font-size:12px;font-weight:700;color:var(--score-blue);margin-left:12px}
 .score-form .MuiSelect-select .score-option-points{display:none}
 .score-form .MuiOutlinedInput-root{border-radius:12px}
+/* 부양가족 0~6명 버튼을 한 줄 7칸으로 고르게 놓는다. MUI 기본 배치(붙은 버튼)를 !important로 덮어쓴다. */
 .score-dependents{display:grid !important;grid-template-columns:repeat(7,1fr);gap:6px}
 .score-dependents .MuiToggleButton-root{border:1px solid #dbe3ec !important;border-radius:12px !important;margin:0 !important;padding:8px 0;flex-direction:column;font-size:16px;font-weight:750;color:#334155;line-height:1.2}
 .score-dependents .MuiToggleButton-root small{font-size:10.5px;font-weight:600;color:#94a3b8;margin-top:2px}
@@ -77,6 +79,7 @@
 .score-notes li{background:#fff;border:1px solid var(--score-line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px}
 .score-notes li strong{font-size:14px}
 .score-notes li span{font-size:12.5px;color:var(--score-muted);line-height:1.65;word-break:keep-all}
+/* 좁은 화면: 결과 상자를 고정(sticky)하지 않고, 점수가 나오면 입력칸보다 위로(order:-1) 올려 바로 보이게 한다. */
 @media (max-width:900px){.score-layout{grid-template-columns:1fr}.score-result{position:static}.score-result.has-score{order:-1}}
 @media (max-width:600px){.score-hero{padding:8px 0 16px}.score-hero h1{font-size:23px}.score-form{padding:2px 16px;border-radius:16px}.score-field{padding:16px 0}
   .score-dependents{gap:4px}.score-dependents .MuiToggleButton-root{font-size:15px;padding:7px 0;border-radius:10px !important}

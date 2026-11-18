@@ -4,14 +4,17 @@ import { CONTACT_EMAIL, EFFECTIVE_DATE, PRIVACY, TERMS } from './legalContent';
 import { resetDefaultSeo, updatePageSeo } from '@/utils/seo.util';
 import './legal.css';
 
+// 문서 종류별 제목·요약·본문·주소.
 const DOCS = {
   privacy: { title: '개인정보처리방침', lead: 'TOADY는 서비스 제공에 꼭 필요한 정보만 처리하고, 이용 통계는 회원과 연결하지 않습니다.', sections: PRIVACY, path: '/privacy' },
   terms: { title: '이용약관', lead: 'TOADY는 공공데이터를 바탕으로 청약 정보를 쉽게 찾도록 돕는 무료 참고 서비스입니다.', sections: TERMS, path: '/terms' }
 };
 
 /** 개인정보처리방침·이용약관. 푸터와 회원가입 화면에서 연결한다. */
+// kind는 라우터(routes/AppRoutes.jsx)에서 'privacy' | 'terms'로 넘긴다.
 export default function LegalPage({ kind }) {
   const doc = DOCS[kind];
+  // 문서가 바뀔 때마다 제목·설명(SEO)을 바꾸고, 떠나면 기본값으로 되돌린다.
   useEffect(() => {
     updatePageSeo({ title: `${doc.title} · TOADY`, description: doc.lead, path: doc.path });
     return () => resetDefaultSeo();

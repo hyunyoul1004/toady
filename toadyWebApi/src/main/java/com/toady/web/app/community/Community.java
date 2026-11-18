@@ -11,7 +11,9 @@ import java.time.ZoneId;
 
 /**
  * 차단·신고·쪽지가 함께 쓰는 공통 부분: 결과 형식, 한국시간, 테이블 준비 여부(database.sql 25번), 회원 상태 조회.
+ * SafetyService(차단·신고), DmService(쪽지)가 주입받아 쓴다. DB는 JdbcTemplate SQL로 직접 읽는다(TB_USER, TB_USER_BLOCK 등).
  */
+// @Component: 빈으로 등록된다
 @Component
 public class Community {
     static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -56,6 +58,7 @@ public class Community {
     /** 테스트에서 테이블을 만든 뒤 바로 다시 확인하게 한다. */
     public void recheck() { checkedAt = Instant.EPOCH; }
 
+    /** TB_USER에서 회원 상태를 읽는다. 없으면 null. */
     public Member member(long userSeq) {
         return jdbc.query("SELECT USER_SEQ, USER_NIC_NAME, CREATE_DT, WITHDRAWAL_YN, LOCK_YN, EMAIL_CERTIFY_YN FROM TB_USER WHERE USER_SEQ=?", rs -> {
             if (!rs.next()) return null;
@@ -71,6 +74,7 @@ public class Community {
         catch (DataAccessException missing) { return false; }
     }
 
+    // COUNT(*) 한 값을 읽는 도우미. null이면 0
     long count(String sql, Object... args) {
         Long value = jdbc.queryForObject(sql, Long.class, args);
         return value == null ? 0 : value;

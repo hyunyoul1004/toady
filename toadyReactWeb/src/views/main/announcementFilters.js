@@ -1,3 +1,11 @@
+/**
+ * @file announcementFilters.js
+ * @description 홈 화면 필터에 쓰는 고정 데이터와 판정 함수 모음.
+ * - 공급지역 17개 시·도(청약홈 지역 코드), 공급지역 판정(matchesRegions)
+ * - 검색창 자동완성용 시·도/시·군·구 목록(FLAT_CITY_OPTIONS), 공급유형 칩 목록(SUPPLY_FILTER_ITEMS)
+ * - 쓰이는 곳: Main.jsx(초기값·localStorage 복원), useAnnouncementSearch(목록 거르기), AnnouncementFilters(필터 화면).
+ * React 컴포넌트가 아닌 일반 모듈이라 화면이 다시 그려져도 값이 새로 만들어지지 않는다.
+ */
 import Citys from './Citys.js';
 import { RCEPT_SE_META } from './calendar/calendarGroup.js';
 

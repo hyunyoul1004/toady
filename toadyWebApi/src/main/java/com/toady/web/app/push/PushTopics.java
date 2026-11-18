@@ -8,9 +8,11 @@ import java.util.Optional;
 /**
  * 생활권 외의 '새 공고' 알림 주제. 구독의 AREA_SLUGS에 생활권 slug와 함께 저장하고,
  * 새 공고 판정(TB_PUSH_AREA_SEEN)도 같은 방식으로 주제 slug 단위로 기록한다.
+ * 상수와 정적 메서드만 있는 클래스다. PushController(구독 범위 검사)와 PushDigest(묶음 알림)가 쓴다.
  */
 public final class PushTopics {
     private PushTopics() { }
+    /** 알림 주제 하나. capitalOnly면 서울·경기·인천 공고만 포함한다. */
     public record Topic(String slug, String label, String url, boolean capitalOnly) {
         /** 무순위·잔여세대·임의공급 공고 중 이 주제에 들어가는 공고인지. */
         public boolean includes(AnnouncementListItem item) {
@@ -28,6 +30,7 @@ public final class PushTopics {
     /** 일요일 저녁 묶음에 다음 주(월~일) 접수 시작 공고 수를 알려 주는 주간 브리핑. 새 공고 판정과 무관하다. */
     public static final String WEEKLY = "weekly-brief";
 
+    /** slug로 주제를 찾는다. */
     public static Optional<Topic> bySlug(String slug) { return ALL.stream().filter(topic -> topic.slug().equals(slug)).findFirst(); }
     /** 구독 범위에 저장할 수 있는 slug: 생활권 또는 알림 주제. */
     public static boolean valid(String slug) { return LivingAreas.bySlug(slug).isPresent() || bySlug(slug).isPresent() || WEEKLY.equals(slug); }

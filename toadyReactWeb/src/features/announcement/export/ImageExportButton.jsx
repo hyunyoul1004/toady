@@ -9,16 +9,29 @@ import { renderAllImage, renderTableImage, downloadCanvas } from './renderImage'
 /** 선택 목록에서 '모든 표를 한 장으로'를 뜻하는 값. 표별 페이지는 0부터다. */
 const ALL_PAGES=-1;
 
+/**
+ * '이미지 저장' 단추와 미리 보기 대화상자. 공고 표를 PNG로 만들어 내려받게 한다(서버 없이 브라우저 canvas로 그림).
+ * - 사용처: features/planner/ResearchPanel.jsx(공고 상세 표, kind='detail'),
+ *   views/main/subscriptRate/SubscriptRate.jsx(경쟁률·가점 표, kind='rate')
+ * - sections: exportData.js의 detailImageSections / competitionImageSections가 만든 표 목록
+ * - 대화상자는 useHistoryOverlay로 연다. 열림 상태가 location.state.overlayLayers에 저장돼서
+ *   휴대폰 뒤로가기를 누르면 상세가 아니라 이 대화상자만 닫힌다.
+ */
 export default function ImageExportButton({detail,sections,disabled=false,label='이미지 저장',kind='detail'}) {
+  // useState와 비슷하게 [값, 바꾸는 함수]를 주지만, 값이 히스토리(location.state)에 들어간다. 닫기는 뒤로가기 한 칸과 같다.
   const [open,setOpen]=useHistoryOverlay(`image-export:${kind}`);
   const pages=imagePages(sections);
   // 표가 여러 장이면 기본은 전체 한 장이다(한 번에 저장). 한 장뿐이면 전체와 같으므로 고르지 않는다.
   const canCombine=pages.length>1;
   const firstChoice=canCombine?ALL_PAGES:0;
   const [page,setPage]=useState(firstChoice),[preview,setPreview]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  // 만든 canvas는 저장할 때만 쓰고 화면에 그대로 그리지 않으므로 state가 아니라 ref에 둔다(바뀌어도 다시 렌더링하지 않음).
   const canvas=useRef(null);
   const all=page===ALL_PAGES;
+  // sections 배열은 렌더마다 새로 만들어질 수 있어, 내용이 같으면 같은 값이 되도록 문자열로 바꿔 effect 의존성에 쓴다.
   const pageData=JSON.stringify(all?sections:pages[page]);
+  // 대화상자가 열려 있고 고른 페이지·내용이 바뀔 때마다 미리 보기 이미지를 새로 만든다.
+  // active는 정리(cleanup) 함수에서 false가 된다. 그리는 도중 페이지를 바꾸거나 닫으면 늦게 끝난 이전 결과를 버린다.
   useEffect(()=>{
     if(!open)return;
     let active=true;canvas.current=null;setPreview('');setError('');
@@ -32,6 +45,7 @@ export default function ImageExportButton({detail,sections,disabled=false,label=
   async function save(){setBusy(true);setError('');try{await downloadCanvas(canvas.current,fileName());}catch(e){setError(e.message);}finally{setBusy(false);}}
   const pageTitle=all?'전체':pages[page]?.title;
   return <>
+    {/* 열 때마다 기본 선택(전체 한 장 또는 첫 페이지)으로 돌린다 */}
     <Button size="small" variant="outlined" startIcon={<DownloadRounded/>} disabled={disabled || !pages.length} onClick={()=>{setPage(firstChoice);setOpen(true);}} sx={{whiteSpace:'nowrap',flexShrink:0}}>{label}</Button>
     <Dialog open={Boolean(open)} onClose={()=>setOpen(false)} fullWidth maxWidth="sm" aria-labelledby={`image-export-${kind}`}>
       <DialogTitle id={`image-export-${kind}`} sx={{fontSize:17,display:'flex',justifyContent:'space-between',alignItems:'center'}}>공고 이미지 저장<IconButton aria-label="이미지 저장 닫기" onClick={()=>setOpen(false)}><CloseRounded/></IconButton></DialogTitle>

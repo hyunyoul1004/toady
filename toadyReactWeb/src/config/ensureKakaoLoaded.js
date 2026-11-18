@@ -18,7 +18,11 @@ function reloadFailedScript(target) {
   return true;
 }
 
-/** 스크립트 다운로드와 maps.load 콜백까지 모두 제한 시간에 포함한다. 내려받기에 실패했으면 한 번 다시 불러온다. */
+/**
+ * 카카오 지도를 쓸 수 있을 때까지 기다렸다가 window.kakao를 돌려주는 Promise. 지도 화면(Kakaomap 등)이 쓴다.
+ * 스크립트가 언제 도착할지 알 수 없어 0.1초마다 확인(check)하고, 도착하면 maps.load로 초기화한다.
+ * 스크립트 다운로드와 maps.load 콜백까지 모두 제한 시간에 포함한다. 내려받기에 실패했으면 한 번 다시 불러온다.
+ */
 export function ensureKakaoLoaded(target = window, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let interval;
@@ -26,6 +30,7 @@ export function ensureKakaoLoaded(target = window, timeoutMs = 8000) {
     let loading = false;
     let reloaded = false;
     let settled = false;
+    // 성공·실패·시간 초과 중 먼저 온 것 하나만 처리하고 타이머를 모두 정리한다(settled로 두 번 처리 방지).
     const finish = (error) => {
       if (settled) return;
       settled = true;

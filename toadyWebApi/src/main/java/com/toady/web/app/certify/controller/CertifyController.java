@@ -31,23 +31,33 @@ import jakarta.validation.Valid;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/11        youn       최초 생성
+ *
+ * 가입 이메일 인증, 인증 메일 재발송, 비밀번호 찾기(코드 요청·확인) API.
+ * 흐름: CertifyController → CertifyService → CertifyRepository(TB_CERTIFY)·UserRepository(TB_USER) + 메일 발송.
+ * 메일을 보내는 요청은 MailGate로 동시 처리 수를 제한하고, 응답 시간을 맞춰 가입 여부가 드러나지 않게 한다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @RestController: JSON 응답 컨트롤러
 @RestController
+// @RequestMapping: 아래 주소 앞에 /webApi/certify를 붙인다
 @RequestMapping("/webApi/certify")
 public class CertifyController {
 
+    // @Autowired: 필드 주입
     @Autowired
     private CertifyService certifyService;
 
     @Autowired
     private MailGate mailGate;
 
+    // @Value: 메일 요청 응답의 최소 시간(기본 1.5초)
     @Value("${toady.security.mail-response-min-ms:1500}")
     private long mailResponseMinMillis;
 
     /**
      * 인증
+     * 메일 링크의 코드와 가입 때 정한 비밀번호를 함께 받아 계정을 활성화한다(emailCertifyYn = Y).
      * @param param
      * @return 결과.
      */
@@ -58,6 +68,7 @@ public class CertifyController {
     }
 
 
+    /** 가입 인증 메일을 다시 보낸다. 가입 여부와 상관없이 항상 같은 응답을 돌려준다. */
     @Operation(summary = "가입 인증 메일 재발송", tags = "인증 API")
     @PostMapping("/resend-account-verification")
     public ResponseEntity<ResData> resendAccountVerification(@Valid @RequestBody CertifyDTO.UserInfo param) {
@@ -75,6 +86,7 @@ public class CertifyController {
 
     /**
      * 비밀번호 찾기 인증번호 요청.
+     * 가입된 이메일이면 재설정 코드를 메일로 보낸다. 없는 이메일이어도 같은 응답을 돌려준다.
      * @return 결과.
      */
     @Operation(summary = "비밀번호 찾기 인증번호 요청", description = "비밀번호 찾기 인증번호 요청", tags = "인증 API")
@@ -104,6 +116,7 @@ public class CertifyController {
 
     /**
      * 비밀번호 찾기 인증번호 확인 및 비밀번호 변경.
+     * 주소의 confrim은 오타지만 화면이 이 주소를 쓰므로 그대로 둔다.
      * @return 결과.
      */
     @Operation(summary = "비밀번호 찾기 인증번호 확인 및 비밀번호 변경", description = "비밀번호 찾기 인증번호 확인 및 비밀번호 변경", tags = "인증 API")

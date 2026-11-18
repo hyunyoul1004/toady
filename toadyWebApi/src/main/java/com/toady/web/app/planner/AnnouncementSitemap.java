@@ -15,7 +15,10 @@ import java.util.*;
  * 몇 년 지난 공고 수천 건을 함께 알리면 검색엔진이 비슷한 페이지로 보고 대부분 색인을 미룬다.
  * 지난 공고 페이지는 그대로 열려 있어 링크로는 들어올 수 있다.
  * lastmod는 공고 수집·경쟁률·당첨가점이 처음 들어온 날 중 가장 늦은 날이고, 모음·지역 페이지는 담긴 공고 중 가장 늦은 날이다.
+ * 검색엔진이 /sitemap.xml을 요청하면 웹 컨테이너 nginx(toadyReactWeb/nginx.conf)가 /api/v1/public/sitemap.xml로 넘긴다.
+ * 사이트맵 색인 → 유형별 공고 목록·생활권·지역 목록으로 나뉜다. 응답은 1시간 캐시한다.
  */
+// @RestController: 반환한 문자열을 그대로 응답 본문으로 쓴다. produces로 XML임을 알린다.
 @RestController
 public class AnnouncementSitemap {
     static final int PAGE_SIZE = 5000;
@@ -26,6 +29,7 @@ public class AnnouncementSitemap {
     private List<PublicAnnouncementIndex.Entry> ofType(String type) {
         return announcements.recent().stream().filter(entry -> entry.type().equals(type)).toList();
     }
+    // 사이트맵 색인(sitemapindex). 공고 유형별 5천 건 단위 페이지와 생활권·지역 사이트맵 주소를 나열한다.
     @GetMapping(value="/api/v1/public/sitemap.xml",produces="application/xml;charset=UTF-8")
     public ResponseEntity<String> index() {
         StringBuilder xml=new StringBuilder("<?xml version='1.0' encoding='UTF-8'?><sitemapindex xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
@@ -40,6 +44,7 @@ public class AnnouncementSitemap {
         xml.append("<sitemap><loc>").append(esc(domain+"/sitemaps/regions.xml")).append("</loc>").append(lastmod(all)).append("</sitemap>");
         xml.append("</sitemapindex>");return response(xml.toString());
     }
+    // 유형(apt 등)별 공고 상세 주소 목록 한 페이지. @PathVariable로 유형과 페이지 번호를 받는다.
     @GetMapping(value="/api/v1/public/sitemaps/{type}/{page}.xml",produces="application/xml;charset=UTF-8")
     public ResponseEntity<String> entries(@PathVariable String type,@PathVariable int page) {
         if(!PublicAnnouncementIndex.SOURCES.containsKey(type) || page<0 || page>10000) return ResponseEntity.notFound().build();
@@ -84,6 +89,7 @@ public class AnnouncementSitemap {
     private void url(StringBuilder xml,String path,LocalDate lastmod) {
         xml.append("<url><loc>").append(esc(domain+path)).append("</loc>").append(lastmod(lastmod)).append("</url>");
     }
+    /** 공고들 중 가장 늦은 갱신일(lastmod). 없으면 null이고 lastmod 태그를 빼게 된다. */
     static LocalDate latest(List<PublicAnnouncementIndex.Entry> entries) {
         return entries.stream().map(PublicAnnouncementIndex.Entry::updated).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
     }

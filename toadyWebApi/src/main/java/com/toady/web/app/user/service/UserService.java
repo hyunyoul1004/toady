@@ -44,11 +44,19 @@ import java.util.regex.Pattern;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/09        youn       최초 생성
+ *
+ * 로그인(비밀번호 확인 + JWT 발급)과 회원가입을 처리한다.
+ * 흐름: UserController → UserService → UserRepository(TB_USER), CertifyService(TB_CERTIFY + 인증 메일).
+ * AccountService도 토큰 재발급(renewToken·generatorToken)과 닉네임 풀어 주기(releaseStaleNickname)에 이 클래스를 쓴다.
+ * LocalDateTime.now()는 서버 시간대 기준이고, 운영 컨테이너는 TZ=Asia/Seoul이라 한국 시간이다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 서비스 빈으로 등록한다
 @Service
 public class UserService {
 
+    // @Autowired: 필드 주입(예전 방식)
     @Autowired
     private SimpleUserDetailsService simpleUserDetailsService;
 
@@ -67,7 +75,10 @@ public class UserService {
     /** 없는 계정도 실제 비교와 비슷한 시간이 걸리게 하는 더미 해시. 응답 시간으로 가입 여부를 알아내지 못하게 한다. */
     private static final String DUMMY_HASH = new BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
 
-    /** 이메일과 비밀번호를 확인하고 로그인 토큰을 반환합니다. */
+    /**
+     * 이메일과 비밀번호를 확인하고 로그인 토큰을 반환합니다.
+     * 틀리면 BadCredentialsException, 계정 상태 문제는 loadUserByUsername이 던지는 예외(잠금·탈퇴·미인증)로 UserController에 전달된다.
+     */
     public Map<String, Object> getUser(UserDTO.Login param) throws Exception {
 
         String email = param.getUserEmail().toLowerCase(Locale.ROOT);
@@ -101,7 +112,13 @@ public class UserService {
     }
 
 
-    /** 계정을 등록하고 인증 메일을 발송합니다. */
+    /**
+     * 계정을 등록하고 인증 메일을 발송합니다.
+     * 같은 이메일 행을 FOR UPDATE로 잠가 동시 가입을 한 줄로 세운다. 실패 안내는 200 + 결과 코드로 돌려준다.
+     * 이미 있는 미인증 계정이면 새 비밀번호·닉네임으로 덮어쓰고 인증 메일을 다시 보낸다.
+     */
+    // @Transactional: 이 메서드의 DB 작업을 하나로 묶는다. 예외가 밖으로 나가면 모두 되돌리고(롤백),
+    // 정상 종료하면 커밋하면서 바뀐 엔티티를 UPDATE한다(변경 감지)
     @Transactional
     public ResponseEntity<ResData> regUser(UserDTO.RegUser param){
 
@@ -116,6 +133,7 @@ public class UserService {
                 return ResponseEntity.ok().body(ResData.of(ResultCode.PASSWORD_MISMATCH_ERROR.getCode(), ResultCode.PASSWORD_MISMATCH_ERROR.getMessage()));
             }
 
+            // 영문 1개 이상 + (숫자 또는 특수문자) 1개 이상, 6자 이상
             Pattern passPattern = Pattern.compile("^(?=.*[A-Za-z])((?=.*\\d)|(?=.*\\W)).{6,}$");
             Matcher passMatcher = passPattern.matcher(param.getUserPassword());
 
@@ -161,6 +179,7 @@ public class UserService {
                     .createDt(LocalDateTime.now())
                     .build();
 
+            // saveAndFlush: INSERT를 지금 바로 DB에 보내 유니크 제약 위반을 이 자리에서 잡는다(그냥 save면 커밋 때 나서 못 잡는다)
             try {
                 userRepository.saveAndFlush(userParam);
             } catch (DataIntegrityViolationException raced) {
@@ -181,6 +200,7 @@ public class UserService {
             TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.SIGNUP_BUSY_ERROR.getCode(), ResultCode.SIGNUP_BUSY_ERROR.getMessage()));
         } catch (EmailTakenException e) {
+            // 예외를 잡아 정상 응답을 돌려주면 트랜잭션은 커밋하려 한다. 여기까지 한 작업을 버리도록 직접 롤백 표시를 한다
             TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.ok().body(ResData.of(ResultCode.ALREADY_EMAIL_ERROR.getCode(), ResultCode.ALREADY_EMAIL_ERROR.getMessage()));
         } catch (NicknameTakenException e) {
@@ -199,8 +219,10 @@ public class UserService {
     static final class NicknameTakenException extends RuntimeException { }
     static final class EmailTakenException extends RuntimeException { }
 
-    /** 닉네임을 가진 계정이 오래 인증하지 않은 계정이면 닉네임을 비워 주고 true를 돌려준다. */
-    /** 오래된 미인증 계정이 쥔 닉네임을 풀어 준다(가입·닉네임 변경이 함께 쓴다). 호출하는 쪽 트랜잭션 안에서 실행한다. */
+    /**
+     * 닉네임을 가진 계정이 오래(7일) 인증하지 않은 계정이면 닉네임을 '미인증_번호'로 바꿔 풀어 주고 true를 돌려준다.
+     * 가입·닉네임 변경이 함께 쓴다. 호출하는 쪽 트랜잭션 안에서 실행한다.
+     */
     boolean releaseStaleNickname(UserEntity owner) {
         if ("Y".equals(owner.getEmailCertifyYn())) return false;
         LocalDateTime last = owner.getUpdateDt() != null ? owner.getUpdateDt() : owner.getCreateDt();

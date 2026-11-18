@@ -1,6 +1,8 @@
 /**
  * 가입하던 화면으로 돌아가기. 인증 메일 링크는 보통 새 탭(또는 메일 앱 브라우저)에서 열리므로
  * 탭이 달라도 읽을 수 있는 localStorage에 가입한 화면 주소만 잠시 둔다(이메일 등 개인정보는 넣지 않는다).
+ * 가입 창(SignUp)이 rememberSignupReturn으로 적고, 인증 완료 화면(SignUpCertify)이 takeSignupReturn으로 꺼낸다.
+ * storage·now를 인자로 받는 것은 테스트에서 가짜 저장소·시각을 넣기 위해서다.
  */
 const KEY = 'toady.signupReturn';
 const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
@@ -13,6 +15,7 @@ export function safeReturnPath(path) {
   return path;
 }
 
+/** 가입을 시작한 화면 주소를 적어 둔다. 첫 화면('/')이거나 안전하지 않은 주소면 지난 값까지 지운다. */
 export function rememberSignupReturn(path, storage = globalThis.localStorage, now = Date.now()) {
   const safe = safeReturnPath(path);
   try { if (safe && safe !== '/') storage.setItem(KEY, JSON.stringify({ path: safe, at: now })); else storage.removeItem(KEY); } catch { /* 저장소를 못 쓰면 첫 화면으로 간다 */ }

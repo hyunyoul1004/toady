@@ -22,13 +22,19 @@ import java.util.List;
 
 /**
  * 로그인 검증.
+ * 이메일로 TB_USER를 조회해 CustomUserDetails를 만든다. 잠금·탈퇴·이메일 미인증이면 예외로 막는다.
+ * 비밀번호 비교는 여기서 하지 않고 UserService가 PasswordEncoder로 한다.
+ * UserService(로그인), AccountService(토큰 재발급)가 직접 부르고, SecurityConfig에도 등록되어 있다.
  *
  * @author youn
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Component: 빈으로 등록한다. SecurityConfig가 생성자 주입으로 받는다
 @Component
 public class SimpleUserDetailsService implements UserDetailsService {
 	
+	// @Autowired: UserRepository 빈을 필드에 주입한다
 	@Autowired
 	private UserRepository userRepository;
 	
@@ -64,7 +70,7 @@ public class SimpleUserDetailsService implements UserDetailsService {
 
 		// 현재 사용자 권한을 구성해 인증 객체가 사용할 사용자 상세정보를 만듭니다.
 		List<String> authList = new ArrayList();
-		authList.add(AuthorityCd.USER.roleCd()); //권한그룹이 존재하니 임의로 ADMIN을 넣어줌.
+		authList.add(AuthorityCd.USER.roleCd()); //일반 회원은 모두 USER 권한 하나만 준다.
 
 		CustomUserDetails user = new CustomUserDetails(dbUserInfo.getUserEmail(), dbUserInfo.getUserPassword(), SecUtils.mapToGrantedAuthorities(authList));
 		user.setUserSeq(dbUserInfo.getUserSeq());

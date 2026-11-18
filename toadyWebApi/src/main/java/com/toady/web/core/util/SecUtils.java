@@ -11,6 +11,8 @@ import java.util.stream.Collectors;
 
 /**
  * 시큐리티 관련 유틸 클래스
+ * DB나 JWT에 "ROLE_USER,ROLE_ADMIN"처럼 쉼표로 저장된 권한 문자열과
+ * 스프링 시큐리티의 GrantedAuthority 목록을 서로 바꾼다.
  *
  * @author youn
  */

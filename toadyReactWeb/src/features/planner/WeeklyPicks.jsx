@@ -12,6 +12,7 @@ import { weeklyPicks } from './nextEventRules';
 /**
  * 나의 청약 빈 화면: 이번 주 접수 공고 3개를 바로 저장할 수 있게 보여 준다.
  * 이번 주 청약·오늘의 요약과 같은 데이터(weekly-summary)를 쓴다. 저장하면 화면이 일반 상태로 바뀐다.
+ * 데이터: /api/v1/public/weekly-summary(추천 목록), /api/v1/planner/summaries(저장할 공고 요약).
  */
 export default function WeeklyPicks({ planner, report }) {
   const weekly = useQuery({ queryKey: ['weeklySummary'], queryFn: () => apiClient.get('/api/v1/public/weekly-summary'), staleTime: 600000, retry: 1 });
@@ -20,6 +21,7 @@ export default function WeeklyPicks({ planner, report }) {
   async function save(pick) {
     setPending(pick.id);
     try {
+      // 저장에는 일정이 담긴 공고 요약이 필요하다. 추천 항목 ID로 요약을 한 번 받아 온 뒤 저장한다.
       const [summary] = await apiClient.post('/api/v1/planner/summaries', { ids: [pick.id] }, { auth: false });
       if (!summary || summary.unavailable) throw Error('공고 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
       await planner.save({ id: pick.id, summary, note: '', checklist: 0, emailEnabled: false });

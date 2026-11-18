@@ -25,16 +25,19 @@ import com.google.common.cache.CacheBuilder;
  * 로그인 없이 생활권 단위로 구독하는 공개 캘린더. 같은 생활권 검색 기준의 접수 중·예정 공고만 담는다.
  * 개인 정보가 없어 주소를 공유해도 되며, 공고가 한꺼번에 들어오므로 알림은 붙이지 않는다.
  */
+// @RestController: 이 클래스의 응답을 그대로 본문으로 내보낸다(여기서는 JSON이 아니라 .ics 텍스트).
 @RestController
 public class AreaCalendar {
     static final int MAX_ANNOUNCEMENTS = 40;
     private static final Duration CACHE = Duration.ofMinutes(30);
     private final PublicAreaPage areas; private final PlannerSummary summaries; private final String domain; private final Clock clock;
-    /** 생활권별 피드. 만료 순간 요청이 몰려도 같은 생활권은 한 번만 만든다. */
+    /** 생활권별 피드를 30분 동안 메모리(Guava Cache)에 들고 있는다. 만료 순간 요청이 몰려도 같은 생활권은 한 번만 만든다. */
     private final Cache<String, String> cache = CacheBuilder.newBuilder()
             .maximumSize(50).expireAfterWrite(CACHE).build();
 
+    // @Autowired: 생성자가 둘이라 스프링이 쓸 생성자를 이것으로 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
+    // @Value("${toady.web.domain}"): 서비스 주소(예: https://www.toady.co.kr)를 설정에서 읽는다.
     public AreaCalendar(PublicAreaPage areas, PlannerSummary summaries, @Value("${toady.web.domain}") String domain) {
         this(areas, summaries, domain, Clock.system(ZoneId.of("Asia/Seoul")));
     }
@@ -42,6 +45,7 @@ public class AreaCalendar {
         this.areas = areas; this.summaries = summaries; this.domain = domain.replaceAll("/+$", ""); this.clock = clock;
     }
 
+    // 사람에게 보여 주는 주소는 /calendar/areas/{slug}.ics이고, 웹 컨테이너 nginx(toadyReactWeb/nginx.conf)가 아래 /api/v1/public/... 로 넘긴다.
     static String feedUrl(String domain, LivingAreas.Area area) { return domain.replaceAll("/+$", "") + "/calendar/areas/" + area.slug() + ".ics"; }
     static String webcal(String url) { return url.replaceFirst("^https?://", "webcal://"); }
     static String googleUrl(String url) { return "https://calendar.google.com/calendar/r?cid=" + URLEncoder.encode(webcal(url), StandardCharsets.UTF_8); }
@@ -54,6 +58,8 @@ public class AreaCalendar {
             + "<p class='muted' style='margin:8px 0 0'>로그인 없이 " + PublicHtml.esc(area.label()) + " 새 공고 일정이 내 캘린더에 자동으로 들어와요. 캘린더 앱에 따라 반영까지 몇 시간 걸릴 수 있어요.</p>";
     }
 
+    // 캘린더 앱이 주기적으로 가져가는 구독 주소. @PathVariable: 주소의 {slug}를 받는다.
+    // Cache-Control public 30분으로 nginx·브라우저도 캐시할 수 있게 한다.
     @GetMapping("/api/v1/public/areas/{slug}/calendar.ics")
     public ResponseEntity<String> feed(@PathVariable String slug) {
         var found = LivingAreas.bySlug(slug);
@@ -64,6 +70,7 @@ public class AreaCalendar {
             .cacheControl(CacheControl.maxAge(CACHE).cachePublic()).body(body);
     }
 
+    /** 생활권 공고 중 접수 중·예정과 최근 2주 안 마감 공고를 최대 40개까지 담아 알림 없는 피드를 만든다. */
     String build(LivingAreas.Area area, Instant now) {
         LocalDate today = LocalDate.ofInstant(now, ZoneId.of("Asia/Seoul"));
         // 최근 2주 안에 마감된 공고도 발표·계약 일정이 남아 있어 함께 담는다.

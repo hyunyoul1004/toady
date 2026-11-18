@@ -1,6 +1,7 @@
 /**
  * 개인정보처리방침·이용약관 본문. 실제 수집·보관 동작(코드)과 맞춰 둔다. 운영자 정보는 운영자가 확인해 확정한다.
  * 수정하면 EFFECTIVE_DATE를 바꾸고, 중요한 변경은 시행 7일 전에 공지한다.
+ * 쓰는 곳: LegalPage.jsx.
  */
 export const CONTACT_EMAIL = 'dukkeoba@gmail.com';
 export const EFFECTIVE_DATE = '2026년 11월 25일';

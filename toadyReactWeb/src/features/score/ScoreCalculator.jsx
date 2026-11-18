@@ -15,15 +15,22 @@ import ScoreBenchmarkSearch from './ScoreBenchmarkSearch';
 import PeriodByDate from './PeriodByDate';
 import './score.css';
 
+// 항목별 도움말 문구.
 const HELP = {
   housing: '만 30세부터 계산해요(30세 전에 혼인했다면 혼인신고일부터). 본인과 배우자 모두 집이 없어야 하고, 소형·저가 주택 등 예외는 모집공고 기준을 확인해 주세요.',
   dependents: '본인은 빼고 세요. 배우자, 같은 세대의 미혼 자녀, 3년 이상 같은 세대로 등록된 부모님 등이 해당돼요.',
   account: '청약통장에 처음 가입한 날부터 입주자모집공고일까지의 기간이에요. 여기서는 오늘을 기준으로 계산해요.'
 };
+/**
+ * 청약 가점 계산기 화면(/score). 세 항목을 고르면 84점 만점 점수를 계산해 이 브라우저에 저장하고(myScore),
+ * 아래에서 지역별 공개 당첨가점과 비교한다(ScoreBenchmarkSearch). 공고를 누르면 ?subscriptSeq=로 상세를 띄운다.
+ * 주소의 ?h=&d=&a=는 공유받은 점수다.
+ */
 export default function ScoreCalculator() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation(), navigate = useNavigate();
   const detailId = searchParams.get('subscriptSeq');
+  // 공유 링크로 상세가 바로 열려도 첫 뒤로가기가 사이트 이탈 대신 상세 닫기가 되게 목록을 한 단계 앞에 끼워 둔다.
   useDirectDetailHistory(Boolean(detailId), 'scoreDetail', '/score');
   const saved = useMyScore();
   // 공유받은 주소(?h=&d=&a=)는 받은 사람의 저장값을 덮어쓰지 않고 보여만 준다. 항목을 바꾸면 그때 내 점수로 저장한다.
@@ -31,6 +38,7 @@ export default function ScoreCalculator() {
   const [draft, setDraft] = useState(() => shared || saved.selection || {});
   const [message, setMessage] = useState(null);
   // 날짜로 계산(처음 쓰는 사람) / 직접 고르기(이미 고른 값이 있으면). 날짜 입력값은 저장하지 않는다.
+  // resetKey: '다시 계산' 때 PeriodByDate의 key를 바꿔 컴포넌트를 새로 만든다. 그러면 안쪽 날짜 입력 상태가 모두 비워진다.
   const [resetKey, setResetKey] = useState(0);
   const [modes, setModes] = useState(() => ({ housing: draft.housing === undefined ? 'dates' : 'select', account: draft.account === undefined ? 'dates' : 'select' }));
   const score = scoreOf(draft);
@@ -39,12 +47,14 @@ export default function ScoreCalculator() {
   // 공유받은 점수를 보고 있는 동안(내 저장값과 다를 때)은 '저장했어요' 대신 공유 점수임을 알린다.
   const showingShared = Boolean(shared) && same(normalizeSelection(draft), shared) && !same(saved.selection, shared);
 
+  // 페이지 제목·설명 설정. 상세가 열려 있으면 상세가 정하므로 건너뛰고, 떠날 때(cleanup) 기본값으로 되돌린다.
   useEffect(() => {
     if (detailId) return undefined;
     updatePageSeo({ title: '청약 가점 계산기 · 84점 만점 내 점수와 당첨가점 비교 · TOADY', description: '무주택 기간·부양가족 수·청약통장 가입기간만 고르면 청약 가점을 계산하고, 서울·경기 등 전국 시·군·구별 공개 당첨가점과 비교해 드려요.', path: '/score' });
     return () => resetDefaultSeo();
   }, [detailId]);
 
+  // 항목 하나를 바꾸고, 세 항목이 다 차면 바로 저장한다. 별도 '저장' 버튼은 없다.
   const change = (key, value) => {
     const next = { ...draft };
     // null/undefined 는 그 항목을 비운다(날짜 입력이 부족해진 경우). 항목이 비면 점수를 계산·저장하지 않는다.
@@ -69,10 +79,12 @@ export default function ScoreCalculator() {
       await navigator.clipboard.writeText(url.href); trackAction('share', 'tool/score'); setMessage('결과 링크를 복사했어요.');
     } catch (error) { if (error?.name !== 'AbortError') setMessage('링크를 복사하지 못했어요.'); }
   };
+  // 공고 상세 열기(경쟁률 탭으로). state.scoreDetail은 '목록에서 연 상세' 표시, overlayLayers는 비워 둔다.
   const openDetail = id => {
     const next = new URLSearchParams(searchParams); next.set('subscriptSeq', id); next.set('tabType', 'rate');
     navigate(`/score?${next}`, { state: { ...location.state, overlayLayers: [], scoreDetail: true } });
   };
+  // 목록에서 열었으면 뒤로가기로 닫고, 공유 링크로 바로 들어왔으면 주소에서 상세 값만 지운다.
   const closeDetail = () => {
     if (location.state?.scoreDetail) { navigate(-detailCloseSteps(location.state)); return; }
     const next = new URLSearchParams(searchParams); next.delete('subscriptSeq'); next.delete('tabType');
@@ -154,6 +166,7 @@ export default function ScoreCalculator() {
       </ul>
     </section>
 
+    {/* 주소에 subscriptSeq가 있으면 계산기 위에 공고 상세를 띄운다. */}
     {detailId && <Main detailOnly onDetailClose={closeDetail} />}
     <Snackbar open={Boolean(message)} autoHideDuration={2500} onClose={() => setMessage(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
       <Alert severity="success" variant="filled" onClose={() => setMessage(null)} sx={{ borderRadius: 2 }}>{message || ''}</Alert>

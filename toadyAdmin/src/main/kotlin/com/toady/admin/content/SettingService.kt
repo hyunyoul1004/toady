@@ -10,14 +10,19 @@ import java.time.LocalDateTime
 /**
  * 서비스 설정(database.sql 27번 TB_APP_SETTING). API(AppSettings)가 1분마다 다시 읽는다.
  * 값을 비워 저장하면 행을 지워 환경변수 기본값으로 돌아간다. 키와 허용 범위는 API AppSettings와 같아야 한다.
+ * 호출: ContentController의 설정 화면(/admin/settings), 운영팀 글쓰기(OFFICIAL_USER_SEQ 읽기).
  */
+// @Service: 업무 로직 빈.
 @Service
 class SettingService(private val jdbc: JdbcTemplate) {
+	/** 설정 하나의 정의: 키, 화면 묶음·이름·설명, 켬/끔 여부, 숫자 범위. */
 	data class Definition(val key: String, val group: String, val label: String, val help: String, val bool: Boolean = false, val min: Long = 0, val max: Long = 0)
 	data class Item(val def: Definition, val value: String?, val admin: String?, val updatedAt: LocalDateTime?)
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). 없으면 화면에 적용 안내를 보여 준다. */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_APP_SETTING WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
+	/** 정의된 모든 설정과 DB에 저장된 값. 저장 값이 없으면 value가 null(환경변수 기본값 사용)이다. */
 	fun list(): List<Item> {
 		val rows = HashMap<String, Triple<String, String, LocalDateTime?>>()
 		try {
@@ -28,7 +33,7 @@ class SettingService(private val jdbc: JdbcTemplate) {
 
 	fun value(key: String): String? = list().firstOrNull { it.def.key == key }?.value
 
-	/** 저장. 형식·범위가 맞지 않으면 null(오류 문구), 맞으면 이전 값과 함께 성공. */
+	/** 저장. 형식·범위가 맞지 않으면 Result.failure(오류 문구), 맞으면 이전 값을 담은 Result.success. 빈 값이면 행을 지운다. */
 	fun save(key: String, raw: String, admin: String): Result<String?> {
 		val def = DEFINITIONS.firstOrNull { it.key == key } ?: return Result.failure(IllegalArgumentException("없는 설정입니다."))
 		val text = raw.trim()
@@ -46,6 +51,7 @@ class SettingService(private val jdbc: JdbcTemplate) {
 			number.toString()
 		}
 		val now = Timestamp.valueOf(Kst.now())
+		// UPDATE가 0행이면 처음 저장하는 키라 INSERT한다.
 		if (jdbc.update("UPDATE TB_APP_SETTING SET SETTING_VALUE=?, ADMIN_NAME=?, UPDATE_DT=? WHERE SETTING_KEY=?", normalized, admin.take(100), now, key) == 0)
 			jdbc.update("INSERT INTO TB_APP_SETTING (SETTING_KEY, SETTING_VALUE, ADMIN_NAME, UPDATE_DT) VALUES (?,?,?,?)", key, normalized, admin.take(100), now)
 		return Result.success(before)

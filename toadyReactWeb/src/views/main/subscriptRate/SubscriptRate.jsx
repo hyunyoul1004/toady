@@ -1,3 +1,12 @@
+/**
+ * @file SubscriptRate.jsx
+ * @description 공고 상세의 '경쟁률' 탭. 청약 경쟁률, 당첨 가점, 특별공급 신청현황을 표(PC)나 카드(휴대폰)로 보여 준다.
+ *
+ * - 사용처: views/main/Main.jsx 상세 영역에서 lazy로 불러온다(index.js의 default export).
+ * - 데이터: useAnnouncements.js의 React Query 훅 3개(경쟁률·APT 가점·APT 특별공급). 서버(toadyWebApi)가 청약홈 수집 자료를 내려준다.
+ * - 공고 유형(getCompetitionType)이 APT면 순위·지역까지 나눈 청약홈 형식 표를, 그 밖의 유형은 rateFormat.normalizeRateRows로 맞춘 단순 표를 그린다.
+ * - 값 해석(미달 표기·미공개 등)은 rateFormat.js, 모바일 카드는 MobileCompetitionCards.jsx에 있다.
+ */
 import ImageExportButton from '@/features/announcement/export/ImageExportButton';
 import { competitionImageSections } from '@/features/announcement/export/exportData';
 import useMediaQuery from '@mui/material/useMediaQuery';
@@ -5,10 +14,6 @@ import ScoreCompareCard from '@/features/score/ScoreCompareCard';
 import RatePoll from '@/features/story/RatePoll';
 import {MobileCompetitionCards,MobileRateRowCards,MobileSpecialSupplyCards,RateSummary,RateValue,scoreText} from './MobileCompetitionCards';
 import { formatCount, formatUnit, normalizeRateRows, rankLabel, resultLabel, summarizeRates } from './rateFormat';
-/**
- * @file SubscriptRate.jsx
- * @description 청약 경쟁률, 당첨 가점 및 특별공급 신청 현황 테이블 컴포넌트
- */
 import { getCompetitionType } from '@/features/announcement/api/announcementApi';
 import Button from '@mui/material/Button';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,8 +45,11 @@ import {
  * 넓은 화면에서 표가 다 보이면 안내·스크롤 포커스를 두지 않는다.
  */
 function ScrollTable({ label, sx, children }) {
+  // ref로 실제 DOM(표를 감싼 상자)을 잡아 너비를 잰다. 측정 결과만 state로 두어 안내 문구를 다시 그린다.
   const ref = useRef(null);
   const [overflow, setOverflow] = useState(false);
+  // 빈 의존성 배열: 처음 그려질 때 한 번 감시를 시작하고, 사라질 때 return한 함수(cleanup)로 감시를 끝낸다.
+  // ResizeObserver는 창 크기뿐 아니라 표 내용이 바뀌어 폭이 달라질 때도 알려 준다. 없는 옛 브라우저는 resize 이벤트로 대신한다.
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
@@ -86,6 +94,7 @@ const gridCellStyle = {
   px: 1.2
 };
 
+/** 머리글 칸 스타일. 공통 셀 스타일 위에 배경·굵기만 덮어쓴다. */
 const headerCellStyle = {
   ...gridCellStyle,
   bgcolor: '#f8fafc',
@@ -95,16 +104,23 @@ const headerCellStyle = {
   whiteSpace: 'nowrap'
 };
 
+/**
+ * 경쟁률 탭 본체.
+ * @param subscriptDetail 공고 상세 데이터(houseManageNo·pblancNo와 공고 유형 판단에 쓰는 값)
+ */
 export function SubscriptRate({ subscriptDetail }) {
+  // MUI useMediaQuery: 화면 폭이 조건에 맞으면 true. 창 크기가 바뀌면 다시 그려진다.
   const isSmallScreen=useMediaQuery('(max-width:599px)');
   const type = getCompetitionType(subscriptDetail);
   const houseManageNo = subscriptDetail?.houseManageNo;
   const pblancNo = subscriptDetail?.pblancNo || houseManageNo;
+  // 세 쿼리가 공통으로 쓰는 공고 식별 문자열. queryKey에 들어가서 공고마다 캐시가 따로 잡힌다.
   const idKey = `${type}/${houseManageNo}/${pblancNo}`;
 
   const isApt = type === 'apt';
 
   // 1. 청약 경쟁률 쿼리
+  // 두 번째 인자는 React Query의 enabled. false면 요청을 보내지 않는다(공고 번호가 없거나 APT가 아닐 때).
   const {
     data: compRes,
     isLoading: isCompLoading,
@@ -128,6 +144,7 @@ export function SubscriptRate({ subscriptDetail }) {
     refetch: refetchSpecial
   } = useAptSpecialSupplyStatusQuery(idKey, Boolean(houseManageNo && isApt));
 
+  // `|| []`는 렌더마다 새 배열을 만들어서, 아래 useMemo들이 매번 다시 계산되지 않도록 useMemo로 한 번 감싼다.
   const competitionList = useMemo(() => compRes?.data || [], [compRes]);
   const scoresList = useMemo(() => scoresRes?.data || [], [scoresRes]);
   const specialList = useMemo(() => specialRes?.data || [], [specialRes]);
@@ -137,6 +154,8 @@ export function SubscriptRate({ subscriptDetail }) {
 
   /**
    * APT 경쟁률 및 당첨가점 통합 데이터 매핑
+   * 평평한 경쟁률 행을 주택형 → 순위 순으로 묶고, 표에서 rowSpan(세로 병합)을 계산할 수 있게 펼친 행(flatRows)을 만든다.
+   * 가점은 같은 주택형의 가점 행을 경쟁률 행 순서대로 한 줄씩 옆에 붙인다(지역 단위로 맞추지는 않는다).
    */
   const groupedAptData = useMemo(() => {
     if (!competitionList || competitionList.length === 0) return [];
@@ -203,6 +222,7 @@ export function SubscriptRate({ subscriptDetail }) {
   }, [competitionList, scoresList]);
 
   // APT 청약홈 표준 테이블 렌더링
+  // 로딩 → 오류 → 빈 자료 → (휴대폰이면 카드) → 표 순으로 먼저 걸리는 쪽을 돌려준다.
   const renderAptIntegratedTable = () => {
     if (isCompLoading || isScoresLoading) {
       return (
@@ -333,7 +353,8 @@ export function SubscriptRate({ subscriptDetail }) {
                       </TableCell>
                     )}
 
-                    {/* 8~11. 당첨가점 (지역, 최저, 최고, 평균) */}
+                    {/* 8~11. 당첨가점 (지역, 최저, 최고, 평균)
+                        가점 행이 경쟁률 행보다 적으면 남은 칸은 가점이 끝나는 행(rIdx === scores.length)에서 한 번에 병합한다 */}
                     {!hasScores ? (
                       // 가점이 아직 등록되지 않은 경우 (당첨자발표일 이후 공개)
                       rIdx === 0 && (
@@ -465,6 +486,7 @@ export function SubscriptRate({ subscriptDetail }) {
 
   return (
     <Box sx={{ width: '100%', pt: 0.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* 내 가점과 당첨가점 비교 카드, 경쟁률 예상 투표(APT만) */}
       {isApt && !isScoresError && <ScoreCompareCard rows={scoresList} loading={isScoresLoading} />}
       {isApt && houseManageNo && <RatePoll houseManageNo={houseManageNo} pblancNo={pblancNo} />}
       {/* 1. 청약 경쟁률 & 당첨가점 통합 섹션 */}
@@ -485,6 +507,7 @@ export function SubscriptRate({ subscriptDetail }) {
           <ImageExportButton detail={subscriptDetail} kind="rate" sections={competitionImageSections(type,competitionList,scoresList,specialList)} disabled={isCompLoading || isCompError || (isApt && (isScoresLoading || isScoresError || isSpecialLoading || isSpecialError))} label="경쟁률·가점 이미지 저장"/>
         </Box>
 
+        {/* 표 위 요약 띠(최고 경쟁률·미달 주택형·공급 대비 접수) */}
         {!isCompLoading && !isCompError && <RateSummary summary={rateSummary} />}
         {isApt ? renderAptIntegratedTable() : renderNonAptTable()}
       </Box>

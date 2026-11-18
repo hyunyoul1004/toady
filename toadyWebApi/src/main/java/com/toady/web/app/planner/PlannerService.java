@@ -11,7 +11,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 
-/** 회원별 관심 공고의 키와 준비 상태만 저장한다. 제목과 일정은 조회할 때 원본에서 갱신한다. */
+/**
+ * 나의 청약(관심 공고) 저장소. TB_FAVORITE 테이블을 JdbcTemplate(SQL 직접 실행)으로 읽고 쓴다.
+ * 회원별 관심 공고의 키와 준비 상태만 저장한다. 제목과 일정은 조회할 때 원본에서 갱신한다(PlannerSummary).
+ * PlannerController, PlannerReminder(메일 알림), ReminderUnsubscribe(수신 해제), CalendarFeed가 쓴다.
+ */
+// @Service: 비즈니스 로직 빈으로 등록한다. 생성자가 하나라 스프링이 JdbcTemplate 등을 자동으로 넣어 준다.
 @Service
 public class PlannerService {
     private final JdbcTemplate jdbc; private final UserRepository users; private final PlannerSummary summaries;
@@ -27,6 +32,7 @@ public class PlannerService {
         catch(BadSqlGrammarException missing) { return false; }
         return true;
     }
+    /** 내 관심 공고를 최근 저장 순으로. 원본 공고가 지워졌으면 '원본을 찾을 수 없는 공고'로 채워 목록에서 빠지지 않게 한다. */
     public List<Favorite> list(long user) {
         boolean withStage=stageColumn();
         return jdbc.query("SELECT * FROM TB_FAVORITE WHERE USER_SEQ=? ORDER BY REG_DT DESC", (r,n)-> {
@@ -38,6 +44,8 @@ public class PlannerService {
         },user);
     }
     /** stage가 null이면 기존 단계를 그대로 둔다(단계 기능 이전 화면·클라이언트 호환). */
+    // @Transactional: 메서드 안의 SQL을 하나의 트랜잭션으로 묶는다. 중간에 예외가 나면 모두 되돌린다.
+    // 아래 계정 행 잠금(FOR UPDATE)도 트랜잭션이 끝날 때까지 유지된다.
     @Transactional
     public void save(long user,String type,String house,String notice,String note,int checklist,boolean email,Integer stage) {
         var account=users.findById(user).orElseThrow(EntityNotFoundException::new);
@@ -55,8 +63,10 @@ public class PlannerService {
             if(withStage) jdbc.update("UPDATE TB_FAVORITE SET STAGE=? WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",stage,user,type,house,notice);
         }
     }
+    /** 관심 공고 하나 삭제. 없는 항목이어도 오류 없이 지나간다. */
     public void delete(long user,String type,String house,String notice) {
         jdbc.update("DELETE FROM TB_FAVORITE WHERE USER_SEQ=? AND ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",user,type,house,notice);
     }
+    /** 이 회원의 모든 관심 공고 메일 알림을 끈다(메뉴의 일괄 해제, 메일 수신 해제 링크). */
     public void disableEmails(long user) { jdbc.update("UPDATE TB_FAVORITE SET EMAIL_ENABLED=FALSE WHERE USER_SEQ=?",user); }
 }

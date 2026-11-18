@@ -14,13 +14,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** 배포 확인용 준비 상태. 데이터베이스 접속 실패의 세부 정보는 공개하지 않습니다. */
+/**
+ * 배포 확인용 준비 상태. 데이터베이스 접속 실패의 세부 정보는 공개하지 않습니다.
+ * 배포 스크립트가 서버 안에서 /internal/health, /internal/schema를 불러 앱이 제대로 떴는지 본다.
+ * DB는 JdbcTemplate으로 직접 확인하고, Redis 상태는 RedisStore에서 받는다.
+ */
+// @RestController: @Controller + @ResponseBody. 메서드가 돌려준 객체를 JSON으로 바로 응답한다
 @RestController
+// @RequiredArgsConstructor: final 필드(jdbcTemplate, redis)를 받는 생성자를 만들어 생성자 주입이 되게 한다
 @RequiredArgsConstructor
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;
     private final RedisStore redis;
 
+    /** DB에 SELECT 1을 날려 보고 UP/DOWN을 돌려준다. DB가 안 되면 503. */
+    // @GetMapping: 이 주소로 오는 GET 요청을 이 메서드가 처리한다
     @GetMapping("/internal/health")
     public ResponseEntity<Map<String, String>> health() {
         try {
@@ -53,6 +61,7 @@ public class HealthController {
                 List<String> absent = new ArrayList<>();
                 for (String table : REQUIRED_TABLES) {
                     boolean found = false;
+                    // DB 설정(lower_case_table_names)에 따라 이름이 소문자로 저장될 수 있어 두 가지를 다 찾아본다
                     for (String name : List.of(table, table.toLowerCase(Locale.ROOT))) {
                         try (var rows = meta.getTables(connection.getCatalog(), connection.getSchema(), name, new String[]{"TABLE"})) {
                             if (rows.next()) { found = true; break; }

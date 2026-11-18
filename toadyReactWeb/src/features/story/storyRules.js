@@ -1,6 +1,7 @@
 /**
  * 단지별 이야기의 첫 글을 끌어내는 질문. 공고 일정 단계마다 사람들이 실제로 궁금해하는 것을 묻는다.
  * 선택한 질문은 글 앞에 [말머리]로 붙여 목록에서 같은 주제를 알아보게 한다.
+ * 쓰는 곳: StoryPrompts.jsx, views/main/subscriptComment/SubscriptComment.jsx.
  */
 export const STAGE_PROMPTS = {
   before: [
@@ -37,6 +38,7 @@ export function storyStage({ startDate, endDate, winnerDate }, today) {
   return 'before';
 }
 
+// 글 맨 앞의 [말머리](12자까지, 대괄호·줄바꿈 없음)와 뒤따르는 공백.
 const TAG = /^\[([^\[\]\n]{1,12})\]\s*/;
 /** 글 앞의 [말머리]를 분리한다. 없으면 tag는 null. */
 export function splitTag(content = '') {

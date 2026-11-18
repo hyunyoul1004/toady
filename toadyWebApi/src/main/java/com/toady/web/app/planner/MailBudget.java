@@ -8,12 +8,18 @@ import java.time.*;
 import java.sql.Timestamp;
 import java.util.UUID;
 
-/** Gmail 계정 하나의 발송 시도를 DB로 직렬화한다. 실패도 용량을 차감해 보수적으로 운영한다. */
+/**
+ * Gmail 계정 하나의 하루 발송량(약 500통)을 나눠 쓰는 예산 관리자.
+ * 발송 시도마다 TB_MAIL_ATTEMPT에 한 줄 남기고, TB_MAIL_BUDGET 한 행을 잠가(FOR UPDATE) 동시에 여러 서버·스레드가 세도 겹치지 않게 한다.
+ * 실패도 용량을 차감해 보수적으로 운영한다. 메일을 보내기 전 EmailUtilService가 reserve()를 부른다.
+ */
+// @Service: 스프링 빈으로 등록한다.
 @Service
 public class MailBudget {
     /** AUTH: 비밀번호 찾기 등 인증 메일, SIGNUP: 회원가입 인증 메일, REMINDER: 일정 알림. MAIL_KIND(VARCHAR 10)에 그대로 저장한다. */
     public enum Kind { AUTH, SIGNUP, REMINDER }
     private final JdbcTemplate jdbc; private final int limit; private final int reserve; private final int signupLimit;
+    // @Value("${키:기본값}"): application 설정(환경변수)에서 값을 읽어 넣는다. 없으면 콜론 뒤 기본값을 쓴다.
     public MailBudget(JdbcTemplate jdbc,@Value("${toady.planner.mail-limit:400}") int limit,@Value("${toady.planner.auth-reserve:100}") int reserve,
             @Value("${toady.planner.signup-limit:0}") int signupLimit) {
         if(limit<1 || limit>400 || reserve<0 || reserve>=limit) throw new IllegalArgumentException("메일 제한은 1~400, 인증 예약량은 제한보다 작아야 합니다.");
@@ -23,6 +29,7 @@ public class MailBudget {
         this.jdbc=jdbc;this.limit=limit;this.reserve=reserve;this.signupLimit=signupLimit;
     }
     /** 관리자 화면 서비스 설정(database.sql 27번). 값이 없거나 규칙(1~400, 예약량·가입 상한 < 전체)에 맞지 않으면 환경변수 값을 쓴다. */
+    // @Autowired(required=false): AppSettings 빈이 있으면 필드에 넣고, 없으면(테스트 등) null로 둔다.
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.toady.web.app.operation.AppSettings settings;
     int limit() { return settings==null?limit:(int)settings.number(com.toady.web.app.operation.AppSettings.MAIL_LIMIT,limit,1,400); }
@@ -36,6 +43,8 @@ public class MailBudget {
         return (int)Math.max(1,Math.min(value,effectiveLimit-1));
     }
     /** 이전 호출부 호환: true면 일정 알림, false면 인증 메일. 내부 호출은 프록시를 거치지 않으므로 여기에도 트랜잭션을 건다(잠금 유지). */
+    // @Transactional(REQUIRES_NEW): 부른 쪽 트랜잭션과 상관없이 새 트랜잭션을 연다.
+    // 그래서 예산 기록이 바로 커밋되고, 바깥 작업이 실패해도 차감 기록은 남는다.
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public boolean reserve(boolean reminder) { return reserve(reminder?Kind.REMINDER:Kind.AUTH); }
     /**

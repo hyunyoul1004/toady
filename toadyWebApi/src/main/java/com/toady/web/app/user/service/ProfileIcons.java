@@ -18,8 +18,11 @@ import java.util.stream.Collectors;
 /**
  * 회원 프로필 캐릭터(화면이 준비한 캐릭터 중 하나의 키). 이미지는 받지 않고 키만 TB_USER_PROFILE에 둔다.
  * 테이블이 아직 없는 DB(database.sql 23번 미적용)에서는 모두 '고르지 않음'으로 보고, 고르기만 안내와 함께 막는다.
+ * JPA 엔티티 없이 JdbcTemplate으로 SQL을 직접 실행한다. AccountService(변경)와 댓글·커뮤니티 목록(조회)이 쓴다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 비즈니스 로직을 담은 빈이라는 표시(@Component와 같은 역할, 이름으로 용도를 드러낸다)
 @Service
 public class ProfileIcons {
     /** 화면(ProfileAvatar.jsx)의 캐릭터 키와 같아야 한다. */
@@ -28,6 +31,7 @@ public class ProfileIcons {
     private final JdbcTemplate jdbc;
     public ProfileIcons(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    /** 회원 한 명의 캐릭터 키. 고르지 않았으면 null. */
     public String of(long userSeq) {
         return of(List.of(userSeq)).get(userSeq);
     }
@@ -51,6 +55,7 @@ public class ProfileIcons {
     public boolean set(long userSeq, String key) {
         if (key != null && !KEYS.contains(key)) throw new IllegalArgumentException("Unknown profile icon");
         try {
+            // 행이 있으면 UPDATE, 없으면 INSERT(간단한 upsert). 시각은 한국 시간(KST)으로 넣는다
             if (key == null) { jdbc.update("DELETE FROM TB_USER_PROFILE WHERE USER_SEQ=?", userSeq); return true; }
             Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
             if (jdbc.update("UPDATE TB_USER_PROFILE SET PROFILE_ICON=?, UPDATE_DT=? WHERE USER_SEQ=?", key, now, userSeq) == 0) {

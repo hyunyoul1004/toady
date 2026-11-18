@@ -7,6 +7,9 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * JWT Interface.
+ * 로그인 토큰(JWT)을 만들고, 요청 헤더의 토큰을 읽어 로그인 사용자로 되돌리는 기능의 약속.
+ * 구현은 JwtProviderImpl이고 SecurityConfig에서 빈으로 만든다.
+ * JwtAuthenticationFilter(매 요청)와 UserService(로그인·토큰 재발급)가 쓴다.
  *
  * @author youn
  */

@@ -39,12 +39,20 @@ import java.util.Map;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/09        youn       최초 생성
+ *
+ * 로그인(/webApi/user/login)과 회원가입(/webApi/user/regUser) API.
+ * 흐름: UserController → UserService → UserRepository(TB_USER), CertifyService(인증 메일).
+ * 로그인은 LoginAttemptLimiter로 실패 횟수를 제한하고, 가입은 메일을 보내므로 MailGate로 동시 처리 수를 제한한다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @RestController: JSON 응답 컨트롤러
 @RestController
+// @RequestMapping: 아래 주소들 앞에 /webApi/user를 붙인다
 @RequestMapping("/webApi/user")
 public class UserController {
 
+    // @Autowired: 필드에 빈을 직접 주입한다(예전 방식. 새 컨트롤러는 생성자 주입을 쓴다)
     @Autowired
     private UserService userService;
 
@@ -56,7 +64,12 @@ public class UserController {
 
     /**
      * USER 로그인 API
+     * 순서: 입력 검증 → 실패 횟수 확인·선기록(tryAcquire) → 비밀번호 확인·토큰 발급(UserService.getUser).
+     * 성공하면 succeeded로 실패 기록을 지우고, 비밀번호와 무관한 거부(탈퇴·잠금·미인증·오류)는 release로 선기록을 되돌린다.
      */
+    // @Operation: Swagger 문서에 표시할 설명
+    // @PostMapping: POST /webApi/user/login
+    // @Valid + BindingResult: 검증 실패를 예외 대신 result에 담아 직접 응답을 만든다
     @Operation(summary = "로그인", description = "사용자 로그인", tags = "사용자 계정 API")
     @PostMapping("/login")
     public ResponseEntity<ResData> custLogin(@Valid @RequestBody UserDTO.Login param, BindingResult result, HttpServletRequest request) {
@@ -99,6 +112,7 @@ public class UserController {
 
     /**
      * 회원가입.
+     * 계정을 만들고 인증 메일을 보낸다. 메일 발송이 실패하면 502를 돌려준다.
      * @param param
      * @param result
      * @return 결과.

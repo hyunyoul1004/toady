@@ -88,8 +88,11 @@ class AdminSiteTest {
 		assertFalse(com.toady.admin.security.SecurityConfig.rememberEnabled("") || com.toady.admin.security.SecurityConfig.rememberEnabled("short"))
 		// 세션 없이 쿠키만으로 다시 로그인된다(세션 30분이 지난 경우와 같다).
 		mvc.perform(get("/admin/members").cookie(remembered)).andExpect(status().isOk)
-		// 서명이 맞지 않는 쿠키는 받지 않는다.
-		mvc.perform(get("/admin/members").cookie(jakarta.servlet.http.Cookie("TOADY_ADMIN_REMEMBER", remembered!!.value.reversed())))
+		// 서명이 맞지 않는 쿠키는 받지 않는다. 값을 뒤집으면 '%3D' 같은 인코딩 조각이 깨져 가끔 다른 오류가 나므로, 가운데 영문 한 글자만 바꾼다.
+		val value = remembered!!.value
+		val at = (value.length / 2 until value.length).first { value[it].isLetterOrDigit() }
+		val tampered = value.substring(0, at) + (if (value[at] == 'A') 'B' else 'A') + value.substring(at + 1)
+		mvc.perform(get("/admin/members").cookie(jakarta.servlet.http.Cookie("TOADY_ADMIN_REMEMBER", tampered)))
 			.andExpect(status().is3xxRedirection).andExpect(redirectedUrl("/admin/login"))
 		// 배포·재시작으로 관리자 비밀번호 해시(BCrypt, 매번 새 솔트)가 새로 만들어져도 쿠키는 유효하다.
 		val restartedUsers = com.toady.admin.security.SecurityConfig().adminUsers("operator", "local-test-password")

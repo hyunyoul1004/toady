@@ -19,7 +19,13 @@ import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 청약홈 JSON 응답을 JPA 엔티티로 변환한다. */
+/**
+ * 청약홈 JSON 응답을 JPA 엔티티로 변환한다.
+ * 응답 키(HOUSE_MANAGE_NO 같은 대문자 snake_case)를 엔티티 필드(houseManageNo)로 맞추기 위해
+ * SNAKE_CASE 이름 규칙과 대소문자 무시 옵션을 켠 전용 ObjectMapper를 쓴다.
+ * 호출: ApplyhomeSyncService.
+ */
+// @Component: 빈으로 등록해 수집 서비스가 주입받아 쓴다.
 @Component
 public class ApplyhomeEntityMapper {
 
@@ -51,6 +57,7 @@ public class ApplyhomeEntityMapper {
 	/** 테스트·점검용: 지금까지 알린 매핑되지 않은 필드. */
 	Set<String> unmappedFields() { return Set.copyOf(reportedUnknown); }
 
+	/** JSON 한 행을 지정한 엔티티 클래스로 바꾼다. 변환이 안 되면 IllegalStateException. */
 	public <T> T toEntity(JsonNode source, Class<T> entityType) {
 		try {
 			return objectMapper.treeToValue(source, entityType);

@@ -21,6 +21,8 @@ import java.util.Base64;
  * 외부 라이브러리 대신 직접 구현한 이유: 필요한 연산이 P-256 ECDH·HKDF(HMAC-SHA256)·AES-GCM·ES256뿐이라
  * JDK 21에 모두 있고, 대표 Java 라이브러리는 BouncyCastle·비동기 HTTP 클라이언트 등 큰 의존성을 함께 끌어온다.
  * 정확성은 RFC 8291 부록 A 테스트 벡터와 같은 결과를 내는지로 검증한다.
+ * 큰 흐름: 브라우저 공개 키와 서버 임시 키로 공유 비밀(ECDH)을 만들고 → HKDF로 암호 키·nonce를 뽑아 → AES-GCM으로 본문을 암호화한다.
+ * 푸시 서버(구글·애플 등)는 내용을 볼 수 없고 브라우저만 풀 수 있다. WebPushSender가 부른다.
  */
 public final class WebPushCrypto {
     static final int RECORD_SIZE = 4096;
@@ -38,6 +40,7 @@ public final class WebPushCrypto {
         } catch (GeneralSecurityException e) { throw new IllegalStateException("P-256 곡선을 사용할 수 없습니다.", e); }
     }
 
+    /** URL-safe Base64 해석. 일반 Base64(+ /)와 = 채움이 섞여 와도 받아 준다. */
     public static byte[] b64(String value) { return Base64.getUrlDecoder().decode(value.trim().replace('+', '-').replace('/', '_').replace("=", "")); }
     public static String b64(byte[] value) { return Base64.getUrlEncoder().withoutPadding().encodeToString(value); }
 
@@ -47,10 +50,12 @@ public final class WebPushCrypto {
         ECPoint point = new ECPoint(new BigInteger(1, Arrays.copyOfRange(uncompressed, 1, 33)), new BigInteger(1, Arrays.copyOfRange(uncompressed, 33, 65)));
         return (ECPublicKey) KeyFactory.getInstance("EC").generatePublic(new ECPublicKeySpec(point, P256));
     }
+    /** VAPID 개인 키(32바이트 정수 d)를 Java 키 객체로 만든다. */
     public static ECPrivateKey privateKey(byte[] d) throws GeneralSecurityException {
         if (d.length != 32) throw new InvalidKeyException("P-256 개인키는 32바이트여야 합니다.");
         return (ECPrivateKey) KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(new BigInteger(1, d), P256));
     }
+    /** 공개 키를 0x04 || X(32) || Y(32) 바이트로 바꾼다. BigInteger는 앞에 0 바이트가 붙거나 짧을 수 있어 32바이트로 맞춘다. */
     public static byte[] uncompressed(ECPublicKey key) {
         byte[] out = new byte[65]; out[0] = 4;
         unsigned(key.getW().getAffineX(), out, 1); unsigned(key.getW().getAffineY(), out, 33);
@@ -61,6 +66,7 @@ public final class WebPushCrypto {
         int start = Math.max(0, raw.length - 32);
         System.arraycopy(raw, start, out, offset + 32 - (raw.length - start), raw.length - start);
     }
+    // 메시지마다 새로 만드는 일회용 키 쌍
     static KeyPair ephemeral() throws GeneralSecurityException {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
         generator.initialize(P256, RANDOM);

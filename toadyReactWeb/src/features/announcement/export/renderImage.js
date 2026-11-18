@@ -1,9 +1,15 @@
+/**
+ * 표 데이터(exportData.js)를 브라우저 canvas에 그려 PNG로 만든다. 서버를 거치지 않는다.
+ * 순서: 줄바꿈·높이 계산(layoutTable) → 전체 높이로 canvas 크기 확정 → 머리·표·꼬리 그리기(render).
+ * 사용처: ImageExportButton.jsx
+ */
 const FONT='"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 const WIDTH=1200, MARGIN=60, TABLE_WIDTH=1080;
 /** 한 장 높이 상한. 휴대폰 브라우저(특히 iOS Safari)의 캔버스 면적 한도(약 1,677만 픽셀) 안에 들게 둔다. */
 const MAX_IMAGE_HEIGHT=13900;
 const DEFAULT_NOTE='공개된 자료 기준입니다. 최종 조건은 공식 모집공고를 확인하세요.';
 
+/** 글자를 width 안에 들어가게 한 글자씩 재며 줄로 나눈다(한글은 단어 사이 공백이 적어 글자 단위로 끊는다). */
 function lines(ctx,value,width) {
   const output=[];
   for(const paragraph of String(value ?? '—').split('\n')) {
@@ -58,6 +64,7 @@ function drawTable(ctx,layout,top) {
  * 표가 하나면 기존 페이지 이미지와 같은 모양(표 제목은 머리 띠에만)이다.
  */
 async function render(detail,tables,label,maxHeight) {
+  // 웹 글꼴을 다 받기 전에 그리면 글자 폭이 달라지므로 기다린다.
   await document.fonts?.ready;
   const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
   if(!ctx) throw Error('이 브라우저에서 이미지 저장을 지원하지 않습니다.');
@@ -103,6 +110,7 @@ export function renderAllImage(detail,sections) {
   return render(detail,sections,`전체 · 표 ${sections.length}개`,MAX_IMAGE_HEIGHT);
 }
 
+/** canvas를 PNG 파일로 내려받는다. 임시 링크를 눌러 저장하고, 잠시 뒤 임시 주소(blob URL)를 해제한다. */
 export async function downloadCanvas(canvas,filename) {
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
   if(!blob)throw Error('이미지를 저장하지 못했습니다. 다시 시도해 주세요.');

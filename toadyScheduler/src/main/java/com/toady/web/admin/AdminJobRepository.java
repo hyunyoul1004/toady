@@ -16,8 +16,11 @@ import java.util.Optional;
 /**
  * 실행 이력과 활성 작업 소유권을 JDBC로 관리한다.
  * 이력 갱신은 수집 데이터의 저장 트랜잭션과 분리되어 실패·중지 상태도 독립적으로 남길 수 있다.
+ * 테이블: TB_SCHEDULER_ADMIN_JOB. 호출: AdminJobService(실행기), AdminInternalApi(화면 조회·중지).
  */
+// @Repository: DB 접근 빈으로 등록한다. JDBC 예외를 스프링의 DataAccessException으로 바꿔 준다.
 @Repository
+// 관리 기능(applyhome.admin.enabled=true)을 켰을 때만 만든다.
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "true")
 public class AdminJobRepository {
     private final JdbcTemplate jdbc;
@@ -63,9 +66,11 @@ public class AdminJobRepository {
         jobs.sort(Comparator.comparing(AdminJob::createdAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(AdminJob::id));
         return jobs;
     }
+    /** 작업 하나를 ID로 찾는다. 모르는 종류의 행이면 비어 있는 결과가 된다. */
     public Optional<AdminJob> find(String id) {
         return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE JOB_ID = ?", MAPPER, id).stream().filter(java.util.Objects::nonNull).findFirst();
     }
+    /** 지금 활성 슬롯(ACTIVE_SLOT=1)을 잡고 있는 작업. 동시에 하나뿐이다. */
     public Optional<AdminJob> active() {
         return jdbc.query("SELECT * FROM TB_SCHEDULER_ADMIN_JOB WHERE ACTIVE_SLOT = 1", MAPPER).stream().filter(java.util.Objects::nonNull).findFirst();
     }
@@ -88,6 +93,7 @@ public class AdminJobRepository {
     public boolean cancel(String id) {
         return jdbc.update("UPDATE TB_SCHEDULER_ADMIN_JOB SET CANCEL_REQUESTED = TRUE WHERE JOB_ID = ? AND ACTIVE_SLOT = 1", id) == 1;
     }
+    /** 생존 신호. 실행 중인 작업이 주기적으로 HEARTBEAT_AT을 갱신해, 멈춘 작업과 구분할 수 있게 한다. */
     public void heartbeat(String id, LocalDateTime now) {
         jdbc.update("UPDATE TB_SCHEDULER_ADMIN_JOB SET HEARTBEAT_AT = ? WHERE JOB_ID = ? AND ACTIVE_SLOT = 1", now, id);
     }

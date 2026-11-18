@@ -30,6 +30,7 @@ const sheetProps = {
   PaperProps: { className: 'community-sheet', sx: { m: { xs: 0, sm: 2 }, width: { xs: '100%', sm: undefined }, maxWidth: { xs: '100%', sm: 420 } } }
 };
 
+// 'YYYY-MM' → '2024년 3월 가입'.
 const joinedText = month => {
   if (!month) return '';
   const [year, value] = month.split('-');
@@ -49,18 +50,22 @@ function MemberCard({ value, onClose }) {
   const location = useLocation();
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  // 로그인 창('layout')과 신고 창('report')도 히스토리 층이다. 값만 넘기면 레이아웃이 그 창을 연다. 값은 안 쓰므로 setter만 꺼낸다.
   const [, setLayout] = useHistoryOverlay('layout');
   const [, setReport] = useHistoryOverlay('report');
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const card = useQuery({
+    // 로그인 여부도 키에 넣는다. 로그인 전후로 쪽지 가능 여부(dm)·차단 여부가 달라지기 때문이다.
     queryKey: [...COMMUNITY_KEY, 'card', parsed?.userSeq, isAuthenticated],
     queryFn: () => communityApi.card(parsed.userSeq),
     enabled: Boolean(parsed),
     staleTime: 15000
   });
+  // 다른 회원 카드로 바뀌면(value 변경) 차단 확인·안내를 처음 상태로 돌린다.
   useEffect(() => { setConfirmBlock(false); setNotice(null); }, [value]);
+  // 주소 값이 잘못돼 회원 번호를 읽지 못하면 카드를 바로 닫는다.
   useEffect(() => { if (!parsed) onClose(); }, [parsed == null]); // eslint-disable-line react-hooks/exhaustive-deps
   const data = card.data?.resultCode === 'SUCCESS' ? card.data.data : null;
   const failed = card.isError || (card.data && card.data.resultCode !== 'SUCCESS');
@@ -74,6 +79,7 @@ function MemberCard({ value, onClose }) {
     if (location.pathname === '/messages' && new URLSearchParams(location.search).get('thread') === String(dm?.threadSeq)) { onClose(); return; }
     navigate(`/messages?${params}`, { replace: true });
   };
+  // 차단은 한 번 더 눌러 확인한 뒤 실행하고(confirmBlock), 풀기는 바로 실행한다.
   const toggleBlock = async () => {
     if (!isAuthenticated) { setLayout('login'); return; }
     if (!data.blocked && !confirmBlock) { setConfirmBlock(true); return; }
@@ -141,6 +147,7 @@ function ReportDialog({ value, onClose }) {
   const [result, setResult] = useState(null);
   const [blocked, setBlocked] = useState(false);
   const [blockError, setBlockError] = useState('');
+  // 신고 대상이 바뀌면 입력을 모두 비운다.
   useEffect(() => { setReason(''); setDetail(''); setResult(null); setBlocked(false); setBlockError(''); }, [value]);
   useEffect(() => { if (!target) onClose(); }, [target == null]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!target) return null;
@@ -195,7 +202,12 @@ function ReportDialog({ value, onClose }) {
   </Dialog>;
 }
 
-/** 레이아웃에 한 번 두는 프로필 카드·신고 창. 어느 화면에서든 히스토리 층 값만 바꾸면 열린다. */
+/**
+ * 레이아웃에 한 번 두는 프로필 카드·신고 창. 어느 화면에서든 히스토리 층 값만 바꾸면 열린다.
+ * useHistoryOverlay: 열린 창을 location.state.overlayLayers에 적고 히스토리를 한 단계 쌓는다.
+ * 그래서 창 하나가 뒤로가기 한 번이고, 휴대폰에서 뒤로가기를 누르면 페이지 대신 창이 닫힌다.
+ * 프로필 카드 위에서 신고를 열면 층이 두 개 쌓이고, 뒤로가기마다 하나씩 닫힌다.
+ */
 export default function CommunityLayers() {
   const [cardOpen, setCardOpen] = useHistoryOverlay('member-card');
   const [reportOpen, setReportOpen] = useHistoryOverlay('report');

@@ -16,10 +16,14 @@ import java.time.LocalDateTime
 /**
  * 스케줄러 내부 API(/internal/admin) 호출. 수집 실행기와 자동 일정 타이머는 스케줄러 프로세스에 있다.
  * 토큰은 스케줄러와 공유하는 SCHEDULER_INTERNAL_TOKEN이며, 실패하면 화면에 보여 줄 문장으로 바꿔 던진다.
+ * 호출: AdminController의 수집 작업 화면(/admin/jobs). 이 앱은 수집 테이블을 직접 바꾸지 않는다.
  */
+// @Component: 빈으로 등록한다. @Value로 application.yml의 toady.scheduler.* 값을 받는다.
 @Component
 class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
                       @Value("\${toady.scheduler.token:}") private val token: String) {
+	/** 스케줄러 AdminJob JSON을 받는 그릇. 스케줄러에 새 필드가 생겨도 깨지지 않게 모르는 필드는 무시한다. */
+	// @JsonIgnoreProperties(ignoreUnknown = true): JSON에 이 클래스에 없는 키가 있어도 오류 없이 넘긴다.
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	data class Job(val id: String, val kind: String, val source: String, val startDate: LocalDate, val endDate: LocalDate, val status: String,
 	               val totalChunks: Int, val completedChunks: Int, val cancelRequested: Boolean, val requestedBy: String, val message: String,
@@ -27,10 +31,12 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 		val active get() = status in setOf("QUEUED", "RUNNING", "WAITING")
 		val kindLabel get() = JobKind.label(kind)
 	}
+	/** 자동 일정 하나(스케줄러 AdminSchedule). cronExpression에는 '|'로 이은 여러 cron이 올 수 있다. */
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	data class Schedule(val kind: String, val enabled: Boolean, val cronExpression: String, val lookbackDays: Int, val nextRun: LocalDateTime?) {
 		val kindLabel get() = JobKind.label(kind)
 	}
+	/** GET /internal/admin/state 응답 전체. */
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	data class State(val today: LocalDate, val active: Job?, val jobs: List<Job>, val schedules: List<Schedule>)
 	class SchedulerException(message: String) : RuntimeException(message)
@@ -39,8 +45,10 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 		.requestFactory(SimpleClientHttpRequestFactory().apply { setConnectTimeout(3000); setReadTimeout(10000) })
 		.defaultHeader("X-Admin-Token", token).build()
 
+	/** 토큰이 32자 이상인지. 스케줄러도 32자 미만 토큰은 받지 않는다. */
 	val configured get() = token.length >= 32
 
+	// 아래 함수들은 스케줄러 AdminInternalApi의 주소 하나씩에 대응한다. start·retry는 새 작업 ID를 돌려준다.
 	fun state(): State = call { client.get().uri("/internal/admin/state").retrieve().body(State::class.java)!! }
 	fun start(kind: String, startDate: LocalDate, endDate: LocalDate, requestedBy: String): String =
 		message(post("/internal/admin/jobs", mapOf("kind" to kind, "startDate" to startDate.toString(), "endDate" to endDate.toString(), "requestedBy" to requestedBy)), "id")
@@ -62,9 +70,11 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 			throw SchedulerException(response["message"]?.toString() ?: "스케줄러가 요청을 처리하지 못했습니다.")
 		response
 	}
+	/** 응답에서 key 값을 꺼낸다. 없으면 실패로 보고 message를 담아 던진다. */
 	private fun message(response: Map<*, *>, key: String): String =
 		response[key]?.toString() ?: throw SchedulerException(response["message"]?.toString() ?: "스케줄러가 요청을 처리하지 못했습니다.")
 
+	/** 공통 실행 틀. 토큰 확인 후 block을 돌리고, HTTP 오류·연결 실패를 화면용 안내 문장으로 바꾼다. */
 	private fun <T> call(block: () -> T): T {
 		if (!configured) throw SchedulerException("스케줄러 연결 토큰(SCHEDULER_INTERNAL_TOKEN)이 설정되지 않았습니다.")
 		return try {
@@ -88,7 +98,7 @@ class SchedulerClient(@Value("\${toady.scheduler.base-url}") baseUrl: String,
 	companion object { private val log = LoggerFactory.getLogger(SchedulerClient::class.java) }
 }
 
-/** 스케줄러 JobKind와 같은 이름·표시 문구. */
+/** 스케줄러 JobKind와 같은 이름·표시 문구. 스케줄러 쪽에 종류를 추가하면 여기도 함께 맞춘다(없으면 이름 그대로 보인다). */
 enum class JobKind(val label: String) {
 	ALL("전체 수집"),
 	ANNOUNCEMENTS("공고 · 주택형"),

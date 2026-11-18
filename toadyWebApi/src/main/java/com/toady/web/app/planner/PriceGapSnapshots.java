@@ -37,12 +37,16 @@ import java.util.concurrent.TimeUnit;
  * 맞춤 청약·줍줍 목록 뱃지, 나의 청약 비교표, 공고 공개 페이지, 줍줍 알림이 이 값을 쓴다(화면 상세는 실시간 계산을 그대로 쓴다).
  * 정확한 지번 위치를 확인한 공고만 계산하고, 신뢰도가 '참고'뿐이면 READY로 두지 않는다.
  * 카카오 REST 키나 실거래 키가 없으면 계산하지 않으며, 테이블이 없으면 조회는 빈 결과를 돌려준다.
+ * 국토부 실거래는 하루 호출 한도가 있어(MolitDailyBudget) 사용자 요청과 몫을 나눠 쓰고, 한 번에 최대 60건·20분까지만 계산한다.
+ * 위치 확인은 AddressLocator(카카오), 시세는 NeighborhoodResearchService(국토부), 비교 규칙은 PriceGapRules가 맡는다.
  */
+// @RestController: 저장된 값을 조회하는 API(/api/v1/planner/price-gaps)도 함께 둔다. @Validated: 요청 검증을 켠다.
 @RestController
 @Validated
 public class PriceGapSnapshots {
     private static final Logger log = LoggerFactory.getLogger(PriceGapSnapshots.class);
     static final int MAX_PER_RUN = 60, READY_DAYS = 3, RETRY_DAYS = 7, KEEP_DAYS = 180, MAX_MINUTES = 20;
+    // @Configuration + @EnableScheduling: 아래 @Scheduled 메서드가 실제로 돌도록 스케줄링 기능을 켠다.
     @Configuration @EnableScheduling static class Scheduling { }
     private final JdbcTemplate jdbc;
     private final PriceGapStore store;
@@ -50,8 +54,11 @@ public class PriceGapSnapshots {
     private final AddressLocator locator;
     private final NeighborhoodResearchService research;
     private final Clock clock;
+    // @Autowired(required=false): 트랜잭션 도우미가 있으면 넣는다. 없으면(단위 테스트) 트랜잭션 없이 저장한다.
+    // TransactionTemplate은 @Transactional 대신 코드로 트랜잭션 범위를 정할 때 쓴다(같은 클래스 안 호출에도 적용된다).
     @Autowired(required = false) private TransactionTemplate transactions;
 
+    // @Autowired: 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
     public PriceGapSnapshots(JdbcTemplate jdbc, PriceGapStore store, EligibilityFeed feed, AddressLocator locator, NeighborhoodResearchService research) {
         this(jdbc, store, feed, locator, research, Clock.system(ZoneId.of("Asia/Seoul")));
@@ -62,10 +69,12 @@ public class PriceGapSnapshots {
 
     public record Request(@NotNull @Size(max = 50) List<@NotNull @Pattern(regexp = "(apt|urban|remaining|public-rental|optional)/[a-zA-Z0-9_-]{1,40}/[a-zA-Z0-9_-]{1,40}") String> ids) { }
 
+    // @PostMapping + @Valid @RequestBody: 공고 키 목록(최대 50개)을 받아 미리 계산된 비교 요약을 돌려준다.
     @PostMapping("/api/v1/planner/price-gaps")
     public List<PriceGapStore.Gap> lookup(@Valid @RequestBody Request request) { return List.copyOf(store.forIds(request.ids()).values()); }
 
     /** 저녁 묶음 알림 전에 미리 계산한다(기본 17:20). PRICE_GAP_CRON=- 이면 끈다. */
+    // @Scheduled(cron): 설정 toady.research.gap-cron 값, 없으면 매일 17:20(한국시간)에 실행한다.
     @Scheduled(cron = "${toady.research.gap-cron:0 20 17 * * *}", zone = "Asia/Seoul")
     public void scheduled() {
         if (!locator.enabled() || !research.tradesEnabled()) return;
@@ -135,6 +144,8 @@ public class PriceGapSnapshots {
         return out;
     }
 
+    // 공고 하나 계산: 위치 확인 → 면적별 실거래 → 대표 면적 고르기 → 저장. 결과 상태 문자열을 돌려준다.
+    // DB 오류는 위로 던져 전체 작업을 멈추고, 외부 API 오류는 이 공고만 UNAVAILABLE로 둔다.
     private String compute(EligibilityFeed.Item item, Map<Integer, Long> supplies, LocalDateTime now, boolean keepPrevious) {
         try {
             var location = locator.locate(item.address());

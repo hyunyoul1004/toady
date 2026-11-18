@@ -19,9 +19,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
-/** 공고 댓글 조회와 변경을 처리합니다. */
+/**
+ * 공고 댓글 조회와 변경을 처리합니다(화면의 '공고 이야기').
+ * 흐름: AnnouncementController → 이 클래스 → AnnouncementCommentRepository → TB_LTTOT_PBLANC_COMMENT.
+ * 작성자 닉네임은 UserRepository, 프로필 캐릭터는 ProfileIcons, 운영팀 표시·고정은 OfficialComments,
+ * 쓰기 정지·금칙어는 Sanctions·ModerationRules, 숨긴 공고는 AnnouncementOverrides에서 확인한다.
+ */
+// @Service: 스프링 빈으로 등록한다. @RequiredArgsConstructor로 final 필드를 생성자 주입한다.
 @Service
 @RequiredArgsConstructor
+// @Transactional(readOnly = true): 기본은 조회 전용 트랜잭션. 변경 감지를 하지 않아 가볍고, 실수로 바꾼 값이 저장되지 않는다.
+// 쓰기 메서드에는 따로 @Transactional을 붙여 읽기·쓰기 트랜잭션으로 덮어쓴다.
 @Transactional(readOnly = true)
 public class AnnouncementCommentService {
     private final AnnouncementCommentRepository commentRepository;
@@ -33,6 +41,11 @@ public class AnnouncementCommentService {
     private final com.toady.web.app.operation.AnnouncementOverrides overrides;
     private final com.toady.web.app.operation.OfficialComments officials;
 
+    /**
+     * 공고의 댓글 목록을 최신순으로 돌려준다.
+     * beforeCommentSeq가 있으면 커서 방식(그 번호보다 오래된 것)이라 page는 0이어야 한다.
+     * 프로필 캐릭터와 운영팀 여부는 페이지 단위로 한 번에 읽어 붙인다(댓글마다 쿼리하지 않는다).
+     */
     public Page<AnnouncementCommentResponse> list(
             AnnouncementType type,
             String houseManageNo,
@@ -64,12 +77,15 @@ public class AnnouncementCommentService {
                 .filter(java.util.Objects::nonNull).toList();
     }
 
+    /** 삭제되지 않은 댓글·답글 수. 공고 상세 응답의 commentCount에 쓴다. */
     public long count(AnnouncementType type, String houseManageNo, String pblancNo) {
         return commentRepository.countByAnnouncementTypeAndHouseManageNoAndPblancNoAndDeleteYn(
                 type.name(), houseManageNo, pblancNo, "N"
         );
     }
 
+    /** 댓글·답글을 쓴다. 공고 존재 → 숨김 여부 → 쓰기 정지·금칙어 → (답글이면) 부모 확인 순으로 검사한다. */
+    // @Transactional: 읽기·쓰기 트랜잭션. 메서드가 끝나면 커밋되고, 예외(RuntimeException)가 나면 모두 되돌린다.
     @Transactional
     public AnnouncementCommentResponse create(
             AnnouncementType type,
@@ -84,6 +100,7 @@ public class AnnouncementCommentService {
         checkWriter(userSeq, request.content());
 
         if (request.parentCommentSeq() != null) {
+            // 부모 댓글을 잠그고 읽는다. 같은 순간 부모가 삭제되면 그 트랜잭션이 끝날 때까지 기다린다.
             AnnouncementCommentEntity parent = commentRepository.findForUpdate(request.parentCommentSeq())
                     .orElseThrow(() -> new EntityNotFoundException("부모 댓글을 찾을 수 없습니다."));
             if (!"N".equals(parent.getDeleteYn())
@@ -96,12 +113,17 @@ public class AnnouncementCommentService {
             if (parent.getParentCommentSeq() != null) throw new IllegalArgumentException("답글에는 다시 답글을 달 수 없어요.");
         }
 
+        // save(): 새 엔티티라 INSERT한다. IDENTITY 키라 바로 실행되어 번호가 채워진다.
         AnnouncementCommentEntity saved = commentRepository.save(new AnnouncementCommentEntity(
                 type.name(), houseManageNo, pblancNo, request.parentCommentSeq(), request.content(), userSeq
         ));
         return toResponse(saved);
     }
 
+    /**
+     * 본인 댓글 내용을 고친다. save()를 부르지 않아도 된다.
+     * 트랜잭션 안에서 읽은 엔티티의 값을 바꾸면 커밋할 때 JPA가 UPDATE를 보낸다(변경 감지).
+     */
     @Transactional
     public AnnouncementCommentResponse update(
             AnnouncementType type,
@@ -121,6 +143,7 @@ public class AnnouncementCommentService {
         return toResponse(comment);
     }
 
+    /** 본인 댓글을 소프트 삭제한다(DELETE_YN = 'Y'). 원글이면 답글도 함께 지운다. */
     @Transactional
     public void delete(
             AnnouncementType type,
@@ -149,6 +172,7 @@ public class AnnouncementCommentService {
         }
     }
 
+    /** 삭제되지 않았고, 요청한 공고에 속하고, 본인이 쓴 댓글만 돌려준다. 다른 공고 댓글이면 404, 남의 댓글이면 403. */
     private AnnouncementCommentEntity ownedComment(
             Long commentSeq,
             Long userSeq,
@@ -170,12 +194,14 @@ public class AnnouncementCommentService {
         return comment;
     }
 
+    /** 없는 공고에 댓글을 달거나 조회하지 못하게 먼저 확인한다. */
     private void requireAnnouncement(AnnouncementType type, String houseManageNo, String pblancNo) {
         if (!announcementService.exists(type, houseManageNo, pblancNo)) {
             throw new EntityNotFoundException("공고를 찾을 수 없습니다.");
         }
     }
 
+    /** 엔티티 하나를 응답으로 바꾼다. 작성자 닉네임·프로필 캐릭터를 따로 읽는다. 작성·수정 응답과 고정 글에 쓴다. */
     private AnnouncementCommentResponse toResponse(AnnouncementCommentEntity comment) {
         UserEntity user = userRepository.findById(comment.getCreateUserSeq())
                 .orElseThrow(() -> new EntityNotFoundException("댓글 작성자를 찾을 수 없습니다."));

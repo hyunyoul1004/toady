@@ -4,6 +4,7 @@
  * - compact(지도 말풍선·칩): 78,000 → '7.8억', 8,500 → '8,500만' (억은 소수 한 자리, .0은 뺀다)
  * - won:false 는 '원'을 뺀다(범위 슬라이더처럼 숫자가 이어 붙는 곳: '2억 9,000만').
  * 0 이하·숫자가 아닌 값은 empty(기본 '—')를 돌려준다.
+ * 1만원 = 1, 1억 = 10,000 이므로 10,000으로 나눈 몫이 '억', 나머지가 '만'이다.
  */
 export function formatManwon(value, { compact = false, won = !compact, empty = '—' } = {}) {
   const amount = Number(value);

@@ -18,16 +18,23 @@ import kotlin.math.roundToLong
 /**
  * API가 쌓는 익명 조회·행동 로그를 집계한다(한국시간). 개인 식별 정보는 다루지 않는다.
  * 운영자가 등록한 브라우저(ExclusionService)는 모든 방문 지표에서 뺀다.
- * 재방문은 그 주 시작 전 RETURN_WEEKS주 안에 다른 날 방문이 있는 방문자다.
+ * 주간 재방문은 그 주의 마지막 방문 전에, 그 주 시작 RETURN_WEEKS주 전부터 다른 날 방문이 한 번 더 있는 방문자다(같은 주의 앞선 날 포함).
+ * 읽는 테이블: TB_PAGE_VIEW, TB_USAGE_EVENT, TB_USER, TB_FAVORITE, TB_PUSH_SUBSCRIPTION, TB_MEMBER_VISIT_DAY, 공고 상세 테이블. 읽기 전용.
+ * 큰 집계는 SQL로 '방문자·날짜' 같은 작은 행만 받아 오고, 재방문·흐름 계산은 Kotlin 메모리에서 한다(조건이 복잡해 SQL로 쓰기 어렵다).
+ * 호출: AdminController의 대시보드와 지표 화면.
  */
+// @Service: 업무 로직 빈.
 @Service
 class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: ExclusionService, private val announcements: AnnouncementService) {
+	/** 한 주(월~일) 지표. activeExplorers는 관심 저장을 했거나 공고 상세를 2개 이상 본 방문자 수다. */
 	data class Week(val start: LocalDate, val end: LocalDate, val visitors: Long, val sessions: Long, val pageViews: Long, val returning: Long,
 	                val activeExplorers: Long, val detailViews: Long, val favorites: Long, val shares: Long) {
 		val returningRate get() = if (visitors == 0L) 0 else (returning * 100.0 / visitors).roundToLong()
 		val label get() = "%d.%02d ~ %d.%02d".format(start.monthValue, start.dayOfMonth, end.monthValue, end.dayOfMonth)
 	}
+	/** 유입 경로 한 줄(최근 28일 세션 기준). */
 	data class Source(val label: String, val host: String, val sessions: Long, val percent: Long)
+	/** 주간 지표 화면 전체 값. error가 있으면 화면에 안내만 보여 준다. */
 	data class Report(val weeks: List<Week>, val sources: List<Source>, val sourceSessions: Long, val sourceNotice: String?, val error: String?) {
 		val current get() = weeks.firstOrNull()
 		val previous get() = weeks.getOrNull(1)
@@ -40,9 +47,12 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		val label get() = "%d.%d".format(date.monthValue, date.dayOfMonth)
 		val weekend get() = date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY
 	}
+	/** 순위 목록 한 줄(공고·화면·지도 기능 등). percent는 1위 대비 막대 길이. */
 	data class Ranked(val key: String, val label: String, val count: Long, val visitors: Long, val percent: Long)
+	/** 최근 가입 회원 한 줄(대시보드용). */
 	data class Signup(val seq: Long, val nickname: String, val email: String, val certified: Boolean, val createdAt: LocalDateTime?)
 
+	/** 대시보드 위쪽 숫자. 오늘 방문자는 지표 제외 브라우저를 빼고 센다. */
 	fun today(today: LocalDate = Kst.today()): Today {
 		val ex = exclusions.clause()
 		return Today(
@@ -224,15 +234,21 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		rows.map { (path, views, people) -> Ranked(path, PAGE_NAMES[path] ?: path, views, people, views * 100 / max) }
 	} catch (missing: DataAccessException) { emptyList() }
 
+	/** 최근 가입 회원 몇 명. */
 	fun recentSignups(limit: Int = 6): List<Signup> = try {
 		jdbc.query("SELECT USER_SEQ, USER_NIC_NAME, USER_EMAIL, EMAIL_CERTIFY_YN, CREATE_DT FROM TB_USER ORDER BY USER_SEQ DESC LIMIT ?", { r, _ ->
 			Signup(r.getLong(1), r.getString(2), r.getString(3), r.getString(4) == "Y", r.getTimestamp(5)?.toLocalDateTime())
 		}, limit)
 	} catch (missing: DataAccessException) { emptyList() }
 
+	/** 숫자 하나를 읽는다. 테이블이 없으면 null. */
 	private fun count(sql: String, vararg args: Any): Long? =
 		try { jdbc.queryForObject(sql, Long::class.java, *args) } catch (missing: DataAccessException) { null }
 
+	/**
+	 * 최근 8주 주간 지표와 유입 경로. 방문자별 방문 날짜 집합(TreeSet)을 만들어 두고,
+	 * 주마다 '그 주 마지막 방문(floor)'과 '그 앞 방문(lower)'을 찾아 재방문을 판정한다.
+	 */
 	fun report(today: LocalDate = Kst.today()): Report {
 		val first = weekStart(today).minusWeeks((WEEKS - 1).toLong())
 		val windowStart = first.minusWeeks(RETURN_WEEKS.toLong())
@@ -283,6 +299,10 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		}
 	}
 
+	/**
+	 * 최근 28일 유입 경로. 리퍼러 도메인별 세션 수를 sourceLabel로 묶고, 리퍼러가 없는 세션은 '직접 방문·알 수 없음'으로 센다.
+	 * 반환: (경로 목록, 전체 세션 수, 안내 문구).
+	 */
 	private fun sources(today: LocalDate, ex: String): Triple<List<Source>, Long, String?> {
 		val start = today.minusDays(27)
 		return try {

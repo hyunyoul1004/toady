@@ -1,4 +1,6 @@
-/* SubscriptionCalendar.css */
+/* SubscriptionCalendar.css
+   데스크톱 달력(FullCalendar)과 단계 뱃지 모양. .fc-로 시작하는 이름은 FullCalendar가 만든 요소다.
+   .subscription-calendar-wrapper 안으로 범위를 좁혀 다른 화면에 영향을 주지 않게 한다. */
 
 .subscription-calendar-wrapper {
   background-color: #fff;
@@ -61,7 +63,8 @@
   gap: 5px;
 }
 
-/* 일정 한 줄: 옅은 배경 + 왼쪽 색 띠 + 진한 글자 */
+/* 일정 한 줄: 옅은 배경 + 왼쪽 색 띠 + 진한 글자
+   !important는 FullCalendar 기본 스타일보다 우선하려고 붙인다. */
 .subscription-calendar-wrapper .fc-daygrid-event {
   margin: 1px 4px 2px !important;
   padding: 0 !important;
@@ -133,7 +136,8 @@
   color: #64748b;
 }
 
-/* 단계 뱃지(특·1·2): 그날 단계는 채움, 같은 공고의 다른 단계는 옅게 */
+/* 단계 뱃지(특·1·2): 그날 단계는 채움, 같은 공고의 다른 단계는 옅게
+   색은 StageBadges가 style로 넣는 CSS 변수(--tc-accent, --tc-text)에서 가져온다. */
 .tc-stages {
   display: inline-flex;
   flex-shrink: 0;
@@ -197,7 +201,8 @@
   min-height: 112px;
 }
 
-/* 칸 폭 기준 반응형: 좁은 칸(노트북·창 축소)에서는 옅은 단계 뱃지를 숨겨 단지명 자리를 확보한다 */
+/* 칸 폭 기준 반응형: 좁은 칸(노트북·창 축소)에서는 옅은 단계 뱃지를 숨겨 단지명 자리를 확보한다
+   container-type을 준 날짜 칸의 폭을 기준으로 아래 @container 규칙이 적용된다(화면 폭이 아니라 칸 폭). */
 .subscription-calendar-wrapper .fc-daygrid-day-frame {
   container-type: inline-size;
 }

@@ -25,8 +25,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * 수동 요청과 자동 스케줄을 같은 백그라운드 실행 경로로 처리한다.
  * 실행 이력은 DB에 보관하고, 실제 데이터 수집과 저장은 기존 수집 서비스에 위임한다.
  * 작업 전체를 하나의 트랜잭션으로 묶지 않으므로 실패·중지 전에 완료된 저장 결과는 유지된다.
+ * 호출: AdminInternalApi(수동 실행), AdminScheduleManager(자동 일정). 이력 테이블: TB_SCHEDULER_ADMIN_JOB.
  */
+// @Service: 업무 로직을 담는 빈으로 등록한다. 다른 빈이 생성자로 주입받아 쓴다.
 @Service
+// 관리 기능(applyhome.admin.enabled=true)을 켰을 때만 만든다.
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "true")
 public class AdminJobService {
     private static final Logger log = LoggerFactory.getLogger(AdminJobService.class);
@@ -55,6 +58,7 @@ public class AdminJobService {
      */
     static final Duration LEFTOVER_STALE_AFTER = Duration.ofMillis(HEARTBEAT_INTERVAL_MILLIS * 5 / 2);
 
+    // @Value: 설정값을 읽는다. 값이 없으면 콜론 뒤 기본값(15초)을 쓴다.
     public AdminJobService(AdminJobRepository repository, ApplyhomeSyncService announcements,
             ApplyhomeCompetitionSyncService competition,
             @Value("${applyhome.admin.busy-wait-seconds:15}") long busyWaitSeconds) {
@@ -271,6 +275,7 @@ public class AdminJobService {
         }
         return ranges;
     }
+    /** 시작·종료일을 모두 포함하는 조회 구간 하나. */
     record DateRange(LocalDate start, LocalDate end) { }
     /**
      * 시작 시 이전 프로세스가 남긴 활성 작업을 중단 상태로 정리한다. 생존 신호가 LEFTOVER_STALE_AFTER보다
@@ -285,6 +290,7 @@ public class AdminJobService {
     }
     // 앱 종료 시 실행기를 닫는다. 중단 작업은 자동 재개하지 않고 관리자가 이력을 확인해 다시 실행한다.
     // 작업 스레드가 중단 상태를 기록할 수 있도록 DB 연결이 닫히기 전에 잠시 기다린다(compose stop_grace_period 30초 안).
+    // @PreDestroy: 앱이 꺼지면서 이 빈을 없애기 직전에 스프링이 한 번 호출한다.
     @PreDestroy public void close() {
         closing = true;
         worker.shutdownNow();

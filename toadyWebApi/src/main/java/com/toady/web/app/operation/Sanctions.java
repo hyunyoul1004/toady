@@ -16,7 +16,10 @@ import java.util.Map;
  * 관리자가 정한 회원 제재(database.sql 26번 TB_USER_SANCTION).
  * 이야기 쓰기 정지(STORY_BAN)는 글을 쓸 때마다 확인하고, 경고·닉네임 초기화는 회원에게 안내만 한다.
  * 회원에게는 종류·기간·사유 항목만 보여 주고 관리자 메모는 보내지 않는다. 테이블이 없으면 제재가 없는 것으로 본다.
+ * 제재를 만드는 쪽은 관리자 사이트(toadyAdmin)이고, 이 API는 읽기와 '확인함' 표시만 한다.
+ * 시각은 DB에 한국 시간(KST)으로 저장돼 있어 비교도 KST 현재 시각으로 한다.
  */
+// @Component: 빈으로 등록된다. OperationNoticeController와 글쓰기 서비스(댓글·커뮤니티)가 쓴다
 @Component
 public class Sanctions {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");

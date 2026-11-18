@@ -1,3 +1,4 @@
+/** 메인 '관심 지역 고르기'(InterestAreaPicker.jsx) 규칙. 화면 없이 테스트할 수 있게 순수 함수로 둔다. */
 import { normalizeSearchTargets } from './searchState.js';
 
 export const MAX_INTEREST_AREAS = 3;

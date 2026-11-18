@@ -2,7 +2,10 @@
  * 홈 화면 추가(앱처럼 설치) 안내 방식 판정(순수 함수). platform은 push/pushSupport의 detectPlatform 결과다.
  * installed: 이미 홈 화면 앱으로 열었음(메뉴 숨김) / prompt: 브라우저 설치 창을 바로 띄울 수 있음(안드로이드 Chrome·PC Chrome·Edge)
  * ios: 사파리 공유 메뉴로 추가 / ios-safari: 사파리로 열어야 함 / in-app: 카카오톡 등 앱 안 브라우저
- * android: 설치 창을 못 받는 안드로이드 브라우저(삼성 인터넷 등, 메뉴에서 직접 추가) / none: 안내할 방법이 없는 PC 브라우저(메뉴 숨김)
+ * android: 설치 창을 못 받는 안드로이드 브라우저(삼성 인터넷 등, 메뉴에서 직접 추가)
+ * desktop: PC에서 설치 창을 한 번 닫은 뒤(주소창의 설치 아이콘을 안내) / none: 안내할 방법이 없는 PC 브라우저(메뉴 숨김)
+ * installStore의 useInstallMode가 이 함수를 부르고, 결과는 Sidebar의 '홈 화면에 추가' 메뉴와 InstallGuideDialog가 쓴다.
+ * 순서가 중요하다: 이미 설치됨 → 설치 창 가능 → 아이폰 → 앱 안 브라우저 → 안드로이드 → PC 순으로 먼저 맞는 것을 고른다.
  */
 export function installMode(platform, { canPrompt = false, android = false, promptDismissed = false } = {}) {
   if (platform.standalone) return 'installed';
@@ -15,7 +18,7 @@ export function installMode(platform, { canPrompt = false, android = false, prom
   return 'none';
 }
 
-/** 메뉴에 '홈 화면에 추가'를 보여 줄지. */
+/** 메뉴에 '홈 화면에 추가'를 보여 줄지. 이미 설치했거나 안내할 방법이 없으면 숨긴다. */
 export function showInstallEntry(mode) {
   return mode !== 'installed' && mode !== 'none';
 }

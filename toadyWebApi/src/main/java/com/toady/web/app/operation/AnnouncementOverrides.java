@@ -14,7 +14,10 @@ import java.util.stream.Collectors;
 /**
  * 관리자가 정한 공고 숨김·운영 안내(database.sql 26번 TB_ANNOUNCEMENT_OVERRIDE). 1분마다 다시 읽는다.
  * 키는 유형 이름(APT·PUBLIC_RENTAL 등)/주택관리번호/공고번호. 테이블이 없으면 숨김·안내가 없는 것으로 본다.
+ * 공고 목록·상세를 만드는 쪽(공고 서비스)이 불러 숨긴 공고를 빼고 운영 안내 문구를 붙인다.
+ * 표 전체를 메모리 맵으로 들고 있다가 1분마다 통째로 바꾼다(AppSettings와 같은 이중 확인 방식).
  */
+// @Component: 빈 하나로 등록된다
 @Component
 public class AnnouncementOverrides {
     private static final Logger log = LoggerFactory.getLogger(AnnouncementOverrides.class);
@@ -30,6 +33,7 @@ public class AnnouncementOverrides {
 
     public AnnouncementOverrides(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    /** 맵 키 "유형/주택관리번호/공고번호"를 만든다. */
     public static String key(String typeName, String houseManageNo, String pblancNo) { return typeName + "/" + houseManageNo + "/" + pblancNo; }
 
     public Override get(String typeName, String houseManageNo, String pblancNo) { return current().get(key(typeName, houseManageNo, pblancNo)); }
@@ -57,6 +61,7 @@ public class AnnouncementOverrides {
                 Map<String, Override> next = new HashMap<>();
                 boolean withLocation = true;
                 String sql = "SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE, LOCATION_ADDRESS FROM TB_ANNOUNCEMENT_OVERRIDE";
+                // WHERE 1=0으로 행 없이 실행만 해 보고, LOCATION_ADDRESS 컬럼이 없는 예전 DB면 그 컬럼 없이 읽는다
                 try { jdbc.queryForList(sql + " WHERE 1=0"); }
                 catch (DataAccessException noColumn) { withLocation = false; sql = "SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE FROM TB_ANNOUNCEMENT_OVERRIDE"; }
                 final boolean location = withLocation;

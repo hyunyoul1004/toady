@@ -28,13 +28,20 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
-/** 서명된 JWT 발급·검증과 클레임에서 Spring Security 인증 정보를 복원합니다. */
+/**
+ * 서명된 JWT 발급·검증과 클레임에서 Spring Security 인증 정보를 복원합니다.
+ * 토큰 안에는 이메일(subject), 권한, 최초 로그인 시각(tca), 회원 번호·닉네임, 비밀번호 버전(credentialVersion)이 들어간다.
+ * 검증할 때마다 TB_USER를 다시 읽어 잠금·탈퇴·미인증이거나 비밀번호가 바뀌었으면 토큰을 거부한다.
+ * HS512(비밀 키 하나로 서명·검증) 방식이며, 키는 JWT_SECRET(Base64, 64바이트 이상)으로 받는다.
+ */
+// @RequiredArgsConstructor: final 필드 userRepository를 받는 생성자. SecurityConfig의 @Bean 메서드가 이 생성자로 만든다
 @RequiredArgsConstructor
 public class JwtProviderImpl implements JwtProvider {
     private final UserRepository userRepository;
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
+    // @Value: 설정 값을 필드에 넣는다. @Bean으로 만든 객체도 스프링이 관리하므로 필드 주입이 된다
     @Value("${toady.security.secret-key}")
     private String secretKey;
 
@@ -52,6 +59,7 @@ public class JwtProviderImpl implements JwtProvider {
     private long sessionMaxMs;
 
     /** 인증이 불가능한 설정으로 배포 준비 상태가 성공하지 않도록 시작 시 검증한다. */
+    // @PostConstruct: 빈이 만들어지고 @Value 주입이 끝난 직후 한 번 실행된다. 여기서 예외가 나면 앱이 뜨지 않는다
     @PostConstruct
     void validateConfiguration() {
         byte[] decoded;
@@ -80,6 +88,7 @@ public class JwtProviderImpl implements JwtProvider {
         return token(authentication, createdAt(claims));
     }
 
+    // 토큰에서 최초 로그인 시각을 꺼낸다. 최대 유지 기간(14일) 계산의 기준이다
     private Instant createdAt(Claims claims) {
         Date created = claims.get(tokenCreatedAtKey, Date.class);
         if (created == null) created = claims.getIssuedAt();
@@ -87,6 +96,7 @@ public class JwtProviderImpl implements JwtProvider {
         return created.toInstant();
     }
 
+    /** 실제 토큰 생성. 만료는 지금부터 tokenExpireMs(기본 90분) 뒤이고, createdAt은 처음 로그인한 시각을 이어받는다. */
     private String token(Authentication authentication, Instant createdAt) {
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
         Instant now = Instant.now();
@@ -155,6 +165,7 @@ public class JwtProviderImpl implements JwtProvider {
         return expiry.before(Date.from(Instant.now().plusSeconds(30 * 60L)));
     }
 
+    /** 서명과 만료를 검사하고 내용(클레임)을 꺼낸다. 위조·만료면 JwtException이 난다. */
     private Claims parse(String token) {
         return Jwts.parser()
                 .verifyWith(signingKey())
@@ -163,6 +174,10 @@ public class JwtProviderImpl implements JwtProvider {
                 .getPayload();
     }
 
+    /**
+     * 비밀번호 해시를 비밀 키로 HMAC한 값. 토큰에 넣어 두었다가 검증 때 DB 값과 비교한다.
+     * 비밀번호를 바꾸면 값이 달라져 이전에 발급한 토큰이 모두 무효가 된다. 해시 자체는 토큰에 드러나지 않는다.
+     */
     private String credentialVersion(String passwordHash) {
         if (passwordHash == null || passwordHash.isBlank()) {
             throw new JwtException("Missing account credentials");

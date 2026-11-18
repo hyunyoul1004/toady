@@ -1,6 +1,11 @@
 /**
  * @file SectionErrorBoundary.jsx
  * @description 화면 일부(상세 탭·팝업 등)가 실패해도 그 자리만 안내로 바꾸고 나머지 화면은 그대로 쓰게 하는 오류 경계.
+ * 쓰는 곳: 공고 상세 탭(views/main/Main.jsx), 청약 캘린더(SubscriptionCalendar), 계정 창(MainLayout의 AccountDialogBody).
+ *
+ * 오류 경계(Error Boundary): 자식 컴포넌트가 그리는 도중 예외를 던지면, React는 가장 가까운 오류 경계까지 올라가
+ * 그 아래를 통째로 대체 화면으로 바꾼다. 경계가 없으면 앱 전체가 하얀 화면이 된다.
+ * 아직 훅으로는 만들 수 없어서 class 컴포넌트로 쓴다. 이벤트 처리기·setTimeout·비동기 요청 안의 오류는 잡지 못한다.
  */
 import React from 'react';
 import Box from '@mui/material/Box';
@@ -25,14 +30,17 @@ export class SectionErrorBoundary extends React.Component {
     this.state = { error: null };
   }
 
+  /** 자식에서 오류가 나면 React가 부른다. 돌려준 값이 state에 합쳐지고, 다음 render에서 안내 화면을 그린다. */
   static getDerivedStateFromError(error) {
     return { error };
   }
 
+  /** 오류 기록용. info.componentStack에 어느 컴포넌트에서 났는지 들어 있다. */
   componentDidCatch(error, info) {
     console.error('[SectionErrorBoundary]', error, info?.componentStack);
   }
 
+  /** resetKey가 바뀌면(다른 공고·탭으로 이동) 실패 표시를 지우고 자식을 다시 그려 본다. 훅의 useEffect 대신 class에서 쓰는 방법이다. */
   componentDidUpdate(previousProps) {
     if (this.state.error && previousProps.resetKey !== this.props.resetKey) this.setState({ error: null });
   }

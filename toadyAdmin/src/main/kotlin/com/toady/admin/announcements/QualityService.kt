@@ -12,12 +12,17 @@ import java.time.LocalDate
  * - 위치 확인: 접수 중·예정이거나 최근 공고 중 주소에 지번·도로명 번호가 없어(지구·블록 주소) 지도에 정확히 놓을 수 없는 공고.
  *   운영자가 확인한 주소를 넣어도 앱이 지도 검색으로 다시 검증한 뒤에만 핀을 놓는다(엉뚱한 곳에 확정하지 않게).
  * - 데이터 점검: 주소·접수일 누락, 날짜 형식 불일치(유형별 YYYY-MM-DD / YYYYMMDD), APT 주택형 누락.
+ * 읽기: 공고 상세·주택형 테이블. 쓰기: TB_ANNOUNCEMENT_OVERRIDE.LOCATION_ADDRESS(database.sql 27번).
+ * 호출: AdminController의 위치 확인(/admin/locations)·데이터 점검(/admin/data-check) 화면.
  */
+// @Service: 업무 로직 빈.
 @Service
 class QualityService(private val jdbc: JdbcTemplate) {
+	/** 데이터 점검에서 찾은 문제 하나. 공고 하나에 문제가 여러 개면 여러 줄이 된다. */
 	data class Issue(val id: String, val typeLabel: String, val houseNm: String, val address: String?, val start: LocalDate?, val problem: String) {
 		val adminPath get() = "/admin/announcements/$id"
 	}
+	/** 위치 확인 대기 공고. confirmed가 있으면 운영자가 이미 주소를 넣은 것이다. */
 	data class Pending(val id: String, val typeLabel: String, val houseNm: String, val address: String?, val start: LocalDate?, val confirmed: String?) {
 		val adminPath get() = "/admin/announcements/$id"
 	}
@@ -42,6 +47,7 @@ class QualityService(private val jdbc: JdbcTemplate) {
 			.sortedWith(compareBy<Pending, LocalDate?>(nullsLast()) { it.start }.thenBy { it.id })
 	}
 
+	/** 운영자가 확인한 주소 전체(공고 ID → 주소). DB의 유형 값(PUBLIC_RENTAL)을 화면 ID 모양(public-rental)으로 바꾼다. */
 	fun confirmedAddresses(): Map<String, String> = try {
 		val result = HashMap<String, String>()
 		jdbc.query("SELECT ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, LOCATION_ADDRESS FROM TB_ANNOUNCEMENT_OVERRIDE WHERE LOCATION_ADDRESS IS NOT NULL") { r ->
@@ -50,6 +56,7 @@ class QualityService(private val jdbc: JdbcTemplate) {
 		result
 	} catch (missing: DataAccessException) { emptyMap() }
 
+	/** LOCATION_ADDRESS 컬럼까지 준비됐는지 확인한다(database.sql 27번 적용 여부). */
 	fun locationReady(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_ANNOUNCEMENT_OVERRIDE WHERE LOCATION_ADDRESS IS NULL AND 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	/** 운영자가 확인한 주소를 저장한다(빈 값이면 지운다). 지번·도로명 번호가 있는 주소만 받는다. 이전 값을 돌려준다. */
@@ -98,6 +105,7 @@ class QualityService(private val jdbc: JdbcTemplate) {
 		}.sortedWith(compareBy<Issue, LocalDate?>(nullsLast()) { it.start }.thenBy { it.id })
 	}
 
+	// PARCEL: '한글·숫자 + 동/리/로/길 + 공백 + (산) + 번호(-부번)' 모양. 예: 동패동 1234-5, 동패로 123.
 	companion object {
 		private val PARCEL = Regex("[가-힣\\d]+(동|리|로|길)\\s+(산\\s*)?\\d+(-\\d+)?")
 	}

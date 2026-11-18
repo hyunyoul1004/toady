@@ -1,3 +1,9 @@
+/**
+ * 페이지 조회 기록(관리자 '유입' 지표). PageViewTracker가 createPageViewTracker로 기록기를 만들어 쓴다.
+ * 방문자 ID(브라우저마다 무작위, localStorage)와 세션 ID(30분 동안 움직임이 없으면 새로)를 함께 보낸다.
+ * API: POST /api/v1/analytics/page-views. 로그인 토큰은 싣지 않는다(회원과 연결하지 않음).
+ */
+// 기록할 화면 경로. 여기에 없는 경로는 보내지 않는다.
 const PATHS = new Set(['/', '/my', '/score', '/match', '/match/zupzup', '/faq', '/this-week', '/regions', '/announcements', '/login', '/certify', '/showSubscriptDetail']);
 const VISITOR_KEY = 'toady.analytics.visitor';
 const SESSION_KEY = 'toady.analytics.session';
@@ -27,7 +33,11 @@ export function externalReferrer(referrer, search, ownHost) {
 const PUSH_SOURCES = { 'push.digest': 'tool/push-digest', 'push.result': 'tool/push-result', 'push.message': 'tool/push-message', 'push.notice': 'tool/push-notice', 'push.other': 'tool/push-other' };
 export function pushOpenSubject(source) { return PUSH_SOURCES[(source || '').toLowerCase()] || null; }
 
-/** 저장소 차단 시 메모리 식별자로 동작하며, 조회 실패는 화면으로 전파하지 않는다. */
+/**
+ * 저장소 차단 시 메모리 식별자로 동작하며, 조회 실패는 화면으로 전파하지 않는다.
+ * storage·fetcher·randomUUID·now를 밖에서 받는 것은 테스트에서 가짜를 넣기 위해서다.
+ * 돌려주는 track(path)는 클로저로 visitor·session·first를 기억한다(이 함수가 끝나도 값이 남는다).
+ */
 export function createPageViewTracker({ apiUrl, storage, fetcher, randomUUID, now = Date.now, referrerHost = () => null }) {
   let visitor;
   let session;
@@ -63,6 +73,7 @@ export function createPageViewTracker({ apiUrl, storage, fetcher, randomUUID, no
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
             credentials: 'omit', keepalive: true, signal: controller.signal
           });
+          // 4xx는 다시 보내도 같은 결과라 멈춘다. 5xx(서버 오류)만 한 번 더 보낸다.
           if (response.ok || response.status < 500) return;
         } catch { /* 네트워크 오류는 한 번만 재시도한다. */ }
         finally { clearTimeout(timeout); }

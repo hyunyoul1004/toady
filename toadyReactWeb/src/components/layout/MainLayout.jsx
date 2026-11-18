@@ -3,7 +3,15 @@
  * @description 애플리케이션 공통 레이아웃 컴포넌트
  * - 데스크톱: 좌측 고정 사이드바
  * - 모바일: 상단 앱바 및 슬라이드 내비게이션 드로어
+ * - 모바일: 하단 탭(MobileTabBar)
  * - 계정 관련 모달(로그인, 회원가입, 비밀번호 찾기) 관리
+ * - 로그인 만료 안내(Snackbar), 사이트·운영 공지, 프로필 카드·신고 창(CommunityLayers)
+ *
+ * 라우터(routes/AppRoutes.jsx)에서 대부분 화면의 부모 레이아웃으로 쓴다. 각 화면은 <Outlet /> 자리에 그려진다.
+ *
+ * 팝업과 히스토리: 모바일 메뉴·로그인·회원가입·비밀번호 찾기는 모두 useHistoryOverlay('layout') 레이어 하나의 값
+ * ('menu' | 'login' | 'signup' | 'password')이다. 열면 히스토리 한 칸이 쌓이고(location.state.overlayLayers),
+ * 브라우저 뒤로가기를 누르면 그 칸이 빠지면서 창이 닫힌다. 같은 레이어라 로그인 → 회원가입처럼 바꾸면 칸을 더 쌓지 않고 값만 바꾼다.
  */
 import React from 'react';
 import { useHistoryOverlay } from '@/hooks/useHistoryOverlay';
@@ -34,6 +42,8 @@ import Skeleton from '@mui/material/Skeleton';
 import SectionErrorBoundary from '@/components/error/SectionErrorBoundary';
 
 // 로그인·회원가입·비밀번호 찾기 창은 열 때 내려받는다(대부분의 방문은 로그인 없이 둘러보므로 첫 화면 JS에서 뺀다).
+// React.lazy: 처음 그릴 때 import()로 파일을 받는다. 받는 동안은 바깥 Suspense의 fallback이 보인다.
+// .then(...)은 이름 있는 내보내기(export function LoginPage)를 lazy가 원하는 { default } 모양으로 바꾸는 것이다.
 const LoginPage = React.lazy(() => import('@/views/login/LoginPage').then(module => ({ default: module.LoginPage })));
 const SignUp = React.lazy(() => import('@/views/signup/SignUp').then(module => ({ default: module.SignUp })));
 const FindPassword = React.lazy(() => import('@/views/signup/FindPassword').then(module => ({ default: module.FindPassword })));
@@ -56,19 +66,21 @@ function AccountDialogBody({ children }) {
 
 export function MainLayout() {
   const [overlay, setOverlay] = useHistoryOverlay('layout');
+  // 다른 화면으로 새로 이동하면 맨 위로(뒤로가기는 읽던 위치 유지).
   useScrollTopOnNavigate();
   const mobileOpen = overlay === 'menu';
   const loginModalOpen = overlay === 'login';
   const signUpModalOpen = overlay === 'signup';
   const findPwModalOpen = overlay === 'password';
   // 닫기는 최신 레이어 값이 자기 자신일 때만 적용한다(비동기 로그인 뒤 늦게 온 닫기가 다른 창을 닫지 않게).
+  // toggleLayer('login')(true)는 로그인 창 열기, (false)는 닫기. 각 창의 setXxxOpen을 이걸로 만든다.
   const toggleLayer = name => open => setOverlay(current => open ? name : current === name ? null : current);
   const setMobileOpen = toggleLayer('menu');
   const setLoginModalOpen = toggleLayer('login');
   const setSignUpModalOpen = toggleLayer('signup');
   const setFindPwModalOpen = toggleLayer('password');
 
-  // 내 이야기의 새 답글(로그인했을 때만). 모바일 메뉴 단추에 점으로 알린다.
+  // 내 이야기의 새 답글과 안 읽은 쪽지(로그인했을 때만, React Query 조회). 모바일 메뉴 단추에 점으로 알린다.
 
   const { unread: replyUnread } = useMyReplies();
   const messageUnread = useMessageUnread();
@@ -76,6 +88,7 @@ export function MainLayout() {
 
   // 로그인이 만료돼 API가 401을 돌려주면(api/client.js가 auth-logout을 보낸다) 말없이 로그아웃되지 않게 알리고 다시 로그인할 길을 준다.
   const [sessionExpired, setSessionExpired] = React.useState(false);
+  // 빈 의존성 배열([]): 처음 그릴 때 한 번만 리스너를 붙이고, 레이아웃이 사라질 때 return의 정리 함수로 뗀다.
   React.useEffect(() => {
     const onExpired = () => setSessionExpired(true);
     window.addEventListener('auth-logout', onExpired);
@@ -154,6 +167,7 @@ export function MainLayout() {
           <Copyright />
         </Box>
       </Box>
+      {/* 모바일 하단 탭('더보기'는 위 메뉴 드로어를 연다). PC 폭에서는 CSS로 숨는다. */}
       <MobileTabBar onOpenMenu={() => setMobileOpen(true)} menuOpen={mobileOpen} />
 
       {/* 프로필 카드·신고 창(히스토리 층). 이야기·쪽지 어디서든 연다. */}
@@ -198,6 +212,7 @@ export function MainLayout() {
         >
           <CloseIcon fontSize="small" />
         </IconButton>
+        {/* 창 안쪽만 오류 경계 + Suspense로 감싼다. 파일을 받는 동안 뼈대를, 실패하면 창 안에 안내를 보여 준다. */}
         <AccountDialogBody>
           <LoginPage
             handleCloseModal={() => setLoginModalOpen(false)}
@@ -309,6 +324,7 @@ export function MainLayout() {
           />
         </AccountDialogBody>
       </Dialog>
+      {/* 로그인 만료 안내. 바깥을 눌러 닫히지 않게(clickaway 무시) 하고, 모바일은 하단 탭 위로 띄운다. */}
       <Snackbar open={sessionExpired} autoHideDuration={8000} onClose={(_, reason) => { if (reason !== 'clickaway') setSessionExpired(false); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} sx={{ bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', md: 24 } }}
         message="로그인이 만료됐어요. 다시 로그인해 주세요."

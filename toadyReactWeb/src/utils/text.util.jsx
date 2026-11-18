@@ -15,6 +15,8 @@ export function isEmail(email) {
 export const formatServerMessage = (msg) => {
   if (!msg || typeof msg !== 'string') return msg;
   const lines = msg.split(/<br\s*\/?>|\r?\n/gi);
+  // 문자열 그대로 HTML로 넣지 않고(dangerouslySetInnerHTML 미사용) 줄마다 나눠 그려서 스크립트 삽입을 막는다.
+  // 줄 순서가 바뀌지 않는 고정 목록이라 key로 인덱스를 써도 괜찮다.
   return lines.map((line, idx) => (
     <React.Fragment key={idx}>
       {line}

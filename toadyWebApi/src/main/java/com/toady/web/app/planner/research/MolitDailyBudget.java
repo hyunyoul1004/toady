@@ -23,9 +23,11 @@ public final class MolitDailyBudget {
     private volatile com.toady.web.app.operation.DailyCounter counter;
     static final String COUNTER_KEY = "molit";
 
+    /** 스프링 설정에서 관리자 설정·DB 계수기를 연결한다. 연결 전에는 메모리 계수만 쓴다. */
     public void connect(com.toady.web.app.operation.AppSettings settings, com.toady.web.app.operation.DailyCounter counter) {
         this.settings = settings; this.counter = counter;
     }
+    // 관리자 화면 값(100~1,000,000)이 있으면 그 값을, 없으면 생성자에서 받은 기본 한도를 쓴다.
     long limit() { return settings == null || limit <= 0 ? limit : settings.number(com.toady.web.app.operation.AppSettings.MOLIT_DAILY_LIMIT, limit, 100, 1_000_000); }
 
     public MolitDailyBudget(long limit, Clock clock) { this.limit = limit; this.clock = clock; }
@@ -33,6 +35,8 @@ public final class MolitDailyBudget {
     public static MolitDailyBudget unlimited() { return new MolitDailyBudget(0, Clock.system(KST)); }
 
     /** 한 번 부를 수 있으면 세고 true. background는 미리 계산 작업(남겨 둔 몫까지 쓸 수 있음). */
+    // synchronized: 여러 요청 스레드가 동시에 세어도 숫자가 꼬이지 않게 한 번에 하나씩 처리한다.
+    // DB 계수기가 있으면 그쪽 결과(null이면 DB 실패)를 따르고, 없거나 실패하면 메모리로 센다.
     public synchronized boolean tryAcquire(boolean background) {
         long limit = limit();
         if (limit <= 0) return true;
@@ -48,6 +52,7 @@ public final class MolitDailyBudget {
         return true;
     }
 
+    /** 오늘 쓴 호출 수(관리자 화면 표시용). */
     public synchronized long used() {
         if (counter != null && limit > 0) {
             Long shared = counter.count(COUNTER_KEY, LocalDate.now(clock.withZone(KST)));

@@ -10,15 +10,20 @@ import java.time.LocalDateTime
 /**
  * 공고 숨김·정정 안내(database.sql 26번 TB_ANNOUNCEMENT_OVERRIDE). 공고 원본은 바꾸지 않는다.
  * 숨기면 API가 목록·검색·캘린더·사이트맵·RSS에서 빼고 새 이야기를 막는다(1분 안에 반영). 안내 문구는 공고 상세 위에 보인다.
+ * 같은 행에 운영자가 확인한 위치 주소(LOCATION_ADDRESS)도 함께 둔다(QualityService가 저장).
+ * 호출: AdminController의 공고 상세 화면.
  */
+// @Service: 업무 로직 빈.
 @Service
 class OverrideService(private val jdbc: JdbcTemplate) {
+	/** 공고 하나의 운영 설정. empty면 원본 그대로 보이는 상태다. */
 	data class Override(val hidden: Boolean, val notice: String?, val admin: String?, val updatedAt: LocalDateTime?) {
 		val empty get() = !hidden && notice.isNullOrBlank()
 		/** 작업 이력에 남길 요약. */
 		val summary get() = (if (hidden) "숨김" else "공개") + (notice?.takeIf { it.isNotBlank() }?.let { " · 안내: $it" } ?: "")
 	}
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_ANNOUNCEMENT_OVERRIDE WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	/** id: apt/주택관리번호/공고번호 (관리자 화면 주소와 같은 모양). */
@@ -51,6 +56,7 @@ class OverrideService(private val jdbc: JdbcTemplate) {
 		val now = Timestamp.valueOf(Kst.now())
 		val updated = jdbc.update("UPDATE TB_ANNOUNCEMENT_OVERRIDE SET HIDDEN_YN=?, NOTICE=?, ADMIN_NAME=?, UPDATE_DT=? WHERE ANNOUNCEMENT_TYPE=? AND HOUSE_MANAGE_NO=? AND PBLANC_NO=?",
 			if (hidden) "Y" else "N", text, admin.take(100), now, key.first, key.second, key.third)
+		// 먼저 UPDATE하고, 바뀐 행이 없으면(처음 저장) INSERT한다. H2·MariaDB 모두에서 도는 단순한 upsert 방식이다.
 		if (updated == 0) jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, HIDDEN_YN, NOTICE, ADMIN_NAME, UPDATE_DT) VALUES (?,?,?,?,?,?,?)",
 			key.first, key.second, key.third, if (hidden) "Y" else "N", text, admin.take(100), now)
 		return true to before

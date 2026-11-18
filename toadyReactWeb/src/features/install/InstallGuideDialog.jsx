@@ -10,6 +10,7 @@ import HomeScreenGuide from '@/features/push/HomeScreenGuide';
 import { androidBrowser } from './installSupport';
 import '@/features/push/push.css';
 
+// 화면 속 버튼 모양을 흉내 낸 작은 표시(아이콘 + 이름)와 번호 붙은 단계 한 줄.
 const Key = ({ icon, children }) => <span className="push-key">{icon}{children}</span>;
 const Step = ({ no, title, note }) => <li><span className="push-step-no">{no}</span><div><strong>{title}</strong>{note && <small>{note}</small>}</div></li>;
 
@@ -48,9 +49,13 @@ const ANDROID_STEPS = {
 /**
  * 홈 화면 추가 안내. 설치 창을 바로 띄울 수 없는 브라우저에서는 기기·브라우저별 순서를, 설치를 마친 뒤(mode='done')에는 아이콘 위치를 알려 준다.
  * 열고 닫기는 부모가 useHistoryOverlay로 관리한다.
+ * 쓰는 곳: Sidebar의 '홈 화면에 추가'. mode는 installSupport.installMode 결과이거나, 설치를 마친 뒤의 'done'이다.
+ * 'prompt'(설치 창을 바로 띄울 수 있음)일 때는 이 창 대신 브라우저 설치 창이 뜬다(installStore.promptInstall).
+ * 'android'와 그 밖의 값은 맨 아래 else에서 안드로이드 브라우저별 순서를 보여 준다.
  */
 export default function InstallGuideDialog({ open, onClose, mode }) {
   const [copied, setCopied] = useState(false);
+  // 주소 복사. 클립보드 API는 https와 사용자 동작 안에서만 되고, 일부 앱 안 브라우저는 막아 둔다(실패하면 조용히 넘어간다).
   const copy = async () => {
     try { await navigator.clipboard.writeText(window.location.origin + '/'); setCopied(true); } catch { setCopied(false); }
   };

@@ -3,13 +3,25 @@
  * @description TanStack Query (React Query v5) 기반의 공고 및 댓글 커스텀 훅
  * - 자동 캐싱, 백그라운드 리페칭, 로딩/에러 상태 관리
  * - 댓글 등록/수정/삭제 시 쿼리 무효화(invalidateQueries)를 통한 실시간 동기화
+ * - 서버 통신은 api/announcementApi.js가 하고, 여기서는 캐시 키·갱신 시점만 정한다.
+ * - 사용처: views/main/Main.jsx(목록·상세·가점), views/main/subscriptRate/SubscriptRate.jsx(경쟁률·가점·특별공급),
+ *   views/main/subscriptComment/SubscriptComment.jsx(댓글)
+ *
+ * React Query 짧은 정리
+ * - queryKey: 캐시의 이름표. 키가 같으면 여러 화면이 같은 데이터를 함께 쓰고, 키가 바뀌면 새로 불러온다.
+ * - staleTime: 이 시간 동안은 '신선한' 데이터로 보고 다시 요청하지 않는다.
+ * - enabled: false면 요청하지 않는다(필요한 값이 아직 없을 때 등).
+ * - invalidateQueries: 그 키(로 시작하는) 캐시를 낡았다고 표시해, 화면에 떠 있으면 바로 다시 불러온다.
  */
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import announcementApi, { parseSubscriptId } from '../api/announcementApi';
 import { announcementListKeyParams } from '../api/announcementParams';
 import { formatDate } from '@/utils/date.util';
 
-/** Query Keys */
+/**
+ * Query Keys. 배열 앞부분이 같으면 한꺼번에 무효화할 수 있다
+ * (예: lists로 무효화하면 조건이 다른 목록 캐시가 모두 낡음 처리된다).
+ */
 export const announcementKeys = {
   all: ['announcements'],
   lists: ['announcements', 'list'],
@@ -45,6 +57,7 @@ export function useAnnouncementsQuery(params, enabled = true) {
  * @param {boolean} [enabled=true] 쿼리 실행 여부
  */
 export function useAnnouncementDetailQuery(subscriptId, enabled = true) {
+  // 형식이 틀린 id는 parseSubscriptId가 houseManageNo를 비워 돌려주므로 아래 isValid가 false가 되어 요청하지 않는다.
   const { type, houseManageNo, pblancNo } = parseSubscriptId(subscriptId);
   const isValid = Boolean(houseManageNo);
 
@@ -70,6 +83,7 @@ export function useCommentsQuery(subscriptId, enabled = true) {
   return useQuery({
     queryKey: announcementKeys.comments(idKey),
     queryFn: () => announcementApi.getComments({ type, houseManageNo, pblancNo }),
+    // staleTime을 두지 않아(기본 0) 댓글 칸을 다시 열 때마다 최신 댓글을 받아 온다.
     enabled: enabled && isValid,
     refetchOnWindowFocus: false
   });
@@ -88,6 +102,8 @@ function refreshOnMissing(queryClient) {
 
 /**
  * 댓글 등록 Mutation 훅
+ * useMutation은 서버 데이터를 바꾸는 요청에 쓴다. mutate(params)로 실행하고,
+ * 성공하면(onSuccess) 댓글 목록·상세(댓글 수)·공고 목록(댓글 수 표시) 캐시를 무효화해 다시 불러오게 한다.
  */
 export function useAddCommentMutation() {
   const queryClient = useQueryClient();
@@ -109,7 +125,7 @@ export function useAddCommentMutation() {
 
 
 /**
- * 댓글 수정 Mutation 훅
+ * 댓글 수정 Mutation 훅. 댓글 수는 그대로라 댓글 목록만 다시 불러온다.
  */
 export function useUpdateCommentMutation() {
   const queryClient = useQueryClient();
@@ -126,7 +142,7 @@ export function useUpdateCommentMutation() {
 }
 
 /**
- * 댓글 삭제 Mutation 훅
+ * 댓글 삭제 Mutation 훅. 댓글 수가 줄어드므로 등록과 같은 캐시들을 무효화한다.
  */
 export function useDeleteCommentMutation() {
   const queryClient = useQueryClient();
@@ -169,6 +185,7 @@ export function useCompetitionRatesQuery(subscriptId, enabled = true) {
  * @param {boolean} [enabled=true]
  */
 export function useAptScoresQuery(subscriptId, enabled = true) {
+  // 가점은 APT 공고에만 있다. 다른 유형이면 enabled가 false가 되어 요청하지 않는다.
   const { type, houseManageNo, pblancNo } = parseSubscriptId(subscriptId);
   const idKey = `apt/${houseManageNo}/${pblancNo}`;
   const isApt = !type || type === 'apt';

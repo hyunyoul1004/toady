@@ -7,6 +7,7 @@
     <div class="alert error" th:if="${param.error}">아이디 또는 비밀번호를 확인하세요.</div>
     <div class="alert error" th:if="${param.locked}">로그인 실패가 반복되어 15분 동안 로그인할 수 없습니다. 잠시 후 다시 시도하세요.</div>
     <div class="alert notice" th:if="${param.logout}">로그아웃했습니다.</div>
+    <!-- Spring Security 폼 로그인. th:action이 CSRF 토큰을 자동으로 넣는다. 로그인 유지 칸은 서명 키가 있을 때만 보인다. -->
     <form th:action="@{/admin/login}" method="post" class="login-form">
         <label>관리자 아이디<input name="username" autocomplete="username" autofocus required></label>
         <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>

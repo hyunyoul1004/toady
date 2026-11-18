@@ -5,14 +5,17 @@ import { formatManwon } from '@/features/planner/researchUtils';
 import { DEPOSIT_RATES, LTV_OPTIONS, fundPlan } from './fundRules';
 import './match.css';
 
+// 보유 현금은 localStorage에 둔다. 사생활 정보라 서버로 보내지 않는다.
 const CASH_KEY = 'toady.fund.cash';
 function readCash() { try { const value = Number(localStorage.getItem(CASH_KEY)); return Number.isFinite(value) && value > 0 ? String(value) : ''; } catch { return ''; } }
+// 공고 날짜 문자열(YYYYMM, YYYYMMDD)을 'YYYY.MM', 'YYYY.MM.DD'로 바꾼다. 자릿수가 모자라면 null.
 const ym = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 6 ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}` : null; };
 const ymd = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 8 ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}` : null; };
 
 /**
  * 주택형을 고르면 계약금·중도금·잔금과 시점별로 필요한 내 돈을 계산한다.
  * 보유 현금은 이 브라우저에만 저장한다. 금액은 만원 단위.
+ * 쓰는 곳: 공고 상세. 계산은 fundRules.fundPlan이 하고, 여기서는 선택값을 상태로 들고 결과를 그린다.
  */
 export default function FundPlanner({ detail }) {
   const units = useMemo(() => (detail.unitPrices || []).filter(unit => Number.isFinite(unit.amountManwon) && unit.amountManwon > 0), [detail.unitPrices]);
@@ -20,10 +23,12 @@ export default function FundPlanner({ detail }) {
   const [depositRate, setDepositRate] = useState(0.1);
   const [midLoan, setMidLoan] = useState(true);
   const [ltv, setLtv] = useState(50);
+  // useState에 함수를 넘기면 첫 렌더에서만 실행된다. localStorage를 매 렌더마다 읽지 않게 하는 방법이다.
   const [cash, setCash] = useState(readCash);
   if (!units.length) return null;
   const unit = units.find(entry => entry.id === unitId) || units[0];
   const plan = fundPlan({ price: unit.amountManwon, depositRate, midLoan, ltv, cash: Number(cash) || 0 });
+  // 숫자만 최대 7자리(1000억 미만)로 받고, 바꿀 때마다 저장한다. 비우면 저장값도 지운다.
   const updateCash = value => {
     const digits = value.replace(/\D/g, '').slice(0, 7);
     setCash(digits);

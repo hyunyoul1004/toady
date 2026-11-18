@@ -3,9 +3,12 @@
  * 결과는 '신청 가능성'이며 확정 판정이 아니다. 소득·자산·예치금·거주기간처럼 공고마다 다르거나
  * 이 화면에서 묻지 않는 조건은 checks(확인할 것)로 돌려준다.
  * status: ok(조건 충족 가능성 높음) · check(확인 필요) · no(어려움) · info(참고)
+ * 쓰는 곳: MatchPage(목록 정렬·판정), EligibilityCard(공고 상세). 순수 함수만 있어 React와 상관없이 테스트할 수 있다.
  */
 export const SIDO = ['서울', '경기', '인천', '부산', '대구', '광주', '대전', '울산', '세종', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+// 수도권. 1순위 통장 기간과 '기타지역' 접수 판단에 쓴다.
 const CAPITAL = new Set(['서울', '경기', '인천']);
+// 상태끼리 비교할 때 쓰는 순위. 숫자가 클수록 좋은 결과다.
 const RANK = { ok: 3, check: 2, info: 1, no: 0 };
 
 /** 프로필에서 판정에 꼭 필요한 값. 이 값들이 있어야 결과를 보여준다. */
@@ -31,10 +34,12 @@ export function shortSido(value) {
   return SIDO.find(name => text.startsWith(name)) || null;
 }
 
+/** 출생 연도로 어림한 나이(올해 − 출생 연도). 생일 전이면 실제 만 나이는 1 적다. 연도가 없으면 null. */
 function age(profile, today) {
   const year = Number(profile.birthYear);
   return Number.isInteger(year) && year > 1900 ? Number(today.slice(0, 4)) - year : null;
 }
+// 투기과열지구·조정대상지역이면 1순위 조건이 더 까다롭다(통장 24개월, 세대주, 5년 내 당첨 없음 등).
 const regulated = item => Boolean(item.speculative || item.adjusted);
 
 /** 1순위 통장 가입기간: 투기과열·조정대상 24개월, 그 외 수도권 12개월, 비수도권 6개월. */
@@ -55,10 +60,16 @@ export function regionFit(profile, item) {
   return { status: 'no', label: '거주지역 아님', reason: `${supply} 거주자만 신청하는 공고예요.` };
 }
 
+// 판정 한 줄(일반공급·신혼부부 특공 같은 신청 유형 하나)을 만드는 도우미. reasons는 이유, checks는 공고문에서 직접 확인할 것.
 function track(key, label, status, reasons = [], checks = []) { return { key, label, status, reasons, checks }; }
+// 여러 상태 중 가장 나쁜 것을 고른다. 예: 지역은 ok인데 순위가 check면 결과는 check.
 const worst = (...statuses) => statuses.reduce((a, b) => (RANK[a] <= RANK[b] ? a : b));
 
-/** 일반공급 1·2순위. */
+/**
+ * 일반공급 1·2순위 판정.
+ * 통장 기간이 모자라거나, 규제지역에서 세대주가 아니거나 5년 내 당첨·2주택 이상이면 2순위로 내린다.
+ * 유주택자는 가점제 대신 추첨 물량만 노릴 수 있어 '확인 필요'로 둔다.
+ */
 function generalTrack(profile, item, region) {
   const need = rank1Months(item), months = Number(profile.accountMonths);
   const reasons = [], checks = [];
@@ -91,6 +102,8 @@ function specialTracks(profile, item, region, today) {
   const rank1 = months >= rank1Months(item);
   const married = profile.marriage === 'married' || profile.marriage === 'engaged';
   const children = Number(profile.children) || 0;
+  // 특별공급 유형 하나를 판정해 out에 넣는다. conditions는 [충족 여부, 못 맞췄을 때 이유] 쌍의 목록이다.
+  // 그 공고에 해당 유형 물량이 없으면(special[key]가 0) 아예 보여주지 않는다.
   const add = (key, label, conditions, checks = [], { ownHomeOnly = false, unsure = [] } = {}) => {
     if (!(special[key] > 0)) return;
     const failed = conditions.filter(([ok]) => !ok).map(([, reason]) => reason);

@@ -18,7 +18,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 
-/** TB_PUSH_SUBSCRIPTION 접근. 엔드포인트 원문은 길고 그 자체가 발송 권한이라 SHA-256 해시를 키로 쓴다. */
+/**
+ * TB_PUSH_SUBSCRIPTION 접근. 엔드포인트 원문은 길고 그 자체가 발송 권한이라 SHA-256 해시를 키로 쓴다.
+ * JPA 대신 JdbcTemplate SQL을 쓴다. PushController(구독), PushDigest(묶음·즉시 알림), InternalAdminController(관리자 발송)가 쓴다.
+ * 시각은 한국 시간(KST)으로 저장한다.
+ */
+// @Repository: DB 접근 빈이라는 표시. 스프링이 DB 예외를 DataAccessException 계열로 바꿔 준다
 @Repository
 public class PushSubscriptions {
     static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -27,10 +32,12 @@ public class PushSubscriptions {
 
     public PushSubscriptions(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    /** 구독 한 행. favoriteIds는 비회원 구독의 관심 공고, areas는 생활권·알림 주제 slug 목록. */
     public record Row(String hash, String endpoint, String p256dh, String auth, Long userSeq, boolean favorites,
             List<String> favoriteIds, List<String> areas, LocalDateTime registeredAt, LocalDateTime lastDigestAt, LocalDate lastAttemptDate) {
         public WebPushSender.Target target() { return new WebPushSender.Target(endpoint, p256dh, auth); }
     }
+    /** 구독 범위(누구의, 무엇을 받을지). 저장할 때 쓴다. */
     public record Scope(Long userSeq, UUID visitorId, boolean favorites, List<String> favoriteIds, List<String> areas) { }
 
     static String hash(String endpoint) {
@@ -49,6 +56,7 @@ public class PushSubscriptions {
         return ready;
     }
 
+    /** 같은 엔드포인트가 있으면 UPDATE, 없으면 INSERT. 그 사이 다른 요청이 먼저 넣으면(중복 키) 다시 UPDATE한다. */
     public void upsert(String endpoint, String p256dh, String auth, Scope scope, Clock clock) {
         String hash = hash(endpoint);
         Timestamp now = Timestamp.valueOf(now(clock));
@@ -91,9 +99,11 @@ public class PushSubscriptions {
         return jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=? WHERE ENDPOINT_HASH=? AND (LAST_ATTEMPT_DATE IS NULL OR LAST_ATTEMPT_DATE<?)",
             Date.valueOf(today), hash, Date.valueOf(today)) == 1;
     }
+    /** claim을 되돌린다(발송을 못 했을 때 다음 실행에서 다시 시도하게). */
     void release(String hash, LocalDate previous) {
         jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_ATTEMPT_DATE=? WHERE ENDPOINT_HASH=?", previous == null ? null : Date.valueOf(previous), hash);
     }
+    /** 발송 성공 시각을 남긴다. digest면 묶음 알림 마지막 발송 시각도 함께. removeStale이 이 값을 본다. */
     void delivered(String hash, LocalDateTime at, boolean digest) {
         if (digest) jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_SUCCESS_DT=?,LAST_DIGEST_DT=? WHERE ENDPOINT_HASH=?", Timestamp.valueOf(at), Timestamp.valueOf(at), hash);
         else jdbc.update("UPDATE TB_PUSH_SUBSCRIPTION SET LAST_SUCCESS_DT=? WHERE ENDPOINT_HASH=?", Timestamp.valueOf(at), hash);
@@ -104,6 +114,7 @@ public class PushSubscriptions {
         return userSeq == null ? jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION ORDER BY REG_DT", (r, n) -> map(r))
                 : jdbc.query("SELECT * FROM TB_PUSH_SUBSCRIPTION WHERE USER_SEQ=? ORDER BY REG_DT", (r, n) -> map(r), userSeq);
     }
+    // ResultSet 한 줄을 Row로 바꾼다. getLong은 NULL이면 0을 주므로 wasNull()로 비회원(null)을 구분한다
     private static Row map(ResultSet r) throws SQLException {
         long user = r.getLong("USER_SEQ");
         boolean guest = r.wasNull();

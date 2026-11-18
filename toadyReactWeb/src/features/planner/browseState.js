@@ -1,6 +1,13 @@
+/**
+ * 메인 청약 캘린더의 '보던 상태' 복원 도우미. 보던 달, 보기 방식(달력/목록), 공급유형 선택을 localStorage에서 읽는다.
+ * 쓰는 곳: views/main/Main.jsx, MobileApplyhomeCalendar.jsx, TodayOverview.jsx(shiftMonth·uniqueInMonth).
+ * 날짜는 한국 날짜 문자열(YYYY-MM-DD)로 다루고, Date는 UTC로만 계산해 기기 시간대에 흔들리지 않게 한다.
+ */
 import { isoDate, safeRead, koreaToday } from './plannerUtils.js';
 
 /** 조회 기간은 달력의 렌더링 여부와 무관하게 항상 준비한다. */
+// 달력에는 앞뒤 달의 날짜 칸도 보이므로, 그 달 1일의 7일 전부터 다음 달 14일까지를 조회 범위로 잡는다.
+// (Date.UTC의 날짜 자리에 0 이하를 넣으면 앞 달로 넘어간다. -6이면 1일의 7일 전.)
 export function monthRange(month) {
   if (!/^\d{4}-\d{2}$/.test(month) || !isoDate(`${month}-01`)) throw Error('유효하지 않은 조회 월');
   const [year, number] = month.split('-').map(Number);
@@ -8,6 +15,7 @@ export function monthRange(month) {
   const end = new Date(Date.UTC(year, number, 14));
   return { startStr: start.toISOString().slice(0,10), endStr: end.toISOString().slice(0,10) };
 }
+/** 처음 화면에 쓸 달·보기 방식·조회 범위. storage는 localStorage(테스트에서는 가짜 저장소)를 받는다. */
 export function initialBrowseState(storage, today = koreaToday(), preferredView = 'calendar') {
   const savedMonth = safeRead(storage, 'toady.calendarMonth', null);
   const valid = typeof savedMonth === 'string' && /^\d{4}-\d{2}$/.test(savedMonth) && isoDate(`${savedMonth}-01`);
@@ -20,6 +28,7 @@ export function initialBrowseState(storage, today = koreaToday(), preferredView 
   const viewMode=['calendar','list'].includes(savedView)?savedView:preferredView==='list'?'list':'calendar';
   return { month, viewMode, ...monthRange(month) };
 }
+/** 'YYYY-MM'에서 offset 달만큼 옮긴 달. UTC로 계산해 말일·시간대 문제를 피한다. */
 export function shiftMonth(month, offset) {
   const [year, number] = month.split('-').map(Number);
   return new Date(Date.UTC(year, number - 1 + offset, 1)).toISOString().slice(0,7);
@@ -29,6 +38,7 @@ export function shiftMonth(month, offset) {
 export function calendarSelection(month,eventDates,today=koreaToday(),previous='',fallback=`${month}-01`) {
   const dates=[...new Set(eventDates)].filter(date=>{
     if(!isoDate(date) || !date.startsWith(month+'-'))return false;
+    // 주말 날짜는 고르지 않는다. 요일은 정오(UTC)로 만든 Date로 구해 시간대 영향을 받지 않게 한다.
     const weekday=new Date(date+'T12:00:00Z').getUTCDay();
     return weekday!==0 && weekday!==6;
   }).sort();
@@ -49,6 +59,7 @@ export function readSupplyTypes(storage) {
   const valid = typeof saved === 'string' && /^[YN]{8}$/.test(saved) && saved.includes('Y');
   return Object.fromEntries(SUPPLY_CODES.map((code, index) => [`rceptSe${code}`, valid ? saved[index] : 'Y']));
 }
+/** 공급유형 선택 → 저장용 8자리 문자열('YYNY…'). readSupplyTypes의 반대 방향이다. */
 export function supplyTypesKey(paramInfo) {
   return SUPPLY_CODES.map(code => (paramInfo[`rceptSe${code}`] === 'N' ? 'N' : 'Y')).join('');
 }

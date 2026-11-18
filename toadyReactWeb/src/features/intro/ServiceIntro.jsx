@@ -19,8 +19,10 @@ const read = () => {
 /**
  * 처음 온 날에만 보이는 한 줄 소개(다음 날부터는 자동으로 숨김). 닫으면 바로 기억하고 다음부터는 화면에 보이지 않는 제목만 남긴다
  * (검색·화면 읽기 프로그램용). 기능 소개는 자주 묻는 질문의 'TOADY에서는 무엇을 할 수 있나요?'와 푸터에 둔다.
+ * 쓰는 곳: views/main/Main.jsx(메인 상단).
  */
 export default function ServiceIntro() {
+  // useState(read): 처음 그릴 때 한 번만 localStorage를 읽는다.
   const [closed, setClosed] = useState(read);
   const close = () => { setClosed(true); try { localStorage.setItem(KEY, '1'); } catch { /* 저장소가 막혀도 이번 화면에서는 닫힌다 */ } };
   if (closed) return <h1 className="intro-hidden-title">청약 캘린더 · 전국 청약 공고 일정</h1>;

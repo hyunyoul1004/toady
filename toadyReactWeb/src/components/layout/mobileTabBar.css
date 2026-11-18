@@ -1,3 +1,5 @@
+/* 모바일 하단 탭(MobileTabBar.jsx). 899.95px는 MUI md(900px) 미만, 즉 사이드바가 숨는 폭과 맞춘 값이다.
+   env(safe-area-inset-bottom)은 아이폰 홈 표시줄 높이만큼 아래 여백을 더한다. */
 .mobile-tabbar{display:none}
 @media (max-width:899.95px){
   .mobile-tabbar{position:fixed;left:0;right:0;bottom:0;z-index:1100;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-top:1px solid #e2e8f0;padding:4px 4px calc(4px + env(safe-area-inset-bottom))}

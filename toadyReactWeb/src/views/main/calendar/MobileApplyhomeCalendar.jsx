@@ -6,6 +6,9 @@ import { koreaToday } from '@/features/planner/plannerUtils';
  * - 평일(월~금) 5일제 그리드
  * - 날짜별 건수 표시 (예: 04일 (8건))
  * - 오늘 날짜 기본 선택 및 터치 시 해당 주 바로 아래에 청약 상세 목록 아코디언 카드 노출
+ * - 쓰이는 곳: SubscriptionCalendar가 화면 폭 900px 미만일 때 FullCalendar 대신 그린다(FullCalendar 파일을 받지 않는다).
+ * - 월 이동 버튼은 부모(SubscriptionCalendar)에 있고, 여기서는 받은 currentDate의 달만 그린다. API는 부르지 않는다.
+ * - status: 'loading' | 'error' | 'ready'. 준비 전에는 '0건'처럼 보이지 않게 건수를 숨긴다.
  */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
@@ -67,6 +70,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
   const ready = status === 'ready';
   const [selectedDate, setSelectedDate] = useState('');
   const [isListOpen, setIsListOpen] = useState(true);
+  // 사용자가 직접 누른 날짜. 데이터가 다시 와도 이 선택을 지키려고 기억해 둔다(표시용이 아니라 ref).
   const userSelectedDate=useRef('');
 
   // 날짜 클릭 시 토글 동작: 같은 날짜를 다시 누르면 닫힘/열림 토글, 다른 날짜는 선택 및 열림
@@ -113,6 +117,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
   }, [currentDate]);
 
   // 검색·월·데이터가 바뀌어도 확인 가능한 일정 날짜를 선택하고, 유효한 사용자 선택은 유지한다.
+  // calendarSelection 규칙: 사용자가 고른 날짜에 일정이 있으면 유지 → 이번 달이면 오늘(KST) 이후 첫 일정일 → 그 밖에는 그달 첫 일정일.
   const calendarMonth=dayjs(currentDate).format('YYYY-MM');
   const today=koreaToday();
   const fallback=weeks[0]?.find(Boolean)?.dateStr || `${calendarMonth}-01`;
@@ -156,7 +161,7 @@ export function MobileApplyhomeCalendar({ currentDate, subscriptList, handleOpen
         ))}
       </Box>
 
-      {/* 달력 주차별 렌더링 */}
+      {/* 달력 주차별 렌더링. 고른 날짜가 있는 주 바로 아래에 그날 목록을 끼워 넣는다. */}
       <Box sx={{ py: 1 }}>
         {weeks.map((week, weekIdx) => {
           // 해당 주에 선택된 날짜가 포함되어 있는지 확인

@@ -29,7 +29,10 @@ import java.time.LocalDateTime
 /**
  * 관리자 2·3단계 화면: 서비스 설정, 사이트 공지, 자주 묻는 질문, 생활권, 위치 확인, 데이터 점검, 유입·커뮤니티 지표,
  * 운영팀 이야기, 회원 이야기 일괄 숨김, 푸시 발송, 회원 지원(메모·인증 메일·탈퇴 대행). 모든 변경은 작업 이력에 남긴다.
+ * 서비스 쪽(API)이 1분마다 DB를 다시 읽으므로, 여기서 저장한 공지·설정 등은 1분 안에 서비스에 보인다.
+ * 메일·푸시·탈퇴처럼 API만 할 수 있는 일은 ApiClient로 API 내부 주소에 부탁한다.
  */
+// @Controller: 반환한 문자열을 템플릿 이름 또는 "redirect:주소"로 처리하는 화면 컨트롤러. 주소 연결은 AdminController와 같은 방식이다.
 @Controller
 class ContentController(
 	private val settings: SettingService, private val notices: NoticeService, private val faq: FaqService, private val areas: AreaService,
@@ -45,6 +48,7 @@ class ContentController(
 		return page(model, user, "settings", "admin/settings")
 	}
 
+	/** 설정 하나 저장. Result.fold로 성공(이전 값)·실패(오류 문구)를 나눠 처리한다. */
 	@PostMapping("/admin/settings")
 	fun saveSetting(@RequestParam key: String, @RequestParam(defaultValue = "") value: String, user: Principal, redirect: RedirectAttributes): String {
 		settings.save(key, value, user.name).fold(
@@ -61,6 +65,7 @@ class ContentController(
 		return page(model, user, "notices", "admin/notices")
 	}
 
+	/** 공지 추가. datetime-local 입력값을 @DateTimeFormat(ISO.DATE_TIME)으로 LocalDateTime으로 받는다. */
 	@PostMapping("/admin/notices")
 	fun addNotice(@RequestParam message: String, @RequestParam(defaultValue = "") link: String, @RequestParam(defaultValue = "") linkLabel: String,
 	              @RequestParam(defaultValue = "ALL") placement: String, @RequestParam(defaultValue = "INFO") level: String,
@@ -105,6 +110,7 @@ class ContentController(
 		return "redirect:/admin/faq#${id.trim()}"
 	}
 
+	/** 질문 수정. 체크박스(enabled)는 해제하면 전송되지 않아 기본값 false로 받는다. */
 	@PostMapping("/admin/faq/{id}")
 	fun updateFaq(@PathVariable id: String, @RequestParam groupId: String, @RequestParam groupTitle: String, @RequestParam question: String,
 	              @RequestParam answer: String, @RequestParam order: Int, @RequestParam(defaultValue = "false") enabled: Boolean,
@@ -142,6 +148,7 @@ class ContentController(
 		return "redirect:/admin/areas"
 	}
 
+	/** 생활권 수정. slug(공개 주소)는 바꾸지 않는다. */
 	@PostMapping("/admin/areas/{slug}")
 	fun updateArea(@PathVariable slug: String, @RequestParam label: String, @RequestParam aliases: String, @RequestParam terms: String,
 	               @RequestParam(defaultValue = "") scope: String, @RequestParam description: String, @RequestParam order: Int,
@@ -154,12 +161,14 @@ class ContentController(
 	}
 
 	// ---------------------------------------------------------------- 위치 확인 · 데이터 점검 · 다시 수집
+	/** 위치 확인 대기열. all=true면 이미 주소를 넣은 공고도 함께 보여 준다. */
 	@GetMapping("/admin/locations")
 	fun locations(@RequestParam(defaultValue = "false") all: Boolean, model: Model, user: Principal): String {
 		model.addAttribute("items", quality.locationQueue(all)); model.addAttribute("all", all); model.addAttribute("ready", quality.locationReady())
 		return page(model, user, "locations", "admin/locations")
 	}
 
+	/** 운영자가 확인한 주소 저장. 실제 지도 핀은 앱이 지도 검색으로 다시 확인한 뒤에만 놓는다. */
 	@PostMapping("/admin/locations")
 	fun saveLocation(@RequestParam id: String, @RequestParam(defaultValue = "") address: String, @RequestParam(defaultValue = "") next: String,
 	                 user: Principal, redirect: RedirectAttributes): String {
@@ -192,6 +201,10 @@ class ContentController(
 	}
 
 	// ---------------------------------------------------------------- 운영팀 이야기 · 일괄 숨김
+	/**
+	 * 운영팀 이야기 쓰기. 설정에 넣은 운영팀 회원 번호로 글을 쓰며, 그 계정이 정상인지·테이블이 있는지 먼저 확인한다.
+	 * when의 각 줄은 위에서부터 먼저 맞는 조건 하나만 실행된다.
+	 */
 	@PostMapping("/admin/announcements/{type}/{house}/{pblanc}/official")
 	fun writeOfficial(@PathVariable type: String, @PathVariable house: String, @PathVariable("pblanc") pblanc: String, @RequestParam content: String,
 	                  @RequestParam(required = false) parentSeq: Long?, @RequestParam(defaultValue = "false") pinned: Boolean,
@@ -214,6 +227,7 @@ class ContentController(
 		return "redirect:/admin/announcements/${detail.row.id}"
 	}
 
+	/** 운영팀 글 고정·해제. */
 	@PostMapping("/admin/comments/{seq}/pin")
 	fun pin(@PathVariable seq: Long, @RequestParam pinned: Boolean, @RequestParam(defaultValue = "") next: String, user: Principal, redirect: RedirectAttributes): String {
 		val ok = comments.setPinned(seq, pinned)
@@ -222,6 +236,7 @@ class ContentController(
 		return "redirect:" + AdminController.safeNext(next, "/admin/comments")
 	}
 
+	/** 한 회원의 보이는 이야기를 모두 숨긴다(최대 1000개). */
 	@PostMapping("/admin/members/{seq}/hide-all")
 	fun hideAll(@PathVariable seq: Long, @RequestParam(defaultValue = "") memo: String, user: Principal, redirect: RedirectAttributes): String {
 		val count = comments.hideAllBy(seq, user.name)
@@ -231,6 +246,7 @@ class ContentController(
 	}
 
 	// ---------------------------------------------------------------- 유입·커뮤니티 지표
+	/** 유입·커뮤니티 지표. 기간은 7~90일로 제한한다. */
 	@GetMapping("/admin/insights")
 	fun insightsPage(@RequestParam(defaultValue = "30") days: Int, @RequestParam(defaultValue = "true") excludeTest: Boolean, model: Model, user: Principal): String {
 		val period = days.coerceIn(7, 90)
@@ -273,6 +289,7 @@ class ContentController(
 		return "redirect:/admin/members/$seq"
 	}
 
+	/** 인증 메일 다시 보내기(API가 메일을 보낸다). */
 	@PostMapping("/admin/members/{seq}/resend-verification")
 	fun resend(@PathVariable seq: Long, user: Principal, redirect: RedirectAttributes): String {
 		val reply = api.resendVerification(seq)
@@ -281,6 +298,7 @@ class ContentController(
 		return "redirect:/admin/members/$seq"
 	}
 
+	/** 회원 요청에 따른 탈퇴 대행. 실수를 막으려고 '탈퇴 처리' 문구를 직접 입력해야 한다. 실제 처리는 API가 한다. */
 	@PostMapping("/admin/members/{seq}/withdraw")
 	fun withdraw(@PathVariable seq: Long, @RequestParam(defaultValue = "") confirm: String, @RequestParam(defaultValue = "") memo: String,
 	             user: Principal, redirect: RedirectAttributes): String {
@@ -291,6 +309,7 @@ class ContentController(
 		return "redirect:/admin/members/$seq"
 	}
 
+	/** 공통 화면 값(관리자 이름·메뉴·대기 신고 수)을 넣는다. AdminController.page와 같다. */
 	private fun page(model: Model, user: Principal, menu: String, view: String): String {
 		model.addAttribute("username", user.name); model.addAttribute("menu", menu)
 		model.addAttribute("openReports", reports.openCount())

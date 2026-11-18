@@ -23,12 +23,22 @@ function groupPressed(groupList, selectedRegions) {
   return count === groupList.length ? true : count > 0 ? 'mixed' : false;
 }
 
+/**
+ * 홈 화면 맨 위의 검색·필터 카드.
+ * - 검색창(MUI Autocomplete, 여러 개 선택): 생활권·시·도·시·군·구·단지명·직접 입력을 칩으로 고른다. 고른 값은 paramInfo.citys에 들어간다.
+ * - 필터 버튼을 누르면 공급유형 칩(rceptSe01~08)과 공급지역(서울·도·광역) 선택이 펼쳐진다.
+ * - 쓰이는 곳: Main.jsx. 상태는 모두 Main이 가지고 있고, 이 컴포넌트는 props로 받은 setter로 바꾸기만 한다(펼침 여부만 자체 state).
+ *   그래서 Main이 localStorage에 저장·복원한 조건이 그대로 이 화면에 보인다.
+ * - API를 직접 부르지 않는다. 자동완성 후보(allSearchOptions)는 useAnnouncementSearch가 만들어 넘겨준다.
+ * - 다른 기간의 공고(global_announcement)를 고르면 그 달로 달력을 옮기고(onJumpToDate) 상세를 연다(handleOpenDetail).
+ */
 export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyTouched, selectedRegions, setSelectedRegions, allSearchOptions, searchInputValue, setSearchInputValue, onJumpToDate, setSnackbar, handleOpenDetail }) {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
   // 첫 화면은 검색창 한 줄만 보여 주고, 유형·지역 필터는 필터 버튼으로 펼친다.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const showFilters = filtersOpen;
   const offTypes = Array.from({ length: 8 }, (_, index) => paramInfo[`rceptSe${String(index + 1).padStart(2, '0')}`]).filter(value => value !== 'Y').length;
+  // 필터 버튼에 보여 줄 '켜진 필터 수'. 꺼진 공급유형이 있으면 1, 지역을 일부만 골랐으면 1을 더한다.
   const activeFilters = (offTypes > 0 ? 1 : 0) + (selectedRegions.length < ALL_REGIONS.length ? 1 : 0);
 
   // 공급지역 개별 토글 핸들러
@@ -57,6 +67,8 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
   };
 
   // 공급유형 칩/체크박스 토글
+  // '01ALL'은 APT 계열(01·02·03·06·07·08) 전체, 'ALL'은 8개 전체, 그 밖에는 해당 코드 하나를 켜고 끈다.
+  // 사용자가 직접 바꾼 것이므로 onSupplyTouched로 Main에 알려 이때부터 localStorage에 저장하게 한다.
   const handleRceptSeToggle = (rceptSe) => {
     onSupplyTouched?.();
     setParamInfo((prev) => {
@@ -147,6 +159,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                         }
                         return option.key === value.key;
                       }}
+                      // MUI 기본 필터 대신 각 후보의 searchText(하위 동·별칭 포함)로 찾는다. 예: '대치동'으로 '서울특별시 강남구'가 나온다.
                       filterOptions={(options, { inputValue }) => {
                         const query = inputValue.trim().toLowerCase();
                         if (!query) return options.slice(0, 50); // 기본 50개 노출
@@ -338,6 +351,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
                   {activeFilters ? `필터 ${activeFilters}` : <>필터<Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>&nbsp;· 유형·지역</Box></>}
                 </Button>
               </Box>
+              {/* 닫혀 있을 때도 DOM은 남겨 둔다(hidden). 지역 선택 펼침 같은 안쪽 상태가 필터를 접었다 펴도 유지된다. */}
               <div id="announcement-filter-panel" hidden={!showFilters}>
 
               {/* [섹션 1] 공급유형 필터 (모던 칩 UI) */}
@@ -442,7 +456,7 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
 
               <Divider sx={{ mb: 1.2, borderStyle: 'dashed', display: showFilters ? 'block' : 'none' }} />
 
-              {/* [섹션 2] 공급지역 필터 헤더 + 우측 구/군/단지명 검색 (인라인 통합) */}
+              {/* [섹션 2] 공급지역 필터 헤더(선택 수 + 지역 선택 펼치기 버튼) */}
               <Box>
                 <Box
                   sx={{
@@ -517,10 +531,10 @@ export default function AnnouncementFilters({ paramInfo, setParamInfo, onSupplyT
 
                 </Box>
 
-                {/* 공급지역 상세 체크박스 레이어 (Collapse 애니메이션 적용) */}
+                {/* 공급지역 상세 체크박스 레이어 (Collapse 애니메이션 적용). unmountOnExit라 접으면 DOM에서 빠진다. */}
                 <Collapse in={isRegionOpen && showFilters} timeout="auto" unmountOnExit>
                   <Box id="announcement-region-panel" sx={{ display: 'flex', gap: 1.2, flexWrap: { xs: 'wrap', lg: 'nowrap' }, mt: 1 }}>
-                  {/* 1. 서울 카드 (블루 단독) */}
+                  {/* 1. 서울 카드 (블루 단독). 아래 (() => {...})()는 JSX 안에서 지역 변수를 쓰려고 바로 실행하는 함수다. */}
                   {(() => {
                     const seoulOn = selectedRegions.some((r) => r.code === REGION_SEOUL.code);
                     return (

@@ -1,8 +1,12 @@
 /**
  * 위치 탭 '주변 실거래가' 지도의 필터·표시 규칙(화면 없이 테스트한다). 금액 단위는 만원.
  * 서버(ComplexPriceService)가 단지별로 묶어 준 최근 신고 거래 안에서만 고르고 계산한다. 호가·시세 추정은 하지 않는다.
+ * 거래 원본은 국토교통부(MOLIT) 아파트 매매 실거래 신고 자료다. 단지 한 곳의 모양은 대략
+ * { key: '시군구코드|법정동|…', name, dong, jibun, buildYear, lat, lng, areas: [{ area, count, latest, latestDate, monthAvg, month, median }], recent }.
+ * 사용처: usePriceMap.js, PriceMapParts.jsx, MapTools.jsx, components/kakao/Kakaomap.jsx
  */
 import { formatManwon } from '../../../utils/money.util.js';
+// 1평 = 3.305785㎡.
 const PYEONG = 3.305785;
 /**
  * 공급면적 ÷ 전용면적 추정 비율. 실거래 자료에는 전용면적만 있어 분양 광고의 '평형'(공급면적 기준)을 이 비율로 추정한다.
@@ -42,6 +46,7 @@ export const AREA_MARKS_PYEONG = [0, ...[20, 30, 40, 50].map(areaForSupplyPyeong
 export const PRICE_RANGE = { min: 0, max: 400000, step: 500, marks: [0, 100000, 200000, 300000, 400000] };
 export const DEFAULT_FILTERS = { months: 12, areaMin: 0, areaMax: 165, priceMin: 0, priceMax: 400000, age: 'all', mode: 'latest', unit: 'm2', sort: 'distance', query: '' };
 
+// 목록에서 value가 같은 항목, 없으면 첫 항목(기본값). 저장된 옛 값·잘못된 값을 기본값으로 되돌릴 때 쓴다.
 const pick = (list, value) => list.find(item => item.value === value) || list[0];
 /** 면적 범위를 0~165 안의 정수로 맞추고, 최소가 최대보다 크면 바꾼다. */
 function areaRange(min, max) {
@@ -66,6 +71,7 @@ export function priceRangeText(filters) {
   if (!low && !high) return '전체';
   return `${low ? rangePrice(priceMin) : ''}~${high ? rangePrice(priceMax) : ''}`;
 }
+/** 가격 범위가 양 끝(제한 없음)이 아니면 true. 필터 단추를 강조할 때 쓴다. */
 export const isPriceFiltered = filters => !(Number(filters?.priceMin) <= PRICE_RANGE.min && Number(filters?.priceMax) >= PRICE_RANGE.max);
 /** 면적 조건: 'all'·'small' 같은 구간 이름 또는 { areaMin, areaMax } 범위. */
 function areaMatcher(spec) {
@@ -99,6 +105,7 @@ export function migrateStoredFilters(raw) {
     : Math.max(AREA_RANGE.min, Math.min(edge, areaForSupplyPyeong(Math.round(Number(value) / PYEONG)))));
   return { ...raw, areaMin: move(raw.areaMin, AREA_RANGE.max), areaMax: move(raw.areaMax, AREA_RANGE.max), areaBasis: 'supply' };
 }
+/** 면적 범위가 양 끝(제한 없음)이 아니면 true. */
 export const isAreaFiltered = filters => !(Number(filters?.areaMin) <= AREA_RANGE.min && Number(filters?.areaMax) >= AREA_RANGE.max);
 /** 저장해 둔 필터를 지금 규칙에 맞는 값만 남겨 복원한다(옛 값·잘못된 값은 기본값). */
 export function normalizeFilters(raw) {
@@ -171,18 +178,20 @@ export function monthLabel(month, year = new Date().getFullYear()) {
   if (!y || !m) return '';
   return y === year ? `${m}월` : `${String(y).slice(2)}년 ${m}월`;
 }
-/** 두 좌표 사이 거리(m). */
+/** 두 좌표 사이 거리(m). 지구를 반지름 6,371km 구로 보는 하버사인 공식(직선거리). 좌표가 없으면 Infinity. */
 export function distanceMeters(a, b) {
   if (![a?.lat, a?.lng, b?.lat, b?.lng].every(Number.isFinite)) return Infinity;
   const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371000 * Math.asin(Math.sqrt(h));
 }
+/** 목록용 거리 글자: 1km 미만은 10m 단위, 이상은 km 소수 한 자리. */
 export function distanceText(meters) {
   if (!Number.isFinite(meters)) return '';
   return meters < 1000 ? `${Math.round(meters / 10) * 10}m` : `${(meters / 1000).toFixed(1)}km`;
 }
 
+// 검색 비교용: 공백을 빼고 소문자로.
 const compact = value => String(value || '').replace(/\s+/g, '').toLowerCase();
 
 /**
@@ -284,7 +293,7 @@ export function measureText(meters) {
 export const RADII = [500, 1000];
 /** 원 위쪽 끝(북쪽) 좌표 — 반경 이름표 위치. */
 export function northOf(point, meters) {
-  return { lat: point.lat + meters / 111320, lng: point.lng };
+  return { lat: point.lat + meters / 111320, lng: point.lng }; // 위도 1도 ≈ 111.32km
 }
 
 /**
@@ -340,6 +349,7 @@ export function inView(point, view, pad = 0.3) {
   const dLat = (view.neLat - view.swLat) * pad, dLng = (view.neLng - view.swLng) * pad;
   return point.lat >= view.swLat - dLat && point.lat <= view.neLat + dLat && point.lng >= view.swLng - dLng && point.lng <= view.neLng + dLng;
 }
+// 중간값(짝수 개면 가운데 두 값의 평균을 반올림). 평균보다 튀는 거래에 덜 흔들린다.
 const median = values => {
   const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);

@@ -8,6 +8,7 @@ import java.util.List;
 
 /**
  * 공통 유틸 메소드
+ * 로그용 이메일 가리기와 검증 오류 메시지 합치기를 담은 정적 메서드 모음.
  *
  * @author hyunyoul
  */

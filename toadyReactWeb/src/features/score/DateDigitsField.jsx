@@ -5,6 +5,8 @@ import { formatDigits, normalizeDateInput, toIsoDate } from './scoreRules';
 /**
  * 날짜 선택 달력 대신 숫자 8자리를 입력받는 칸. 모바일에서는 숫자 키패드가 뜨고 점은 자동으로 들어간다.
  * 생년월일처럼 수십 년 전 날짜를 달력으로 넘기는 불편을 없애기 위해서다.
+ * 쓰는 곳: PeriodByDate. 칸에 보이는 글자(text)는 이 컴포넌트가 따로 들고 있고,
+ * 부모에게는 완성된 날짜(YYYY-MM-DD) 또는 빈 값만 넘긴다. 입력 중인 '1989.03'도 칸에 남아 있게 하기 위해서다.
  */
 export default function DateDigitsField({ label, value, onChange, max, helperText, autoFocus }) {
   const id = useId();

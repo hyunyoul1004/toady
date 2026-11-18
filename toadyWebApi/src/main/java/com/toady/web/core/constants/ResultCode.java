@@ -13,8 +13,13 @@ import lombok.Getter;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 12/16/23        youn       최초 생성
+ *
+ * 계정·인증 API가 ResData의 resultCode·resultMessage로 돌려주는 코드 목록.
+ * 화면은 code 값으로 성공/실패를 나누고 message를 그대로 보여 준다(<br/> 포함).
  */
+// @Getter(Lombok): 모든 필드의 getter(getCode, getMessage)를 만든다
 @Getter
+// @AllArgsConstructor(Lombok): 모든 필드를 받는 생성자를 만든다. 아래 SUCCESS("SUCCESS","성공")가 이 생성자를 쓴다
 @AllArgsConstructor
 public enum ResultCode {
 

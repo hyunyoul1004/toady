@@ -31,6 +31,7 @@ export function isMoreActive(pathname) {
   return !MAIN_NAV.some(item => isNavActive(item.path, pathname));
 }
 
+// 각 화면이 상세를 '히스토리 한 칸'으로 열 때 location.state에 남기는 표식 이름들(useDirectDetailHistory 참고).
 const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreDetail', 'weeklyDetail'];
 /**
  * 지금 보고 있는 탭을 다시 눌렀을 때 할 일.
@@ -38,6 +39,8 @@ const DETAIL_MARKERS = ['detailOverlay', 'plannerDetail', 'matchDetail', 'scoreD
  * - 'replace': 검색 조건 등 주소 뒤 값만 지우고 처음 화면으로(히스토리를 쌓지 않음).
  * - 'none': 이미 처음 화면.
  * 다른 탭이면 'push'.
+ * 팝업은 location.state.overlayLayers에 [{ id, value }] 목록으로 쌓인다(useHistoryOverlay). 하나라도 있으면 'back'.
+ * location은 React Router의 useLocation() 값({ pathname, search, state, ... })을 그대로 받는다.
  */
 export function retapAction(path, location) {
   if (!isNavActive(path, location.pathname)) return 'push';

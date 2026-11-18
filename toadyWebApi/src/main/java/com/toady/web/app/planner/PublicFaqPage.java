@@ -22,7 +22,9 @@ import static com.toady.web.app.planner.PublicHtml.esc;
  * 검색 봇은 같은 문장을 서버 HTML(/help/faq, FAQPage 구조화 데이터 포함)로 읽는다. 대표 주소는 /help/faq다.
  * 제도는 바뀔 수 있으므로 답마다 기준과 확인할 곳을 함께 적고, 화면과 FAQPage 구조화 데이터가 같은 문장을 쓴다.
  * 답의 [문구](/경로)는 같은 사이트 링크로 바꾼다(외부 링크는 청약홈만 허용).
+ * 질문 목록은 DB(TB_FAQ_ITEM)가 원본이고, ContentStore가 1분마다 읽어 replace()로 바꿔 넣는다. 비어 있으면 아래 BUILT_IN을 쓴다.
  */
+// @RestController: HTML(/api/v1/public/faq)과 JSON(/api/v1/public/faq-items)을 함께 응답한다.
 @RestController
 public class PublicFaqPage {
     public record Faq(String id, String question, String answer) { }
@@ -116,6 +118,7 @@ public class PublicFaqPage {
     /** 지금 쓰는 질문 목록. ContentStore가 1분마다 DB 값으로 바꾼다(관리자 화면에서 편집). */
     private static volatile List<Group> groups = BUILT_IN;
     static List<Group> groups() { return groups; }
+    // 내용이 바뀌었을 때만 교체하고, 캐시된 FAQ 페이지 HTML을 비운다.
     static void replace(List<Group> next) {
         List<Group> value = next == null || next.isEmpty() ? BUILT_IN : List.copyOf(next);
         if (!value.equals(groups)) { groups = value; PublicHtml.invalidate("faq"); }
@@ -125,11 +128,13 @@ public class PublicFaqPage {
     private final String domain;
     private final ObjectMapper json;
 
+    // @Value: 서비스 주소. ObjectMapper는 스프링이 만든 JSON 변환기를 그대로 받는다.
     public PublicFaqPage(@Value("${toady.web.domain}") String domain, ObjectMapper json) {
         this.domain = domain.replaceAll("/+$", "");
         this.json = json;
     }
 
+    // 봇용 FAQ HTML. 웹 컨테이너 nginx가 /help/faq·/faq를 봇일 때 여기로 넘긴다.
     @GetMapping(value = "/api/v1/public/faq", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> faq() { return PublicHtml.cached("faq", this::render); }
 
@@ -162,6 +167,7 @@ public class PublicFaqPage {
     /** 구조화 데이터에는 링크 표기 없이 문장만 넣는다. */
     static String plain(String answer) { return LINK.matcher(answer).replaceAll("$1").replace("\n", " "); }
 
+    /** 검색엔진용 FAQPage 구조화 데이터. 질문·답을 그대로 넣어 검색 결과에 펼쳐 보일 수 있게 한다. */
     String jsonLd() {
         List<Map<String, Object>> entities = new ArrayList<>();
         for (Group group : groups()) for (Faq faq : group.items()) {

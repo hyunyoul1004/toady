@@ -1,6 +1,12 @@
 /**
  * @file LoginPage.jsx
- * @description 사용자 로그인 화면 컴포넌트
+ * @description 이메일·비밀번호 로그인 창의 내용.
+ *
+ * - 사용처: components/layout/MainLayout.jsx가 공통 로그인 팝업(layout 층 'login') 안에 lazy로 넣는다.
+ *   팝업 열기·닫기는 useHistoryOverlay로 히스토리와 묶여 있어서, 브라우저 뒤로가기로도 창이 닫힌다.
+ * - 흐름: 입력 확인 → authApi.login(POST /webApi/user/login) → 받은 accessToken을 zustand 스토어 useAuthStore.login에 넘긴다.
+ *   스토어가 토큰을 풀어 사용자 정보를 만들고 localStorage에 저장하면, 로그인 상태를 구독하는 화면이 모두 다시 그려진다.
+ * - props: handleCloseModal(성공 시 닫기), handleSignUpModalOpen, handleFindPwModalOpen(다른 창으로 전환)
  */
 import React, { useState, useRef } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -22,10 +28,12 @@ import { authApi } from '@/features/auth/api/authApi';
 import { formatServerMessage, isEmail } from '@/utils/text.util';
 
 export const LoginPage = (props) => {
+  // 입력칸 DOM을 잡아 두는 ref. 검사에 걸린 칸으로 커서를 옮길 때 쓴다(값이 바뀌어도 다시 그리지 않음).
   const userEmailFocus = useRef(null);
   const userPasswordFocus = useRef(null);
 
   const { login } = useAuthStore();
+  // 입력값은 state에 두고 TextField의 value·onChange로 묶는다(controlled input). 화면 글자 = state 값.
   const [loginInfo, setLoginInfo] = useState({ userEmail: '', userPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [validationInfo, setValidationInfo] = useState({
@@ -37,12 +45,14 @@ export const LoginPage = (props) => {
   const [errorMessage, setErrorMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 두 입력칸이 함께 쓰는 변경 처리. input의 name 속성으로 어떤 칸인지 구분해 그 값만 바꾼다.
   const handleChange = (e) => {
     const { name, value } = e.target;
     setLoginInfo((prev) => ({ ...prev, [name]: value }));
     setErrorMessage(null);
   };
 
+  // form 제출(버튼 클릭·엔터). 기본 동작인 페이지 새로고침을 막고 직접 검사·요청한다.
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { userEmail, userPassword } = loginInfo;
@@ -84,6 +94,7 @@ export const LoginPage = (props) => {
       const res = await authApi.login({ userEmail, userPassword });
 
       if (res?.data?.accessToken) {
+        // 토큰이 깨졌으면 login이 오류를 던져 아래 catch에서 안내한다.
         login(res.data.accessToken);
         if (props.handleCloseModal) {
           props.handleCloseModal();

@@ -4,12 +4,17 @@
  * - 새 통합 분양공고 API (/api/v1/announcements)
  * - 유형별 공고 상세 API
  * - 공고 댓글 CRUD API (GET, POST, PATCH, DELETE)
+ * - 경쟁률·당첨가점·특별공급 신청현황, 자동완성 검색
+ * 서버 응답을 예전 화면 컴포넌트가 쓰던 필드 이름(subscriptDetail, resultList 등)으로 바꿔 돌려준다.
+ * 화면에서는 보통 hooks/useAnnouncements.js의 React Query 훅을 거쳐 쓰고,
+ * views/main/hooks/useAnnouncementSearch.js는 자동완성 검색을 직접 부른다.
  */
 import apiClient from '@/api/client';
 import { modelPrices } from '@/features/planner/researchUtils';
 import { formatDate, formatDateRange } from '@/utils/date.util';
 import { buildAnnouncementQueryParams } from '@/features/announcement/api/announcementParams';
 
+/** 공고 유형 → 화면의 접수 구분 코드(rceptSe). 달력 색·필터가 이 코드를 쓴다. */
 const TYPE_TO_RCEPT_SE = {
   apt: '01',
   urban: '05',
@@ -24,6 +29,7 @@ export function getCompetitionType(detail = {}) {
     ? 'cancel-resupply' : (detail.type || 'apt');
 }
 
+/** 목록에 보일 접수 구분 코드. remaining은 houseSecd로 무순위(06)·불법행위재공급(08)을 나눈다. */
 function getDisplayRceptSe(item, type) {
   if (type === 'remaining') {
     if (item.houseSecd === '04') return '06';
@@ -111,14 +117,15 @@ export function parseSubscriptId(idInput) {
 const TYPE_PART = /^(apt|urban|remaining|public-rental|optional|cancel-resupply)$/;
 const KEY_PART = /^[a-zA-Z0-9_-]{1,40}$/;
 /**
+ * 공고 API 경로. 형식이 틀린 값은 요청하지 않고 오류로 끝낸다(다른 API 경로로 새지 않게).
  * 공유 링크(?subscriptSeq=)로 들어온 값이 API 경로에 그대로 들어가므로 형식을 확인한다. '..'·'?'·'#' 등이 섞이면
- * 로그인 토큰을 실은 요청이 다른 API 경로로 갈 수 있어, 형식이 틀리면 빈 값으로 돌려 상세를 열지 않는다.
+ * 로그인 토큰을 실은 요청이 다른 API 경로로 갈 수 있기 때문이다.
  */
-/** 공고 API 경로. 형식이 틀린 값은 요청하지 않고 오류로 끝낸다(다른 API 경로로 새지 않게). */
 function announcementPath(type, houseManageNo, pblancNo) {
   if (!TYPE_PART.test(type || '') || !KEY_PART.test(houseManageNo || '') || !KEY_PART.test(pblancNo || '')) throw new Error('공고 주소가 올바르지 않습니다.');
   return `/api/v1/${type}/announcements/${houseManageNo}/${pblancNo}`;
 }
+/** parseSubscriptId의 마지막 확인: 형식이 틀리면 빈 값으로 돌려 상세를 열지 않는다. */
 function safeParts(parts) {
   if (!TYPE_PART.test(parts.type) || !KEY_PART.test(parts.houseManageNo) || !KEY_PART.test(parts.pblancNo)) return { type: 'apt', houseManageNo: '', pblancNo: '' };
   return parts;
@@ -182,6 +189,7 @@ function buildAptSchedules(item) {
   return schedules;
 }
 
+/** 공고 API 모음. 각 함수는 apiClient(fetch 기반 공통 클라이언트, 로그인 토큰 자동 첨부)로 요청하고 화면용 모양으로 바꿔 돌려준다. */
 export const announcementApi = {
   /**
    * 분양 공고 통합 목록 조회
@@ -193,7 +201,7 @@ export const announcementApi = {
     const res = await apiClient.get('/api/v1/announcements', queryParams);
     const content = [...(res.data?.content || [])];
     if (params.page == null) {
-      // Calendar data must include every page in the selected date range.
+      // 달력은 고른 기간의 공고가 모두 있어야 하므로, page를 지정하지 않으면 나머지 페이지도 차례로 받아 합친다.
       const totalPages = res.data?.totalPages || 1;
       for (let page = 1; page < totalPages; page += 1) {
         const next = await apiClient.get('/api/v1/announcements', { ...queryParams, page });
@@ -260,6 +268,7 @@ export const announcementApi = {
    * GET /api/v1/{type}/announcements/{houseManageNo}/{pblancNo}
    */
   async getAnnouncementDetail(params = {}) {
+    // subscriptSeq 문자열이나 { type, houseManageNo, pblancNo } 객체 모두 받는다(아래 다른 함수도 같은 방식).
     let { type, houseManageNo, pblancNo } = parseSubscriptId(params.subscriptSeq || params);
     if (params.type) type = params.type;
     if (params.houseManageNo) houseManageNo = params.houseManageNo;
@@ -273,6 +282,7 @@ export const announcementApi = {
     const commentCount = detailRes.data?.commentCount || 0;
     const rceptSe = TYPE_TO_RCEPT_SE[type] || '01';
 
+    // 상세 화면이 쓰는 필드 모양으로 맞춘다. 값이 없을 때 대신 쓸 필드 이름을 || 로 이어 둔 것이 많다.
     const subscriptDetail = {
       ...anno,
       subscriptSeq: `${type}/${anno.houseManageNo || houseManageNo}/${anno.pblancNo || pblancNo}`,
@@ -313,6 +323,7 @@ export const announcementApi = {
       operatorNotice: detailRes.data?.operatorNotice || null
     };
 
+    // 아래 세 목록은 주택형(models)을 공급 세대수·공급금액·특별공급 표 모양으로 바꾼 것이다.
     const subscriptSupply = models.map((m, idx) => {
       const normalCnt = Number(m.suplyHshldco || m.gnsplyHshldco) || 0;
       const specialCnt = Number(m.spsplyHshldco) || 0;

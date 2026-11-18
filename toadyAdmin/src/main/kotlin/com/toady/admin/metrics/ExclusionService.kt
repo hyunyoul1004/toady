@@ -13,7 +13,9 @@ import java.time.LocalDateTime
  * 지표에서 뺄 운영자 브라우저(database.sql 20번). 방문자는 브라우저 저장소의 무작위 ID로 세므로(IP 미저장)
  * 운영자가 쓰는 브라우저마다 관리자 화면에서 한 번 등록하면 과거 기록까지 지표에서 빠진다.
  * 테이블이 없으면 제외 없이 모든 방문을 센다.
+ * 테이블: TB_ANALYTICS_EXCLUDED_VISITOR. 호출: MetricsService·AnnouncementService(clause), AdminController(등록·해제 화면).
  */
+// @Service: 업무 로직 빈.
 @Service
 class ExclusionService(private val jdbc: JdbcTemplate) {
 	data class Excluded(val visitorId: String, val label: String, val registeredAt: LocalDateTime?)
@@ -22,6 +24,7 @@ class ExclusionService(private val jdbc: JdbcTemplate) {
 	fun clause(column: String = "VISITOR_ID"): String =
 		if (available()) " AND $column NOT IN (SELECT VISITOR_ID FROM TB_ANALYTICS_EXCLUDED_VISITOR)" else ""
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). */
 	fun available(): Boolean = try {
 		jdbc.queryForObject("SELECT COUNT(*) FROM TB_ANALYTICS_EXCLUDED_VISITOR WHERE 1=0", Long::class.java); true
 	} catch (missing: DataAccessException) { false }
@@ -44,6 +47,7 @@ class ExclusionService(private val jdbc: JdbcTemplate) {
 		catch (missing: DataAccessException) { "UNAVAILABLE" }
 	}
 
+	/** 제외 해제. 지운 행이 하나면 true. */
 	fun remove(visitorId: String, admin: String): Boolean = try {
 		(jdbc.update("DELETE FROM TB_ANALYTICS_EXCLUDED_VISITOR WHERE VISITOR_ID=?", visitorId) == 1).also {
 			if (it) log.info("지표 제외 브라우저 해제: admin={}", admin)

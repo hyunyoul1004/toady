@@ -29,15 +29,20 @@ import java.util.stream.Collectors;
  * 위치는 주변 시세 비교와 같은 규칙(AddressLocator: 지번까지 일치할 때만 확정)으로 확인한다.
  * 지구·블록만 있는 주소는 지도에 놓지 않고 unlocated로 따로 돌려준다(화면은 목록으로만 보여 준다).
  * 위치 확인 결과는 하루 동안 기억하고, 시간 안에 못 끝낸 확인은 백그라운드에서 이어 간다(pending).
+ * 위치 확인(카카오 호출)은 전용 스레드 3개에서 하고, 요청 스레드는 최대 4초만 기다린다.
  */
+// @Service: 스프링 빈으로 등록한다. 안쪽 Api 클래스가 /api/v1/research/sales 요청을 받아 sales()를 부른다.
 @Service
 public class SaleMapService {
-    /** status: OPEN(청약 중) · UPCOMING(청약 예정) · DONE(분양 완료, 입주 전). moveIn: 입주 예정월(YYYY-MM, 없으면 null). */
-    /** bcode·dong: 확정한 지번의 법정동(화면이 상세 탭과 같은 주변 시세 비교를 부를 때 쓴다). */
+    /**
+     * status: OPEN(청약 중) · UPCOMING(청약 예정) · DONE(분양 완료, 입주 전). moveIn: 입주 예정월(YYYY-MM, 없으면 null).
+     * bcode·dong: 확정한 지번의 법정동(화면이 상세 탭과 같은 주변 시세 비교를 부를 때 쓴다).
+     */
     public record Sale(String id, String type, String houseNm, String status, String start, String end, String moveIn, double lat, double lng, List<EligibilityFeed.Unit> units,
                        String bcode, String dong) { }
     /** 지번으로 위치를 확정하지 못한 공고(지구·블록 주소 등). 지도에는 놓지 않는다. */
     public record Unlocated(String id, String houseNm, String status, String start) { }
+    /** pending: 아직 위치 확인 중인 공고 수(화면은 잠시 뒤 다시 부른다). */
     public record Result(int pending, List<Sale> sales, List<Unlocated> unlocated) { }
     private static final Set<String> PROVINCE_PREFIXES = Set.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충청", "충북", "충남", "전라", "전북", "전남", "경상", "경북", "경남", "제주");
     /** 분양 완료 공고는 접수 시작일 기준 최근 3년, 시·군·구당 최대 300건까지 본다. */
@@ -57,6 +62,7 @@ public class SaleMapService {
         Thread thread = new Thread(task, "sale-locate"); thread.setDaemon(true); return thread;
     }, new ThreadPoolExecutor.AbortPolicy()); // 큐가 차면 예외 → inFlight에서 빼고 다음 요청에서 다시 맡긴다
 
+    // @Autowired: 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트용(시계 교체).
     @Autowired
     public SaleMapService(EligibilityFeed feed, AnnouncementSearchService search, AddressLocator locator) {
         this(feed, search, locator, Clock.system(ZoneId.of("Asia/Seoul")));
@@ -65,6 +71,7 @@ public class SaleMapService {
         this.feed = feed; this.search = search; this.locator = locator; this.clock = clock;
         pool.allowCoreThreadTimeOut(true);
     }
+    // @PreDestroy: 서버가 꺼질 때 위치 확인 스레드를 정리한다.
     @PreDestroy void close() { pool.shutdownNow(); }
 
     /** 같은 시·군·구(법정동 코드 앞 5자리)에 있는 분양 공고. region: '경기 파주시'처럼 주소 글자로 먼저 좁힌다. */
@@ -176,6 +183,7 @@ public class SaleMapService {
         return words.stream().map(word -> word.startsWith("세종") ? "세종" : word).toList();
     }
 
+    /** 지도 분양 공고 API. @RestController로 등록되는 중첩 클래스, @Validated로 @Pattern 검증을 켠다. */
     @RestController
     @Validated
     static class Api {

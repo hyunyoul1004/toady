@@ -7,8 +7,10 @@ import apiClient from '@/api/client';
 import { compareToRange, fmt } from './scoreRules';
 import ScoreRangeBar from './ScoreRangeBar';
 
+// 필터(지역·기간·정렬)는 localStorage에 둬서 다음 방문에도 이어진다. 검색어는 아래 sessionStorage(이 탭에서만).
 const FILTER_KEY = 'toady.score.filter';
 const DEFAULT_FILTER = { sido: '', district: '', area: '', years: 3, sort: 'recent' };
+// 빠른 선택용 생활권. 서버의 생활권 slug와 같아야 한다.
 const AREAS = [['unjeong', '운정'], ['dongtan', '동탄'], ['dasan', '다산'], ['geomdan', '검단'], ['wirye', '위례'], ['gwanggyo', '광교']];
 const PAGE = 12;
 function readFilter() {
@@ -24,15 +26,20 @@ const yearsText = years => years === 0 ? '전체 기간' : `최근 ${years}년`;
 /**
  * 전국 시·도/시·군·구 또는 생활권으로 공개 당첨가점을 찾는다.
  * 최근 자료가 적은 지역은 서버가 기간을 넓혀 보여 주고, 시·군·구에 아예 없으면 같은 시·도를 제안한다.
+ * 쓰는 곳: ScoreCalculator 아래. total은 내 가점(없으면 undefined), onOpen은 공고 상세 열기.
+ * API: /api/v1/public/score-benchmarks/regions(지역 목록), /api/v1/public/score-benchmarks/search(검색).
  */
 export default function ScoreBenchmarkSearch({ total, onOpen }) {
   const [filter, setFilter] = useState(readFilter);
+  // 저장된 검색어를 첫 렌더에 한 번만 읽는다. setter를 버리면 '처음 값'을 담아 두는 용도로 쓸 수 있다.
   const [initial] = useState(readSearch);
   const [keyword, setKeyword] = useState(initial.keyword);
   const [shown, setShown] = useState(initial.shown);
+  // keyword·shown이 바뀔 때마다 sessionStorage에 적어 둔다.
   useEffect(() => {
     try { sessionStorage.setItem(SEARCH_KEY, JSON.stringify({ keyword, shown })); } catch { /* 저장소가 막혀도 이번 화면에서는 동작한다 */ }
   }, [keyword, shown]);
+  // 필터를 바꾸면 목록을 처음 12건부터 다시 보여 주고, 바뀐 필터를 저장한다.
   const update = patch => {
     const next = { ...filter, ...patch };
     setFilter(next); setShown(PAGE);
@@ -43,15 +50,20 @@ export default function ScoreBenchmarkSearch({ total, onOpen }) {
   const [debouncedKeyword, setDebouncedKeyword] = useState(initial.keyword.trim());
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
+    // cleanup: 300ms 안에 또 입력하면 이전 타이머를 취소한다. 그래서 마지막 입력만 반영된다.
     return () => clearTimeout(timer);
   }, [keyword]);
   const q = debouncedKeyword.length >= 2 ? debouncedKeyword : '';
+  // 생활권(area)을 고르면 시·도·시군구 조건은 보내지 않는다. 둘은 함께 쓰지 않는다.
   const params = { sido: filter.area ? undefined : filter.sido || undefined, district: filter.area ? undefined : filter.district || undefined, area: filter.area || undefined, years: filter.years, sort: filter.sort, q: q || undefined };
+  // params 전체가 queryKey라서 조건이 바뀌면 새로 조회하고, 같은 조건으로 돌아오면 캐시를 쓴다.
+  // keepPreviousData: 새 결과가 오는 동안 이전 목록을 그대로 보여 줘 화면이 깜빡이지 않는다(isFetching으로 흐리게만 표시).
   const search = useQuery({ queryKey: ['scoreSearch', params], queryFn: () => apiClient.get('/api/v1/public/score-benchmarks/search', params), staleTime: 600000, retry: 1, placeholderData: keepPreviousData });
   const sidoList = Array.isArray(regions.data) ? regions.data : [];
   const districts = sidoList.find(item => item.sido === filter.sido)?.districts || [];
   const data = search.data;
   const items = data?.items || [];
+  // 지금 받은 목록 중 내 점수가 최저 당첨가점 이상인 공고 수.
   const above = useMemo(() => Number.isFinite(total) ? items.filter(item => item.low !== null && total >= item.low).length : null, [items, total]);
 
   return <section className="score-section" aria-labelledby="benchmark-heading">

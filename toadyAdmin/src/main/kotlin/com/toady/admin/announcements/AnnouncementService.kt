@@ -14,25 +14,32 @@ import java.time.LocalDateTime
 /**
  * 5개 유형의 공고(청약홈 수집 테이블)를 한 목록으로 찾고, 공고 하나의 운영 정보(조회·관심·댓글·시세 비교·투표)를 모은다.
  * 유형마다 컬럼 이름과 날짜 형식(YYYY-MM-DD / YYYYMMDD)이 달라 유형별 정의(TYPES)로 맞춘다.
+ * 읽기 전용이다. 읽는 테이블: TB_*_LTTOT_PBLANC_DETAIL·_MDL(스케줄러가 채움), TB_USAGE_EVENT, TB_FAVORITE, TB_PRICE_GAP, TB_RATE_POLL.
+ * 호출: AdminController의 공고 목록·상세 화면, 대시보드(이름 찾기).
  */
+// @Service: 업무 로직 빈. 생성자 매개변수(JdbcTemplate, ExclusionService)는 스프링이 넣어 준다.
 @Service
 class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions: ExclusionService) {
 	/** 유형별 테이블·컬럼 정의. 공고 ID는 서비스와 같은 '유형/주택관리번호/공고번호'. */
 	data class Type(val key: String, val label: String, val detail: String, val model: String, val start: String, val end: String, val address: String,
 	                val unitLabel: String, val unitArea: String?, val unitAmount: String)
 
+	/** 목록 한 줄. status는 접수 시작·종료일과 오늘 날짜로 계산한다. */
 	data class Row(val id: String, val type: String, val houseNm: String, val address: String?, val start: LocalDate?, val end: LocalDate?, val area: String?, val supply: String?) {
 		val typeLabel get() = TYPES[type]?.label ?: type
 		val status get() = status(start, end)
 		val statusLabel get() = when (status) { "OPEN" -> "접수 중"; "UPCOMING" -> "접수 예정"; "CLOSED" -> "마감"; else -> "일정 없음" }
 	}
+	/** 주택형 한 줄(이름, 면적, 공급 세대수, 공급금액). */
 	data class Unit(val label: String, val area: String?, val households: String?, val amount: String?) {
 		/** 청약홈 공급금액은 만원 단위다. 숫자가 아니면 받은 그대로 보여 준다. */
 		val amountLabel get() = amount?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
 			raw.replace(",", "").toLongOrNull()?.let { "%,d만원".format(it) } ?: raw
 		} ?: "—"
 	}
+	/** 주변 시세 비교 결과(API가 계산해 TB_PRICE_GAP에 둔 값). q1·q3는 주변 거래가의 1·3사분위(만원). */
 	data class Gap(val status: String, val dong: String?, val area: Int?, val supply: Long?, val q1: Long?, val q3: Long?, val basis: String?, val confidence: String?, val computedAt: LocalDateTime?)
+	/** 공고 상세 화면에 필요한 모든 값. 테이블이 없는 항목은 null로 두고 화면에서 숨긴다. */
 	data class Detail(val row: Row, val kind: String?, val noticeDate: String?, val winnerDate: String?, val contract: String?, val moveIn: String?, val url: String?,
 	                  val collectedAt: LocalDateTime?, val units: List<Unit>, val views30: Long?, val viewers30: Long?, val favorites: Long?,
 	                  val gap: Gap?, val polls: List<Long>?) {
@@ -67,6 +74,10 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 		return Page(all.drop(safePage * size).take(size), all.size.toLong(), safePage, size)
 	}
 
+	/**
+	 * 공고 하나의 상세. 주소로 받은 키를 정규식(KEY)으로 확인한 뒤 SQL에 넣는다. 테이블 이름은 TYPES에서만 고르므로 주입 걱정이 없다.
+	 * 기본 정보를 먼저 읽고, copy로 조회수·관심·시세·투표를 하나씩 채운다(각각 실패해도 나머지는 보인다).
+	 */
 	fun detail(type: String, house: String, notice: String): Detail? {
 		val t = TYPES[type] ?: return null
 		if (!KEY.matches(house) || !KEY.matches(notice)) return null
@@ -112,11 +123,13 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 		return out
 	}
 
+	/** 공고의 주택형 목록. 유형마다 주택형 이름·면적·금액 컬럼이 달라 Type 정의를 따른다. */
 	private fun units(t: Type, house: String, notice: String): List<Unit> =
 		jdbc.query("SELECT ${t.unitLabel} AS L, ${t.unitArea ?: "NULL"} AS AR, SUPLY_HSHLDCO AS H, ${t.unitAmount} AS AMT FROM ${t.model} WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? ORDER BY MODEL_NO", { r, _ ->
 			Unit(r.getString("L") ?: "-", r.getString("AR"), r.getString("H"), r.getString("AMT"))
 		}, house, notice)
 
+	/** 테이블이 아직 없거나(database.sql 미적용) 쿼리가 실패하면 null로 넘긴다. 화면 일부만 빠지고 전체는 열린다. */
 	private fun <T> optional(block: () -> T): T? = try { block() } catch (missing: DataAccessException) { null }
 
 	companion object {
@@ -134,6 +147,7 @@ class AnnouncementService(private val jdbc: JdbcTemplate, private val exclusions
 			val digits = value?.filter { it.isDigit() } ?: return null
 			return if (digits.length < 8) null else runCatching { LocalDate.of(digits.substring(0, 4).toInt(), digits.substring(4, 6).toInt(), digits.substring(6, 8).toInt()) }.getOrNull()
 		}
+		/** 접수 상태: 시작일 없음 NONE, 시작 전 UPCOMING, 종료일(없으면 시작일)까지 OPEN, 그 뒤 CLOSED. */
 		fun status(start: LocalDate?, end: LocalDate?, today: LocalDate = Kst.today()): String = when {
 			start == null -> "NONE"
 			start.isAfter(today) -> "UPCOMING"

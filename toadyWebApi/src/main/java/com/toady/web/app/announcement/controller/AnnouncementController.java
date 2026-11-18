@@ -32,16 +32,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 공고와 댓글의 목록·상세 조회 및 작성·수정·삭제 요청을 처리합니다. */
+/**
+ * 공고와 댓글의 목록·상세 조회 및 작성·수정·삭제 요청을 처리합니다.
+ * 흐름: 컨트롤러 → AnnouncementService(검색·상세·경쟁률) / AnnouncementCommentService(댓글) → 저장소 → DB.
+ * 컨트롤러는 URL 경로값을 유형(enum)으로 바꾸고 응답을 ResData로 감싸는 일만 한다. 예외는 AnnouncementApiExceptionHandler가 처리한다.
+ */
+// @RestController: 반환값을 화면 템플릿이 아닌 JSON 본문으로 보내는 컨트롤러.
 @RestController
+// @Validated: @Min·@Max·@Size처럼 메서드 파라미터에 붙인 검증을 켠다.
 @Validated
+// @RequiredArgsConstructor(Lombok): final 필드를 받는 생성자를 만든다. 스프링이 이 생성자로 서비스를 넣어 준다(생성자 주입).
 @RequiredArgsConstructor
+// @RequestMapping: 이 클래스의 모든 주소 앞에 /api/v1이 붙는다.
 @RequestMapping("/api/v1")
+// @Tag·@Operation·@Parameter: Swagger(API 문서) 설명이다. 동작에는 영향이 없다.
 @Tag(name = "분양 공고 API", description = "분양 공고 유형별 목록·상세 및 댓글 조회/관리 API")
 public class AnnouncementController {
     private final AnnouncementService announcementService;
     private final AnnouncementCommentService commentService;
 
+    // @GetMapping: GET 요청 주소를 이 메서드에 연결한다.
+    // 전체 유형을 합친 통합 목록.
     @GetMapping("/announcements")
     @Operation(
             summary = "전체 유형 분양 공고 통합 조회",
@@ -58,7 +69,10 @@ public class AnnouncementController {
     )
     public ResponseEntity<ResData<?>> listAll(
             @Parameter(description = "조회할 공고 유형. 생략하면 전체 유형. 여러 유형은 콤마로 구분합니다.", example = "apt,urban")
+            // @RequestParam: 쿼리 문자열 값을 받는다. required = false면 없어도 되고 그때 값은 null이다.
             @RequestParam(required = false) List<String> types,
+            // @ModelAttribute: 여러 쿼리 파라미터를 객체 하나로 묶어 받는다. @Valid로 그 객체의 검증 규칙을 실행한다.
+            // @ParameterObject: Swagger에서 객체 필드를 각각의 파라미터로 보여 준다.
             @Valid @ParameterObject @ModelAttribute AnnouncementSearch search
     ) {
         return ResponseEntity.ok(ResData.of(pageData(
@@ -66,6 +80,7 @@ public class AnnouncementController {
         ), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // 검색창 자동완성. 기간과 상관없이 단지명·주소로 찾는다.
     @GetMapping("/announcements/suggestions")
     @Operation(
             summary = "전체 기간 공고 자동완성 검색",
@@ -85,10 +100,12 @@ public class AnnouncementController {
     }
 
     /** 검색 조건을 적용해 지정된 공고 유형의 페이지 목록을 반환합니다. */
+    // {type}은 경로 변수다. apt, urban 같은 값이 들어온다.
     @GetMapping("/{type}/announcements")
     @Operation(hidden = true)
     public ResponseEntity<ResData<?>> list(
             @Parameter(description = "공고 유형: apt, urban, remaining, public-rental, optional", example = "apt")
+            // @PathVariable: 주소의 {type} 자리 값을 받는다.
             @PathVariable String type,
             @Valid @ParameterObject @ModelAttribute AnnouncementSearch search
     ) {
@@ -97,6 +114,7 @@ public class AnnouncementController {
         ), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // 공고 상세(공고 정보 + 주택형 목록 + 운영자 안내)에 댓글 수를 더해 돌려준다.
     @GetMapping("/{type}/announcements/{houseManageNo}/{pblancNo}")
     @Operation(
             summary = "분양 공고 상세 조회",
@@ -122,6 +140,7 @@ public class AnnouncementController {
         ));
     }
 
+    // 경쟁률 표. 경로의 type은 CompetitionDataType으로 바꾼다(cancel-resupply가 더 있다).
     @GetMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/competition-rates")
     @Operation(
             summary = "공고 경쟁률 조회",
@@ -183,6 +202,8 @@ public class AnnouncementController {
         ));
     }
 
+    // 댓글 목록. page 방식과 beforeCommentSeq 커서 방식(더보기)을 함께 지원한다.
+    // 파라미터의 @Min·@Max는 클래스의 @Validated 덕분에 검사된다.
     @GetMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments")
     @Operation(
             summary = "공고 댓글 목록 조회",
@@ -208,12 +229,15 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(pageData(result), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // 맨 위에 고정한 운영팀 글.
     @GetMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments/pinned")
     @Operation(summary = "고정한 운영팀 이야기", description = "공고 이야기 맨 위에 고정한 운영팀 글(최대 3개).")
     public ResponseEntity<ResData<?>> pinnedComments(@PathVariable String type, @PathVariable String houseManageNo, @PathVariable String pblancNo) {
         return ResponseEntity.ok(ResData.of(commentService.pinned(AnnouncementType.fromPath(type), houseManageNo, pblancNo), ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // @PostMapping: POST 요청. 댓글·답글 작성.
+    // @Secured("ROLE_USER"): 로그인한 사용자만 부를 수 있다. 아니면 스프링 시큐리티가 막는다.
     @PostMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments")
     @Secured("ROLE_USER")
     @Operation(
@@ -231,6 +255,8 @@ public class AnnouncementController {
                     description = "댓글 내용과 선택적 부모 댓글 번호",
                     required = true
             )
+            // @RequestBody: 요청 본문 JSON을 객체로 바꿔 받는다. @Valid로 @NotBlank·@Size를 검사한다.
+            // @AuthenticationPrincipal: 로그인한 사용자 정보(CustomUserDetails)를 바로 받는다. 작성자 번호는 여기서 꺼낸다.
             @Valid @RequestBody AnnouncementCommentRequest request,
             @AuthenticationPrincipal CustomUserDetails user
     ) {
@@ -240,6 +266,7 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(comment, ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // @PatchMapping: 일부 수정 요청. 본인 댓글 내용만 바꾼다.
     @PatchMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}")
     @Secured("ROLE_USER")
     @Operation(
@@ -273,6 +300,7 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(comment, ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    // @DeleteMapping: 삭제 요청. 실제로는 DELETE_YN = 'Y'로 바꾸는 소프트 삭제다.
     @DeleteMapping("/{type}/announcements/{houseManageNo}/{pblancNo}/comments/{commentSeq}")
     @Secured("ROLE_USER")
     @Operation(
@@ -300,6 +328,7 @@ public class AnnouncementController {
         return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage()));
     }
 
+    /** Page 객체에서 화면이 쓰는 값만 골라 담는다. Page를 그대로 내보내면 내부 필드까지 JSON에 섞인다. */
     private static Map<String, Object> pageData(Page<?> page) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("content", page.getContent());

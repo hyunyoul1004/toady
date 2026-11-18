@@ -29,6 +29,7 @@
     <section class="panel spaced"><div class="panel-head"><h2>제재</h2><span class="panel-note">회원에게는 종류·기간·사유만 보이고 메모는 보이지 않습니다</span></div>
         <div class="alert error" th:unless="${sanctionReady}">제재 테이블이 없습니다. database.sql 26번과 관리자 계정 권한을 적용하세요.</div>
         <div class="grid-2" th:if="${sanctionReady}">
+            <!-- 제재 종류를 바꾸면 admin.js가 기간(.sanction-days)을 이야기 쓰기 정지일 때만 보여 준다. -->
             <form class="stack-form" th:unless="${m.withdrawn}" th:action="@{/admin/members/{seq}/sanctions(seq=${m.seq})}" method="post">
                 <div class="row">
                     <label>종류<select name="kind"><option th:each="k : ${sanctionKinds}" th:value="${k.key}" th:text="${k.value}"></option></select></label>

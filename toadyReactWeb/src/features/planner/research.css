@@ -1,3 +1,4 @@
+/* 공고 상세의 요약·주택형·동네 실거래(ResearchPanel.jsx)와 상세 머리 버튼(announcement-*) 스타일. */
 .research-panel{--research-ink:#203550;--research-muted:#7b899e;--research-line:#e7ecf3;border:1px solid var(--research-line);border-radius:20px;background:#fff;margin-bottom:24px;color:var(--research-ink);overflow:hidden;font-family:inherit}
 .research-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:24px 24px 20px}
 .research-eyebrow{display:block;color:#3a6ed2;font-size:11px;letter-spacing:.5px;font-weight:750;margin-bottom:7px}
@@ -7,6 +8,7 @@
 .research-metric{min-width:0;display:flex;flex-direction:column;gap:8px}
 .research-metric>span{display:flex;gap:5px;align-items:center;font-size:11px;color:#7b8a9f}
 .research-metric>span svg{font-size:15px;color:#879bb7}
+/* tabular-nums: 숫자 폭을 같게 해 금액·날짜 자리가 줄마다 흔들리지 않게 한다. */
 .research-metric>strong{font-size:23px;line-height:1.3;letter-spacing:-.8px;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
 .research-metric i{font-size:14px;font-style:normal;color:#a5b2c5;margin:0 6px;vertical-align:middle}
 .research-metric em{font-style:normal;font-size:12px;font-weight:500;margin-left:4px;color:#718098;letter-spacing:0}

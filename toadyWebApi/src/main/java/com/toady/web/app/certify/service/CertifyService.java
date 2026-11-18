@@ -44,11 +44,21 @@ import jakarta.annotation.PostConstruct;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/11        youn       최초 생성
+ *
+ * 인증 코드 발급·확인을 맡는다. 두 종류가 있다.
+ * - ACCOUNT: 가입 인증 링크(24시간 유효). 링크의 코드 + 가입 비밀번호가 맞으면 TB_USER.EMAIL_CERTIFY_YN을 Y로 바꾼다.
+ * - FIND_PW: 비밀번호 재설정 코드(10분 유효, 4분 간격, 계정당 하루 5통).
+ * 코드는 SHA-256 해시로만 TB_CERTIFY에 저장한다. 계정 행을 FOR UPDATE로 잠가 같은 계정의 동시 요청을 한 줄로 세운다.
+ * 호출: CertifyController, UserService(가입 시 saveCertify·reissueAccountVerification).
+ * 메일은 EmailUtilService로 보내고, 본문은 EmailTemplates로 만든다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 서비스 빈
 @Service
 public class CertifyService {
 
+    // @Autowired: 필드 주입
     @Autowired
     private UserRepository userRepository;
 
@@ -58,6 +68,7 @@ public class CertifyService {
     @Autowired
     private EmailUtilService emailUtilService;
 
+    // @Value: 메일 링크에 넣을 서비스 주소(TOADY_WEB_DOMAIN). 기본값이 없어 설정하지 않으면 앱이 뜨지 않는다
     @Value("${toady.web.domain}")
     private String DOMAIN;
 
@@ -65,6 +76,8 @@ public class CertifyService {
     private PasswordEncoder passwordEncoder;
 
 
+    /** 서비스 주소가 http(s) 절대 주소인지 시작할 때 확인한다. 잘못되면 앱 시작을 멈춘다. */
+    // @PostConstruct: 의존성 주입이 끝난 직후 한 번 실행
     @PostConstruct
     void validateDomain() {
         try {
@@ -106,12 +119,16 @@ public class CertifyService {
         return null;
     }
 
-    /** 가입 인증 코드를 저장하고 인증 메일을 발송합니다. */
+    /**
+     * 가입 인증 코드를 저장하고 인증 메일을 발송합니다.
+     * @Transactional이 없어 호출한 쪽(regUser 등)의 트랜잭션에 함께 묶인다. 메일이 실패하면 예외로 코드 저장까지 되돌린다.
+     */
     public void saveCertify(CertifyDTO.Save param){
 
         try {
             String certifyCode = StrUtils.createCode();
 
+            // {email}·{code} 자리에 값을 넣고 URL 인코딩한다(+ 같은 문자가 깨지지 않게)
             String url = UriComponentsBuilder.fromUriString(DOMAIN)
                     .path("/certify").queryParam("userEmail", "{email}").queryParam("certifyCode", "{code}")
                     .encode().buildAndExpand(param.getUserEmail(), certifyCode).toUriString();
@@ -152,6 +169,7 @@ public class CertifyService {
 
 
     /** 미인증 계정에 새 가입 링크를 발송한다. 이전 링크 폐기와 발급은 함께 롤백된다. */
+    // @Transactional: 계정 잠금·이전 코드 폐기·새 코드 저장을 하나로 묶는다. 메일 실패 예외가 나면 전부 되돌린다
     @Transactional
     public ResponseEntity<ResData> resendAccountVerification(CertifyDTO.UserInfo param) {
         UserEntity user = userRepository.findByEmailForUpdate(param.getUserEmail().toLowerCase(Locale.ROOT));
@@ -164,6 +182,7 @@ public class CertifyService {
         saveCertify(request);
         return resendAccepted();
     }
+    /** 재발송 요청에 항상 돌려주는 같은 응답(가입 여부를 숨긴다). */
     public static ResponseEntity<ResData> resendAccepted() {
         return ResponseEntity.ok(ResData.of(ResultCode.SUCCESS.getCode(),
                 "인증을 기다리는 계정이면 새 인증 메일을 보냈습니다(링크 24시간 유효). 이미 인증했다면 바로 로그인해 주세요. 메일은 4분 간격으로 보낼 수 있어요."));
@@ -205,6 +224,7 @@ public class CertifyService {
             certifyEntity.setUpdateUserSeq(userEntity.getUserSeq());
             certifyEntity.setUpdateDt(LocalDateTime.now());
 
+            // 트랜잭션 안에서 조회한 엔티티라 save 없이도 커밋 때 UPDATE되지만, 의도를 드러내려고 명시적으로 부른다
             certifyRepository.save(certifyEntity);
 
             userEntity.setEmailCertifyYn("Y");
@@ -238,6 +258,7 @@ public class CertifyService {
 
     static final int DAILY_PASSWORD_MAILS = 5;
 
+    /** 비밀번호 찾기 요청에 항상 돌려주는 같은 응답(가입 여부를 숨긴다). */
     public static ResponseEntity<ResData> passwordRequestAccepted() {
         return ResponseEntity.ok().body(ResData.of(ResultCode.SUCCESS.getCode(),
                 "가입된 이메일이면 인증번호를 보냈습니다. 메일이 오지 않으면 스팸함을 확인하고 4분 뒤 다시 요청해 주세요."));
@@ -272,6 +293,7 @@ public class CertifyService {
         }
 
         try {
+            // 사람이 직접 입력하므로 하이픈을 뺀 24자로 보낸다
             String certifyCode = StrUtils.createCode();
             certifyCode = certifyCode.replaceAll("-","");
 
@@ -310,7 +332,10 @@ public class CertifyService {
     }
 
 
-    /** 10분 이내의 비밀번호 재설정 코드를 확인하고 새 비밀번호를 저장합니다. */
+    /**
+     * 10분 이내의 비밀번호 재설정 코드를 확인하고 새 비밀번호를 저장합니다.
+     * 성공하면 쓴 코드와 같은 계정의 남은 재설정 코드를 모두 폐기한다. 비밀번호가 바뀌므로 기존 로그인 토큰도 무효가 된다.
+     */
     @Transactional
     public ResponseEntity<ResData> certifyConfrimAndPasswordChange(CertifyDTO.PasswordChange param){
 

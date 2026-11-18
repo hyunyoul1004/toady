@@ -9,7 +9,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** 운영팀 이야기(database.sql 27번 TB_COMMENT_OFFICIAL)와 공고 맨 위 고정 글. 테이블이 없으면 운영팀 글이 없는 것으로 본다. */
+/**
+ * 운영팀 이야기(database.sql 27번 TB_COMMENT_OFFICIAL)와 공고 맨 위 고정 글. 테이블이 없으면 운영팀 글이 없는 것으로 본다.
+ * 댓글(이야기) 목록을 만들 때 공고 댓글 서비스가 불러 '운영팀' 표시와 고정 글을 붙인다.
+ */
+// @Component: 빈으로 등록된다
 @Component
 public class OfficialComments {
     private final JdbcTemplate jdbc;

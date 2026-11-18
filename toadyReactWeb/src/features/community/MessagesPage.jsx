@@ -27,11 +27,16 @@ import { COMMUNITY_KEY, cardValue, communityApi, mergeMessages, messageTime, rep
 import '@/features/account/account.css';
 import './community.css';
 
+// 쪽지 한 통의 최대 글자 수.
 const MAX = 1000;
 // 공고 상세는 공유 링크와 같은 주소(/announcements/…)로 연다.
 const detailPath = contextId => `/announcements/${contextId}?tabType=comment`;
 
-/** 쪽지 입력. 보낼 수 없으면 이유를 대신 보여 준다. */
+/**
+ * 쪽지 입력. 보낼 수 없으면 이유를 대신 보여 준다.
+ * onSend는 { ok, message }를 돌려주는 함수다. 성공하면 입력을 비우고, 실패하면 문구를 보여 주고 글은 남긴다.
+ * Ctrl(Mac은 Cmd)+Enter로도 보낼 수 있다.
+ */
 function Composer({ canSend, reason, onSend, placeholder, autoFocus }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -77,11 +82,15 @@ function ThreadView({ threadSeq, onBack }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [, setReport] = useHistoryOverlay('report');
+  // 나가기 확인 창도 히스토리 한 단계(뒤로가기로 취소).
   const [leaveOpen, setLeaveOpen] = useHistoryOverlay('dm-leave');
+  // older: 지금까지 쌓아 둔 쪽지(이전 쪽지 포함). hasOlder: 더 이전 쪽지가 있는지(null이면 서버 응답의 hasMore를 쓴다).
   const [older, setOlder] = useState([]);
   const [hasOlder, setHasOlder] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [leaveError, setLeaveError] = useState('');
+  // 화면에 그릴 필요 없는 표시값은 useRef로 둔다. 바꿔도 다시 그리지 않는다.
+  // leaving: 나가기 처리 중, listRef: 쪽지 목록 DOM, stick: 맨 아래에 붙어 있는지(새 쪽지가 오면 따라 내려갈지).
   const leaving = useRef(false);
   const listRef = useRef(null);
   const stick = useRef(true);
@@ -99,11 +108,13 @@ function ThreadView({ threadSeq, onBack }) {
   // 열면 서버가 읽음으로 바꾸므로 메뉴 배지·쪽지함 숫자를 새로 읽는다.
   useEffect(() => { if (data) { queryClient.invalidateQueries({ queryKey: [...COMMUNITY_KEY, 'unread'] }); queryClient.invalidateQueries({ queryKey: [...COMMUNITY_KEY, 'threads'] }); } },
     [lastSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 다른 대화로 바뀌면 쌓아 둔 쪽지를 비운다.
   useEffect(() => { setOlder([]); setHasOlder(null); stick.current = true; }, [threadSeq]);
   // 지금까지 받은 쪽지를 버리지 않고 쌓아 둔다(최신 30통 범위에서 밀려난 쪽지도 화면에 남게).
   useEffect(() => { if (data?.messages?.length) setOlder(list => mergeMessages(list, data.messages)); }, [data?.messages]);
   const more = hasOlder ?? data?.hasMore;
   // 새 쪽지가 오면 맨 아래에 있을 때만 따라 내려간다(위로 읽는 중이면 그대로 둔다).
+  // useLayoutEffect: 화면에 그리기 직전에 실행돼 스크롤이 한 번 튀었다 내려가는 깜빡임이 없다.
   useLayoutEffect(() => {
     const box = listRef.current;
     if (box && stick.current) box.scrollTop = box.scrollHeight;
@@ -115,8 +126,10 @@ function ThreadView({ threadSeq, onBack }) {
     leaving.current = false;
     navigate('/messages', { replace: true });
   }, [location.key, leaveOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 맨 아래에서 80px 안쪽이면 '붙어 있음'으로 본다.
   const onScroll = () => { const box = listRef.current; if (box) stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80; };
 
+  // 이전 쪽지 더 보기. 위에 쪽지가 붙어도 보던 위치가 그대로 있도록 아래에서부터의 거리(before)를 기억해 되돌린다.
   const loadOlder = async () => {
     const first = messages[0]?.messageSeq;
     if (!first) return;
@@ -130,6 +143,7 @@ function ThreadView({ threadSeq, onBack }) {
     setHasOlder(Boolean(result.data?.hasMore));
     requestAnimationFrame(() => { if (box) box.scrollTop = box.scrollHeight - before; });
   };
+  // 보낸 뒤 대화를 바로 다시 받아 내 쪽지를 보여 주고, 쪽지함 목록도 낡은 것으로 표시한다.
   const send = async content => {
     const result = await run(() => communityApi.send(data.other.userSeq, content, data.contextId));
     if (result.ok) { stick.current = true; await thread.refetch(); queryClient.invalidateQueries({ queryKey: [...COMMUNITY_KEY, 'threads'] }); }
@@ -151,6 +165,7 @@ function ThreadView({ threadSeq, onBack }) {
   if (!data) return <Box className="dm-page"><Alert severity="error" action={<Button color="inherit" size="small" onClick={onBack}>쪽지함</Button>}>
     {thread.data?.resultMessage || '대화를 불러오지 못했어요.'}</Alert></Box>;
 
+  // 날짜가 바뀌는 첫 쪽지 위에만 날짜 구분선을 넣기 위해 앞 쪽지의 날짜를 기억한다.
   let lastDay = '';
   return <Box className="dm-page dm-thread">
     <ThreadHeader other={data.other} contextId={data.contextId} houseNm={data.houseNm} onBack={onBack}>
@@ -192,6 +207,7 @@ function ThreadView({ threadSeq, onBack }) {
 function ComposeView({ toUserSeq, contextId, onBack }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // staleTime 0: 캐시가 있어도 늘 새로 받는다(이미 대화가 생겼는지 최신 값으로 확인).
   const card = useQuery({ queryKey: [...COMMUNITY_KEY, 'card', toUserSeq, true], queryFn: () => communityApi.card(toUserSeq), staleTime: 0 });
   const data = card.data?.resultCode === 'SUCCESS' ? card.data.data : null;
   // 이미 대화가 있으면 그 대화로. 캐시에 남은 예전 값(나가기 전 등)으로 잘못 가지 않게 새로 받아 온 값만 본다.
@@ -223,7 +239,7 @@ function ComposeView({ toUserSeq, contextId, onBack }) {
   </Box>;
 }
 
-/** 쪽지함 목록. 최근 대화 순. */
+/** 쪽지함 목록. 최근 대화 순. '더 보기'로 페이지를 이어 붙이는 useInfiniteQuery를 쓰고 1분마다 새로 확인한다. */
 function ThreadList() {
   const navigate = useNavigate();
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
@@ -273,6 +289,7 @@ function ThreadList() {
  */
 export default function MessagesPage() {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  // useSearchParams: 주소의 ?thread=·?to=·?context= 값을 읽는다. 값이 바뀌면 이 화면이 다시 그려진다.
   const [params] = useSearchParams();
   const location = useLocation(), navigate = useNavigate();
   const threadSeq = Number(params.get('thread')) || null;
@@ -291,6 +308,7 @@ export default function MessagesPage() {
       <p>로그인하면 이야기에서 만난 회원과 쪽지를 주고받을 수 있어요.</p>
       <Button variant="contained" disableElevation onClick={openLogin}>로그인</Button></section></Box>;
   }
+  // key를 대화 번호로 줘서, 다른 대화로 바뀌면 컴포넌트를 새로 만들어 안쪽 상태가 섞이지 않게 한다.
   if (threadSeq) return <ThreadView key={threadSeq} threadSeq={threadSeq} onBack={back} />;
   if (toUserSeq) return <ComposeView key={toUserSeq} toUserSeq={toUserSeq} contextId={contextId} onBack={back} />;
   return <ThreadList />;

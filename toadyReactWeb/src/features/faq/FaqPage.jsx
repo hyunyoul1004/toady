@@ -7,6 +7,7 @@ import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { answerParts } from './faqText';
 import './faq.css';
 
+/** 답 문장을 문단·링크로 나눠 그린다. 앱 경로는 Link(새로고침 없이 이동), 그 밖은 a 태그. */
 function Answer({ text }) {
   return answerParts(text).map((parts, index) => <p key={index}>{parts.map((part, i) => part.to
     ? <Link key={i} to={part.to}>{part.text}</Link>
@@ -17,11 +18,13 @@ function Answer({ text }) {
 /**
  * 청약 자주 묻는 질문(앱 화면). 사이드바가 있는 앱 안에서 보여 주고, 문장은 서버(PublicFaqPage)에서 받아 검색용 /help/faq와 같게 유지한다.
  * 주소의 #질문으로 들어오면 그 질문을 펼쳐 보여 준다.
+ * 데이터: /api/v1/public/faq-items(1시간 캐시). 라우터: routes/AppRoutes.jsx.
  */
 export default function FaqPage() {
   const location = useLocation();
   const faq = useQuery({ queryKey: ['faqItems'], queryFn: () => apiClient.get('/api/v1/public/faq-items'), staleTime: 3600000, retry: 1 });
   const groups = Array.isArray(faq.data) ? faq.data : [];
+  // 펼친 질문 id 모음. Set은 바꿀 때 새 Set을 만들어야 React가 바뀐 것을 알아챈다.
   const [open, setOpen] = useState(() => new Set());
   // 손으로 고친 주소의 잘못된 %표기에도 화면이 깨지지 않게 한다.
   const hash = (() => { try { return decodeURIComponent(location.hash.slice(1)); } catch { return location.hash.slice(1); } })();
@@ -32,6 +35,7 @@ export default function FaqPage() {
       description: '청약 1순위 조건, 지역별 예치금, 세대주 요건, 신혼·생애최초·다자녀·신생아 특별공급, 무순위·줍줍 자격, 계약금·중도금·취득세까지 자주 묻는 질문을 정리했어요.', path: '/help/faq' });
     return () => resetDefaultSeo();
   }, []);
+  // 질문 목록이 도착했거나 주소 #이 바뀌면 그 질문(또는 분류)으로 스크롤하고, 질문이면 펼친다.
   useEffect(() => {
     if (!groups.length || !/^[a-z0-9-]+$/.test(hash)) return;
     const isQuestion = groups.some(group => group.items.some(item => item.id === hash));
@@ -55,6 +59,7 @@ export default function FaqPage() {
     {faq.isLoading ? <div className="faq-loading"><Skeleton variant="rounded" height={160} /><Skeleton variant="rounded" height={160} /></div>
       : faq.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => faq.refetch()}>다시 시도</Button>}>질문을 불러오지 못했어요.</Alert>
       : <>
+        {/* 분류 바로가기. replace라 #만 바꿀 때 히스토리가 쌓이지 않는다. */}
         <nav className="faq-toc" aria-label="질문 분류">{groups.map(group => <Link key={group.id} to={{ hash: group.id }} replace>{group.title}</Link>)}</nav>
         {groups.map(group => <section key={group.id} id={`faq-${group.id}`} className="faq-group" aria-labelledby={`faq-${group.id}-title`}>
           <h2 id={`faq-${group.id}-title`}>{group.title}</h2>

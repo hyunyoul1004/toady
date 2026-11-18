@@ -40,6 +40,7 @@ export function normalizeScheduleDate(value) {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
+// 서버가 화면용으로 바꾼 유형(displayRceptSe)이 있으면 그것을 쓰고, 없으면 원래 유형, 그것도 없으면 특별공급(01)으로 본다.
 const effectiveRceptSe = (row) => row.displayRceptSe || row.rceptSe || '01';
 const byStageOrder = (a, b) => rceptSeMeta(a.rceptSe).order - rceptSeMeta(b.rceptSe).order;
 
@@ -55,6 +56,7 @@ export function groupCalendarSchedules(rows) {
   const groups = new Map();
   const timeline = new Map(); // subscriptSeq → Map(rceptSe → Set(date))
 
+  // 한 번 훑으면서 두 가지를 같이 만든다: ① 날짜|공고별 묶음(groups) ② 공고별 전체 단계·날짜(timeline).
   rows.forEach((row) => {
     if (!row || row.subscriptSeq == null || row.subscriptSeq === '') return;
     const date = normalizeScheduleDate(row.inDate);

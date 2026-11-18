@@ -16,12 +16,17 @@ import jakarta.validation.constraints.Size;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/11        youn       최초 생성
+ *
+ * 인증 관련 요청 본문과 서비스 내부 전달 값을 모은 클래스.
+ * Save는 서비스 안에서만 쓰고, 나머지는 CertifyController가 @Valid로 검사하는 요청 본문이다.
  */
 public class CertifyDTO {
 
     /**
      * 인증정보 등록.
+     * certifyType: ACCOUNT(가입 인증) / FIND_PW(비밀번호 찾기), sendType: EMAIL.
      */
+    // @Setter/@Getter: 접근자 생성. @AllArgsConstructor: 모든 필드 생성자. @NoArgsConstructor: 빈 생성자(PUBLIC)
     @Setter
     @Getter
     @AllArgsConstructor
@@ -49,6 +54,7 @@ public class CertifyDTO {
     @NoArgsConstructor(access = AccessLevel.PUBLIC)
     public static class CheckParam {
 
+        // @NotBlank: 빈 값 거부. @Email: 이메일 형식. @Size: 길이 상한
         @NotBlank(message = "사용자 EMAIL을 넣어주세요.")
         @Email
         @Size(max = 100)

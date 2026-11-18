@@ -9,6 +9,10 @@ public final class StrUtils {
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private StrUtils() { }
 
+    /**
+     * XXXXXXXX-XXXXXXXX-XXXXXXXX 형태(24글자 + 하이픈 2개)의 코드를 만든다.
+     * SecureRandom을 써서 다음 값을 예측할 수 없다.
+     */
     public static String createCode() {
         StringBuilder code = new StringBuilder(26);
         for (int index = 0; index < 24; index++) {

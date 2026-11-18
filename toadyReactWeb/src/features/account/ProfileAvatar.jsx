@@ -19,9 +19,11 @@ export const PROFILE_ICONS = [
   { key: 'hamster', label: '햄스터', bg: '#fdf2e9' },
   { key: 'pig', label: '돼지', bg: '#ffe4e6' }
 ];
+// 키로 캐릭터를 바로 찾기 위한 표. isProfileIcon은 서버에서 온 키가 아는 캐릭터인지 확인할 때 쓴다.
 const BY_KEY = Object.fromEntries(PROFILE_ICONS.map(item => [item.key, item]));
 export const isProfileIcon = key => Boolean(BY_KEY[key]);
 
+// 아래는 여러 캐릭터가 함께 쓰는 눈·볼터치·입 조각. 좌표는 64×64 기준이고 32가 가운데다.
 const INK = '#2b2b2b';
 function Eyes({ y = 36, gap = 7, r = 2.6 }) {
   return <>{[32 - gap, 32 + gap].map(x => <g key={x}><circle cx={x} cy={y} r={r} fill={INK} /><circle cx={x + 0.9} cy={y - 0.9} r={r * 0.36} fill="#fff" /></g>)}</>;
@@ -143,14 +145,17 @@ const ART = {
   </>
 };
 
+// 첫 글자 동그라미 색. 닉네임 글자 코드 합으로 고르므로 같은 닉네임은 늘 같은 색이다.
 const INITIAL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 const initialColor = name => INITIAL_COLORS[[...String(name || '')].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % INITIAL_COLORS.length];
 
 /**
  * 프로필 동그라미. icon이 준비된 캐릭터면 그림, 아니면 닉네임 첫 글자.
  * decorative가 아니면 스크린리더에 '○○ 프로필'로 읽힌다.
+ * 쓰는 곳: 내 정보, 이야기(댓글), 쪽지, 메뉴 등. 서버를 부르지 않고 넘겨받은 icon·name만으로 그린다.
  */
 export default function ProfileAvatar({ icon, name = '', size = 40, decorative = false, className = '' }) {
+  // useId로 화면마다 겹치지 않는 clipPath id를 만든다. 같은 id가 여러 개면 다른 아바타의 자르기 모양을 잘못 쓸 수 있다.
   const clipId = `pa-${useId().replace(/:/g, '')}`;
   const item = BY_KEY[icon];
   const label = decorative ? undefined : `${name || '회원'} 프로필`;

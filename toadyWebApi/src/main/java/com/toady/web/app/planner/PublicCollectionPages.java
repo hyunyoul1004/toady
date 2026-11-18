@@ -27,12 +27,16 @@ import static com.toady.web.app.planner.PublicHtml.esc;
 /**
  * 검색어 단위 공개 모음 페이지: 무순위·줍줍(/zupzup), 이번 주 청약 일정(/weekly).
  * 공고 데이터에서 매번 자동으로 만들며, 단지별로 손으로 쓰는 문구는 두지 않는다.
+ * 봇은 웹 컨테이너 nginx를 거쳐 이 HTML을 받고, 사람은 같은 주소에서 React 앱을 본다.
+ * 앱 화면용 JSON(weekly-summary, active-announcements)도 같은 집계 기준으로 여기서 함께 내려준다. 공고 검색은 AnnouncementSearchService를 쓴다.
  */
+// @RestController: HTML 문자열과 JSON을 응답하는 컨트롤러.
 @RestController
 public class PublicCollectionPages {
     static final List<String> UNRANKED_TYPES = List.of("remaining", "optional");
     private final PublicAreaPage areas; private final AnnouncementSearchService search; private final JdbcTemplate jdbc; private final String domain; private final Clock clock;
 
+    // @Autowired: 스프링이 쓸 생성자를 지정한다. @Value로 서비스 주소를 읽는다. 아래 생성자는 테스트용(시계 교체).
     @Autowired
     public PublicCollectionPages(PublicAreaPage areas, AnnouncementSearchService search, JdbcTemplate jdbc, @Value("${toady.web.domain}") String domain) {
         this(areas, search, jdbc, domain, Clock.system(ZoneId.of("Asia/Seoul")));
@@ -43,6 +47,7 @@ public class PublicCollectionPages {
     private LocalDate today() { return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))); }
     private String nav(String label) { return "<nav aria-label='현재 위치'><a href='" + esc(domain) + "/'>TOADY</a><span>›</span><span>" + esc(label) + "</span></nav>"; }
 
+    // 무순위·줍줍 모음 HTML. 접수 중·예정·최근 마감(60일) 공고를 보여 준다. 5분 페이지 캐시.
     @GetMapping(value = "/api/v1/public/zupzup", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> zupzup() { return PublicHtml.cached("zupzup", this::renderZupzup); }
     private ResponseEntity<String> renderZupzup() {
@@ -70,6 +75,7 @@ public class PublicCollectionPages {
         return PublicHtml.page(domain, "/zupzup", title, description, domain + "/zupzup", body);
     }
 
+    /** 월요일~일요일 한 주. overlaps: 접수 기간이 이 주와 겹치는지. */
     record Week(LocalDate monday, LocalDate sunday) {
         static Week of(LocalDate day) { LocalDate monday = day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)); return new Week(monday, monday.plusDays(6)); }
         Week next() { return new Week(monday.plusWeeks(1), sunday.plusWeeks(1)); }

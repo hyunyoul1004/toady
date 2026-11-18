@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<!-- 공통 head 조각. 다른 화면은 th:replace="~{admin/fragments :: head('제목')}"로 가져다 쓴다. noindex로 검색 노출을 막는다. -->
 <head th:fragment="head(title)"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title th:text="${title} + ' · TOADY 관리자'">TOADY 관리자</title><link rel="stylesheet" th:href="@{/admin/style.css}"></head>
 <body>
 <!-- 모든 관리자 화면의 메뉴. 넓은 화면에서는 왼쪽 고정 메뉴, 920px 이하에서는 위쪽 막대의 '메뉴' 단추로 펼친다.
@@ -47,6 +48,7 @@
         <div><strong th:text="${e.actionLabel}"></strong><span class="muted" th:if="${e.before != null}" th:text="${e.before + ' → '}"></span><span th:if="${e.after != null}" th:text="${e.after}"></span></div>
         <small th:text="${(e.at != null ? #temporals.format(e.at, 'yyyy.MM.dd HH:mm') : '') + ' · ' + e.admin + (e.note != null ? ' · 메모: ' + e.note : '')}"></small></li></ul>
 </section>
+<!-- 리다이렉트 뒤 한 번만 보이는 안내(notice)·오류(error) 문구. 컨트롤러의 addFlashAttribute 값이다. -->
 <div th:fragment="flash"><div class="alert notice" th:if="${notice}" th:text="${notice}"></div><div class="alert error" th:if="${error}" th:text="${error}"></div></div>
 <!-- 목록 아래 페이지 이동. 검색 조건(base)을 유지한다. -->
 <nav class="pager" th:fragment="pager(result, base)" th:if="${result.pages > 1}" aria-label="페이지">

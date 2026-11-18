@@ -14,8 +14,10 @@ import static com.toady.web.app.planner.PublicHtml.esc;
 /**
  * 지역별 청약 공개 페이지: /regions(전체), /regions/{시·도}, /regions/{시·도}/{시·군·구}.
  * 사이트맵과 같은 공고 목록(최근 1년 + 앞으로)을 공급 주소의 시·도/시·군·구로 묶어, 검색 봇이 모든 공고 페이지에 링크로 닿게 한다.
- * 봇에게만 서버 HTML을 주고, 사람에게는 같은 주소에서 앱이 그 지역으로 거른 청약 캘린더를 연다(웹 nginx 참고).
+ * 봇에게만 서버 HTML을 주고, 사람에게는 같은 주소에서 앱이 그 지역으로 거른 청약 캘린더를 연다.
+ * (웹 컨테이너 nginx가 User-Agent로 봇을 가려 /api/v1/public/regions... 로 넘긴다.) 공고 목록은 PublicAnnouncementIndex에서 받는다.
  */
+// @RestController: 완성된 HTML 문자열을 응답한다(produces = text/html).
 @RestController
 public class PublicRegionPages {
     static final int PAGE_SIZE = 20;
@@ -42,6 +44,7 @@ public class PublicRegionPages {
             .sorted(Comparator.comparingInt((Group g) -> -g.entries().size()).thenComparing(g -> g.region().district())).toList();
     }
 
+    // 전체 지역 목록 페이지. 결과는 PublicHtml.cached()로 잠시 메모리에 둔다.
     @GetMapping(value = "/api/v1/public/regions", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> index() { return PublicHtml.cached("regions", this::renderIndex); }
     private ResponseEntity<String> renderIndex() {
@@ -74,6 +77,7 @@ public class PublicRegionPages {
         return PublicHtml.page(domain, "", title, description, domain + "/regions", body.toString(), head);
     }
 
+    // @PathVariable: 주소의 {sido}(예: 경기 또는 경기도). @RequestParam(required=false): ?page=2 같은 쪽 번호(없으면 1쪽).
     @GetMapping(value = "/api/v1/public/regions/{sido}", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> sido(@PathVariable String sido, @RequestParam(required = false) String page) {
         var found = Regions.bySegment(sido);
@@ -96,6 +100,7 @@ public class PublicRegionPages {
         return value.matches("[1-9][0-9]{0,2}") ? Integer.parseInt(value) : 0;
     }
 
+    // 지역 한 곳의 페이지: 접수 중·예정은 1쪽에만, 지난 공고는 20건씩 쪽을 나눈다. 쪽마다 canonical·prev/next 링크를 단다.
     private ResponseEntity<String> render(Regions.Region region, int page) {
         LocalDate today = index.today();
         List<PublicAnnouncementIndex.Entry> entries = index.recent().stream().filter(e -> e.region() != null && e.region().sido().equals(region.sido())

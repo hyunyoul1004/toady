@@ -3,7 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { ACCOUNT_KEY, accountApi } from './accountApi';
 
-/** 로그인한 회원의 내 정보 요약(캐릭터·닉네임 등). 내 정보 화면과 같은 캐시를 쓴다. */
+/**
+ * 로그인한 회원의 내 정보 요약(캐릭터·닉네임 등). 내 정보 화면과 같은 캐시를 쓴다.
+ * 회원 번호는 zustand 스토어(useAuthStore)에서 골라 읽는다. 선택자(state => ...)를 쓰면 그 값이 바뀔 때만 다시 그린다.
+ * queryKey에 회원 번호를 넣어, 다른 계정으로 로그인하면 이전 회원의 캐시를 쓰지 않는다. 로그아웃이면 enabled가 false라 요청하지 않는다.
+ */
 export function useMyAccount() {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
   return useQuery({ queryKey: [...ACCOUNT_KEY, userSeq], queryFn: accountApi.summary, enabled: userSeq != null, staleTime: 60000 });
@@ -24,6 +28,7 @@ const seenListeners = new Set();
 export function readSeen(userSeq) {
   try { const value = Number(localStorage.getItem(SEEN_KEY(userSeq))); return Number.isFinite(value) && value > 0 ? value : null; } catch { return null; }
 }
+/** 답글을 본 것으로 기록한다. 더 큰 번호일 때만 저장하고, 구독 중인 화면(useMyReplies)에 바로 알린다. */
 export function markRepliesSeen(userSeq, latestSeq) {
   if (userSeq == null || !latestSeq) return;
   const before = readSeen(userSeq);
@@ -39,6 +44,11 @@ function subscribeSeen(listener) {
   return () => { seenListeners.delete(listener); window.removeEventListener('storage', onStorage); };
 }
 
+/**
+ * 받은 답글 목록과 새 답글 수. 메뉴의 새 답글 표시와 내 정보 화면이 함께 쓴다.
+ * useSyncExternalStore: React 바깥 값(localStorage의 '본 번호')을 구독해, 바뀌면 이 훅을 쓰는 화면을 다시 그린다.
+ * refetchInterval 5분, refetchOnWindowFocus: 다른 창에 있다 돌아오면 새로 확인한다.
+ */
 export function useMyReplies() {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
   const seen = useSyncExternalStore(subscribeSeen, () => (userSeq == null ? null : readSeen(userSeq)), () => null);

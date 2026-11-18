@@ -32,6 +32,7 @@ import com.toady.web.core.security.RequestLimitFilter;
  * 청약홈 경쟁률이 공개되면 실제 구간을 함께 돌려줘 발표·결과 시점에 다시 볼 이유를 만든다.
  * 방문자 식별자는 익명 측정과 같은 브라우저 무작위 값이며 회원 정보와 연결하지 않는다.
  */
+// @RestController: JSON 응답 컨트롤러. 테이블 TB_RATE_POLL에 방문자별 선택 한 행을 저장한다.
 @RestController
 public class RatePoll {
     /** 구간 하한(포함). 마지막 구간은 상한이 없다. */
@@ -39,13 +40,16 @@ public class RatePoll {
     static final List<String> LABELS = List.of("미달 (1:1 미만)", "1 ~ 5 : 1", "5 ~ 10 : 1", "10 ~ 30 : 1", "30 ~ 100 : 1", "100 : 1 이상");
     private final JdbcTemplate jdbc; private final PlannerSummary summaries; private final Clock clock;
 
+    // @Autowired: 생성자가 둘이라 스프링이 쓸 생성자를 지정한다. 아래 생성자는 테스트에서 시계를 바꿔 넣을 때 쓴다.
     @Autowired
     public RatePoll(JdbcTemplate jdbc, PlannerSummary summaries) { this(jdbc, summaries, Clock.system(ZoneId.of("Asia/Seoul"))); }
     RatePoll(JdbcTemplate jdbc, PlannerSummary summaries, Clock clock) { this.jdbc = jdbc; this.summaries = summaries; this.clock = clock; }
 
     static final int VOTERS_PER_IP = 20;
+    // IP+공고별로 하루 동안 본 방문자 ID 묶음(메모리). 한 IP에서 새 ID로 표를 부풀리는 것을 막는 용도다.
     private final Cache<String, Set<String>> voters = CacheBuilder.newBuilder()
             .maximumSize(100_000).expireAfterWrite(Duration.ofDays(1)).build();
+    /** 이미 본 방문자면 허용, 새 방문자면 한 IP당 공고별 VOTERS_PER_IP명까지만 허용한다. */
     boolean voterAllowed(String ipKey, String announcementId, String visitorId) {
         Set<String> seen;
         try { seen = voters.get(ipKey + "|" + announcementId, () -> ConcurrentHashMap.newKeySet()); }
@@ -58,8 +62,10 @@ public class RatePoll {
         }
     }
 
+    /** 투표 본문. visitorId: 브라우저가 만든 무작위 UUID, choice: 구간 번호(0~5). */
     public record Vote(@NotNull UUID visitorId, @NotNull @Min(0) @Max(5) Integer choice) { }
 
+    /** 경쟁률이 들어가는 구간 번호(FLOORS 기준). */
     static int bucket(double rate) {
         for (int i = FLOORS.length - 1; i >= 0; i--) if (rate >= FLOORS[i]) return i;
         return 0;
@@ -83,6 +89,7 @@ public class RatePoll {
         try { return Optional.of(summaries.get("apt", house, notice)); } catch (EntityNotFoundException | IllegalArgumentException missing) { return Optional.empty(); }
     }
 
+    // @GetMapping: 투표 현황 조회. @PathVariable로 공고 키를, @RequestParam(required=false)로 내 방문자 ID(선택)를 받는다.
     @GetMapping("/api/v1/polls/rate/apt/{house}/{notice}")
     public ResponseEntity<Map<String, Object>> get(@PathVariable String house, @PathVariable String notice, @RequestParam(required = false) UUID visitorId) {
         if (!valid(house, notice)) return ResponseEntity.notFound().build();
@@ -90,6 +97,8 @@ public class RatePoll {
         return found.map(s -> ResponseEntity.ok(view(s, house, notice, visitorId))).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    // @PostMapping: 투표하기(또는 선택 바꾸기). 마감 뒤면 409, 같은 네트워크에서 너무 많으면 429.
+    // HttpServletRequest를 파라미터로 받으면 스프링이 현재 요청 객체를 넣어 준다(접속 IP 확인용).
     @PostMapping("/api/v1/polls/rate/apt/{house}/{notice}")
     public ResponseEntity<Map<String, Object>> vote(@PathVariable String house, @PathVariable String notice, @Valid @RequestBody Vote vote,
                                                     HttpServletRequest request) {
@@ -113,6 +122,7 @@ public class RatePoll {
         return ResponseEntity.ok(view(found.get(), house, notice, vote.visitorId()));
     }
 
+    /** 화면에 줄 투표 상태: 열림 여부, 마감일, 구간별 표 수, 내 선택, 실제 경쟁률과 그 구간. */
     Map<String, Object> view(PlannerSummary.Summary s, String house, String notice, UUID visitorId) {
         String id = "apt/" + house + "/" + notice;
         List<String> firstRank = jdbc.queryForList("SELECT CMPET_RATE FROM TB_APT_LTTOT_PBLANC_CMPET WHERE HOUSE_MANAGE_NO=? AND PBLANC_NO=? AND SUBSCRPT_RANK_CODE='1'", String.class, house, notice);

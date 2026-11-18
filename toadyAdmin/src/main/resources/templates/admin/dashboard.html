@@ -97,6 +97,7 @@
     </section>
     </th:block>
 
+    <!-- 내 방문 제외: admin.js가 이 브라우저의 방문자 ID(localStorage)를 읽어 숨은 입력칸에 넣는다. -->
     <section class="panel spaced" id="exclusions"><div class="panel-head"><h2>내 방문 제외</h2><span class="panel-note">운영자 브라우저를 지표에서 뺍니다(과거 기록 포함)</span></div>
         <div class="alert notice" th:unless="${exclusionReady}">제외 목록 테이블이 없습니다. database.sql 20번과 관리자 DB 권한(19번)을 적용하면 사용할 수 있습니다.</div>
         <p class="hint lead">방문자는 브라우저마다 따로 셉니다. 내가 쓰는 기기·브라우저(PC 크롬, 휴대폰 사파리 등)에서 각각 관리자 화면을 열고 한 번씩 등록하세요.</p>

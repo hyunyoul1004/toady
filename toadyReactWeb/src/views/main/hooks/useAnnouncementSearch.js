@@ -7,13 +7,29 @@ import { ALL_REGIONS, FLAT_CITY_OPTIONS, matchesRegions } from '../announcementF
 import { matchesRegionTarget } from '@/features/explore/regionRules';
 import { trackSearch } from '@/features/analytics/trackSearch';
 
+/**
+ * 홈 화면의 검색창 상태와 '화면에 보여 줄 공고 목록'을 만드는 커스텀 훅.
+ * - 쓰이는 곳: Main.jsx. 반환값은 AnnouncementFilters(검색창)와 TodayOverview·캘린더(목록)로 넘어간다.
+ * - 하는 일: ① 검색창 입력값 보관 ② 자동완성 후보 만들기(생활권 + 시·도/시·군·구 + 이번 달 단지 + 전체 기간 공고)
+ *   ③ 서버에서 받은 이번 달 공고(rawSubscriptList)를 공급유형·공급지역·검색 조건으로 걸러 subscriptList로 돌려준다.
+ * - API: /api/v1/living-areas(생활권, React Query 캐시를 Main과 같은 key로 공유), 공고 자동완성(announcementApi.getAnnouncementSuggestions).
+ * 걸러 내기는 서버가 아니라 브라우저에서 한다. 이번 달 목록은 이미 받아 왔으므로 조건을 바꿔도 다시 조회하지 않는다.
+ *
+ * @param {Array} rawSubscriptList 서버에서 받은 이번 달 공고 목록
+ * @param {Object} paramInfo 공급유형(rceptSe01~08: 'Y'/'N')·조회 기간·검색 대상(citys)
+ * @param {Array} selectedRegions 선택한 공급지역(ALL_REGIONS 중 일부)
+ */
 export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegions) {
+  // queryKey가 Main.jsx의 생활권 조회와 같아서 한 번만 받아 함께 쓴다. staleTime 1시간 동안은 다시 받지 않는다.
   const { data: livingAreas = [] } = useQuery({ queryKey:['livingAreas'], queryFn:() => apiClient.get('/api/v1/living-areas'), staleTime:3600000 });
   // 검색창 입력 텍스트 및 전체 기간 공고 자동완성 목록
   const [searchInputValue, setSearchInputValue] = useState('');
   const [globalSuggestions, setGlobalSuggestions] = useState([]);
 
   // 검색창 입력 시 300ms 디바운스로 백엔드 전체 기간 공고 검색 API 호출
+  // 디바운스: 글자를 칠 때마다 부르지 않고 입력이 300ms 멈췄을 때만 부른다.
+  // 정리 함수(return)는 다음 입력이 들어오거나 화면을 떠날 때 실행된다. 타이머를 지우고 active=false로 바꿔,
+  // 늦게 도착한 이전 검색어의 응답이 최신 후보를 덮어쓰지 않게 한다.
   useEffect(() => {
     let active = true;
     const keyword = searchInputValue.trim();
@@ -45,6 +61,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
   }, [searchInputValue]);
 
   // 시/도, 구/군 행정구역 옵션 + 현재 조회된 공고들의 아파트 단지명 + 백엔드 전체 기간 검색 결과 동적 통합
+  // useMemo: 의존성(목록·자동완성·생활권)이 바뀔 때만 다시 계산한다. 검색창에 글자만 쳐서 렌더될 때는 이전 결과를 재사용한다.
   const allSearchOptions = useMemo(() => {
     // 1. 백엔드 전체 기간 검색 결과 (다른 년/월 아파트 포함)
     const globalOptions = (globalSuggestions || []).map((item) => {
@@ -88,6 +105,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
       }
     });
 
+    // 0순위: 생활권(예: 운정)
     // 1순위: 지역 (시/도, 구/군)
     // 2순위: 현재 월에 표시되는 아파트
     // 3순위: 과거 및 전체 기간 공고 (해당 월로 이동)
@@ -100,6 +118,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
   }, [rawSubscriptList, globalSuggestions, livingAreas]);
 
   // 검색어/지역 + 체크박스(특별공급/1순위/2순위 등) + 공급지역 체크박스 필터 적용된 목록
+  // 검색 대상(citys)이 여러 개면 그중 하나라도 맞으면 남긴다(OR).
   const subscriptList = useMemo(() => {
     if (!rawSubscriptList || rawSubscriptList.length === 0) return [];
     let list = rawSubscriptList.filter((item) => paramInfo[`rceptSe${item.rceptSe}`] === 'Y');
@@ -136,6 +155,7 @@ export function useAnnouncementSearch(rawSubscriptList, paramInfo, selectedRegio
           }
 
           // C. 구/군 검색인 경우 (예: '파주시' 또는 '경기도 파주시')
+          // D. 시/도 검색인 경우 (예: '경기도')
           // C·D. 구/군·시/도 검색: 같은 시·도 안에서 낱말 단위로 비교한다('남구'가 '강남구'에 걸리지 않게).
           // 주소가 줄임말·옛 이름이어도 지역별 청약 건수와 같은 규칙(regionOf)으로 묶는다. 단지명에 지역 이름 전체가 들어간 경우도 찾는다.
           if (target.cityName) return matchesRegionTarget(item, target) || houseNm.includes(target.label);

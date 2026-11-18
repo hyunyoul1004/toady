@@ -18,6 +18,7 @@ const SHOWN_KEY = 'toady.week.shown';
 /** 펼친 개수는 이 탭에서만 기억한다(다른 화면에 갔다가 뒤로 와도 같은 길이로 보여 스크롤 복원이 맞게). */
 const readShown = () => { try { return Math.max(PAGE, Number(sessionStorage.getItem(SHOWN_KEY)) || PAGE); } catch { return PAGE; } };
 
+/** 공고 한 줄 카드. 누르면 이 화면 위에 상세를 연다. */
 function ItemCard({ item, onOpen }) {
   return <li><button type="button" className="explore-card" onClick={() => onOpen(item.id)}>
     <span className="explore-card-top">
@@ -31,6 +32,7 @@ function ItemCard({ item, onOpen }) {
   </button></li>;
 }
 
+/** 제목·건수가 있는 구역. 건수가 0이면 빈 안내를 보여 준다. */
 function Section({ id, title, count, empty, children }) {
   return <section className="explore-section" aria-labelledby={id}>
     <h2 id={id}>{title} <span>{count}건</span></h2>
@@ -41,8 +43,10 @@ function Section({ id, title, count, empty, children }) {
 /**
  * 앱 안 '이번 주 청약': 이번 주 접수 · 이번 주 당첨자 발표(APT) · 다음 주 접수 시작.
  * 검색용 서버 페이지(/weekly)와 같은 기준이며, 공고를 누르면 이 화면 위에 상세가 열린다.
+ * 데이터: /api/v1/public/weekly-summary(오늘의 요약·나의 청약 빈 화면과 같은 캐시). 라우터: routes/AppRoutes.jsx.
  */
 export default function ThisWeekPage() {
+  // 상세 열기/닫기는 히스토리와 연결된다(useInPageDetail). 브라우저 뒤로가기로 상세가 닫힌다.
   const detail = useInPageDetail('/this-week', 'weeklyDetail');
   const weekly = useQuery({ queryKey: ['weeklySummary'], queryFn: () => apiClient.get('/api/v1/public/weekly-summary'), staleTime: 600000, retry: 1 });
   const location = useLocation();
@@ -52,9 +56,11 @@ export default function ThisWeekPage() {
   const setFilter = value => {
     const next = new URLSearchParams(searchParams);
     if (value === 'open') next.set('filter', 'open'); else next.delete('filter');
+    // replace로 히스토리를 늘리지 않고, state를 넘겨 지금 칸의 표시(상세 marker 등)를 잃지 않게 한다.
     setSearchParams(next, { replace: true, state: location.state });
   };
   const [shown, setShownState] = useState(readShown);
+  // 함수형 업데이트(update(previous))도 받게 감싸고, 바뀐 값을 sessionStorage에도 같이 쓴다.
   const setShown = update => setShownState(previous => {
     const value = typeof update === 'function' ? update(previous) : update;
     try { sessionStorage.setItem(SHOWN_KEY, String(value)); } catch { /* 저장소가 막혀도 이번 화면에서는 동작한다 */ }
@@ -84,10 +90,12 @@ export default function ThisWeekPage() {
   };
   // 오늘의 요약 숫자에서 들어오면(#week-winners) 자료를 받은 뒤 그 목록으로 내려간다.
   // 처음 들어올 때 한 번만 내려간다(상세를 닫고 돌아올 때 보던 위치에서 다시 점프하지 않게).
+  // useRef라 값이 바뀌어도 다시 그리지 않고, 화면이 살아 있는 동안 값이 유지된다.
   const jumped = useRef(false);
   useEffect(() => {
     if (!data || !location.hash || jumped.current) return;
     jumped.current = true;
+    // 목록이 그려진 다음 프레임에 스크롤한다(requestAnimationFrame).
     requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' }));
   }, [Boolean(data), location.hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -109,6 +117,7 @@ export default function ThisWeekPage() {
       : weekly.isError ? <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => weekly.refetch()}>다시 시도</Button>}>이번 주 청약을 불러오지 못했어요.</Alert>
       : <>
         <Section id="week-current" title="이번 주 접수" count={current.length} empty="이번 주에 접수하는 공고가 없어요.">
+          {/* 접수 중이 일부만 있을 때(또는 이미 접수 중만 보는 중일 때) 전체/접수 중 필터를 보여 준다. */}
           {(filter === 'open' || (openCount > 0 && openCount < current.length)) && <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, value) => { if (value) { setFilter(value); setShown(PAGE); } }} className="explore-filter" aria-label="이번 주 접수 보기">
             <ToggleButton value="all">전체 {current.length}</ToggleButton><ToggleButton value="open">접수 중 {openCount}</ToggleButton>
           </ToggleButtonGroup>}
@@ -117,6 +126,7 @@ export default function ThisWeekPage() {
           {filtered.length > shown && <Button fullWidth variant="outlined" className="explore-more" onClick={() => setShown(value => value + PAGE)}>더 보기 ({filtered.length - shown}건)</Button>}
         </Section>
 
+        {/* 당첨자 발표는 경쟁률 탭(rate)으로 바로 연다. */}
         <Section id="week-winners" title="이번 주 당첨자 발표" count={winners.length} empty="이번 주 발표 예정인 아파트 공고가 없어요.">
           <ul className="explore-list is-compact">{winners.map(winner => <li key={winner.id}><button type="button" className="explore-card" onClick={() => detail.open(winner.id, 'rate')}>
             <span className="explore-card-top"><span className="explore-status is-winner">{dayLabel(winner.date)} 발표</span></span>

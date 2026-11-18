@@ -34,8 +34,14 @@ import java.util.regex.Pattern;
  * - 상대가 답하기 전에는 한 통만 보낼 수 있고, 그 첫 쪽지에는 링크·전화번호·메신저 아이디·계좌번호를 넣을 수 없다.
  * - 받는 사람이 정한 범위(모두·이야기로 이어진 사람만·받지 않기)와 차단(어느 쪽이든)을 지킨다. 이미 서로 주고받던 대화는 이어진다.
  * - 한 사람이 하루에 보낼 수 있는 쪽지는 기본 50통.
+ *
+ * 흐름: CommunityController → DmService → JdbcTemplate SQL(TB_DM_THREAD, TB_DM_MESSAGE, TB_USER).
+ * 한 사람 쌍은 (작은 번호 USER_LOW, 큰 번호 USER_HIGH)로 저장해 A→B, B→A가 같은 방이 되게 한다.
+ * 새 쪽지 알림은 커밋이 끝난 뒤 DmNotifier가 별도 스레드에서 보낸다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 서비스 빈
 @Service
 public class DmService {
     static final int PAGE = 30;
@@ -53,6 +59,7 @@ public class DmService {
     private final ProfileIcons icons;
     private final DmNotifier notifier;
     /** 관리자 화면 금칙어(database.sql 26번). 테스트에서 직접 만들 때는 없을 수 있다. */
+    // @Autowired(required = false): 해당 빈이 있으면 넣고, 없으면 null로 둔다(필드 주입)
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.toady.web.app.operation.ModerationRules moderation;
     /** 관리자 화면 서비스 설정(database.sql 27번). 값이 없으면 환경변수 값을 쓴다. */
@@ -69,6 +76,7 @@ public class DmService {
     private final int dailyNewThreads;
     private final int dailyMessages;
 
+    // 생성자 주입. @Value로 받은 값은 관리자 설정(AppSettings)이 없을 때 쓰는 기본값이다
     public DmService(JdbcTemplate jdbc, Community community, SafetyService safety, ProfileIcons icons, DmNotifier notifier,
                      @org.springframework.beans.factory.annotation.Value("${toady.dm.min-account-hours:0}") long minAccountHours,
                      @org.springframework.beans.factory.annotation.Value("${toady.dm.require-story:false}") boolean requireStory,
@@ -93,6 +101,7 @@ public class DmService {
                 rs.getLong("LAST_MESSAGE_SEQ"), rs.getLong("LOW_READ_SEQ"), rs.getLong("HIGH_READ_SEQ"), rs.getLong("LOW_LEFT_SEQ"), rs.getLong("HIGH_LEFT_SEQ"));
     }
 
+    // 두 회원의 대화방을 찾는다. lock이면 FOR UPDATE로 행을 잠근다(트랜잭션 안에서만 의미 있다)
     private Thread pair(long a, long b, boolean lock) {
         List<Thread> found = jdbc.query("SELECT * FROM TB_DM_THREAD WHERE USER_LOW=? AND USER_HIGH=?" + (lock ? " FOR UPDATE" : ""),
                 (rs, n) -> map(rs), Math.min(a, b), Math.max(a, b));
@@ -104,6 +113,7 @@ public class DmService {
         return found.isEmpty() ? null : found.get(0);
     }
 
+    // 이 대화방에서 sender가 보낸 쪽지 수
     private long sentIn(long threadSeq, long sender) {
         return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ=?", threadSeq, sender);
     }
@@ -194,6 +204,7 @@ public class DmService {
      * 먼저 잠금 조회를 하면 MariaDB가 빈 구간에 잠금을 걸어, 두 요청이 동시에 첫 쪽지를 보낼 때 교착(1213)이 난다.
      * 규칙에 걸리면 이 트랜잭션을 되돌려(방금 만든 빈 대화방도 남기지 않는다) 안내만 돌려준다.
      */
+    // @Transactional: 대화방 생성·쪽지 저장·읽음 위치 갱신을 하나로 묶는다. 잠금(FOR UPDATE)은 이 트랜잭션이 끝날 때 풀린다
     @Transactional
     public Result send(long me, long other, String content, String contextId) {
         LocalDateTime now = Community.now();
@@ -228,6 +239,7 @@ public class DmService {
         boolean flagged = DmRules.flagged(text) || extra == com.toady.web.app.operation.ModerationRules.Action.FLAG;
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         final long threadSeq = thread.seq();
+        // INSERT 후 DB가 만든 MESSAGE_SEQ(AUTO_INCREMENT)를 돌려받기 위해 PreparedStatement를 직접 만든다
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO TB_DM_MESSAGE (THREAD_SEQ, SENDER_SEQ, CONTENT, FLAGGED, REG_DT) VALUES (?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
@@ -247,6 +259,7 @@ public class DmService {
         return Result.done("쪽지를 보냈어요.", data);
     }
 
+    // GeneratedKeyHolder에서 새 쪽지 번호를 꺼낸다
     private static long generated(GeneratedKeyHolder key) {
         // H2는 모든 컬럼을, MariaDB는 키 하나를 돌려준다.
         Map<String, Object> keys = key.getKeys();
@@ -267,6 +280,10 @@ public class DmService {
         return result;
     }
 
+    /**
+     * 트랜잭션이 커밋된 뒤에 task를 실행하도록 예약한다. 롤백되면 실행하지 않는다.
+     * 저장이 확정되기 전에 알림이 나가 '쪽지가 없는 알림'이 생기지 않게 하기 위해서다.
+     */
     private static void afterCommit(Runnable task) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) { task.run(); return; }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -274,6 +291,7 @@ public class DmService {
         });
     }
 
+    // user가 이 방에서 아직 읽지 않은 상대 쪽지 수(읽은 위치와 나간 위치 중 큰 값 뒤부터 센다)
     private long unreadIn(Thread thread, long user) {
         return community.count("SELECT COUNT(*) FROM TB_DM_MESSAGE WHERE THREAD_SEQ=? AND SENDER_SEQ<>? AND MESSAGE_SEQ>?",
                 thread.seq(), user, Math.max(thread.read(user), thread.left(user)));
@@ -400,6 +418,7 @@ public class DmService {
         return view;
     }
 
+    /** 대화가 시작된 공고 id로 단지 이름을 읽는다. 테이블 이름은 DETAIL_TABLES의 고정 값만 쓴다. */
     String houseName(String contextId) {
         if (contextId == null) return null;
         String[] id = contextId.split("/");

@@ -8,8 +8,10 @@ import { useEligibilityProfile } from './eligibilityProfile';
 import { useEligibilityFeed } from './matchShared';
 import './match.css';
 
+// 판정하는 공고 종류: APT 일반 분양, 무순위·잔여세대, 임의공급. 오피스텔 등은 자격 규칙이 달라 뺀다.
 const TYPES = new Set(['apt', 'remaining', 'optional']);
 
+/** 신청 유형(일반공급·특별공급 등)별 판정 목록. 상태·이유·확인할 것을 한 줄씩 보여준다. */
 function TrackList({ tracks }) {
   return <ul className="match-detail-tracks">{tracks.map(t => <li key={t.key} className={`is-${t.status}`}>
     <div><strong>{t.label}</strong><span className={`match-status is-${t.status}`}>{STATUS_TEXT[t.status]}</span></div>
@@ -21,11 +23,14 @@ function TrackList({ tracks }) {
 /**
  * 공고 상세의 '내 신청 가능성'. 접수 중·예정 공고만 판정한다(지난 공고는 자격 요건이 바뀌었을 수 있다).
  * 진단 전이면 진단 화면으로 안내한다.
+ * 쓰는 곳: 공고 상세. 판정 재료는 useEligibilityFeed(서버 /api/v1/public/eligibility/announcements)와
+ * 이 브라우저에 저장한 진단 값(useEligibilityProfile)이다.
  */
 export default function EligibilityCard({ detail }) {
   const type = String(detail?.subscriptSeq || '').split('/')[0];
   const feed = useEligibilityFeed(TYPES.has(type));
   const profile = useEligibilityProfile();
+  // 훅은 조건문보다 먼저, 매번 같은 순서로 불러야 해서 early return은 훅 호출 뒤에 둔다.
   if (!TYPES.has(type)) return null;
   const item = Array.isArray(feed.data?.items) ? feed.data.items.find(entry => entry.id === detail.subscriptSeq) : null;
   if (!item) return null;
@@ -37,6 +42,7 @@ export default function EligibilityCard({ detail }) {
     </section>;
   }
   const result = evaluate(profile, item, koreaToday());
+  // 가능한 유형이 위로 오게 정렬하고, '어려움'은 접어서(details) 따로 보여준다.
   const order = { ok: 0, check: 1, info: 2, no: 3 };
   const tracks = [...result.tracks].sort((a, b) => order[a.status] - order[b.status]);
   return <section className="match-detail" aria-labelledby="match-detail-heading">
@@ -47,6 +53,7 @@ export default function EligibilityCard({ detail }) {
     <TrackList tracks={tracks.filter(t => t.status !== 'no')} />
     {tracks.some(t => t.status === 'no') && (tracks.every(t => t.status === 'no') ? <TrackList tracks={tracks} />
       : <details className="match-detail-more"><summary>해당하지 않는 유형 {tracks.filter(t => t.status === 'no').length}개 보기</summary><TrackList tracks={tracks.filter(t => t.status === 'no')} /></details>)}
+    {/* '조건 수정' 링크는 state.overlayLayers에 수정 팝업을 미리 넣어, 맞춤 청약 화면에 가자마자 수정 양식이 열리게 한다. */}
     <p className="match-detail-foot">공통 요건을 단순화한 결과예요. 세부 자격은 모집공고 원문에서 확인하세요. <Link to="/faq#basics">자격 기준 자주 묻는 질문</Link> · <Link to="/match" state={{ overlayLayers: [{ id: 'match-edit', value: true }] }}>조건 수정</Link></p>
   </section>;
 }

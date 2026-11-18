@@ -1,6 +1,12 @@
 /**
  * @file SignUp.jsx
- * @description 신규 회원가입 입력 및 유효성 검증 컴포넌트
+ * @description 회원가입 창의 내용. 닉네임·이메일·비밀번호를 입력받아 가입을 요청하고, 성공하면 '인증 메일을 보냈어요' 화면으로 바뀐다.
+ *
+ * - 사용처: components/layout/MainLayout.jsx의 공통 회원가입 팝업(layout 층 'signup') 안에 lazy로 들어간다.
+ *   팝업은 useHistoryOverlay로 히스토리 한 단계라서 브라우저 뒤로가기로 닫힌다.
+ * - API: authApi.register(POST /webApi/user/regUser). 서버가 인증 메일을 보내고, 메일의 링크(/certify)를 눌러야 로그인할 수 있다.
+ * - 가입하던 화면 주소를 rememberSignupReturn으로 localStorage에 적어 두어, 인증을 마친 뒤 그 화면으로 돌아가게 한다.
+ * - props: handleCloseModal, handleOpenLogin(로그인 창으로 전환)
  */
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -32,6 +38,7 @@ export const SignUp = (props) => {
   const userPasswordFocus = useRef(null);
   const userPasswordConfirmFocus = useRef(null);
 
+  // 네 입력칸 값을 객체 하나로 관리한다. 각 TextField는 value·onChange로 이 state와 묶인 controlled input이다.
   const [formData, setFormData] = useState({
     userNicName: '',
     userEmail: '',
@@ -42,6 +49,7 @@ export const SignUp = (props) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // 칸별 오류 여부(…Check가 false면 빨간 테두리)와 안내 문구(helperText).
   const [validationInfo, setValidationInfo] = useState({
     userNicNameCheck: true,
     userNicNameMsg: null,
@@ -55,6 +63,7 @@ export const SignUp = (props) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  // true가 되면 아래에서 입력 폼 대신 가입 완료(메일 확인) 화면을 돌려준다.
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleChange = (e) => {
@@ -63,6 +72,8 @@ export const SignUp = (props) => {
     setErrorMessage(null);
   };
 
+  // 위에서부터 한 칸씩 검사해 처음 걸린 칸에만 오류를 표시하고 커서를 옮긴다. 모두 통과하면 가입을 요청한다.
+  // setValidationInfo(prev => ...)처럼 함수를 넘기면 바로 이전 state를 기준으로 일부만 바꿀 수 있다.
   const handleSubmit = async (event) => {
     event.preventDefault();
     const { userNicName, userEmail, userPassword, userPasswordConfirm } = formData;
@@ -180,6 +191,8 @@ export const SignUp = (props) => {
         >
           인증을 마쳤어요, 로그인하기
         </Button>
+        {/* 인증 메일 재발송 화면으로 이동. replace라서 지금의 가입 창 히스토리 칸을 /certify가 대신 차지한다(뒤로가기로 완료 화면에 다시 오지 않음).
+            이메일은 주소가 아닌 location.state로 넘긴다 */}
         <Button fullWidth variant="text" onClick={() => navigate('/certify', { replace: true, state: { resendEmail: formData.userEmail } })}
           sx={{ mt: 1, fontWeight: 700, color: '#475569' }}>
           메일이 오지 않았나요? 인증 메일 다시 받기

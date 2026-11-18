@@ -4,7 +4,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
 
-/** 공고 댓글과 작성자 표시명, 생성·수정 정보를 담는 응답 모델입니다. */
+/**
+ * 공고 댓글과 작성자 표시명, 생성·수정 정보를 담는 응답 모델입니다.
+ * 목록은 AnnouncementCommentRepository의 JPQL(select new …)이 아래 14개 인자 생성자로 바로 만들고,
+ * AnnouncementCommentService가 프로필 캐릭터·운영팀 표시를 with… 메서드로 덧붙인다.
+ * record는 값을 바꿀 수 없어서, 값을 더할 때는 새 객체를 만들어 돌려준다.
+ */
 @Schema(description = "공고 댓글 정보")
 public record AnnouncementCommentResponse(
         @Schema(description = "댓글 번호", example = "1")
@@ -42,7 +47,7 @@ public record AnnouncementCommentResponse(
         @Schema(description = "운영팀이 공고 이야기 맨 위에 고정한 원글이면 true", example = "false")
         boolean pinned
 ) {
-    /** JPQL 생성자 표현식용(프로필 캐릭터는 TB_USER_PROFILE에서 따로 채운다). */
+    /** JPQL 생성자 표현식용(프로필 캐릭터는 TB_USER_PROFILE에서 따로 채운다). 나머지 세 값은 null·false로 시작한다. */
     public AnnouncementCommentResponse(Long commentSeq, String announcementType, String houseManageNo, String pblancNo, Long parentCommentSeq,
             String content, Integer recommend, Integer oppose, String deleteYn, Long createUserSeq, String userNicName,
             LocalDateTime regDt, Long updateUserSeq, LocalDateTime updateDt) {
@@ -50,11 +55,13 @@ public record AnnouncementCommentResponse(
                 createUserSeq, userNicName, regDt, updateUserSeq, updateDt, null, false, false);
     }
 
+    /** 프로필 캐릭터 키만 바꾼 새 객체를 돌려준다. */
     public AnnouncementCommentResponse withProfileIcon(String icon) {
         return new AnnouncementCommentResponse(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend,
                 oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, icon, official, pinned);
     }
 
+    /** 운영팀 글 여부를 붙인다. 고정(pinned)은 운영팀이 쓴 원글(답글 아님)일 때만 true가 된다. */
     public AnnouncementCommentResponse withOfficial(boolean value, boolean pin) {
         return new AnnouncementCommentResponse(commentSeq, announcementType, houseManageNo, pblancNo, parentCommentSeq, content, recommend,
                 oppose, deleteYn, createUserSeq, userNicName, regDt, updateUserSeq, updateDt, profileIcon, value, value && pin && parentCommentSeq == null);

@@ -1,3 +1,4 @@
+/* 알림 안내 카드(PushPrompt)·알림 설정 창(PushSettingsDialog)·홈 화면 추가 안내(HomeScreenGuide, InstallGuideDialog)가 함께 쓰는 스타일. */
 .push-card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px 14px;background:#f2f8f4;border:1px solid #d5e8db;border-radius:14px;padding:14px 44px 14px 16px;margin:0 0 22px;color:#173b28}
 .push-card.compact{margin:12px 0 4px}
 .push-card-icon{color:#1f7a45;font-size:26px!important}
@@ -23,6 +24,7 @@
 .push-status div{display:flex;flex-direction:column;gap:2px}
 .push-status span{font-size:12px;color:#3f6b52}
 .push-option{display:flex;flex-direction:column;gap:4px;border-top:1px solid #e5ebf2;padding:14px 0}
+/* MUI 스위치 줄은 기본이 [스위치][글자]다. row-reverse로 글자를 왼쪽, 스위치를 오른쪽 끝에 둔다(휴대폰 설정 화면처럼). */
 .push-option .MuiFormControlLabel-root{margin:0;justify-content:space-between;flex-direction:row-reverse;gap:12px}
 .push-option .MuiFormControlLabel-label span{display:flex;flex-direction:column;gap:2px}
 .push-option small{font-size:12px;color:#718096;line-height:1.5}

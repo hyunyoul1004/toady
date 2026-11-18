@@ -2,6 +2,7 @@ import { STAGE_LABEL, STAGE_PROMPTS } from './storyRules';
 import './story.css';
 
 /** 질문 칩을 누르면 말머리를 붙여 글쓰기를 시작한다. 선택된 칩은 다시 누르면 해제된다. */
+// 쓰는 곳: views/main/subscriptComment/SubscriptComment.jsx. stage는 storyRules.storyStage 결과(before·open·waiting·after).
 export default function StoryPrompts({ stage, activeTag, onPick }) {
   const prompts = STAGE_PROMPTS[stage] || STAGE_PROMPTS.before;
   const active = prompts.find(prompt => prompt.tag === activeTag);

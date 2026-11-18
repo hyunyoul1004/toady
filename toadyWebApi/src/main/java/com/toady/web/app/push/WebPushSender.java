@@ -24,7 +24,10 @@ import java.util.regex.Pattern;
 /**
  * VAPID 키는 환경변수로만 받는다. 키가 없거나 서로 맞지 않으면 푸시 기능 전체를 끈 상태로 시작한다(값은 출력하지 않음).
  * 엔드포인트는 사용자가 보낸 주소라 서버가 임의 주소로 요청하지 않도록 주요 브라우저 푸시 서비스 호스트만 허용한다.
+ * 한 건 보내기: 본문 암호화(WebPushCrypto) → VAPID 서명 헤더 → 푸시 서버로 HTTP POST → 응답 코드를 Result로 바꾼다.
+ * 호출: PushController(시험 발송), PushDigest(묶음·결과 알림), InternalAdminController(관리자 발송).
  */
+// @Component: 빈 하나로 등록된다. 키는 시작할 때 한 번 읽어 둔다
 @Component
 public class WebPushSender {
     private static final Logger log = LoggerFactory.getLogger(WebPushSender.class);
@@ -32,6 +35,7 @@ public class WebPushSender {
     private static final Pattern HOSTS = Pattern.compile("^(fcm\\.googleapis\\.com|android\\.googleapis\\.com|updates\\.push\\.services\\.mozilla\\.com|push\\.services\\.mozilla\\.com|[a-z0-9-]+\\.push\\.apple\\.com|web\\.push\\.apple\\.com|[a-z0-9-]+\\.notify\\.windows\\.com)$");
     static final Duration TTL = Duration.ofHours(20);
 
+    /** 발송 결과. ACCEPTED: 푸시 서버가 받음, GONE: 구독 만료(지워야 함), RETRY: 잠시 뒤 다시, REJECTED: 그 밖의 거절. */
     public enum Result { ACCEPTED, GONE, RETRY, REJECTED }
     public record Target(String endpoint, String p256dh, String auth) { }
 
@@ -41,6 +45,7 @@ public class WebPushSender {
     private final ECPrivateKey privateKey; private final String publicKey; private final String subject;
     private final Transport transport; private final Clock clock;
 
+    // @Autowired: 스프링이 쓸 생성자. @Value로 VAPID 키·연락처(subject)·서비스 주소를 받는다. 아래 생성자는 테스트용
     @Autowired
     public WebPushSender(@Value("${toady.push.vapid-public-key:}") String publicKey, @Value("${toady.push.vapid-private-key:}") String privateKey,
             @Value("${toady.push.subject:}") String subject, @Value("${toady.web.domain}") String domain) {
@@ -62,6 +67,7 @@ public class WebPushSender {
         this.subject = subject.startsWith("mailto:") || subject.startsWith("https://") ? subject : "https://www.toady.co.kr";
     }
 
+    /** 키가 정상으로 읽혔는지(=푸시 기능 사용 가능). */
     public boolean enabled() { return privateKey != null; }
     public String publicKey() { return publicKey; }
 
@@ -75,6 +81,7 @@ public class WebPushSender {
         } catch (Exception invalid) { return false; }
     }
 
+    /** 구독 하나에 메시지 하나를 보낸다. 예외를 던지지 않고 결과 값으로 돌려준다. */
     public Result send(Target target, String json, String topic) {
         if (!enabled() || !allowedEndpoint(target.endpoint())) return Result.REJECTED;
         try {
@@ -106,6 +113,7 @@ public class WebPushSender {
         }
     }
 
+    // JDK 기본 HttpClient로 보낸다. 리다이렉트를 따라가지 않아 허용하지 않은 주소로 새지 않게 한다
     static Transport httpTransport() {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
         return (uri, headers, body) -> {

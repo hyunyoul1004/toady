@@ -22,14 +22,22 @@ import org.springframework.web.util.UrlPathHelper
 /**
  * 관리자 전용 세션 인증. 서비스 회원 계정과 분리된 환경변수 계정 하나만 허용한다.
  * 로그인·회원 잠금·댓글 숨김·수집 실행 등 모든 POST는 CSRF 토큰을 요구한다.
+ * 관리자 IP 제한은 이 앱이 아니라 앞단 nginx(conf.d/admin-allow.inc, 저장소에 두지 않음)가 맡는다.
+ * 여기서는 그 뒤의 두 번째 벽으로 로그인·로그인 실패 잠금(LoginThrottle)·로그인 유지 쿠키를 설정한다.
  */
+// @Configuration: 안의 @Bean 메서드가 돌려주는 객체를 스프링 빈으로 등록하는 설정 클래스.
 @Configuration
 class SecurityConfig {
 	private val throttle = LoginThrottle()
 
+	// @Bean: 반환 객체를 빈으로 등록한다. 필터와 처리기가 같은 객체를 쓰도록 필드 하나를 빈으로도 내보낸다.
 	@Bean
 	fun loginThrottle(): LoginThrottle = throttle
 
+	/**
+	 * 관리자 계정 하나를 메모리에 만든다. 환경변수의 비밀번호를 시작할 때 BCrypt로 해시해 두고,
+	 * 조건(12자 이상 등)이 맞지 않으면 check가 예외를 던져 앱이 뜨지 않는다.
+	 */
 	@Bean
 	fun adminUsers(@Value("\${toady.admin.username:admin}") username: String,
 	               @Value("\${toady.admin.password:}") password: String): UserDetailsService {
@@ -70,6 +78,10 @@ class SecurityConfig {
 		}
 	}
 
+	/**
+	 * 경로별 접근 규칙과 로그인·로그아웃·보안 헤더 설정. 규칙은 위에서부터 먼저 맞는 것이 적용된다.
+	 * CSRF는 따로 끄지 않았으므로 기본값대로 모든 POST에 토큰이 필요하다(템플릿 form이 자동으로 넣는다).
+	 */
 	@Bean
 	fun adminSecurity(http: HttpSecurity, rememberMe: TokenBasedRememberMeServices): SecurityFilterChain {
 		http.authorizeHttpRequests {
@@ -106,6 +118,10 @@ class SecurityConfig {
 		return http.build()
 	}
 
+	/**
+	 * 로그인 POST 앞에 끼우는 필터. 잠긴 IP면 비밀번호 확인 없이 돌려보내고, 아니면 '진행 중 시도'로 표시해 둔다.
+	 * object : OncePerRequestFilter()는 이름 없는 클래스를 바로 만드는 Kotlin 문법이다(한 요청에 한 번만 실행되는 필터).
+	 */
 	private fun lockedLoginFilter() = object : OncePerRequestFilter() {
 		// 디코딩·정규화된 경로로 비교해 /admin/%6Cogin 같은 인코딩 우회를 막는다.
 		override fun shouldNotFilter(request: HttpServletRequest) =
@@ -130,12 +146,14 @@ class SecurityConfig {
 		}
 	}
 
+	/** 필터가 요청에 붙여 둔 IP를 꺼내고 표시를 지운다(finally에서 abandoned로 한 번 더 세지 않게). */
 	private fun finishAttempt(request: HttpServletRequest): String {
 		val ip = request.getAttribute(ATTEMPT) as? String
 		request.removeAttribute(ATTEMPT)
 		return ip ?: LoginThrottle.clientIp(request)
 	}
 
+	// companion object: 클래스 이름으로 바로 부르는 정적 멤버 모음(Java의 static과 비슷하다).
 	companion object {
 		private val ATTEMPT = SecurityConfig::class.java.name + ".loginAttempt"
 		const val REMEMBER_PARAMETER = "remember"

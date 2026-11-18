@@ -46,6 +46,7 @@
     </div>
     <section class="panel spaced"><div class="panel-head"><h2>숨김 · 운영 안내</h2><span class="panel-note">공고 원본은 바꾸지 않습니다 · 저장하면 1분 안에 반영</span></div>
         <div class="alert error" th:unless="${overrideReady}">공고 안내 테이블이 없습니다. database.sql 26번과 관리자 계정 권한을 적용하세요.</div>
+        <!-- 숨김·안내 저장. 둘 다 비우면 원래대로 돌아간다(OverrideService.save). -->
         <form class="stack-form" th:if="${overrideReady}" th:action="@{${here + '/override'}}" method="post">
             <label class="check"><input type="checkbox" name="hidden" value="true" th:checked="${override != null and override.hidden}"> 서비스에서 숨기기 <span class="muted">(잘못 수집됐거나 취소된 공고)</span></label>
             <label>공고 상세 위 운영 안내(선택)<textarea name="message" maxlength="500" th:text="${override != null and override.notice != null ? override.notice : ''}" placeholder="예: 청약홈 정정 공고로 1순위 접수일이 11월 25일로 바뀌었습니다."></textarea></label>
@@ -59,6 +60,7 @@
             <input name="address" maxlength="200" th:value="${locationAddress}" placeholder="예: 경기도 파주시 동패동 1234-5" aria-label="확인한 주소"><button class="secondary" type="submit">저장</button></form>
     </section>
     <section class="panel spaced"><div class="panel-head"><h2>운영팀 이야기</h2><span class="panel-note">'서비스 설정'의 운영팀 계정으로 올라가고 '운영팀' 표시가 붙습니다</span></div>
+        <!-- 운영팀 이야기 쓰기. 원글 번호(parentSeq)를 넣으면 그 원글의 답글이 된다. -->
         <form class="stack-form" th:action="@{${here + '/official'}}" method="post">
             <label>내용<textarea name="content" required maxlength="1000" rows="3" placeholder="예: 청약홈 정정 공고로 1순위 접수일이 11월 25일로 바뀌었어요. 원문을 꼭 확인해 주세요."></textarea></label>
             <div class="row"><label>답글을 달 원글 번호(선택)<input name="parentSeq" inputmode="numeric" placeholder="비우면 새 원글"></label>

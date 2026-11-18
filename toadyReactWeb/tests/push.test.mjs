@@ -240,3 +240,18 @@ test('홈 화면 추가 안내는 안드로이드 브라우저마다 다른 순�
   assert.equal(androidBrowser('Mozilla/5.0 (Android 14; Mobile; rv:132.0) Gecko/132.0 Firefox/132.0'), 'firefox');
   assert.equal(androidBrowser('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36 EdgA/131.0'), 'edge');
 });
+
+test('서비스 워커는 페이지 이동만 네트워크로 받고, 끊기면 안내 화면을 보여 준다(그 밖의 요청은 손대지 않음)', async () => {
+  const listeners = {};
+  const self = { location: new URL('https://www.toady.co.kr/sw.js'), addEventListener: (type, handler) => { listeners[type] = handler; }, skipWaiting() {}, clients: { claim: async () => {} } };
+  const fetch = async () => { throw new TypeError('offline'); };
+  vm.runInNewContext(await readFile(new URL('../public/sw.js', import.meta.url), 'utf8'), { self, URL, fetch, Response });
+  let responded = null;
+  listeners.fetch({ request: { mode: 'navigate', method: 'GET' }, respondWith: value => { responded = value; } });
+  const page = await responded;
+  assert.equal(page.status, 503);
+  assert.match(await page.text(), /인터넷 연결이 끊겼어요/);
+  responded = null;
+  listeners.fetch({ request: { mode: 'cors', method: 'GET' }, respondWith: value => { responded = value; } });
+  assert.equal(responded, null);
+});

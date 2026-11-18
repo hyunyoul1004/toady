@@ -18,8 +18,11 @@ import java.util.Map;
  * 앞단 nginx는 /internal을 외부로 내보내지 않으며, 추가로 공유 토큰(SCHEDULER_INTERNAL_TOKEN, 32자 이상)을 요구한다.
  * 토큰이 없으면 모든 요청을 거절한다.
  */
+// @RestController: 반환값을 JSON 응답으로 보내는 컨트롤러.
 @RestController
+// @RequestMapping: 이 클래스의 모든 주소 앞에 /internal/admin을 붙인다.
 @RequestMapping("/internal/admin")
+// @ConditionalOnProperty: applyhome.admin.enabled=true일 때만 빈을 만든다. 꺼져 있으면 이 API 자체가 없다.
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "true")
 public class AdminInternalApi {
     static final String HEADER = "X-Admin-Token";
@@ -28,12 +31,16 @@ public class AdminInternalApi {
     private final AdminScheduleManager schedules;
     private final byte[] token;
 
+    /**
+     * 생성자 주입. 스프링이 빈들을 넣어 준다. @Value로 공유 토큰을 읽고, 32자 미만이면 null로 두어 모든 요청을 거절한다.
+     */
     public AdminInternalApi(AdminJobService jobs, AdminJobRepository repository, AdminScheduleManager schedules,
                             @Value("${applyhome.admin.internal-token:}") String token) {
         this.jobs = jobs; this.repository = repository; this.schedules = schedules;
         this.token = token.length() >= 32 ? token.getBytes(StandardCharsets.UTF_8) : null;
     }
 
+    // 관리자 사이트가 보내는 JSON 본문 형태. @RequestBody가 이 record로 바꿔 준다.
     public record JobRequest(JobKind kind, LocalDate startDate, LocalDate endDate, String requestedBy) { }
     public record RetryRequest(String requestedBy) { }
     public record ScheduleRequest(boolean enabled, String cron, int lookbackDays) { }
@@ -50,12 +57,16 @@ public class AdminInternalApi {
         return ResponseEntity.ok(body);
     }
 
+    /** 수동 수집 실행 요청(POST /internal/admin/jobs). */
+    // @PostMapping: POST 요청을 연결한다. @RequestBody는 JSON 본문을 JobRequest로 바꿔 준다.
     @PostMapping("/jobs")
     public ResponseEntity<?> start(@RequestBody JobRequest body, HttpServletRequest request) {
         if (!authorized(request)) return denied();
         return submit(body.kind(), body.startDate(), body.endDate(), body.requestedBy());
     }
 
+    /** 중지 요청. 바로 멈추지 않고 표시만 해 두면 실행기가 월 구간이 끝날 때 확인하고 멈춘다. */
+    // @PathVariable: 주소의 {id} 부분을 매개변수로 받는다.
     @PostMapping("/jobs/{id}/cancel")
     public ResponseEntity<?> cancel(@PathVariable String id, HttpServletRequest request) {
         if (!authorized(request)) return denied();
@@ -73,6 +84,7 @@ public class AdminInternalApi {
         return submit(job.kind(), job.startDate(), job.endDate(), body == null ? null : body.requestedBy());
     }
 
+    /** 자동 일정 저장. cron은 '|'로 여러 개를 이을 수 있고, 형식이 틀리면 400으로 사유를 돌려준다. */
     @PostMapping("/schedules/{kind}")
     public ResponseEntity<?> schedule(@PathVariable JobKind kind, @RequestBody ScheduleRequest body, HttpServletRequest request) {
         if (!authorized(request)) return denied();
@@ -92,6 +104,7 @@ public class AdminInternalApi {
             return ResponseEntity.badRequest().body(Map.of("message", failure.getMessage()));
         }
     }
+    /** 요청자 이름을 정리한다. 비면 toadyAdmin, 100자를 넘으면 자른다(DB 컬럼 길이). */
     private static String requester(String value) {
         String name = value == null ? "" : value.trim();
         return name.isEmpty() ? "toadyAdmin" : name.length() > 100 ? name.substring(0, 100) : name;

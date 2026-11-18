@@ -9,31 +9,33 @@ import java.util.*;
 /**
  * 서비스 워커(public/sw.js)가 그대로 표시하는 알림 내용. 주소는 같은 출처의 상대 경로만 쓴다.
  * 관심 공고 '내일 일정'과 구독 생활권 '새 공고'를 하루 한 번 하나의 알림으로 묶는다.
+ * record: 필드·생성자·getter·equals를 자동으로 만드는 불변 데이터 클래스. Jackson이 이 필드 그대로 JSON을 만든다.
+ * 만드는 쪽: PushDigest(묶음·결과 알림), PushController(시험 알림), InternalAdminController(관리자 공지).
  */
 public record PushMessage(String title, String body, String url, String tag, List<Action> actions) {
+    /** 알림 아래 버튼(최대 2개). */
     public record Action(String action, String title, String url) { }
     /** 묶음에 들어가는 한 줄. kind는 FAVORITE·RESULT·AREA·WEEKLY(digest 설명 참고). */
     public record Line(String kind, String announcementId, String houseNm, String label, String areaSlug, String areaLabel) { }
 
     static final int MAX_NAME = 40;
 
+    /** 공고 상세를 여는 앱 주소. */
     public static String detailUrl(String announcementId) {
         return "/?subscriptSeq=" + URLEncoder.encode(announcementId, StandardCharsets.UTF_8);
     }
+    // 단지 이름을 40자로 자른다(알림 제목 길이 제한)
     static String name(String value) {
         String text = value == null || value.isBlank() ? "공고" : value.strip();
         return text.length() > MAX_NAME ? text.substring(0, MAX_NAME - 1) + "…" : text;
     }
 
+    /** 알림을 켤 때 보내는 확인 알림. 공고를 보던 중이면 그 공고 상세로 연결한다. */
     public static PushMessage test(String announcementId, String houseNm) {
         if (announcementId == null) return new PushMessage("TOADY 알림이 켜졌어요", "관심 공고의 전날 일정과 구독한 생활권의 새 공고를 하루 한 번 모아서 알려 드릴게요.", "/my", "toady-test", List.of());
         return new PushMessage("TOADY 알림이 켜졌어요", "이렇게 알려 드려요. 눌러서 ‘" + name(houseNm) + "’ 상세를 열어 보세요.", detailUrl(announcementId), "toady-test", List.of());
     }
 
-    /**
-     * 결과 즉시 알림(관심 공고의 1순위 경쟁률·당첨가점이 처음 공개된 직후). 숫자는 청약홈 수집값 그대로, 반영 시각을 함께 적는다.
-     * lines의 label은 "경쟁률 발표"·"당첨가점 공개", details는 공고 id → 결과, seenAt은 "RATE|id"·"SCORE|id" → 처음 확인 시각.
-     */
     /** 확인 시각 표기: 오늘이면 'HH:mm', 어제면 '어제 HH:mm', 그보다 전이면 'M월 d일'. */
     static String checkedAt(java.time.LocalDateTime at, java.time.LocalDate today) {
         String time = at.toLocalTime().withSecond(0).withNano(0).toString();
@@ -41,6 +43,10 @@ public record PushMessage(String title, String body, String url, String tag, Lis
         if (at.toLocalDate().equals(today.minusDays(1))) return "어제 " + time;
         return at.getMonthValue() + "월 " + at.getDayOfMonth() + "일";
     }
+    /**
+     * 결과 즉시 알림(관심 공고의 1순위 경쟁률·당첨가점이 처음 공개된 직후). 숫자는 청약홈 수집값 그대로, 반영 시각을 함께 적는다.
+     * lines의 label은 "경쟁률 발표"·"당첨가점 공개", details는 공고 id → 결과, seenAt은 "RATE|id"·"SCORE|id" → 처음 확인 시각.
+     */
     public static Optional<PushMessage> results(List<Line> lines, java.util.Map<String, com.toady.web.app.planner.AnnouncementResults.Result> details,
             java.util.Map<String, java.time.LocalDateTime> seenAt, java.time.LocalDateTime now) {
         if (lines.isEmpty()) return Optional.empty();
@@ -133,6 +139,7 @@ public record PushMessage(String title, String body, String url, String tag, Lis
     }
     private static List<Line> kind(List<Line> lines, String kind) { return lines.stream().filter(line -> line.kind().equals(kind)).toList(); }
 
+    /** JSON으로 바꾼다. 암호화 한 레코드에 안 들어갈 만큼 길면 본문을 300자로 줄이고 버튼을 뺀다. */
     public String json(ObjectMapper mapper) {
         try {
             String json = mapper.writeValueAsString(this);

@@ -27,7 +27,11 @@ import java.util.Set;
 
 /**
  * 날짜 범위의 공고 상세와 연결된 주택형 정보를 청약홈에서 가져와 테이블별로 적재한다.
+ * 다섯 유형: APT, 오피스텔·도시형, APT 잔여세대, 공공지원 민간임대, 임의공급.
+ * 청약홈 API: ApplyhomeInfoDetailSvc의 get*LttotPblancDetail(공고), get*LttotPblancMdl(주택형).
+ * 호출: ApplyhomeSyncScheduler(고정 일정), AdminJobService(관리자 수동·자동 실행).
  */
+// @Service: 업무 로직 빈으로 등록한다.
 @Service
 public class ApplyhomeSyncService {
 
@@ -39,6 +43,7 @@ public class ApplyhomeSyncService {
 	private final ApplyhomeDataPersistenceService persistenceService;
 	private final ApplyhomeSyncLock syncLock;
 
+	/** 생성자 주입. 생성자가 하나뿐이면 @Autowired 없이도 스프링이 이 생성자로 빈을 넣어 준다. */
 	public ApplyhomeSyncService(
 			ApplyhomeApiClient apiClient,
 			ApplyhomeEntityMapper mapper,

@@ -2,7 +2,13 @@ import IosShareRounded from '@mui/icons-material/IosShareRounded';
 import AddBoxOutlined from '@mui/icons-material/AddBoxOutlined';
 import NotificationsActiveOutlined from '@mui/icons-material/NotificationsActiveOutlined';
 
-/** 아이폰 사파리에서 홈 화면에 추가하는 세 단계. 실제 화면의 버튼 모양을 아이콘으로 보여 준다. */
+/**
+ * 아이폰 사파리에서 홈 화면에 추가하는 세 단계. 실제 화면의 버튼 모양을 아이콘으로 보여 준다.
+ * 알림 설정 창(PushSettingsDialog)과 홈 화면 추가 안내(InstallGuideDialog)가 함께 쓴다.
+ * 아이폰은 설치 창(beforeinstallprompt)이 없어서, 사용자가 직접 사파리 공유 메뉴에서 추가해야 한다.
+ * mode: 'ios-safari'면 '사파리로 먼저 열기' 단계를 앞에 붙인다. 그 밖의 값('ios-home' 등)은 바로 세 단계를 보여 준다.
+ * purpose: 'push'(알림 받으려고) 또는 'install'(앱처럼 쓰려고). 문구만 달라진다.
+ */
 export default function HomeScreenGuide({ mode, purpose = 'push' }) {
   const install = purpose === 'install';
   if (mode === 'ios-safari') return <div className="push-guide">
@@ -21,6 +27,7 @@ export default function HomeScreenGuide({ mode, purpose = 'push' }) {
   </div>;
 }
 
+/** 공유 → 홈 화면에 추가 → 아이콘으로 열기. 마지막 단계 문구만 purpose에 따라 바뀐다. */
 function Steps({ install }) {
   return <ol className="push-steps">
     <li><span className="push-step-no">1</span><div><strong>화면 아래 <span className="push-key"><IosShareRounded fontSize="inherit" />공유</span> 버튼을 눌러요</strong><small>아이패드는 주소창 오른쪽에 있어요.</small></div></li>

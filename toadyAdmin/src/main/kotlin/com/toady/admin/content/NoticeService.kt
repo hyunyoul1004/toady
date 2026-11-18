@@ -7,9 +7,14 @@ import org.springframework.stereotype.Service
 import java.sql.Timestamp
 import java.time.LocalDateTime
 
-/** 사이트 공지·배너(database.sql 27번 TB_SITE_NOTICE). 서비스는 1분 안에 반영한다. */
+/**
+ * 사이트 공지·배너(database.sql 27번 TB_SITE_NOTICE). 서비스는 1분 안에 반영한다.
+ * 시작·끝 시각 사이에만 보인다. 호출: ContentController의 공지 화면(/admin/notices).
+ */
+// @Service: 업무 로직 빈.
 @Service
 class NoticeService(private val jdbc: JdbcTemplate) {
+	/** 공지 한 건. live·stateLabel은 지금 시각(한국시간)으로 노출 상태를 계산한다. */
 	data class Notice(val seq: Long, val message: String, val link: String?, val linkLabel: String?, val placement: String, val level: String,
 	                  val start: LocalDateTime?, val end: LocalDateTime?, val enabled: Boolean, val admin: String, val updatedAt: LocalDateTime?) {
 		val placementLabel get() = if (placement == "HOME") "첫 화면" else "모든 화면"
@@ -17,6 +22,7 @@ class NoticeService(private val jdbc: JdbcTemplate) {
 		val stateLabel get() = when { !enabled -> "멈춤"; live -> "노출 중"; start != null && start.isAfter(Kst.now()) -> "예정"; else -> "끝남" }
 	}
 
+	/** 테이블이 있는지 확인한다(WHERE 1=0이라 행은 읽지 않는다). 없으면 화면에 적용 안내를 보여 준다. */
 	fun available(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_SITE_NOTICE WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	fun list(): List<Notice> = try {
@@ -40,12 +46,14 @@ class NoticeService(private val jdbc: JdbcTemplate) {
 		return null
 	}
 
+	/** 노출 켬·끔. 바뀐 행이 없으면 false. */
 	fun setEnabled(seq: Long, enabled: Boolean, admin: String): Boolean = try {
 		jdbc.update("UPDATE TB_SITE_NOTICE SET USE_YN=?, ADMIN_NAME=?, UPDATE_DT=? WHERE NOTICE_SEQ=?", if (enabled) "Y" else "N", admin.take(100), Timestamp.valueOf(Kst.now()), seq) > 0
 	} catch (missing: DataAccessException) { false }
 
 	fun delete(seq: Long): Boolean = try { jdbc.update("DELETE FROM TB_SITE_NOTICE WHERE NOTICE_SEQ=?", seq) > 0 } catch (missing: DataAccessException) { false }
 
+	// SAFE_LINK: '/'로 시작하는 사이트 안 경로 또는 https 주소만 허용한다(javascript: 같은 위험한 링크 차단).
 	companion object {
 		val SAFE_LINK = Regex("^(/[A-Za-z0-9/_?=&%.\\-]*|https://[A-Za-z0-9.\\-]+(/[A-Za-z0-9/_?=&%.\\-#]*)?)$")
 	}

@@ -13,6 +13,13 @@ import StageBadges from './StageBadges';
 
 const PLUGINS = [dayGridPlugin, interactionPlugin];
 
+/**
+ * FullCalendar 월 보기를 그리는 부분만 맡는다. 월 이동·데이터·'+N건 더보기' 목록 같은 상태는 부모(SubscriptionCalendar)가 가진다.
+ * @param calendarRef 부모가 calendarRef.current.getApi()로 이전·다음 달 이동을 시키려고 넘기는 ref
+ * @param wrapperRef 부모가 날짜 칸(.fc-daygrid-day)을 찾아 더보기 목록을 붙이려고 넘기는 ref
+ * @param events groupCalendarSchedules 결과를 FullCalendar 이벤트 모양으로 바꾼 목록
+ * @param onDatesSet 보이는 달이 바뀌면 FullCalendar가 부른다(부모가 월을 Main에 알린다)
+ */
 export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDate, events, legendCodes, onEventOpen, onMoreLinkClick, onDatesSet }) {
   const handleEventClick = (info) => {
     info.jsEvent?.preventDefault();
@@ -64,6 +71,7 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
         plugins={PLUGINS}
         initialView="dayGridMonth"
         headerToolbar={false}
+        // 청약 접수는 평일에만 있어서 토·일 칸을 빼고 월요일부터 시작한다.
         weekends={false}
         firstDay={1}
         height="auto"
@@ -72,6 +80,7 @@ export default function DesktopFullCalendar({ calendarRef, wrapperRef, initialDa
         moreLinkClick={onMoreLinkClick}
         moreLinkContent={(arg) => `+${arg.num}건 더보기`}
         moreLinkHint={(num) => `${num}건 더 보기`}
+        // extendedProps.order(단계 순서) → 단지명 순으로 같은 날 일정을 쌓는다.
         eventOrder="order,title"
         events={events}
         eventClick={handleEventClick}

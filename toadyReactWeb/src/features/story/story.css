@@ -1,3 +1,4 @@
+/* 단지별 이야기 질문 칩(StoryPrompts)과 경쟁률 예상 투표(RatePoll). */
 .story-prompts{background:#f8fafc;border:1px solid #eef2f6;border-radius:14px;padding:12px 14px;margin-bottom:12px}
 .story-prompts-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .story-prompts-head strong{font-size:13px;color:#1e293b;font-weight:750}
@@ -23,6 +24,7 @@
 .rate-poll-options button:focus-visible{outline:2px solid #7c3aed;outline-offset:2px}
 .rate-poll-results{list-style:none;margin:0;padding:0;display:grid;gap:5px}
 .rate-poll-results li{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:9px;background:#f8fafc;padding:8px 10px;overflow:hidden;font-size:13px}
+/* 결과 막대: li 뒤에 깔린 배경 막대. 너비(%)는 JSX의 style로 정한다. */
 .rate-poll-bar{position:absolute;left:0;top:0;bottom:0;background:#ede7fb;transition:width .4s ease}
 .rate-poll-results li.is-actual .rate-poll-bar{background:#d1fae5}
 .rate-poll-label,.rate-poll-percent{position:relative;font-weight:700;color:#334155;display:flex;align-items:center;gap:6px}

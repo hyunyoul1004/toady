@@ -1,9 +1,12 @@
 /**
  * @file SubscriptionCalendar.jsx
  * @description 청약 일정 달력 컴포넌트(데스크톱: FullCalendar를 지연 로딩, 모바일: MobileApplyhomeCalendar)
- * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶고, 하루 최대 4줄 + '+N건 더보기' 목록(히스토리 연동)
+ * - 쓰이는 곳: Main.jsx의 캘린더 보기. 공고 목록(subscriptList)은 Main이 조회·필터해서 넘겨준다. 이 컴포넌트는 API를 부르지 않는다.
+ * - 같은 날 같은 공고의 단계(특·1·2)는 한 줄로 묶는다. 하루 일정은 모두 펼쳐 보여 준다(DesktopFullCalendar의 dayMaxEventRows=false).
+ *   '+N건 더보기'를 누르면 FullCalendar 기본 팝오버 대신 히스토리와 연결된 날짜 목록(Popover)을 연다.
  * - 주말(토/일) 제외 (weekends: false)
  * - 날짜 이동 시 onMonthChange로 월을 알리고, 조회 기간은 Main이 계산한다
+ * - 화면 폭이 md(900px) 미만이면 모바일 달력으로 바꾼다(useMediaQuery).
  */
 import React, { useRef, useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -48,7 +51,7 @@ function DesktopCalendarSkeleton() {
   );
 }
 
-// 한 날짜 칸에 보여줄 최대 줄 수('+N건 더보기' 줄 포함). 넘치면 더보기 목록으로 모은다.
+// 날짜별 더보기 목록의 히스토리 레이어 이름(location.state.overlayLayers 안에서 이 id로 찾는다).
 const DAY_OVERLAY_ID = 'calendar-day';
 const isDateKey = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
@@ -56,13 +59,16 @@ export function SubscriptionCalendar(props) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  // FullCalendar 인스턴스를 가리키는 ref. 달 이동(api.gotoDate)처럼 화면 밖에서 달력을 직접 조작할 때 쓴다.
   const calendarRef = useRef(null);
   const [currentTitle, setCurrentTitle] = useState(() => props.initialMonth || koreaToday().slice(0, 7));
+  // 정오(12:00)로 만들어 두면 시간대 차이로 날짜가 하루 밀려도 같은 달 안에 머문다.
   const [currentDate, setCurrentDate] = useState(() => new Date(`${props.initialMonth || koreaToday().slice(0, 7)}-01T12:00:00`));
 
   // 조회 기간(startStr/endStr)은 Main이 onMonthChange로 받은 월에서 monthRange로 한 곳에서만 계산한다.
 
   // 1. 같은 날 같은 공고의 단계(특별공급/1순위/2순위)를 한 줄로 묶은 뒤 FullCalendar 이벤트로 변환
+  // useMemo로 목록이 바뀔 때만 다시 묶는다. 새 배열을 매번 만들면 FullCalendar가 일정을 매 렌더마다 다시 그린다.
   const groups = useMemo(() => groupCalendarSchedules(props.subscriptList), [props.subscriptList]);
   const groupMap = useMemo(() => groupsByDate(groups), [groups]);
   const legendCodes = useMemo(() => usedRceptSes(groups), [groups]);
@@ -93,6 +99,7 @@ export function SubscriptionCalendar(props) {
   const dayGroups = openDate ? groupMap[openDate] || [] : [];
 
   // 월 이동 공통 핸들러 (모바일 & 데스크톱 공통 API 조회 파라미터 갱신)
+  // useCallback: 의존성(onMonthChange)이 그대로면 같은 함수를 돌려줘, 이 함수를 의존성으로 쓰는 아래 effect가 괜히 다시 돌지 않게 한다.
   const changeMonth = useCallback(
     (targetDate) => {
       const d = dayjs(targetDate);
@@ -112,6 +119,7 @@ export function SubscriptionCalendar(props) {
   // 외부(Main)에서 전달된 특정 날짜로 캘린더 화면 및 월 강제 이동.
   // jumpToDate는 { date, nonce } 객체라 같은 날짜를 다시 골라도 새 요청으로 보고 다시 이동한다.
   // 목록 보기에서 달력으로 돌아와 다시 마운트될 때는 이미 처리된 예전 요청을 되풀이하지 않는다(월은 initialMonth로 이어받음).
+  // 마지막으로 처리한 요청 번호. 화면에 보일 값이 아니고 렌더 사이에 기억만 하면 되므로 ref에 둔다.
   const handledJumpNonce = useRef(props.jumpToDate?.nonce ?? null);
   React.useEffect(() => {
     const jump = props.jumpToDate;
@@ -121,6 +129,7 @@ export function SubscriptionCalendar(props) {
   }, [props.jumpToDate, changeMonth]);
 
   // 2. FullCalendar 날짜 범위 변경 시 부모 컴포넌트(Main)에 조회 파라미터 전달
+  // 처음 그려질 때도 한 번 불리므로 '데스크톱 달력 준비 완료' 표시로도 쓴다.
   const handleDatesSet = useCallback(
     (dateInfo) => {
       setDesktopReady(true);
@@ -211,6 +220,7 @@ export function SubscriptionCalendar(props) {
     navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, overlayLayers: layers } });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDate, dayAnchor, dayGroups.length]);
+  // 붙일 날짜 칸이 없을 때(모바일 등) 목록을 띄울 화면 가운데 좌표.
   const centerPosition = typeof window === 'undefined' ? { top: 0, left: 0 } : { top: Math.round(window.innerHeight / 2), left: Math.round(window.innerWidth / 2) };
 
   const closeDayList = () => setOverlayDate(null);
@@ -378,6 +388,7 @@ export function SubscriptionCalendar(props) {
           handleOpen={props.handleOpen}
         />
       ) : (
+        // 달력 파일을 못 받거나 그리다 오류가 나도 이 영역만 안내로 바뀐다. 달을 옮기면(resetKey) 다시 시도한다.
         <SectionErrorBoundary title="달력을 표시하지 못했어요" resetKey={currentTitle}>
           <Suspense fallback={<DesktopCalendarSkeleton />}>
             <DesktopFullCalendar
@@ -394,6 +405,7 @@ export function SubscriptionCalendar(props) {
         </SectionErrorBoundary>
       )}
 
+          {/* 날짜별 더보기 목록. 열림 상태는 useHistoryOverlay 값(overlayDate)이라 뒤로가기로 닫힌다. 칸 위치를 찾는 중(undefined)에는 열지 않는다. */}
           <Popover
             open={Boolean(openDate) && dayAnchor !== undefined && (dayAnchor !== null || dayGroups.length > 0)}
             anchorReference={dayAnchor ? 'anchorEl' : 'anchorPosition'}

@@ -1,6 +1,8 @@
 /**
  * @file AppRoutes.jsx
- * @description 애플리케이션 라우팅 정의 컴포넌트
+ * @description 애플리케이션 라우팅 정의 컴포넌트. App.jsx의 BrowserRouter 안에서 그린다.
+ * 주소(경로)마다 어떤 화면을 보여 줄지 정한다. 대부분의 화면은 MainLayout(메뉴·하단 탭) 안의 <Outlet> 자리에 그려진다.
+ * :type 처럼 콜론으로 시작하는 부분은 경로 변수다. 화면에서 useParams()로 꺼내 쓴다.
  */
 import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
@@ -14,6 +16,8 @@ import { safeReturnPath } from '@/features/auth/signupReturn';
 import { openLoginOver } from '@/features/push/pushSupport';
 
 // 첫 화면(청약 캘린더)만 바로 싣고, 나머지 화면은 들어갈 때 내려받는다(첫 접속 JS 크기를 줄인다).
+// lazy(() => import(...))는 화면 코드를 별도 파일로 나눈다. 파일을 받는 동안은 가장 가까운 <Suspense>의 fallback이 보인다.
+// lazy는 default export만 받으므로, 이름 있는 export(SignUpCertify)는 then으로 { default } 모양을 만들어 준다.
 const MyPlanner = lazy(() => import('@/features/planner/MyPlanner'));
 const AccountPage = lazy(() => import('@/features/account/AccountPage'));
 const MessagesPage = lazy(() => import('@/features/community/MessagesPage'));
@@ -33,6 +37,9 @@ function PageLoading() {
  * 화면 파일을 받지 못했을 때(배포 직후 이전 파일 이름, 끊긴 모바일 네트워크) 빈 화면 대신 다시 시도할 길을 준다.
  * 메뉴·하단 탭은 레이아웃이라 그대로 남는다.
  */
+// 에러 경계(Error Boundary)는 아직 클래스 컴포넌트로만 만들 수 있다.
+// 자식이 그리다가 오류를 던지면 getDerivedStateFromError가 failed를 켜고, render가 대신 안내 화면을 그린다.
+// lazy 파일 내려받기 실패도 여기서 잡힌다.
 class PageErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { failed: false }; }
   static getDerivedStateFromError() { return { failed: true }; }
@@ -75,6 +82,7 @@ function LoginRedirect() {
     if (done.current) return;
     done.current = true;
     // /login?next=/my 처럼 돌아갈 앱 안 주소가 있으면 그 화면 위에 로그인 창을 연다(외부 주소는 받지 않는다).
+    // done(useRef): 개발 모드 StrictMode 등으로 effect가 두 번 돌아도 팝업을 한 번만 열게 막는다.
     const next = safeReturnPath(new URLSearchParams(search).get('next')) || '/';
     openLoginOver(navigate, next);
   }, [navigate, search]);
@@ -85,6 +93,7 @@ function LoginRedirect() {
  * 검색·공유용 공개 주소(/areas, /weekly, /zupzup, /help/faq)로 들어온 사람은 같은 내용의 앱 화면으로 옮긴다.
  * 봇은 웹 nginx가 서버 HTML을 주므로 이 화면까지 오지 않는다. 유입 꼬리표(src 등) 쿼리는 그대로 넘긴다.
  */
+// <Navigate replace>는 지금 히스토리 칸을 새 주소로 바꾼다. 뒤로가기를 눌러도 옛 주소로 돌아와 다시 튕기지 않는다.
 function PublicPathRedirect({ to }) {
   const { search, hash, state } = useLocation();
   return <Navigate to={to + search + hash} replace state={state} />;
@@ -103,6 +112,7 @@ export const AppRoutes = () => {
     <Routes>
       {/* 기본 레이아웃 하위 페이지 */}
       <Route path="/" element={<MainLayout />}>
+        {/* 홈·옛 상세 주소·공고 상세 주소가 모두 같은 Main을 쓴다. Main이 주소를 보고 상세 창을 열지 정한다. */}
         <Route index element={<MainPage />} />
         <Route path="showSubscriptDetail" element={<MainPage />} />
         <Route path="announcements/:type/:house/:notice" element={<MainPage />} />
@@ -110,6 +120,7 @@ export const AppRoutes = () => {
         <Route path="account" element={page(<AccountPage />)} />
         <Route path="messages" element={page(<MessagesPage />)} />
         <Route path="score" element={page(<ScoreCalculator />)} />
+        {/* 같은 MatchPage를 두 주소에서 쓰므로 key를 달리 줘서 탭을 옮길 때 상태를 새로 시작하게 한다. */}
         <Route path="match" element={page(<MatchPage key="match" tab="match" />)} />
         <Route path="match/zupzup" element={page(<MatchPage key="zupzup" tab="zupzup" />)} />
         <Route path="faq" element={page(<FaqPage />)} />

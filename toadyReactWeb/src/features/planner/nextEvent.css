@@ -1,3 +1,4 @@
+/* '내 다음 일정'(NextEvent.jsx): is-card(나의 청약), is-line(메인 한 줄). */
 .next-event{font:inherit;display:flex;align-items:center;gap:12px;width:100%;text-align:left;text-decoration:none;color:#0f172a;cursor:pointer;border:1px solid #d7e5fb;background:#f4f8ff;transition:border-color .15s,background .15s}
 .next-event:hover{border-color:#a9c4f2;background:#edf3ff}
 .next-event:focus-visible{outline:2px solid #2563eb;outline-offset:2px}

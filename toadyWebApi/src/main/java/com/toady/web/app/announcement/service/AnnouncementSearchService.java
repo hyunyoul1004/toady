@@ -31,6 +31,20 @@ import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 
+/**
+ * 공고 목록·통합 목록·자동완성 검색을 맡는다.
+ * 흐름: AnnouncementController → AnnouncementService → 이 클래스 → 유형별 공고 저장소(JpaSpecificationExecutor).
+ * 테이블: 유형별 *_LTTOT_PBLANC_DETAIL 5개(읽기). 숨긴 공고 목록은 AnnouncementOverrides, 댓글 수는 AnnouncementCommentCountService.
+ *
+ * Specification: where 조건을 코드로 조립하는 JPA Criteria API 포장. (root, query, builder) -> 조건 꼴의 람다다.
+ * - root: 조회 대상 엔티티(root.get("houseNm") = 그 필드)
+ * - query: 쿼리 전체(정렬 orderBy 지정에 쓴다)
+ * - builder: equal·like·and·or 같은 조건을 만드는 도구
+ * 조건마다 if로 붙였다 뗐다 할 수 있어, 선택 조건이 많은 검색에 맞다.
+ */
+// @Service: 스프링 빈으로 등록한다.
+// @RequiredArgsConstructor(Lombok): final 필드를 받는 생성자를 만들어 생성자 주입이 되게 한다.
+// @Transactional(readOnly = true): 조회 전용 트랜잭션. 변경 감지를 하지 않아 가볍고, 실수로 바꾼 값이 저장되지 않는다.
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -43,7 +57,10 @@ public class AnnouncementSearchService {
     private final OptionalAnnouncementRepository optionalRepository;
     private final com.toady.web.app.operation.AnnouncementOverrides overrides;
 
-    /** 운영자가 숨긴 공고(database.sql 26번)를 뺀다. 숨긴 공고는 드물어 (주택관리번호, 공고번호) 조건을 그대로 붙인다. */
+    /**
+     * 운영자가 숨긴 공고(database.sql 26번)를 뺀다. 숨긴 공고는 드물어 (주택관리번호, 공고번호) 조건을 그대로 붙인다.
+     * 결과 조건: 원래 조건 and not(번호1 일치) and not(번호2 일치) …
+     */
     private <T> Specification<T> visible(AnnouncementType type, Specification<T> specification) {
         var hidden = overrides.hiddenOf(type.name());
         if (hidden.isEmpty()) return specification;
@@ -53,6 +70,10 @@ public class AnnouncementSearchService {
         return specification.and(notHidden);
     }
 
+    /**
+     * 유형 하나의 공고를 검색 조건으로 찾아 페이지로 돌려준다. 항목은 엔티티 그대로다.
+     * PageRequest.of(page, size)를 넘기면 Spring Data가 LIMIT/OFFSET 쿼리와 전체 개수 count 쿼리를 함께 실행한다.
+     */
     public Page<?> search(AnnouncementType type, AnnouncementSearch search) {
         validateSearch(search);
         // 아주 큰 페이지 번호로 무거운 OFFSET 조회를 반복하지 못하게 탐색 범위를 제한한다.
@@ -141,6 +162,11 @@ public class AnnouncementSearchService {
                 .toList();
     }
 
+    /**
+     * 한 유형에서 자동완성 후보를 최대 limit개 읽는다. 유형마다 접수일·주소 필드 이름이 달라 이름을 인자로 받는다.
+     * findBy(spec, q -> q.limit(n).all()): Spring Data의 Fluent 조회. count 쿼리 없이 앞에서 n개만 가져온다.
+     * 정렬: 접수일 없는 공고는 뒤로, 그다음 접수일 최신순, 같으면 번호순.
+     */
     private static <T> List<AnnouncementSuggestionResponse> findSuggestions(
             JpaSpecificationExecutor<T> repository,
             String receptionStartDateProperty,
@@ -169,6 +195,13 @@ public class AnnouncementSearchService {
     }
 
     /** 선택한 유형의 공고를 접수 시작일 기준으로 통합 페이징합니다. */
+    /**
+     * 여러 테이블에 나뉜 공고를 한 목록으로 합쳐 페이지를 만든다. DB 하나의 쿼리로는 합칠 수 없어서:
+     * 1) 유형마다 (page+1)×size개를 같은 정렬로 앞에서부터 읽는다. 합친 목록의 해당 페이지는 반드시 이 안에 있다.
+     * 2) 메모리에서 합쳐 다시 정렬한 뒤 해당 페이지만 잘라 낸다.
+     * 3) 잘라 낸 항목의 댓글 수만 한 번의 쿼리로 채운다.
+     * 전체 개수(totalElements)는 유형별 count 합이다.
+     */
     public Page<AnnouncementListItem> searchAll(AnnouncementSearch search, List<String> requestedTypes) {
         validateSearch(search);
         Set<AnnouncementType> types = selectedTypes(requestedTypes);
@@ -214,6 +247,7 @@ public class AnnouncementSearchService {
                 .thenComparing(AnnouncementListItem::houseManageNo)
                 .thenComparing(AnnouncementListItem::pblancNo));
 
+        // 후보가 모자라면 빈 페이지가 되도록 범위를 목록 크기 안으로 맞춘다.
         int fromIndex = (int) Math.min((long) search.page() * search.size(), candidates.size());
         int toIndex = Math.min(fromIndex + search.size(), candidates.size());
         Pageable resultPage = PageRequest.of(search.page(), search.size());
@@ -222,6 +256,7 @@ public class AnnouncementSearchService {
     }
 
     /** (단지명 또는 주소에 term) 그리고 scope가 있으면 (단지명 또는 주소에 scope 중 하나). LivingAreas.match와 같은 규칙이다. */
+    // 대소문자 구분 없이 부분 일치(like %값%)로 찾는다. 검색어의 %, _, \ 는 글자 그대로 찾도록 이스케이프한다.
     private static Predicate livingAreaPredicate(CriteriaBuilder builder,
             Root<?> root, String addressProperty, LivingAreas.Matcher matcher) {
         Function<String, Predicate> contains = value -> {
@@ -233,14 +268,20 @@ public class AnnouncementSearchService {
         return builder.and(term, builder.or(matcher.scope().stream().map(contains).toArray(Predicate[]::new)));
     }
 
+    /**
+     * 목록 검색 조건을 Specification으로 만든다. 값이 있는 조건만 and로 붙인다.
+     * 제네릭 T라 5개 공고 엔티티에 함께 쓴다. 필드 이름이 다른 곳(주소·접수일)은 root.getJavaType()으로 갈라 처리한다.
+     */
     private static <T> Specification<T> searchSpecification(AnnouncementSearch search) {
         return (root, query, builder) -> {
+            // conjunction(): 항상 참인 조건. 여기서 출발해 조건을 하나씩 and로 붙인다.
             var predicates = builder.conjunction();
             if (search.regionCode() != null && !search.regionCode().isBlank()) {
                 predicates = builder.and(predicates, builder.equal(root.get("subscrptAreaCode"), search.regionCode()));
             }
             if (search.keyword() != null && !search.keyword().isBlank()) {
                 var matches = new ArrayList<Predicate>();
+                // 도시형·오피스텔은 주소가 hssplyHshldco 필드(HSSPLY_HSHLDCO 컬럼)에 있다.
                 String address = root.getJavaType() == UrbanAnnouncementEntity.class ? "hssplyHshldco" : "hssplyAdres";
                 for (var matcher : LivingAreas.matchers(search.keyword())) {
                     matches.add(livingAreaPredicate(builder, root, address, matcher));
@@ -263,7 +304,8 @@ public class AnnouncementSearchService {
                         builder.lessThanOrEqualTo(normalizedReceptionStartDate(root, builder), compactDate)
                 );
             }
-            // Apply normalized ordering before limiting candidates; also keep page boundaries stable.
+            // 정렬은 후보를 잘라 읽기 전에 정해야 하고, 페이지 경계가 흔들리지 않게 번호로 끝까지 정렬한다.
+            // 같은 Specification이 count 쿼리(결과 타입 Long)에도 쓰이는데, count에는 정렬을 붙이지 않는다.
             if (query.getResultType() != Long.class && query.getResultType() != long.class) {
                 var date = normalizedReceptionStartDate(root, builder);
                 query.orderBy(
@@ -275,6 +317,7 @@ public class AnnouncementSearchService {
         };
     }
 
+    // 접수 시작일에서 '-'를 빼 "20261001" 꼴로 맞춘 SQL 식(replace 함수). 문자열 그대로 크기 비교·정렬할 수 있다.
     private static <T> Expression<String> normalizedReceptionStartDate(
             Root<T> root,
             CriteriaBuilder builder
@@ -292,6 +335,7 @@ public class AnnouncementSearchService {
         );
     }
 
+    // 어노테이션으로는 못 거르는 필드 간 검사.
     private static void validateSearch(AnnouncementSearch search) {
         // 시작일이 종료일보다 뒤면 검색 전에 요청을 거부합니다.
         if (search.startDate() != null && search.endDate() != null
@@ -318,6 +362,7 @@ public class AnnouncementSearchService {
         return selected;
     }
 
+    // 자바 쪽(메모리 정렬)에서 쓰는 같은 규칙. 숫자 8자리(yyyyMMdd)가 안 되면 null로 보고 맨 뒤로 보낸다.
     private static String normalizedDate(String date) {
         if (date == null) {
             return null;
@@ -327,6 +372,7 @@ public class AnnouncementSearchService {
         return digits.length() < 8 ? null : digits.substring(0, 8);
     }
 
+    // 유형별로 앞에서 count개를 읽는 첫 페이지.
     private static Pageable candidatePage(long count) {
         return PageRequest.of(0, Math.toIntExact(count));
     }

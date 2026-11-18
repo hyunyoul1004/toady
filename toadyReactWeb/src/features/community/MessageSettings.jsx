@@ -13,7 +13,11 @@ import ProfileAvatar from '@/features/account/ProfileAvatar';
 import { COMMUNITY_KEY, RECEIVE_POLICIES, communityApi, run } from './communityApi';
 import { useMessageUnread } from './useCommunity';
 
-/** 내 정보의 '쪽지·차단' 칸: 쪽지함 바로가기, 받는 범위, 차단한 회원 관리. */
+/**
+ * 내 정보의 '쪽지·차단' 칸: 쪽지함 바로가기, 받는 범위, 차단한 회원 관리.
+ * 쓰는 곳: AccountPage. API: communityApi.settings·setPolicy·blocks·unblock.
+ * 차단 목록 queryKey가 useBlockedSet과 같아 한 번 받은 결과를 함께 쓴다.
+ */
 export default function MessageSettings() {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
   const queryClient = useQueryClient();
@@ -27,6 +31,7 @@ export default function MessageSettings() {
   const items = blocks.data?.items || [];
   // 쪽지함의 '받는 범위·차단 관리'(#account-messages)로 들어오면 이 칸으로 내려 준다.
   const location = useLocation();
+  // DOM 요소를 가리키는 ref. 스크롤 이동(scrollIntoView)에 쓴다.
   const sectionRef = useRef(null);
   // 이 주소(#account-messages)로 들어온 처음 한 번만 옮긴다. 같은 화면에서 푸시 설정 창을 열고 닫거나(히스토리 칸이 바뀜)
   // 읽은 답글 기록을 고쳐 써도 다시 튀지 않게 한다.
@@ -37,9 +42,11 @@ export default function MessageSettings() {
     scrolledFor.current = location.hash;
     // 위쪽 칸(프로필·요약)이 그려진 뒤 바로 옮긴다. 부드러운 스크롤은 이어지는 다시 그리기에 끊길 수 있어 즉시 이동한다.
     const timer = setTimeout(() => sectionRef.current?.scrollIntoView({ block: 'start' }), 120);
+    // cleanup: 그 사이 화면을 떠나거나 값이 바뀌면 예약한 스크롤을 취소한다.
     return () => clearTimeout(timer);
   }, [location.hash, settings.isLoading]);
 
+  // 받는 범위는 라디오를 누르는 즉시 저장한다(별도 저장 버튼 없음).
   const changePolicy = async value => {
     setBusy(true);
     const result = await run(() => communityApi.setPolicy(value));

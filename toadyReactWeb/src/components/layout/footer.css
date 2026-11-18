@@ -1,3 +1,4 @@
+/* 사이트 푸터(Copyright.jsx) 스타일. word-break:keep-all은 한국어 문장을 낱말 중간에서 끊지 않게 한다. */
 .site-footer{max-width:1080px;margin:0 auto;padding:8px 4px 12px;color:#64748b;font-size:12.5px;line-height:1.7;word-break:keep-all}
 .site-footer-brand strong{font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-.2px}
 .site-footer-brand p{margin:2px 0 10px}

@@ -7,6 +7,7 @@ import { CONFIDENCE_TEXT, LAND_LEASE_TEXT, gapRows, gapText, gapTone, representa
 import { usePriceGap } from './usePriceGap';
 import './match.css';
 
+// 비교 카드 안내 문구 도우미: 비교 기간, 기준 연식(신축·전체), 비교 범위(같은 동·시군구).
 const periodText = data => `최근 ${data.months || 6}개월(${data.fromMonth.replace('-', '.')} ~ ${data.toMonth.replace('-', '.')})`;
 const basisText = row => (row.basis === 'new' ? '준공 10년 이내' : '전체 연식');
 const scopeText = (row, dong) => (row.scope === 'DONG' ? dong : '같은 시·군·구');
@@ -14,6 +15,7 @@ const scopeText = (row, dong) => (row.scope === 'DONG' ? dong : '같은 시·군
 /**
  * 상세 화면 맨 위의 한 줄 요약: "주변 신축 시세 대비 약 1.0억~1.4억 낮아요 · 전용 84㎡ · 신뢰도 높음".
  * 신뢰도가 '참고'뿐이거나 비교할 수 없으면 아무것도 보여주지 않는다. 누르면 아래 면적별 비교로 이동한다.
+ * 데이터는 usePriceGap(서버 /api/v1/research/price-gap). PriceGapCard와 같은 queryKey라 요청은 한 번만 간다.
  */
 export function PriceGapSummary({ detail, onMore }) {
   const gap = usePriceGap(detail);
@@ -35,9 +37,11 @@ export function PriceGapSummary({ detail, onMore }) {
 /**
  * 주택형별 최고 공급금액과 주변 실거래(최근 최대 6개월, 전용 ±5㎡)를 나란히 놓고 차이를 범위로 보여준다.
  * 기준은 준공 10년 이내 거래(3건 이상일 때)가 기본이며 전체 연식으로 바꿔 볼 수 있다.
+ * 쓰는 곳: 공고 상세. id는 요약(PriceGapSummary)의 '자세히'가 스크롤해 올 위치, onShowTrades는 거래 목록 열기.
  */
 export default function PriceGapCard({ detail, onShowTrades, id }) {
   const gap = usePriceGap(detail);
+  // 비교 기준: 'auto'(신축 거래가 충분하면 신축) 또는 'all'(전체 연식). 이 카드 안에서만 쓰는 값이라 로컬 상태로 둔다.
   const [basis, setBasis] = useState('auto');
   if (!gap.enabled) return null;
   if (gap.loading) return <section className="match-gap" aria-busy="true"><Skeleton variant="text" width="40%" /><Skeleton variant="rounded" height={90} /></section>;

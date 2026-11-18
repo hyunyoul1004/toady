@@ -30,7 +30,12 @@ import java.time.LocalDate
 /**
  * 관리자 화면. 변경 요청(POST) 뒤에는 리다이렉트해 새로고침에 의한 재전송을 막고, 결과는 플래시 메시지로 알린다.
  * 목록의 검색 조건은 주소(쿼리)에 두고, 조치 후에는 next(관리자 내부 경로)로 같은 화면에 돌아온다.
+ * 맡은 화면: 대시보드, 공고, 회원, 이야기, 신고, 작업 이력, 금칙어, 메일·운영 현황, 수집 작업.
+ * 콘텐츠(공지·질문·생활권·설정·푸시·위치 확인)는 ContentController가 맡는다.
+ * 모든 조치는 AuditService로 이력을 남긴다.
  */
+// @Controller: 메서드가 돌려준 문자열을 Thymeleaf 템플릿 이름(templates/admin/xxx.html)으로 보고 화면을 그린다.
+// "redirect:/경로"를 돌려주면 그 주소로 이동시킨다. 생성자 매개변수의 서비스들은 스프링이 넣어 준다.
 @Controller
 class AdminController(
 	private val metrics: MetricsService,
@@ -50,9 +55,14 @@ class AdminController(
 	private val api: com.toady.admin.support.ApiClient,
 	private val quality: com.toady.admin.announcements.QualityService,
 ) {
+	// @GetMapping: GET 요청 주소를 메서드에 연결한다. 루트로 오면 대시보드로 보낸다.
 	@GetMapping("/") fun root() = "redirect:/admin/"
 	@GetMapping("/admin/login") fun login() = "admin/login"
 
+	/**
+	 * 대시보드. Model에 담은 값은 템플릿에서 ${이름}으로 읽는다.
+	 * Principal은 스프링 시큐리티가 넣어 주는 로그인한 관리자 정보(user.name이 관리자 이름)다.
+	 */
 	@GetMapping("/admin", "/admin/")
 	fun dashboard(model: Model, user: Principal): String {
 		model.addAttribute("today", metrics.today())
@@ -71,6 +81,8 @@ class AdminController(
 	}
 
 	/** 이 브라우저(관리자 화면이 읽은 방문자 ID)를 지표에서 뺀다. 과거 기록에도 적용된다. */
+	// @PostMapping: POST 요청을 연결한다. @RequestParam은 폼 값을 매개변수로 받는다(defaultValue가 없으면 필수).
+	// RedirectAttributes.addFlashAttribute는 리다이렉트 뒤 한 번만 보이는 안내 문구를 세션에 잠깐 담는다.
 	@PostMapping("/admin/exclusions")
 	fun exclude(@RequestParam visitorId: String, @RequestParam(defaultValue = "") label: String, user: Principal, redirect: RedirectAttributes): String {
 		when (exclusions.add(visitorId, label, user.name)) {
@@ -90,6 +102,7 @@ class AdminController(
 		return "redirect:/admin/#exclusions"
 	}
 
+	/** 공고 목록(검색어·유형·접수 상태·페이지). */
 	@GetMapping("/admin/announcements")
 	fun announcements(@RequestParam(required = false) q: String?, @RequestParam(defaultValue = "all") type: String,
 	                  @RequestParam(defaultValue = "all") status: String, @RequestParam(defaultValue = "0") page: Int, model: Model, user: Principal): String {
@@ -100,6 +113,7 @@ class AdminController(
 	}
 
 	// 경로 변수는 화면 모델에도 노출되므로 플래시 메시지(notice)와 겹치지 않는 이름을 쓴다.
+	// @PathVariable: 주소의 {type}/{house}/{pblanc} 부분을 매개변수로 받는다. 없는 공고면 404.
 	@GetMapping("/admin/announcements/{type}/{house}/{pblanc}")
 	fun announcement(@PathVariable type: String, @PathVariable house: String, @PathVariable("pblanc") notice: String,
 	                 @RequestParam(defaultValue = "all") state: String, model: Model, user: Principal): String {
@@ -133,6 +147,7 @@ class AdminController(
 		return "redirect:/admin/announcements/$id"
 	}
 
+	/** 회원 목록(검색어·상태 필터). */
 	@GetMapping("/admin/members")
 	fun members(@RequestParam(required = false) q: String?, @RequestParam(defaultValue = "all") filter: String,
 	            @RequestParam(defaultValue = "0") page: Int, model: Model, user: Principal): String {
@@ -141,6 +156,7 @@ class AdminController(
 		return page(model, user, "members", "admin/members")
 	}
 
+	/** 회원 상세. 열 때마다 열람 이력(MEMBER_VIEW)을 남긴다. */
 	@GetMapping("/admin/members/{seq}")
 	fun member(@PathVariable seq: Long, model: Model, user: Principal): String {
 		val detail = members.detail(seq) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
@@ -184,6 +200,7 @@ class AdminController(
 		return "redirect:/admin/members/$seq"
 	}
 
+	/** 진행 중인 제재 해제. */
 	@PostMapping("/admin/members/{seq}/sanctions/{sanctionSeq}/cancel")
 	fun cancelSanction(@PathVariable seq: Long, @PathVariable sanctionSeq: Long, @RequestParam(defaultValue = "") memo: String,
 	                   user: Principal, redirect: RedirectAttributes): String {
@@ -193,6 +210,7 @@ class AdminController(
 		return "redirect:/admin/members/$seq"
 	}
 
+	/** 회원 잠금·해제. 끝나면 next(왔던 화면)로 돌아간다. */
 	@PostMapping("/admin/members/{seq}/lock")
 	fun lock(@PathVariable seq: Long, @RequestParam locked: Boolean, @RequestParam(defaultValue = "") next: String,
 	         user: Principal, redirect: RedirectAttributes): String {
@@ -202,6 +220,7 @@ class AdminController(
 		return "redirect:" + safeNext(next, "/admin/members")
 	}
 
+	/** 이야기(댓글) 목록. state: visible·hidden·all. */
 	@GetMapping("/admin/comments")
 	fun comments(@RequestParam(required = false) q: String?, @RequestParam(defaultValue = "visible") state: String,
 	             @RequestParam(defaultValue = "0") page: Int, model: Model, user: Principal): String {
@@ -210,6 +229,7 @@ class AdminController(
 		return page(model, user, "comments", "admin/comments")
 	}
 
+	/** 이야기 숨김(원글이면 답글도 함께). */
 	@PostMapping("/admin/comments/{seq}/hide")
 	fun hide(@PathVariable seq: Long, @RequestParam(defaultValue = "") next: String, user: Principal, redirect: RedirectAttributes): String {
 		val changed = comments.hide(seq, user.name)
@@ -218,6 +238,7 @@ class AdminController(
 		return "redirect:" + safeNext(next, "/admin/comments")
 	}
 
+	/** 관리자가 숨긴 이야기 되살리기. 결과마다 다른 안내를 보여 준다. */
 	@PostMapping("/admin/comments/{seq}/restore")
 	fun restore(@PathVariable seq: Long, @RequestParam(defaultValue = "") next: String, user: Principal, redirect: RedirectAttributes): String {
 		when (comments.restore(seq, user.name)) {
@@ -239,6 +260,7 @@ class AdminController(
 		return page(model, user, "reports", "admin/reports")
 	}
 
+	/** 신고 닫기. sameTarget이면 같은 대상의 다른 대기 신고도 함께 닫는다. */
 	@PostMapping("/admin/reports/{seq}/close")
 	fun closeReport(@PathVariable seq: Long, @RequestParam outcome: String, @RequestParam(defaultValue = "") note: String,
 	                @RequestParam(defaultValue = "false") sameTarget: Boolean, @RequestParam(defaultValue = "") next: String,
@@ -282,6 +304,7 @@ class AdminController(
 		return page(model, user, "moderation", "admin/moderation")
 	}
 
+	/** 금칙어 추가. */
 	@PostMapping("/admin/moderation")
 	fun addRule(@RequestParam pattern: String, @RequestParam(defaultValue = "ALL") scope: String, @RequestParam(defaultValue = "BLOCK") action: String,
 	            @RequestParam(defaultValue = "") note: String, user: Principal, redirect: RedirectAttributes): String {
@@ -296,6 +319,7 @@ class AdminController(
 		return "redirect:/admin/moderation"
 	}
 
+	/** 금칙어 사용 켬·끔. */
 	@PostMapping("/admin/moderation/{seq}/toggle")
 	fun toggleRule(@PathVariable seq: Long, @RequestParam enabled: Boolean, user: Principal, redirect: RedirectAttributes): String {
 		val rule = rules.find(seq)
@@ -305,6 +329,7 @@ class AdminController(
 		return "redirect:/admin/moderation"
 	}
 
+	/** 금칙어 삭제. 이력에는 지우기 전 내용을 남긴다. */
 	@PostMapping("/admin/moderation/{seq}/delete")
 	fun deleteRule(@PathVariable seq: Long, user: Principal, redirect: RedirectAttributes): String {
 		val rule = rules.find(seq)
@@ -321,12 +346,14 @@ class AdminController(
 		return page(model, user, "mail", "admin/mail")
 	}
 
+	/** 운영 상태(수집 이력·시세 비교·푸시). */
 	@GetMapping("/admin/operations")
 	fun operations(model: Model, user: Principal): String {
 		model.addAttribute("report", operations.report())
 		return page(model, user, "operations", "admin/operations")
 	}
 
+	/** 수집 작업 화면. 상태는 스케줄러 내부 API에서 받아 오고, 연결이 안 되면 오류 안내만 보여 준다. */
 	@GetMapping("/admin/jobs")
 	fun jobs(model: Model, user: Principal): String {
 		model.addAttribute("kinds", JobKind.entries)
@@ -342,6 +369,10 @@ class AdminController(
 		return page(model, user, "jobs", "admin/jobs")
 	}
 
+	/**
+	 * 수동 수집 시작. 폼의 kind 문자열은 JobKind enum으로 자동 변환된다.
+	 * @DateTimeFormat(ISO.DATE): 'yyyy-MM-dd' 형식 문자열을 LocalDate로 바꿔 받는다.
+	 */
 	@PostMapping("/admin/jobs")
 	fun start(@RequestParam kind: JobKind, @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) startDate: LocalDate,
 	          @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) endDate: LocalDate, user: Principal, redirect: RedirectAttributes) =
@@ -351,11 +382,13 @@ class AdminController(
 			"수집을 시작했습니다. 작업 ID: $id"
 		}
 
+	/** 수집 중지 요청(스케줄러가 진행 중인 월 구간을 마친 뒤 멈춘다). */
 	@PostMapping("/admin/jobs/{id}/cancel")
 	fun cancel(@PathVariable id: String, user: Principal, redirect: RedirectAttributes) = schedulerAction(redirect) {
 		scheduler.cancel(id).also { audit.record(user.name, "JOB_CANCEL", "JOB", id) }
 	}
 
+	/** 같은 종류·기간으로 새 작업을 만든다. */
 	@PostMapping("/admin/jobs/{id}/retry")
 	fun retry(@PathVariable id: String, user: Principal, redirect: RedirectAttributes) =
 		schedulerAction(redirect) {
@@ -364,6 +397,7 @@ class AdminController(
 			"같은 기간으로 새 작업을 시작했습니다. 작업 ID: $next"
 		}
 
+	// 자동 일정 저장. cron은 '|'로 여러 개를 이을 수 있고, 형식·간격 검사는 스케줄러가 한다.
 	// HTML 체크박스는 해제하면 값이 전송되지 않으므로 미전송을 false로 본다.
 	@PostMapping("/admin/schedules/{kind}")
 	fun schedule(@PathVariable kind: JobKind, @RequestParam(defaultValue = "false") enabled: Boolean, @RequestParam cron: String,
@@ -373,6 +407,7 @@ class AdminController(
 				.also { audit.record(user.name, "SCHEDULE_SAVE", "SCHEDULE", kind.name, after = "${if (enabled) "켬" else "끔"} · $cron · ${lookbackDays}일") }
 		}
 
+	/** 스케줄러 요청 공통 틀. 성공 문구 또는 오류 문구를 플래시로 담고 수집 화면으로 돌아간다. */
 	private fun schedulerAction(redirect: RedirectAttributes, action: () -> String): String {
 		try {
 			redirect.addFlashAttribute("notice", action())
@@ -382,11 +417,13 @@ class AdminController(
 		return "redirect:/admin/jobs"
 	}
 
+	/** 모든 화면 공통 값(관리자 이름, 현재 메뉴, 대기 신고 수)을 넣고 템플릿 이름을 돌려준다. */
 	private fun page(model: Model, user: Principal, menu: String, view: String): String {
 		model.addAttribute("username", user.name); model.addAttribute("menu", menu)
 		model.addAttribute("openReports", reports.openCount())
 		return view
 	}
+	/** 성공이면 notice, 실패면 error로 안내 문구를 담는다. */
 	private fun flash(redirect: RedirectAttributes, ok: Boolean, success: String, failure: String) {
 		redirect.addFlashAttribute(if (ok) "notice" else "error", if (ok) success else failure)
 	}
@@ -399,7 +436,8 @@ class AdminController(
 	}
 }
 
-/** 배포 확인용 상태 점검. 앞단 nginx는 /internal을 외부로 내보내지 않는다. */
+/** 배포 확인용 상태 점검. 앞단 nginx는 /internal을 외부로 내보내지 않는다. DB에 SELECT 1이 되면 UP. */
+// @RestController: 반환값을 화면이 아니라 JSON 응답으로 보낸다. SecurityConfig에서 /internal/health만 로그인 없이 연다.
 @RestController
 class HealthController(private val jdbc: JdbcTemplate) {
 	@GetMapping("/internal/health")

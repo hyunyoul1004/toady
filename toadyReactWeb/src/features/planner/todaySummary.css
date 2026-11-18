@@ -1,3 +1,4 @@
+/* 메인 '오늘의 요약'(TodaySummary.jsx). */
 .today-summary{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px 14px 12px;margin-top:4px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
 .today-summary-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .today-summary-head h2{margin:0;font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-.2px}

@@ -1,12 +1,28 @@
 /*
- * TOADY 서비스 워커: 웹 푸시 알림 표시와 클릭 이동만 담당한다.
- * 화면·API 응답을 캐시하지 않아 배포 후에도 예전 화면이 남지 않는다(fetch 처리기 없음).
+ * TOADY 서비스 워커: 웹 푸시 알림 표시·클릭 이동과, 연결이 끊겼을 때의 안내 화면을 담당한다.
+ * 화면·API 응답은 캐시하지 않는다(늘 네트워크에서 받으므로 배포 후에도 예전 화면이 남지 않는다).
  */
 const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+
+/**
+ * 페이지 이동(주소 열기)만 네트워크로 그대로 받고, 연결이 끊겨 실패하면 안내 화면을 보여 준다.
+ * 이미지·스크립트·API 요청은 손대지 않는다(respondWith를 부르지 않으면 브라우저가 평소대로 처리한다).
+ * fetch 처리기가 있어야 삼성 인터넷 등이 '설치할 수 있는 앱'으로 보고 홈 화면 추가 창을 바로 띄울 수 있다.
+ */
+const OFFLINE_HTML = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+  + '<title>연결이 끊겼어요 · TOADY</title><style>body{margin:0;font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;background:#f8fafc;color:#0f172a}'
+  + 'main{text-align:center;padding:24px}h1{font-size:20px;margin:12px 0 8px}p{color:#475569;margin:0 0 20px}button{font:inherit;font-weight:700;padding:10px 20px;border-radius:10px;border:0;background:#2563eb;color:#fff}</style></head>'
+  + '<body><main><img src="/icons/icon-192.png" width="64" height="64" alt=""><h1>인터넷 연결이 끊겼어요</h1><p>연결되면 다시 불러올게요.</p>'
+  + '<button onclick="location.reload()">다시 시도</button></main></body></html>';
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.mode !== 'navigate' || request.method !== 'GET') return;
+  event.respondWith(fetch(request).catch(() => new Response(OFFLINE_HTML, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } })));
+});
 
 /** 같은 출처의 경로만 연다. 외부 주소가 섞인 알림은 첫 화면으로 보낸다. */
 function safeUrl(value) {

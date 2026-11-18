@@ -11,7 +11,12 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Stream;
 
-/** TB_PRICE_GAP 조회. 계산 작업(PriceGapSnapshots)과 목록·공개 페이지·알림이 함께 쓴다. */
+/**
+ * TB_PRICE_GAP(분양가 vs 주변 시세 미리 계산 결과) 조회.
+ * 계산 작업(PriceGapSnapshots)이 저녁에 채워 두고, 목록·공개 페이지·나의 청약·알림이 함께 읽는다.
+ * 국토부 API를 사용자 요청마다 부르지 않으려고 결과를 DB에 저장해 두는 구조다.
+ */
+// @Component: 스프링 빈으로 등록한다(@Service와 같은 역할, 이름만 다르다).
 @Component
 public class PriceGapStore {
     private final JdbcTemplate jdbc;
@@ -51,6 +56,7 @@ public class PriceGapStore {
 
     static final Map<String, String> MODEL_TABLES = Map.of("apt", "TB_APT_LTTOT_PBLANC_MDL", "remaining", "TB_REMNDR_LTTOT_PBLANC_MDL", "optional", "TB_OPT_LTTOT_PBLANC_MDL");
     /** 공고별 지금의 '전용면적(반올림) → 최고 공급금액'. 계산할 때와 같은 규칙(PriceGapSnapshots.supplies, 10㎡ 미만 제외)이다. */
+    // IN 절에 너무 많은 값을 넣지 않게 200개씩 나눠 조회한다. 유형마다 주택형 테이블이 다르다(MODEL_TABLES).
     Map<String, Map<Integer, Long>> currentSupplies(Collection<String> ids) {
         Map<String, List<String[]>> byType = new HashMap<>();
         for (String id : ids) {

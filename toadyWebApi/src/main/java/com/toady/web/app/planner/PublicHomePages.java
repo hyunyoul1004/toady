@@ -9,10 +9,12 @@ import java.util.*;
 import static com.toady.web.app.planner.PublicHtml.esc;
 
 /**
- * 검색 봇용 홈(/)·가점 계산기(/score)·맞춤 청약(/match) 서버 HTML. 사람은 같은 주소에서 앱 화면을 본다(웹 nginx 참고).
+ * 검색 봇용 홈(/)·가점 계산기(/score)·맞춤 청약(/match) 서버 HTML. 사람은 같은 주소에서 앱 화면을 본다.
+ * 웹 컨테이너 nginx(toadyReactWeb/nginx.conf)가 User-Agent로 봇을 가려 봇만 /api/v1/public/... 로 보내고, 사람에게는 React 앱(SPA)을 준다.
  * 앱 화면은 자바스크립트로 그려지므로 JS를 실행하지 않는 봇(네이버·다음)에게는 홈과 같은 기본 HTML만 보였다.
  * 주소마다 고유한 제목·설명·대표 주소와 실제 공고 링크를 준다.
  */
+// @RestController: 여기서는 JSON이 아니라 완성된 HTML 문자열을 응답한다(produces = text/html).
 @RestController
 public class PublicHomePages {
     static final int MATCH_ITEMS = 20, SCORE_ITEMS = 10;
@@ -23,8 +25,10 @@ public class PublicHomePages {
         this.collections = collections; this.areas = areas; this.index = index; this.benchmarks = benchmarks; this.domain = domain.replaceAll("/+$", "");
     }
 
+    // 렌더링 결과는 PublicHtml.cached()가 잠시 메모리에 들고 있어 봇이 자주 와도 매번 DB를 읽지 않는다.
     @GetMapping(value = "/api/v1/public/home", produces = "text/html;charset=UTF-8")
     public ResponseEntity<String> home() { return PublicHtml.cached("home", this::renderHome); }
+    // 이번 주 접수·발표, 다음 주 접수, 지역 칩을 HTML로 만들고 검색엔진용 구조화 데이터(JSON-LD: WebSite, ItemList)를 붙인다.
     private ResponseEntity<String> renderHome() {
         LocalDate today = index.today();
         PublicCollectionPages.Weekly week = collections.weeklyData(today);

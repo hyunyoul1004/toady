@@ -1,3 +1,4 @@
+/** 공고 주소 → 시·도/시·군·구 판정과 지역별 청약 묶기. 쓰는 곳: RegionsPage, views/main/Main.jsx, useAnnouncementSearch.js. */
 import { isDistrictOf } from './districts.js';
 import Citys from '../../views/main/Citys.js';
 
@@ -9,6 +10,7 @@ import Citys from '../../views/main/Citys.js';
  */
 const SHORT = { 충청북도: '충북', 충청남도: '충남', 전북특별자치도: '전북', 전라북도: '전북', 전라남도: '전남', 경상북도: '경북', 경상남도: '경남' };
 const shortOf = name => SHORT[name] || name.slice(0, 2);
+// 줄임말('경기') → Citys 항목. 시·도를 빨리 찾기 위한 표.
 const CITY_BY_SHORT = new Map(Citys.map(city => [shortOf(city.cityName), city]));
 
 const headOf = text => String(text || '').trim().split(/\s+/)[0] || '';
@@ -21,10 +23,12 @@ function looseCity(head) {
   return strictCity(head) || (head.length >= 2 ? CITY_BY_SHORT.get(head.slice(0, 2)) : null) || null;
 }
 
+/** 공고 주소(와 공급지역명) → { cityName, districtName }. 시·도를 모르면 null. */
 export function regionOf(address, region) {
   // 주소 첫 낱말이 '광주시 오포읍'처럼 시·도가 아닌 시·군이면 앞 두 글자로 추정하지 않고 공급지역명을 먼저 본다.
   const city = strictCity(headOf(address)) || looseCity(headOf(region)) || looseCity(headOf(address));
   if (!city) return null;
+  // 앞뒤에 공백을 붙여 낱말 단위로 비교한다(' 중구 '처럼). '강남구' 안의 '남구'가 걸리지 않게 한다.
   const words = ` ${String(address || '').replace(/\s+/g, ' ').trim()} `;
   const district = [...(city.districts || [])]
     .sort((a, b) => b.districtName.length - a.districtName.length)
@@ -77,7 +81,6 @@ export function searchLabel(cityName, districtName) {
 
 /** 예전 이름·흔한 표기(서버 Regions.ALIASES와 같은 목록). '광주시'는 경기 광주시와 헷갈리므로 넣지 않는다. */
 const CITY_ALIASES = { 서울시: '서울', 부산시: '부산', 대구시: '대구', 인천시: '인천', 대전시: '대전', 울산시: '울산', 세종시: '세종', 강원도: '강원', 전라북도: '전북', 제주도: '제주' };
-/** 시·군·구 글자 모양: 실제 이름은 '동대문구'·'남양주시'처럼 짧고, '검단신도시'·'평택고덕국제화지구' 같은 지구·신도시 이름은 받지 않는다. */
 /**
  * 지역별 청약 주소(/regions/{시·도}[/{시·군·구}])의 조각 → 캘린더 검색 대상(검색 목록 FLAT_CITY_OPTIONS와 같은 모양).
  * 서버 공개 페이지(Regions.java)와 같은 기준: 시·도는 정확한 이름·줄임말·예전 이름만, 시·군·구는 그 시·도의 이름으로만 거른다.
@@ -89,6 +92,7 @@ export function regionTargetOf(sidoSegment, districtSegment) {
   const city = head && (strictCity(head) || strictCity(CITY_ALIASES[head] || ''));
   if (!city) return null;
   const district = String(districtSegment || '').trim();
+  // 실제 시·군·구 이름만 받는다. '검단신도시'·'평택고덕국제화지구' 같은 지구·신도시 이름이면 시·도만 돌려준다.
   if (district && isDistrictOf(city.cityName, district)) {
     const label = searchLabel(city.cityName, district);
     return { type: 'district', key: label, label, cityName: city.cityName, districtName: district };
@@ -101,6 +105,7 @@ export function regionPath(target) {
   return `/regions/${encodeURIComponent(target.cityName)}${target.districtName ? `/${encodeURIComponent(target.districtName)}` : ''}`;
 }
 
+// 괄호·쉼표를 공백으로 바꾼 뒤 낱말 단위로 들어 있는지 본다.
 const hasWord = (text, word) => ` ${String(text || '').replace(/[(),]/g, ' ').replace(/\s+/g, ' ').trim()} `.includes(` ${word} `);
 /**
  * 캘린더 검색의 시·도/시·군·구 대상과 공고가 맞는지. 글자 포함이 아니라 같은 시·도 안의 낱말 단위로 비교한다

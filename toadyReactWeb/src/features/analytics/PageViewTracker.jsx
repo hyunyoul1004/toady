@@ -4,6 +4,7 @@ import config from 'config';
 import { createPageViewTracker, externalReferrer, pushOpenSubject } from './pageViews';
 import { trackAction } from './trackAction';
 
+// 기록기는 처음 쓸 때 한 번만 만든다(||=: 비어 있을 때만 대입). 모듈 변수라 화면이 다시 그려져도 유지된다.
 let tracker;
 function track(path) {
   tracker ||= createPageViewTracker({
@@ -25,7 +26,15 @@ function logicalPath(pathname, search) {
   return pathname;
 }
 
-/** 첫 진입과 경로 이동을 기록한다. 상세 열기 외의 쿼리·해시 변경 및 StrictMode의 effect 재실행은 제외한다. */
+/**
+ * 첫 진입과 경로 이동을 기록한다. 상세 열기 외의 쿼리·해시 변경 및 StrictMode의 effect 재실행은 제외한다.
+ * App.jsx의 라우터 안에 한 번 둔다. 화면에는 아무것도 그리지 않는다(return null).
+ * API: POST /api/v1/analytics/page-views(pageViews.js), 알림 클릭은 trackAction('push_open').
+ *
+ * useRef: 값이 바뀌어도 다시 그리지 않는 '상자'다. 지난번에 센 주소처럼 화면과 상관없이 기억만 할 값에 쓴다.
+ * (useState였다면 값을 바꿀 때마다 다시 그려진다.)
+ * location.key: React Router가 히스토리 칸마다 붙이는 고유값. 같은 주소라도 새로 이동하면 바뀐다.
+ */
 export default function PageViewTracker() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,6 +43,7 @@ export default function PageViewTracker() {
   // 같은 주소의 알림 열기를 두 번 세지 않는다(개발 모드 StrictMode의 effect 재실행 등).
   const pushCounted = useRef(null);
   const path = logicalPath(pathname, search);
+  // useEffect의 두 번째 인자(의존성 배열): 이 값들 중 하나가 바뀐 렌더 뒤에만 안쪽을 다시 실행한다.
   useEffect(() => {
     if (previous.current?.key === key || previous.current?.path === path) return;
     previous.current = { key, path };
@@ -49,7 +59,9 @@ export default function PageViewTracker() {
     if (pushSubject && pushCounted.current !== key) { pushCounted.current = key; trackAction('push_open', pushSubject); }
     params.delete('src');
     const rest = params.toString();
+    // replace: 히스토리를 한 칸 더 쌓지 않고 지금 칸의 주소만 바꾼다(뒤로가기 한 번에 이전 화면으로). state는 그대로 넘겨 열린 팝업을 지킨다.
     navigate(`${pathname}${rest ? `?${rest}` : ''}${location.hash}`, { replace: true, state: location.state });
+    // 의존성은 search 하나만 둔다. navigate·location.state가 바뀔 때마다 다시 돌 필요가 없어서 일부러 뺐다.
   }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }

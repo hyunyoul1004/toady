@@ -15,22 +15,29 @@ import './push.css';
 /**
  * 알림 설정 창. 열고 닫기는 부모가 useHistoryOverlay로 관리해 뒤로가기 한 번에 닫힌다.
  * testAnnouncementId가 있으면 테스트 알림을 누를 때 그 공고 상세로 이동한다.
+ * 쓰는 곳: 나의 청약(MyPlanner, 메뉴의 '알림 설정'이 여는 push-settings 레이어), 내 정보(AccountPage), 알림 안내 카드(PushPrompt).
+ * 상태: pushStore(zustand)의 구독 여부·범위. API: GET /api/v1/living-areas(생활권 목록), 저장은 pushStore.save가 한다.
+ * 아직 알림을 켜지 않았으면 고른 범위를 draft(이 창 안의 임시 값)에만 두었다가 '알림 켜기' 때 함께 저장한다.
  */
 export default function PushSettingsDialog({ open, onClose, testAnnouncementId, loggedIn }) {
   const mobile = useMediaQuery('(max-width:600px)');
   const push = usePushStore();
   const [busy, setBusy] = useState(false), [error, setError] = useState(null), [notice, setNotice] = useState(null);
+  // React Query: queryKey가 캐시 이름표다. 같은 키를 쓰는 다른 화면과 응답을 나눠 쓴다.
+  // staleTime 1시간: 그동안은 캐시를 '신선'하다고 보고 다시 요청하지 않는다. enabled: 창이 열렸을 때만 요청한다.
   const areas = useQuery({ queryKey: ['livingAreas'], queryFn: () => apiClient.get('/api/v1/living-areas'), staleTime: 3600000, enabled: open });
   const [draft, setDraft] = useState(null);
   const scope = draft || push.scope;
   const mode = push.platform.mode;
 
+  /** 버튼 동작 공통 처리: 처리 중 표시 → 실행 → 성공 안내나 오류 표시. */
   async function run(task, success) {
     setBusy(true); setError(null); setNotice(null);
     try { await task(); if (success) setNotice(success); } catch (e) { setError(e.message || '잠시 후 다시 시도해 주세요.'); } finally { setBusy(false); }
   }
   // 권한 요청이 사용자 동작 안에서 바로 시작되도록 await 없이 enable을 호출한다.
   const enable = () => run(() => push.enable(scope).then(() => setDraft(null)), '알림을 켰어요. 아래에서 테스트 알림을 보내 확인해 보세요.');
+  // 범위 변경: 이미 구독 중이면 바로 서버에 저장하고, 아니면 draft에만 둔다.
   const change = next => {
     if (!push.subscribed) { setDraft(next); return; }
     run(() => push.save(next), null);
@@ -40,6 +47,7 @@ export default function PushSettingsDialog({ open, onClose, testAnnouncementId, 
   // 뒤로가기로 닫힌 경우 close()를 거치지 않으므로, 다시 열릴 때 지난 안내·초안을 비운다.
   useEffect(() => { if (open) { setError(null); setNotice(null); setDraft(null); markPushSettingsSeen(); } }, [open]);
 
+  // 환경별 내용: 확인 중 → 아이폰 홈 화면 안내 → 지원하지 않는 환경 안내 → 서버 기능 꺼짐 → 실제 설정.
   let body;
   if (push.status === 'loading') body = <div className="push-loading"><CircularProgress size={24} /></div>;
   else if (mode === 'ios-home' || mode === 'ios-safari') body = <HomeScreenGuide mode={mode} />;

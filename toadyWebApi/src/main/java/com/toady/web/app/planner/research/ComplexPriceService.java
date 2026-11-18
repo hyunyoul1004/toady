@@ -17,7 +17,10 @@ import java.util.stream.Collectors;
 /**
  * 위치 탭 지도용: 공고와 같은 시·군·구에서 최근 신고된 아파트 매매 실거래를 단지별로 묶는다.
  * 호가·시세 추정이 아니라 국토부에 신고된 계약 금액만 쓴다(해제 거래 제외). 필터는 화면이 이 결과 안에서 적용한다.
+ * ResearchController의 /api/v1/research/complexes가 부른다. 실거래는 NeighborhoodResearchService(국토부 API + 캐시)에서,
+ * 단지 좌표는 ComplexLocator(카카오 + DB)에서 받는다. 한 번에 다 못 받으면 partial/pending으로 알리고 화면이 다시 부르면 이어 받는다.
  */
+// @Service: 스프링 빈으로 등록한다.
 @Service
 public class ComplexPriceService {
     /**
@@ -26,6 +29,7 @@ public class ComplexPriceService {
      */
     public record AreaPrice(int area, int count, long latest, String latestDate, int latestFloor, long median, long min, long max,
                             String month, long monthAvg, int monthCount) { }
+    /** 단지의 최근 거래 한 건(목록 표시용). */
     public record RecentTrade(String date, BigDecimal area, int floor, long amount) { }
     /** lat·lng가 없으면 지도에는 못 놓고 목록에만 보인다(좌표 확인 중이거나 지번으로 찾지 못함). */
     public record Complex(String key, String name, String dong, String jibun, String buildYear, Double lat, Double lng,
@@ -53,8 +57,7 @@ public class ComplexPriceService {
     private final Cache<String, Older> older = CacheBuilder.newBuilder().maximumSize(200).expireAfterWrite(6, TimeUnit.HOURS).build();
     private final NeighborhoodResearchService research;
     private final ComplexLocator locator;
-    /** 좌표 확인과 기간 수집이 모두 끝난 결과만 잠시 보관한다. */
-    /** 단지 수 기준으로 메모리 상한을 둔다(시·군·구 하나가 최대 900단지). */
+    /** 좌표 확인과 기간 수집이 모두 끝난 결과만 30분 동안 보관한다. 메모리 상한은 단지 수 기준이다(시·군·구 하나가 최대 900단지). */
     private final Cache<String, Result> done = CacheBuilder.newBuilder().maximumWeight(60_000)
         .weigher((String key, Result value) -> Math.max(1, value.complexes().size())).expireAfterWrite(30, TimeUnit.MINUTES).build();
 
@@ -62,6 +65,10 @@ public class ComplexPriceService {
         this.research = research; this.locator = locator;
     }
 
+    /**
+     * 시·군·구(bcode 앞 5자리)의 최근 months개월 매매를 단지별로 묶어 돌려준다.
+     * 순서: 완성 캐시 확인 → 실거래 받기(최대 7초) → 12개월이면 그 전 2년 요약 이어 받기 → 좌표 확인(최대 3초) → 결과 조립.
+     */
     public Result complexes(String bcode, String region, int months) {
         int period = PERIODS.contains(months) ? months : 6;
         // region은 좌표 검색어 보조일 뿐 결과를 바꾸지 않으므로 캐시 키에 넣지 않는다(region을 바꿔 가며 캐시를 채우지 못하게).

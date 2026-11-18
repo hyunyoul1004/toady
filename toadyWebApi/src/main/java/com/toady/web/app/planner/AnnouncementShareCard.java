@@ -9,15 +9,21 @@ import java.util.Set;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
-/** 크롤러가 JavaScript 없이 읽을 수 있는 공고별 PNG 카드. 공개된 공고 정보만 사용한다. */
+/**
+ * 공고별 공유 이미지(1200x630 PNG, og:image용)를 서버에서 직접 그린다.
+ * 크롤러·카카오톡 미리보기가 JavaScript 없이 읽을 수 있다. 공개된 공고 정보만 사용한다.
+ * PublicAnnouncementPage가 이미지 요청을 받으면 부른다.
+ */
 final class AnnouncementShareCard {
     private AnnouncementShareCard() { }
+    // 서버에 설치된 한글 글꼴 중 처음 찾은 것을 쓴다. 없으면 SansSerif(한글이 네모로 보일 수 있음).
     private static final String FONT_FAMILY = fontFamily();
     private static String fontFamily() {
         var families = Set.of(GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames(Locale.ENGLISH));
         return Stream.of("Noto Sans CJK KR", "Noto Sans CJK JP", "Apple SD Gothic Neo", "Malgun Gothic", "SansSerif")
                 .filter(families::contains).findFirst().orElse("SansSerif");
     }
+    /** 가점이 공개됐으면 최저·최고 가점을, 아니면 접수 기간·발표일을 크게 보여 준다. section에 따라 아래 안내 문구가 바뀐다. */
     static byte[] png(PlannerSummary.Summary summary,String section,ShareScores.Range scores) throws IOException {
         BufferedImage image=new BufferedImage(1200,630,BufferedImage.TYPE_INT_RGB);
         Graphics2D g=image.createGraphics();
@@ -47,6 +53,7 @@ final class AnnouncementShareCard {
     }
     private static void font(Graphics2D g,int size,boolean bold) {g.setFont(new Font(FONT_FAMILY,bold?Font.BOLD:Font.PLAIN,size));}
     private static String date(Object date) {return date==null?"미제공":date.toString();}
+    // width 안에 들어가는 글자 수(코드포인트 단위로 세어 이모지·한글이 깨지지 않게).
     private static int fit(Graphics2D g,String text,int width) {int i=0;while(i<text.length()){int n=i+Character.charCount(text.codePointAt(i));if(g.getFontMetrics().stringWidth(text.substring(0,n))>width)break;i=n;}return i;}
     private static String ellipsis(Graphics2D g,String text,int width) {return g.getFontMetrics().stringWidth(text)<=width?text:text.substring(0,fit(g,text,width-g.getFontMetrics().stringWidth("…")))+"…";}
 }

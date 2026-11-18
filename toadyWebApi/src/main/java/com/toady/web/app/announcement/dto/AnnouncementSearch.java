@@ -8,16 +8,22 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
 
-/** 공고 목록 조회에 사용하는 지역·키워드·기간 필터와 페이지 조건입니다. */
+/**
+ * 공고 목록 조회에 사용하는 지역·키워드·기간 필터와 페이지 조건입니다.
+ * 컨트롤러가 @ModelAttribute로 받는다. 쿼리 문자열(?keyword=…&page=0)을 이름이 같은 setter로 채우므로
+ * record가 아닌 일반 클래스로 두었다. regionCode()처럼 이름만 있는 메서드는 서비스 코드에서 짧게 읽으려고 둔 것이다.
+ */
 public class AnnouncementSearch {
     @Schema(description = "공급지역코드", example = "011")
     private String regionCode;
 
     @Schema(description = "주택명 검색어", example = "자이")
+    // @Size: 검증 규칙. 컨트롤러의 @Valid가 검사하고, 어기면 400으로 응답한다.
     @Size(max = 50)
     private String keyword;
 
     @Schema(description = "청약접수 시작일 조회 시작일(YYYY-MM-DD)", example = "2026-10-01")
+    // @DateTimeFormat(ISO.DATE): "2026-10-01" 같은 문자열을 LocalDate로 바꿔 받는다.
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate startDate;
 
@@ -26,6 +32,7 @@ public class AnnouncementSearch {
     private LocalDate endDate;
 
     @Schema(description = "조회할 페이지(0부터 시작, 통합 목록은 (page+1)×size 최대 1000)", minimum = "0", example = "0")
+    // @Min·@Max: 숫자 범위 검증. 너무 큰 페이지 범위는 서비스가 한 번 더 막는다.
     @Min(0)
     private int page;
 

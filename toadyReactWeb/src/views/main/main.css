@@ -1,3 +1,5 @@
+/* 모든 요소의 width/height에 padding·border를 포함해 계산한다.
+   Main.jsx가 불러오지만 CSS는 전역이라, 한 번 불러오면 사이트 전체에 적용된다. */
 * {
   box-sizing: border-box;
 }

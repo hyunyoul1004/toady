@@ -7,13 +7,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 /**
- * 공공지원 민간임대 공고의 주택형별 상세 정보를 조회하는 저장소입니다.
- * 주택형은 주택관리번호, 공고번호, 모델번호를 복합키로 사용합니다.
+ * 공공지원 민간임대 공고의 주택형별 상세 정보(TB_PBL_PVT_RENT_LTTOT_PBLANC_MDL)를 조회하는 저장소입니다.
+ * 주택형은 주택관리번호, 공고번호, 모델번호를 복합키(AnnouncementModelId)로 사용합니다.
+ * 인터페이스만 선언하면 Spring Data JPA가 구현체를 만들어 준다. 호출: AnnouncementDetailService.
  */
 public interface PublicRentalAnnouncementModelRepository extends JpaRepository<PublicRentalAnnouncementModelEntity, AnnouncementModelId> {
 
     /**
      * 공고에 속한 주택형을 모델번호 오름차순으로 조회합니다.
+     * 메서드 이름으로 쿼리를 만드는 파생 쿼리라 따로 구현하지 않는다.
      *
      * @param houseManageNo 주택관리번호
      * @param pblancNo 공고번호

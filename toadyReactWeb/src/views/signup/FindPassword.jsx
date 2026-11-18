@@ -1,6 +1,12 @@
 /**
  * @file FindPassword.jsx
- * @description 비밀번호 찾기 및 이메일 인증 기반 재설정 컴포넌트
+ * @description 비밀번호 재설정 창의 내용. 두 단계로 진행한다.
+ *   1단계: 이메일 입력 → authApi.requestPasswordReset이 인증코드 메일을 보낸다.
+ *   2단계: 메일의 인증코드 + 새 비밀번호 입력 → authApi.confirmPasswordChange로 바꾼다. 성공하면 잠시 뒤 로그인 창으로 넘어간다.
+ *
+ * - 사용처: components/layout/MainLayout.jsx의 공통 팝업(layout 층 'password') 안. 팝업은 useHistoryOverlay로 히스토리 한 단계라 뒤로가기로 닫힌다.
+ * - 가입 여부를 드러내지 않도록 서버는 없는 이메일에도 같은 성공 문구를 돌려준다. 재요청 대기 시간(4분)도 서버가 정한다.
+ * - props: open(창이 열려 있는지), handleCloseModal, handleOpenLogin
  */
 import React, { useState, useRef, useEffect } from 'react';
 import Box from '@mui/material/Box';
@@ -32,6 +38,7 @@ export const FindPassword = (props) => {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  // 칸별 오류 문구. 키가 있으면 그 칸이 빨갛게 표시된다(예: { userEmailMsg: '…' }).
   const [validationInfo, setValidationInfo] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -40,6 +47,7 @@ export const FindPassword = (props) => {
   const codeRef = useRef(null);
   const pwRef = useRef(null);
   const pwConfirmRef = useRef(null);
+  // 성공 후 로그인 창으로 넘어가는 타이머 id. 화면과 무관한 값이라 state가 아닌 ref에 둔다.
   const loginTimerRef = useRef(null);
 
   // 창을 닫거나(뒤로가기 포함) 화면이 사라지면 예약된 로그인 전환을 취소한다.
@@ -49,6 +57,8 @@ export const FindPassword = (props) => {
       loginTimerRef.current = null;
     }
   }, [props.open]);
+  // 의존성 [props.open]: 창 열림 값이 바뀔 때마다 위 effect가 다시 돈다.
+  // 아래는 빈 배열 + 정리 함수라서 컴포넌트가 사라질 때 한 번 타이머를 지운다.
   useEffect(() => () => clearTimeout(loginTimerRef.current), []);
 
   // 1단계: 인증코드 전송 요청
@@ -187,7 +197,7 @@ export const FindPassword = (props) => {
         </Alert>
       )}
 
-      {/* 2. 1단계: 이메일 입력 폼 */}
+      {/* 2. 1단계: 이메일 입력 폼 (step 값에 따라 두 폼 중 하나만 그린다) */}
       {step === '01' ? (
         <Box component="form" onSubmit={handleRequestCertify} noValidate>
           <Box sx={{ mb: 2 }}>

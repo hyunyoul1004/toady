@@ -20,7 +20,12 @@ import java.util.*;
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2022/06/10        youn       최초 생성
+ *
+ * 스프링 시큐리티가 다루는 로그인 사용자 정보(UserDetails 구현).
+ * 기본 필드(이메일=username, 비밀번호 해시, 권한)에 회원 번호(userSeq)와 닉네임을 더했다.
+ * SimpleUserDetailsService(로그인)와 JwtProviderImpl(토큰 검증)이 만들고, 컨트롤러는 인증 정보에서 꺼내 쓴다.
  */
+// @Getter/@Setter(Lombok): 필드마다 getter·setter를 만든다
 @Getter
 @Setter
 public class CustomUserDetails implements UserDetails {
@@ -44,6 +49,7 @@ public class CustomUserDetails implements UserDetails {
 
 
 
+    // 주의: 이 생성자만 (password, username) 순서다. 다른 생성자와 순서가 반대이니 쓸 때 헷갈리지 않게 한다(지금은 쓰는 곳 없음)
     public CustomUserDetails(String password, String username, Collection<? extends GrantedAuthority> authorities, boolean accountNonExpired, boolean accountNonLocked, boolean credentialsNonExpired, boolean enabled, Long userSeq, String userNicName) {
         this.password = password;
         this.username = username;
@@ -56,6 +62,7 @@ public class CustomUserDetails implements UserDetails {
         this.userNicName = userNicName;
     }
 
+    /** 계정 상태 플래그를 모두 true로 두는 간단한 생성자. 상태 검사는 SimpleUserDetailsService·JwtProviderImpl이 먼저 한다. */
     public CustomUserDetails(String username, String password, Collection<? extends GrantedAuthority> authorities) {
         this(username, password, true, true, true, true, authorities);
     }

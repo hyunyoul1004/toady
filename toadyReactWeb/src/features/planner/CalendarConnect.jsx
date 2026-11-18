@@ -11,6 +11,7 @@ import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
 import apiClient from '@/api/client';
 import { downloadCalendar } from './plannerUtils';
 
+// 연결 안내에 보여 줄 장점 목록: [아이콘, 문구].
 const BENEFITS = [
   [SyncRounded, '저장한 공고 일정이 캘린더에 자동으로 추가되고, 일정이 바뀌면 함께 갱신돼요.'],
   [NotificationsActiveOutlined, '일정 전날 오전 9시에 캘린더 앱이 알려 줘요.'],
@@ -18,12 +19,15 @@ const BENEFITS = [
 ];
 
 /** 회원은 구독 주소로 자동 갱신, 비회원은 로그인 안내와 일회성 파일을 제공한다. 확인 단계도 같은 창 안에서 처리해 뒤로가기 한 번에 닫힌다. */
+// 회원 구독 주소는 /api/v1/me/calendar-feed(조회 GET · 발급/재발급 POST · 해지 DELETE). 창이 열렸을 때만(enabled) 조회한다.
+// MyPlanner가 useHistoryOverlay('calendar-connect')로 열고 닫는다.
 export default function CalendarConnect({ open, onClose, loggedIn, summaries, onLogin }) {
   const client = useQueryClient();
   const mobile = useMediaQuery('(max-width:600px)');
   const feed = useQuery({ queryKey: ['calendarFeed'], enabled: open && loggedIn, queryFn: async () => (await apiClient.get('/api/v1/me/calendar-feed')).data, staleTime: 60000 });
   const [busy, setBusy] = useState(false), [error, setError] = useState(null), [notice, setNotice] = useState(null), [confirm, setConfirm] = useState(null);
   const data = feed.data;
+  // 발급·재발급·해지 뒤에는 응답으로 캐시를 바로 바꾼다(setQueryData). 다시 요청하지 않아도 화면이 맞춰진다.
   async function change(kind) {
     setBusy(true); setError(null); setNotice(null);
     try {
@@ -42,6 +46,7 @@ export default function CalendarConnect({ open, onClose, loggedIn, summaries, on
   // 뒤로가기로 닫힌 경우 close()를 거치지 않으므로, 다시 열릴 때 지난 확인창·안내를 비운다.
   useEffect(() => { if (open) { setConfirm(null); setNotice(null); setError(null); } }, [open]);
 
+  // 상태에 따라 본문 하나를 고른다: 비로그인 → 불러오는 중 → 오류 → 미구독 → 확인 단계 → 구독 중.
   let body;
   if (!loggedIn) body = <>
     <p className="calendar-lead">로그인하면 저장한 공고 일정이 휴대폰 캘린더에 <strong>자동으로</strong> 반영돼요.</p>
@@ -90,6 +95,7 @@ export default function CalendarConnect({ open, onClose, loggedIn, summaries, on
   </Dialog>;
 }
 
+/** 연결 장점 목록 */
 function Benefits() {
   return <ul className="calendar-benefits">{BENEFITS.map(([Icon, text]) => <li key={text}><Icon fontSize="small" /><span>{text}</span></li>)}</ul>;
 }

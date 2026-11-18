@@ -1,5 +1,6 @@
 /* 프로필 카드·신고 시트 */
 .community-sheet { border-radius: 20px !important; }
+/* 휴대폰: 아래에서 올라오는 시트라 위 모서리만 둥글게, 아이폰 홈 막대 영역(safe-area)만큼 아래 여백을 둔다. */
 @media (max-width: 599.95px) { .community-sheet { border-radius: 20px 20px 0 0 !important; padding-bottom: env(safe-area-inset-bottom); } }
 .community-sheet-body { position: relative; padding: 24px 22px 20px; color: #172b42; }
 .community-sheet-close { position: absolute !important; top: 10px; right: 10px; color: #64748b !important; }

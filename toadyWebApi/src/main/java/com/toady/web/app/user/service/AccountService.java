@@ -25,8 +25,13 @@ import java.util.regex.Pattern;
  * 로그인한 회원의 '내 정보': 계정 요약, 닉네임·비밀번호 변경, 탈퇴.
  * 닉네임·비밀번호를 바꾸면 토큰의 내용(닉네임, 비밀번호 기반 확인값)이 달라지므로 새 토큰을 돌려준다.
  * 비밀번호를 바꾸면 다른 기기의 기존 토큰은 확인값이 맞지 않아 자동으로 로그아웃된다.
+ * 흐름: AccountController(회원) / InternalAdminController(운영자 탈퇴 처리) → AccountService.
+ * 계정은 UserRepository(JPA, TB_USER)로, 목록·개수·정리는 JdbcTemplate SQL로 다룬다
+ * (TB_LTTOT_PBLANC_COMMENT, TB_FAVORITE, TB_PUSH_SUBSCRIPTION, TB_CALENDAR_FEED, TB_CERTIFY 등).
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Service: 서비스 빈. 생성자가 하나라 스프링이 그 생성자로 의존성을 넣는다
 @Service
 public class AccountService {
     /** 가입과 같은 규칙: 닉네임은 한글·영문·숫자 2~15자, 비밀번호는 6~20자이며 영문과 숫자 또는 특수문자를 함께 쓴다. */
@@ -67,6 +72,7 @@ public class AccountService {
      */
     static final int MAX_PASSWORD_GUESSES = 5;
     static final String TOO_MANY_GUESSES = "비밀번호를 여러 번 틀려서 잠시 막아 두었어요. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 이용해 주세요.";
+    // 메모리(Guava Cache)에만 둔다. 마지막으로 틀린 뒤 15분이 지나면 자동으로 사라지고, 재시작하면 초기화된다
     private final com.google.common.cache.Cache<Long, java.util.concurrent.atomic.AtomicInteger> passwordGuesses =
             com.google.common.cache.CacheBuilder.newBuilder().maximumSize(10_000).expireAfterWrite(java.time.Duration.ofMinutes(15)).build();
     private boolean passwordGuessBlocked(long userSeq) {
@@ -90,12 +96,14 @@ public class AccountService {
     /**
      * 내가 쓴 이야기(삭제하지 않은 것) 최신순 10개씩. 공고 이름과, 화면에서 그 공고의 이야기 탭으로 갈 수 있는 정보를 함께 준다.
      */
+    // @Transactional(readOnly = true): 읽기 전용 트랜잭션. 변경 감지를 하지 않아 가볍고, 여러 SELECT가 같은 연결에서 실행된다
     @Transactional(readOnly = true)
     public Map<String, Object> myComments(long userSeq, int page) {
         int safePage = Math.max(0, Math.min(page, 1000));
         Long total = count("SELECT COUNT(*) FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N'", userSeq);
         List<Map<String, Object>> items = new ArrayList<>();
         if (total != null && total > 0) {
+            // LIMIT ? OFFSET ?: page번째 10개. 테이블 이름은 TYPES의 고정 값만 쓰므로 문자열로 붙여도 SQL 주입 걱정이 없다
             jdbc.query("SELECT COMMENT_SEQ, ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, PARENT_COMMENT_SEQ, CONTENT, REG_DT, UPDATE_DT"
                             + " FROM TB_LTTOT_PBLANC_COMMENT WHERE CREATE_USER_SEQ=? AND DELETE_YN='N' ORDER BY COMMENT_SEQ DESC LIMIT ? OFFSET ?",
                     rs -> {
@@ -210,6 +218,7 @@ public class AccountService {
         return view;
     }
 
+    // 줄바꿈·연속 공백을 한 칸으로 줄이고 max자를 넘으면 자른다
     private static String clip(String text, int max) {
         if (text == null) return "";
         String flat = text.replaceAll("\\s+", " ").trim();
@@ -266,6 +275,10 @@ public class AccountService {
         return Outcome.done("닉네임을 바꿨어요. 내가 쓴 이야기에도 새 닉네임으로 보여요.", renewedToken(user, request));
     }
 
+    /**
+     * 비밀번호 변경. 현재 비밀번호 확인 → 새 비밀번호 규칙 확인 → 저장 → 남은 재설정 코드 폐기 → 새 토큰 발급.
+     * 계정 행을 잠근 채 처리해 같은 계정의 다른 변경·재설정과 겹치지 않게 한다. 72자 제한은 BCrypt가 72바이트까지만 보기 때문이다.
+     */
     @Transactional
     public Outcome changePassword(long userSeq, String current, String next, String confirm) {
         if (passwordGuessBlocked(userSeq)) return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, TOO_MANY_GUESSES);
@@ -320,6 +333,7 @@ public class AccountService {
         return erase(user, userSeq, "운영자 탈퇴 처리");
     }
 
+    // 탈퇴 공통 처리. 계정 행은 남기고 개인 정보만 지우거나 바꾼다(댓글 작성자 번호가 가리킬 행이 필요하다)
     private Outcome erase(UserEntity user, long userSeq, String reason) {
         LocalDateTime now = LocalDateTime.now();
         // 가입 규칙으로는 만들 수 없는 값이라 실제 이메일·닉네임과 겹치지 않는다(.invalid는 메일이 가지 않는 예약 도메인).
@@ -363,6 +377,7 @@ public class AccountService {
         return Outcome.fail(ResultCode.BAD_CREDENTIALS_ERROR, "이미 탈퇴했거나 로그인 정보가 바뀌었어요. 다시 로그인해 주세요.");
     }
 
+    // 지금 토큰이 있으면 최초 로그인 시각을 이어받아 재발급, 없으면 새로 발급
     private String renewedToken(UserEntity user, jakarta.servlet.http.HttpServletRequest request) {
         String header = request == null ? null : request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) return token(user);
@@ -373,6 +388,7 @@ public class AccountService {
         return userService.generatorToken((CustomUserDetails) details.loadUserByUsername(user.getUserEmail()));
     }
 
+    // 개수 하나를 읽는다. 테이블이 없는 등 오류면 null(화면에는 '—')
     private Long count(String sql, long userSeq) {
         try { return jdbc.queryForObject(sql, Long.class, userSeq); }
         catch (DataAccessException missing) { return null; }

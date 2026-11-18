@@ -1,3 +1,7 @@
+/**
+ * 공급금액·주택형·주소 후보·실거래 비교 계산(순수 함수).
+ * 쓰는 곳: ResearchPanel.jsx, MyPlanner.jsx(비교표), match/(PriceGapCard·FundPlanner·matchShared), announcement/api/announcementApi.js.
+ */
 import { formatManwon as formatMoney } from '../../utils/money.util.js';
 /** API 공급금액은 만원 단위다. 주택형별 최고 금액을 최저 분양가로 표현하지 않는다. */
 export function parseManwon(value) {
@@ -10,12 +14,14 @@ export function parseManwon(value) {
 export function formatManwon(amount) {
   return formatMoney(amount,{empty:'금액 미제공'});
 }
+/** 주택형 표기('084.9763A') → '84.9763㎡ · A'. 숫자 꼴이 아니면 원문이나 모델번호를 그대로 쓴다. */
 export function unitLabel(type,modelNo) {
   const match=String(type || '').trim().match(/^(\d+(?:\.\d+)?)([A-Za-z]+)?$/);
   return match?`${Number(match[1]).toLocaleString('ko-KR',{maximumFractionDigits:4})}㎡${match[2]?` · ${match[2]}`:''}`:String(type || modelNo || '주택형 미제공');
 }
 /** 주택형 금액이 공개되는 유형: APT와 무순위·잔여세대·임의공급(같은 주택형 형식). */
 const PRICED_TYPES=new Set(['apt','remaining','optional']);
+/** 공고 상세의 주택형 목록 → 화면용 금액 행. 금액을 공개하지 않는 유형이면 빈 배열. */
 export function modelPrices(models=[],type='apt') {
   if(!PRICED_TYPES.has(type)) return [];
   return models.map((model,index)=>({
@@ -26,6 +32,7 @@ export function modelPrices(models=[],type='apt') {
     amountManwon:parseManwon(model.lttotTopAmount),general:Number(model.suplyHshldco)||0,special:Number(model.spsplyHshldco)||0
   }));
 }
+/** 위치 찾기용 주소 후보(최대 3개): 괄호 속 지번, 시·군을 앞에 붙인 지번, 괄호를 뺀 주소 순. '일원·외 N필지' 같은 꼬리는 뗀다. */
 export function addressCandidates(address) {
   const raw=String(address || '').replaceAll('　',' ').trim();
   const prefix=raw.match(/^([가-힣]+(?:시|도)\s+[가-힣]+(?:시|군|구))/)?.[1] || '';
@@ -37,6 +44,7 @@ export function addressCandidates(address) {
   return [...new Set(values.filter(Boolean))].slice(0,3);
 }
 
+/** 서버 요약 문자열('84A: 50,000만원(최고가) / …')을 주택형별 한 줄씩 읽기 쉬운 글로 바꾼다. 모르는 꼴은 그대로 둔다. */
 export function formatSupplySummary(value) {
   if(!value)return '미제공';
   return String(value).split(/\s*\/\s*/).map(part=>{
@@ -58,6 +66,7 @@ export function tradeComparison(units=[],trades=[],area='') {
   const supply=units.filter(unit=>Math.round(unit.area)===size).map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
   const amounts=trades.map(trade=>Number(trade.amountManwon)).filter(amount=>Number.isFinite(amount) && amount>0).sort((a,b)=>a-b);
   if(!supply.length || !amounts.length) return null;
+  // 거래 금액의 중간값(개수가 짝수면 가운데 두 값의 평균).
   const middle=Math.floor(amounts.length/2);
   const median=amounts.length%2?amounts[middle]:Math.round((amounts[middle-1]+amounts[middle])/2);
   return {area:size,supplyMin:Math.min(...supply),supplyMax:Math.max(...supply),count:amounts.length,min:amounts[0],max:amounts.at(-1),median};

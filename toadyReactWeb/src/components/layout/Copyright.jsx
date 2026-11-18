@@ -5,6 +5,9 @@ import './footer.css';
 /**
  * 사이트 푸터: 서비스 소개, 데이터 출처, 정책 문서, 문의. 처음 온 사용자가 운영 주체와 정보 출처를 확인할 수 있게 한다.
  * 모든 링크는 앱 안 화면으로 연다(검색용 서버 페이지 /zupzup·/weekly·/areas와 같은 내용).
+ * MainLayout이 모든 화면 아래에 붙인다. 상태·API 없이 그리기만 한다.
+ * RouterLink(React Router의 Link)는 <a>처럼 보이지만 페이지를 새로 받지 않고 앱 안에서 주소만 바꾼다.
+ * 메일 주소처럼 앱 밖으로 나가는 링크는 일반 <a>를 쓴다.
  */
 function Copyright() {
   return (

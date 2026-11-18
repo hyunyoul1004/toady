@@ -7,5 +7,6 @@ import java.util.regex.Pattern;
 public final class EmailRules {
     private EmailRules() { }
     private static final Pattern ASCII_EMAIL = Pattern.compile("^[\\x21-\\x7E]{3,254}$");
+    /** 눈에 보이는 ASCII 문자(0x21~0x7E)만으로 3~254자이고 @가 맨 앞이 아닌지. 형식 검사는 @Email이 따로 한다. */
     public static boolean ascii(String email) { return email != null && ASCII_EMAIL.matcher(email).matches() && email.indexOf('@') > 0; }
 }

@@ -28,10 +28,17 @@ import java.util.regex.Pattern;
  * - 외부 API·대량 조회: 동네 실거래(국토부 일일 쿼터), 관심 공고 요약(요청당 최대 50건 조회), 자동완성.
  * - 익명 쓰기: 웹 푸시 구독, 경쟁률 투표.
  * 기록은 Redis에 두어 배포·재시작 뒤에도 유지하고 API 여러 대가 함께 센다(Redis가 없거나 멈추면 메모리로 대신한다).
+ * 서블릿 필터라 컨트롤러에 닿기 전에 막는다. 규칙에 걸리지 않는 요청은 shouldNotFilter로 그냥 지나간다.
+ * 한도를 넘으면 429(Too Many Requests)와 Retry-After 헤더를 돌려준다.
  */
+// @Component: 빈으로 등록되어 서블릿 필터 체인에 자동으로 들어간다
 @Component
 public class RequestLimitFilter extends OncePerRequestFilter {
-    /** pattern: 경로 중간에 변수가 있는 규칙(예: 공고별 댓글)용. 없으면 null. */
+    /**
+     * 제한 규칙 하나. HTTP 메서드와 경로(정확히 일치 / 앞부분 일치 / 정규식)로 대상을 고르고,
+     * shortLimit은 10분 창, dailyLimit은 하루 창의 최대 요청 수다.
+     * pattern: 경로 중간에 변수가 있는 규칙(예: 공고별 댓글)용. 없으면 null.
+     */
     record Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, Pattern pattern, int shortLimit, int dailyLimit) {
         Rule(String name, Set<String> methods, List<String> prefixes, Set<String> exact, int shortLimit, int dailyLimit) {
             this(name, methods, prefixes, exact, null, shortLimit, dailyLimit);
@@ -41,6 +48,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
                 || (pattern != null && pattern.matcher(path).matches()));
         }
     }
+    /** 전체 규칙 목록. 위에서부터 처음 맞는 규칙 하나만 적용하므로 순서가 의미 있다. 메일 한도만 설정 값으로 받는다. */
     static List<Rule> rules(int mailShort, int mailDaily) {
         return List.of(
             new Rule("mail", Set.of("POST"), List.of(), Set.of("/webApi/user/regUser", "/webApi/certify/resend-account-verification", "/webApi/certify/find-password-request-certify"), mailShort, mailDaily),
@@ -89,6 +97,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
     private final Duration shortWindow;
     private final SlidingWindows windows;
 
+    // @Autowired: 실제 실행에 쓸 생성자를 지정한다. 나머지 생성자는 테스트에서 창 길이·시계를 바꿔 끼우는 용도
     @Autowired
     public RequestLimitFilter(@Value("${toady.security.mail-requests-per-10min:5}") int mailShort,
                               @Value("${toady.security.mail-requests-per-day:20}") int mailDaily, SlidingWindows windows) {
@@ -122,6 +131,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    /** 429 응답을 JSON으로 쓴다. Retry-After는 10분(600초) 뒤에 다시 오라는 표시다. */
     static void tooMany(HttpServletResponse response, String message) throws IOException {
         response.setStatus(429);
         response.setHeader("Retry-After", "600");
@@ -162,6 +172,7 @@ public class RequestLimitFilter extends OncePerRequestFilter {
         } catch (Exception invalid) { /* 주소 형식이 아니면 그대로 쓴다 */ }
         return ip;
     }
+    // 루프백(127.0.0.1)이나 사설 대역(10.x, 172.16~31.x, 192.168.x)이면 같은 서버의 nginx·도커 네트워크에서 온 것으로 본다
     private static boolean fromProxy(String address) {
         try {
             InetAddress parsed = InetAddress.getByName(address);

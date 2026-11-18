@@ -32,11 +32,30 @@ import {PriceGapSummary} from '@/features/match/PriceGapCard';
  * 확정된 주소와 미검증 검색 후보를 구분한다. 시청·역·견본주택을 단지 위치로 대체하지 않는다.
  * 공급 주소가 확정된 공고는 같은 시·군·구의 최근 매매 실거래를 단지별 가격 말풍선으로 함께 보여 준다.
  * 검색창은 하나다: 단지명·동은 가격 표시를 거르고, 지번·도로명은 그 위치로 지도를 옮긴다(공고 위치·실거래 조회 지역은 바꾸지 않는다).
+ *
+ * 쓰는 곳: 공고 상세의 '지도' 탭(views/main/Main.jsx). props.subscriptDetail은 공고 상세 응답이다.
+ * 데이터:
+ * - useAnnouncementLocation: 공급 주소를 카카오 주소 검색으로 판정(ADDRESS 확정 / CANDIDATE 후보 / UNRESOLVED 미확인).
+ * - usePriceMap: 주변 매매 실거래(국토부, 서버 경유)·다른 분양 공고·필터·선택 단지 상태.
+ * - useQuery(['nearbyPlaces', …]): 가까운 역·초등학교·마트(GET /api/v1/research/nearby).
+ * - useMapTools: 거리 재기·반경 도구(MapTools.jsx).
+ *
+ * 카카오 지도는 React가 아니라 SDK가 직접 DOM을 그린다. 그래서 이 파일은 이런 방식을 쓴다.
+ * - SDK는 ensureKakaoLoaded()로 필요할 때 한 번 불러온다(스크립트 태그 + kakao.maps.load, 실패 시 한 번 재시도).
+ * - 지도·SDK 객체는 useRef(mapRef, kakaoRef)에 둔다. 바꿔도 다시 그릴 필요가 없는 값이라서다.
+ * - 지도가 새로 만들어지면 mapReady 숫자를 올린다. 말풍선·핀 effect들은 이 값을 의존성으로 두어 새 지도 위에 다시 그린다.
+ * - 말풍선은 kakao.maps.CustomOverlay에 직접 만든 <button>을 넣는다. 글자는 textContent로만 넣는다(외부 자료라 HTML로 넣지 않음).
+ * - 각 effect의 cleanup에서 overlay.setMap(null)로 지도에서 떼어 낸다. 빠뜨리면 이전 말풍선이 지도에 계속 쌓인다.
+ * - 넓게 볼 때는 카카오 클러스터러 대신 법정동·시군구 묶음 말풍선을 직접 만든다(priceMapRules.groupRows, displayTier).
+ * - 전체 화면은 히스토리 레이어('map-fullscreen')이고, 지도 DOM(mapHost)을 createPortal로 body와 원래 자리 사이에서 옮긴다.
  */
 export default function Kakaomap({subscriptDetail:detail={}}) {
+  // container: 지도가 그려질 div. keepCenter: 크기가 바뀌는 동안 지킬 가운데. generation: 검색 요청 번호(늦게 온 옛 응답을 버리는 용도).
+  // bubbles·dots: 단지 말풍선·조건 밖 점 DOM(키 → 버튼). 선택 표시를 바꿀 때 다시 만들지 않고 class만 바꾸려고 들고 있다.
   const container=useRef(null),keepCenter=useRef(null),generation=useRef(0),mapRef=useRef(null),kakaoRef=useRef(null),bubbles=useRef(new Map()),dots=useRef(new Map());
   const location=useAnnouncementLocation(detail);
   const [text,setText]=useState(''),[manualResult,setManualResult]=useState(null),[searchMessage,setSearchMessage]=useState(''),[searching,setSearching]=useState(false),[searchInfo,setSearchInfo]=useState(''),[showCandidate,setShowCandidate]=useState(false),[mapError,setMapError]=useState(''),[attempt,setAttempt]=useState(0),[mapReady,setMapReady]=useState(0),[zoomedOut,setZoomedOut]=useState(false),[mapLevel,setMapLevel]=useState(5),[view,setView]=useState(null);
+  // 지도 기준 위치: 직접 검색한 주소가 있으면 그것, 없으면 공고 위치 판정 결과.
   const result=manualResult || location.data;
   const precise=result?.status==='ADDRESS';
   // 지구·블록 주소: 부지는 확정하지 않고 주소의 법정동(또는 시·군·구) 일대만 '추정'으로 보여 준다(핀 없음).
@@ -115,9 +134,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
   },[fullscreen]);
-  /** 기준 위치(공고 위치 또는 직접 검색한 위치)로 지도를 되돌린다. */
   // 검색으로 공고와 다른 지역으로 옮겼을 때 그 이름(지도 위에 '○○ 일대 보는 중'으로 계속 보여 준다).
   const [viewing,setViewing]=useState(null);
+  /** 기준 위치(공고 위치 또는 직접 검색한 위치)로 지도를 되돌린다. */
   function recenter(){
     setViewing(null);
     const map=mapRef.current,kakao=kakaoRef.current;if(!map || !kakao)return;
@@ -136,15 +155,22 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const measured=tools.points.length>=2,radiusDone=Boolean(tools.circle && !tools.circle.live);
   useEffect(()=>{if(measured)trackAction('map_tool','tool/map-measure');},[measured]);
   useEffect(()=>{if(radiusDone)trackAction('map_tool','tool/map-radius');},[radiusDone,tools.circle?.meters]);
+  // 말풍선 click 리스너는 effect 안에서 한 번 붙이고 오래 쓴다. 그때의 함수를 그대로 쓰면 옛 값(오래된 클로저)을 보게 되므로,
+  // 렌더마다 ref에 최신 함수를 넣고 리스너는 ref.current를 부른다(리스너를 다시 붙이지 않아도 늘 최신 함수).
   const selectRef=useRef(priceMap.select);selectRef.current=priceMap.select;
   const addPointRef=useRef(tools.addPoint);addPointRef.current=tools.addPoint;
   const addDistrictRef=useRef(priceMap.addDistrict);addDistrictRef.current=priceMap.addDistrict;
 
+  // 다른 공고로 바뀌면 검색 상태를 모두 비운다. generation을 올려 진행 중이던 검색 응답도 무시하게 한다.
   useEffect(()=>{setManualResult(null);setShowCandidate(false);setSearchMessage('');setSearchInfo('');setText('');setViewing(null);generation.current++;},[detail.subscriptSeq]);
   // 직접 검색한 주소로 바뀌면(지도를 다시 만듦) '보는 중' 표시는 그 위치 안내(직접 검색한 위치)로 대신한다.
   useEffect(()=>{setViewing(null);},[manualResult]);
   // 짧은 안내(검색 결과 등)는 몇 초 뒤 저절로 닫는다. 경고(찾지 못함)는 닫을 때까지 둔다.
   useEffect(()=>{if(!searchInfo)return undefined;const timer=setTimeout(()=>setSearchInfo(''),4000);return()=>clearTimeout(timer);},[searchInfo]);
+  // ── 지도 만들기 ──
+  // 위치가 정해지면(visible) SDK를 불러 지도를 만든다. active는 '이 effect가 아직 유효한지' 표시다.
+  // SDK 로딩 중에 위치가 바뀌거나 화면을 떠나면 cleanup이 active=false로 바꿔, 늦게 끝난 로딩이 옛 지도를 만들지 않게 한다.
+  // attempt는 '다시 시도' 단추가 올리는 숫자로, 의존성에 있어 이 effect를 다시 돌게 한다.
   useEffect(()=>{
     let active=true,map,observer,kakaoApi;const listeners=[],areaShapes=[];
     setMapError('');
@@ -176,6 +202,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       listen('idle',remember);remember();
       // 탭 전환 등으로 크기가 바뀌면 다시 그린다. 사용자가 지도를 움직이기 전까지는 기준 위치를 가운데로 유지한다.
       let moved=false;listen('dragstart',()=>{moved=true;});
+      // ResizeObserver: 요소 크기가 바뀌면 알려 준다. 카카오 지도는 크기가 바뀐 것을 스스로 모르므로 relayout()을 불러 다시 맞춘다.
       if(typeof ResizeObserver!=='undefined'){observer=new ResizeObserver(()=>{map.relayout();if(keepCenter.current)map.setCenter(keepCenter.current);else if(!moved)map.setCenter(coords);});observer.observe(container.current);}
       mapRef.current=map;kakaoRef.current=kakao;setMapReady(value=>value+1);
     }).catch(()=>{if(active)setMapError('지도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');});
@@ -186,6 +213,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       if(container.current)container.current.replaceChildren();
       mapRef.current=null;};
   },[visible,result,precise,approx,attempt]);
+
+  // ── 지도 위 표시물(핀·말풍선·점) ──
+  // 모두 같은 모양이다: mapRef가 준비됐는지 보고 → 오버레이를 만들고 → cleanup에서 setMap(null)로 뗀다.
 
   // 기본 핀: 직접 검색한 위치나 가격 지도를 쓸 수 없을 때만(가격 지도에서는 공고 위치를 '이 공고' 말풍선으로 표시).
   // 지도 생성과 나눠, 가격 표시 가능 여부가 늦게 정해져도 지도를 다시 만들지 않는다(옮긴 위치·확대 수준 유지).
@@ -263,6 +293,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
           const center=new kakao.maps.LatLng(group.lat,group.lng);
           // 단지가 한 곳뿐이면 범위가 점이라 setBounds가 최대로 확대되므로, 그 단계 레벨로 옮기기만 한다.
           if(group.count===1){map.setLevel(limit,{anchor:center});map.panTo(center);return;}
+          // setBounds(범위, 위·오른쪽·아래·왼쪽 여백 px): 그 범위가 화면에 다 들어오게 확대 단계와 가운데를 맞춘다.
           map.setBounds(new kakao.maps.LatLngBounds(new kakao.maps.LatLng(swLat,swLng),new kakao.maps.LatLng(neLat,neLng)),60,60,60,60);
           if(map.getLevel()>limit)map.setLevel(limit,{anchor:center});
         });
@@ -285,6 +316,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     });
     bubbles.current=made;
     return()=>{overlays.forEach(overlay=>overlay.setMap(null));bubbles.current=new Map();};
+    // 의존성의 tier==='single'?view:null: 단지별 단계에서만 화면 범위(view)가 바뀔 때 다시 그린다. 묶음 단계에서는 옮겨도 다시 만들지 않는다.
   },[mapReady,showPrices,priceMap.rows,priceMap.siteComplex?.key,priceMap.filters.mode,priceMap.filters.unit,priceMap.year,today,tier,tier==='single'?view:null,priceMap.districtNames]);
 
   // 조건 밖 단지: 거래는 있지만 고른 면적·연식·가격에 맞는 거래가 없는 단지를 작은 회색 점으로 둔다.
@@ -390,6 +422,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   }
   function clearText() {changeText('');}
 
+  // 화면을 떠날 때(언마운트) 진행 중인 검색 응답을 버리게 한다. 함수만 돌려주는 effect는 cleanup만 쓰는 셈이다.
   useEffect(()=>()=>{generation.current++;},[]);
   // 자동완성: TOADY에서 불러온 단지·분양·법정동(바로)과 카카오 주소·장소(입력을 멈추면 0.3초 뒤).
   const [remote,setRemote]=useState({text:'',items:[],loading:false});
@@ -406,6 +439,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
     },350);
     return()=>{active=false;clearTimeout(timer);};
   },[text]);
+  // useMemo: 의존성이 그대로면 지난 계산 결과를 다시 쓴다. 단지가 수백 곳이라 글자를 칠 때마다 새로 거르지 않게 한다.
   const localSuggestions=React.useMemo(()=>showPrices?suggestPlaces(priceMap.complexes,priceMap.sales,text.trim(),{limit:6,statusLabel:saleStatusLabel,districtNames:priceMap.districtNames}):[],[showPrices,priceMap.complexes,priceMap.sales,text]);
   const suggestions=React.useMemo(()=>{
     const names=new Set(localSuggestions.map(item=>item.label));
@@ -431,6 +465,10 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // '검색' 단추. 엔터는 자동완성 onChange가 먼저 처리하므로 바로 뒤의 폼 제출은 건너뛴다(두 번 검색하지 않게).
   const enterAt=useRef(0);
   function search(e) {e.preventDefault();if(Date.now()-enterAt.current<500)return;if(text.trim())trackAction('map_tool','tool/map-search');runSearch(text.trim());}
+  /**
+   * 실제 검색. 결과가 늦게 와도 그사이 다른 검색·공고 변경이 있었으면(request!==generation.current) 버린다.
+   * 번지까지 맞으면 '직접 검색한 위치'로 확정하고, 아니면 그 일대로 지도만 옮긴다.
+   */
   async function runSearch(value) {
     if(!value)return;
     // 단지 이름으로 걸러진 단지가 있으면 가장 위 단지를 고른다.
@@ -525,6 +563,8 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   const fsMessage=searchMessage || searchInfo || (fullscreen?searchHint:'');
   // 전체 화면 안에서 누른 Esc는 여기서 처리하고 위(상세 패널)로 올리지 않는다.
   const onFsKeyDown=event=>{if(fullscreen && event.key==='Escape' && !event.defaultPrevented){event.preventDefault();event.stopPropagation();escRef.current();}};
+  // ── 화면 ──
+  // mapContent는 지도 영역 전체(전체 화면 머리글·필터·지도·도구·패널). 아래 createPortal로 mapHost 안에 그린다.
   const mapContent=<Box className={`price-map-wrap${fullscreen?' is-fullscreen':''}${fsPanelBody?' has-panel':''}`} onKeyDown={onFsKeyDown}>
     {fullscreen && <div key="fs-top" className="pm-fs-top">
       <IconButton className="pm-fs-back" aria-label="전체 화면 닫기" onClick={closeFullscreen}><ArrowBackRounded/></IconButton>
@@ -607,6 +647,7 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
       </>}
       {precise && tradesOff && <PriceMapUnavailable reason="지금은 실거래 정보를 제공하지 않고 있어요."/>}
     </>}
+    {/* createPortal: 이 컴포넌트의 자식이지만 실제 DOM은 mapHost(평소엔 지도 자리, 전체 화면이면 body)에 그린다. React 상태·이벤트는 그대로 이어진다. */}
     {visible && !mapError && mapHost ? <>{createPortal(mapContent,mapHost)}</> : null}
   </Box>;
 }

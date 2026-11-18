@@ -1,3 +1,10 @@
+/**
+ * 위치 탭 '주변 실거래가' 지도 둘레의 화면 조각들(지도 자체는 components/kakao/Kakaomap.jsx가 그린다).
+ * - PriceMapFilters: 지도 위 필터 줄 / PriceMapStatus: 지도 아래 상태 줄·범례
+ * - ComplexPanel: 고른 실거래 단지 / SalePanel: 이 공고·다른 분양 공고의 분양가와 주변 시세
+ * - ComplexList: 단지 목록 / PriceModeToggle: 거래가·평당가 전환 / NearbySummary: 가까운 역·학교·마트
+ * 데이터와 필터 상태는 usePriceMap이 들고 있고, 여기서는 받은 값을 보여 주고 setFilters·onSelect로 돌려준다.
+ */
 import { useEffect, useState } from 'react';
 import { Alert, Box, Button, IconButton, MenuItem, Paper, Popover, Slider, Stack, TextField, Typography } from '@mui/material';
 import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded';
@@ -16,6 +23,7 @@ import './priceMap.css';
 export const PRICE_RANGE_LAYER = 'price-map-range-price';
 export const AREA_RANGE_LAYER = 'price-map-range-area';
 
+// 드롭다운으로 고르는 필터 목록(지금은 준공 연식 하나). 면적·가격은 범위 슬라이더(RangeFilter)를 쓴다.
 const SELECTS = [
   { key: 'age', label: '준공 연식', options: AGE_BANDS }
 ];
@@ -54,8 +62,11 @@ function RangeFilter({ overlayId, title, buttonText, active, range, value, onCom
   const open = Boolean(openLayer);
   // 기준 단추는 상태 ref로 잡아, 앞으로가기·새로고침으로 열린 채 복원될 때도 단추가 그려지자마자 붙인다.
   const [anchor, setAnchor] = useState(null);
+  // draft는 끄는 동안의 임시 값이다. 손을 뗄 때만 onCommit으로 실제 필터를 바꿔, 끄는 동안 지도가 매번 다시 걸러지지 않게 한다.
   const [draft, setDraft] = useState(value);
+  // 바깥 값(초기화 등)이 바뀌면 임시 값도 맞춘다. 배열 value는 렌더마다 새로 만들어지므로 두 숫자를 의존성으로 쓴다.
   useEffect(() => { setDraft(value); }, [value[0], value[1]]);
+  // 닫기는 히스토리 한 칸 뒤로가기와 같다(useHistoryOverlay가 처리). 이미 닫혔으면 아무것도 하지 않는다.
   const close = () => { if (open) setOpenLayer(null); };
   return <>
     <button type="button" ref={setAnchor} className={`price-map-area-button${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpenLayer(true)}>
@@ -113,7 +124,11 @@ function AreaFilter({ filters, setFilters, areaDefault = null }) {
     </>} />;
 }
 
-/** 지도 아래 상태 줄과 범례. */
+/**
+ * 지도 아래 상태 줄과 범례.
+ * ① 실거래 받는 중 → ② 단지 좌표 확인 중(pending) → 부분 기간(partial) 순으로 진행 상황을 알리고,
+ * 지도에 놓지 못한 단지·분양 공고(위치 미확인)가 몇 곳인지 따로 적는다.
+ */
 export function PriceMapStatus({ grouping = 'single', approx = false, nearby = false, query, rows, outside = [], sales = [], unlocatedSales = [], onOpenSale, filters, pending = 0, districtCount = 1, loadingOthers = false, zoomedOut = false, grouped = '' }) {
   const data = query.data;
   const summary = mapSummary(rows, outside);
@@ -154,6 +169,7 @@ export function PriceMapUnavailable({ reason }) {
 
 /** 선택한 단지: 면적별 최근 거래·중간값과 최근 거래 목록, 같은 면적 구간의 이 공고 분양가. */
 export function ComplexPanel({ row, onClose, supply, unit = 'm2' }) {
+  // 고른 단지가 없으면 아무것도 그리지 않는다. (이 return 앞에 훅이 없어 일찍 끝내도 괜찮다.)
   if (!row) return null;
   const tone = ageTone(row.buildYear);
   return <Paper variant="outlined" className="price-map-panel" aria-label={`${row.name} 실거래`}>
@@ -191,6 +207,7 @@ export function ComplexPanel({ row, onClose, supply, unit = 'm2' }) {
 /** 지도 아래 단지 목록(필터·정렬 적용). 누르면 지도에서 그 단지를 고른다. */
 /** compact: 전체 화면 패널처럼 위에 제목이 이미 있는 곳에서는 제목을 빼고 여백을 줄인다. */
 export function ComplexList({ rows, filters, setFilters, selectedKey, onSelect, compact = false }) {
+  // 처음엔 20곳만 그리고 '더 보기'로 20곳씩 늘린다(단지가 수백 곳이어도 첫 화면이 느려지지 않게).
   const [limit, setLimit] = useState(20);
   if (!rows.length) return compact ? <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>조건에 맞는 단지가 없어요. 필터를 넓히거나 지도를 옮겨 보세요.</Typography> : null;
   return <Box sx={{ mt: compact ? 0 : 2 }}>
@@ -224,6 +241,8 @@ export function SalePanel({ detail, precise = null, unit: areaUnit = 'm2', sale 
   const rawUnits = sale ? (sale.units || []).map(unit => ({ ...unit, area: Number(unit.area), supplyArea: unit.supplyArea == null ? null : Number(unit.supplyArea) })) : (detail.unitPrices || []);
   const name = sale ? sale.houseNm : detail.houseNm || '이 공고';
   const target = sale ? (sale.bcode ? { bcode: sale.bcode, dong: sale.dong } : null) : precise;
+  // 주변 시세 비교는 features/match/usePriceGap의 조회를 그대로 쓴다(상세 탭과 같은 숫자가 나오게).
+  // target이 null(부지 미확정)이면 비교하지 않는다.
   const gap = usePriceGapFor(rawUnits, target, name);
   const units = gap.units;
   const rows = gap.ready ? gapRows(units, gap.data.areas, 'auto') : [];

@@ -26,6 +26,7 @@ import { updatePageSeo, resetDefaultSeo } from '@/utils/seo.util';
 import { ACCOUNT_KEY, NICKNAME_RULE, PASSWORD_RULE, accountApi } from './accountApi';
 import './account.css';
 
+// 숫자를 '1,234'로. 아직 모르면(불러오는 중) '—'.
 const count = value => (value == null ? '—' : Number(value).toLocaleString('ko-KR'));
 const joined = value => {
   if (!value) return '';
@@ -50,6 +51,7 @@ async function run(request) {
   }
 }
 
+/** 비밀번호 입력칸. 눈 아이콘으로 글자 보기/숨기기를 바꾼다. 값은 부모가 들고 있는 제어 컴포넌트다. */
 function PasswordField({ label, value, onChange, autoComplete, helperText, error }) {
   const [show, setShow] = useState(false);
   return <TextField label={label} type={show ? 'text' : 'password'} value={value} onChange={e => onChange(e.target.value)} autoComplete={autoComplete}
@@ -57,6 +59,7 @@ function PasswordField({ label, value, onChange, autoComplete, helperText, error
     InputProps={{ endAdornment: <InputAdornment position="end"><IconButton size="small" edge="end" aria-label={show ? '비밀번호 숨기기' : '비밀번호 보기'} onClick={() => setShow(on => !on)}>{show ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> }} />;
 }
 
+/** 닉네임 바꾸기. 저장에 성공하면 서버가 새 토큰을 주므로 로그인 정보(useAuthStore)도 그 토큰으로 바꾼다. */
 function NicknameForm({ current, onDone, onCancel }) {
   const login = useAuthStore(state => state.login);
   const [value, setValue] = useState(current || ''), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -82,6 +85,7 @@ function NicknameForm({ current, onDone, onCancel }) {
   </form>;
 }
 
+/** 비밀번호 바꾸기. 현재 비밀번호·새 비밀번호·확인을 받고 화면에서 먼저 규칙을 검사한 뒤 보낸다. */
 function PasswordForm({ onDone, onCancel }) {
   const login = useAuthStore(state => state.login);
   const logout = useAuthStore(state => state.logout);
@@ -103,6 +107,7 @@ function PasswordForm({ onDone, onCancel }) {
     onDone(result.message);
   };
   return <form className="account-form" onSubmit={submit}>
+    {/* 브라우저 비밀번호 관리자가 이 폼을 '어느 계정의 비밀번호 변경'인지 알아보도록 숨긴 아이디 칸을 둔다. */}
     <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
     <PasswordField label="현재 비밀번호" value={current} onChange={setCurrent} autoComplete="current-password" />
     <PasswordField label="새 비밀번호" value={next} onChange={setNext} autoComplete="new-password" error={weak} helperText="6~20자, 영문과 숫자 또는 특수문자를 함께" />
@@ -116,6 +121,7 @@ function PasswordForm({ onDone, onCancel }) {
   </form>;
 }
 
+/** 회원 탈퇴. 비밀번호와 확인 문구를 정확히 입력해야 버튼이 켜진다(실수로 탈퇴하지 않게). */
 function WithdrawForm({ phrase, onDone, onCancel }) {
   const [password, setPassword] = useState(''), [typed, setTyped] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const ready = password.length > 0 && typed.trim() === phrase;
@@ -168,6 +174,7 @@ function IconPicker({ current, nickname, onDone, onCancel }) {
   </div>;
 }
 
+// 날짜를 'YYYY.MM.DD'로.
 const storyDate = value => {
   if (!value) return '';
   const date = new Date(value);
@@ -180,8 +187,10 @@ function ReceivedReplies() {
   const replies = useMyReplies();
   const items = replies.data?.items || [];
   const latest = replies.data?.latestSeq;
+  // 최신 답글 번호가 생기거나 바뀔 때만 '봤음'으로 기록한다(의존성 배열 [latest]).
   useEffect(() => { if (latest) replies.markSeen(); }, [latest]);
   if (replies.isLoading || (!items.length && !replies.isError)) return null;
+  // 공고 상세의 이야기 탭으로 가서 그 답글로 이동한다. state.detailOverlay는 '사이트 안에서 연 상세' 표시라 닫기가 뒤로가기로 동작한다.
   const open = item => navigate(`/announcements/${item.announcementId}?tabType=comment&comment=${item.commentSeq}`, { state: { detailOverlay: true } });
   const fresh = items.filter(item => item.isNew).length;
   return <section className="account-card account-replies" aria-labelledby="account-replies-title">
@@ -207,6 +216,8 @@ function ReceivedReplies() {
 function MyStories({ onClose, seen }) {
   const navigate = useNavigate();
   const userSeq = useAuthStore(state => state.user?.userSeq ?? null);
+  // useInfiniteQuery: '더 보기'로 페이지를 이어 붙이는 목록용 React Query.
+  // getNextPageParam이 다음 페이지 번호를 돌려주고, undefined면 끝이라 hasNextPage가 false가 된다.
   const stories = useInfiniteQuery({
     queryKey: ['account', 'stories', userSeq],
     queryFn: ({ pageParam }) => accountApi.myComments(pageParam),
@@ -237,7 +248,11 @@ function MyStories({ onClose, seen }) {
   </section>;
 }
 
-/** 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다. */
+/**
+ * 내 정보: 프로필·닉네임·비밀번호, 활동 요약, 알림, 로그아웃·탈퇴. 로그인하지 않았으면 로그인 안내만 보여 준다.
+ * 경로는 /account. 로그인 상태는 zustand 스토어(useAuthStore), 화면 데이터는 accountApi + React Query.
+ * 무엇을 고치는 중인지는 editing 하나로 관리해서 한 번에 한 양식만 열린다('icon' · 'nickname' · 'password' · 'withdraw').
+ */
 export default function AccountPage() {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const logout = useAuthStore(state => state.logout);
@@ -246,12 +261,14 @@ export default function AccountPage() {
   // 히스토리 칸(state)에 남겨, 이야기를 눌러 공고로 갔다가 뒤로 돌아와도 같은 값으로 표시한다(새로 메뉴로 들어오면 새로 읽는다).
   // 이 화면에서 로그인한 경우에도 로그인한 순간의 값을 잡는다.
   const enteredUser = useAuthStore(state => state.user?.userSeq ?? null);
+  // useRef: 렌더 사이에 값을 기억하지만, 바꿔도 다시 그리지 않는다. 처음 한 번 잡은 값을 고정해 두는 데 쓴다.
   const seenRef = useRef(undefined);
   if (seenRef.current === undefined && enteredUser != null) {
     const kept = location.state?.repliesSeen;
     seenRef.current = typeof kept === 'number' ? kept : (readSeen(enteredUser) ?? 0);
   }
   const seenOnEnter = seenRef.current || null;
+  // 잡아 둔 값을 현재 히스토리 항목의 state에 적어 둔다(replace라 히스토리가 늘지 않는다).
   useEffect(() => {
     if (seenRef.current === undefined || location.state?.repliesSeen === seenRef.current) return;
     navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...location.state, repliesSeen: seenRef.current } });
@@ -259,6 +276,7 @@ export default function AccountPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null), [notice, setNotice] = useState(''), [farewell, setFarewell] = useState('');
   const [emailConfirm, setEmailConfirm] = useState(false);
+  // 푸시 설정 창은 히스토리 한 단계로 연다(location.state.overlayLayers). 뒤로가기를 누르면 창만 닫힌다.
   const [pushOpen, setPushOpen] = useHistoryOverlay('push-settings');
   const summary = useMyAccount();
   // '내가 쓴 이야기' 펼침은 주소에 남겨, 이야기를 눌러 공고로 갔다가 뒤로 와도 그대로 열려 있게 한다.
@@ -267,13 +285,16 @@ export default function AccountPage() {
   const toggleStories = () => { const next = new URLSearchParams(searchParams); if (storiesOpen) next.delete('stories'); else next.set('stories', '1'); setSearchParams(next, { replace: true, state: location.state }); };
   const data = summary.data;
 
+  // 빈 의존성 배열 []: 화면에 처음 나타날 때 한 번만 실행하고, 떠날 때 cleanup으로 기본 제목으로 되돌린다.
   useEffect(() => {
     updatePageSeo({ title: '내 정보 | TOADY', description: '닉네임·비밀번호와 알림 설정을 관리합니다.', path: '/account' });
     return () => resetDefaultSeo();
   }, []);
 
+  // 로그인 창도 히스토리 겹(layout 레이어)으로 연다. 기존 레이어 뒤에 하나를 더 쌓는다.
   const openLogin = () => navigate(location.pathname + location.search, { state: { ...location.state, overlayLayers: [...(location.state?.overlayLayers || []), { id: 'layout', value: 'login' }] } });
   // 완료 안내는 화면 위쪽에 뜨므로, 아래쪽 칸에서 저장해도 보이게 맨 위로 올린다.
+  // invalidateQueries: 'account'로 시작하는 캐시를 낡은 것으로 표시해 바로 다시 받게 한다. 바뀐 닉네임·캐릭터가 화면에 반영된다.
   const finished = message => { setEditing(null); setNotice(message); queryClient.invalidateQueries({ queryKey: ACCOUNT_KEY }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const disableEmails = async () => {
     const result = await run(() => accountApi.disableFavoriteEmails());
@@ -324,6 +345,7 @@ export default function AccountPage() {
       <div className="account-stat"><NotificationsNoneRounded /><span>알림 받는 기기</span><b>{count(data?.pushDevices)}</b></div>
     </nav>
 
+    {/* 받은 답글은 있을 때만 보인다. 내가 쓴 이야기는 위 '작성한 이야기'를 눌러 펼친다(?stories=1). */}
     <ReceivedReplies />
 
     {storiesOpen && <MyStories onClose={toggleStories} seen={seenOnEnter} />}
@@ -357,6 +379,7 @@ export default function AccountPage() {
       <div className="account-row account-danger"><div><span className="account-value">회원 탈퇴</span>
         <small>관심 공고·알림·캘린더 연결과 이메일·닉네임이 지워져요. 작성한 이야기는 '탈퇴회원'으로 남아요. 되돌릴 수 없어요.</small></div>
         {editing !== 'withdraw' && <Button size="small" color="error" onClick={() => { setEditing('withdraw'); setNotice(''); }}>탈퇴</Button>}</div>
+      {/* 탈퇴가 끝나면 이전 회원의 캐시가 남지 않게 React Query 캐시를 모두 비우고(queryClient.clear) 로그아웃한다. */}
       {editing === 'withdraw' && <WithdrawForm phrase={data?.withdrawPhrase || '탈퇴합니다'} onCancel={() => setEditing(null)}
         onDone={message => { queryClient.clear(); logout(); setFarewell(message); window.scrollTo({ top: 0 }); }} />}
     </section>

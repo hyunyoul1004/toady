@@ -2,6 +2,10 @@ import { summaryOf, normalizeScheduleEvents } from '../../planner/plannerUtils.j
 import { unitLabel, formatManwon } from '../../planner/researchUtils.js';
 import { formatCompetitionRate } from '../../../utils/rate.util.js';
 
+/**
+ * 이미지 저장(ImageExportButton)에 넣을 표 데이터를 만든다. 표 하나는 { title, note?, columns, weights?, rows } 모양이다.
+ * 그리기는 renderImage.js가 한다. 값이 없으면 '—'로 채우고, 미공개 값을 0으로 적지 않는다.
+ */
 const text=value=>value==null || String(value).trim()===''?'—':String(value);
 const count=value=>value==null || value===''?'—':Number.isFinite(Number(value))?Number(value).toLocaleString('ko-KR'):text(value);
 const ratio=value=>{
@@ -13,9 +17,11 @@ const ratio=value=>{
   const shortage=raw.match(/^\(?[△▲]\s*(\d+)\)?$/) || raw.match(/^\((\d+)\)$/);
   return shortage?`미달 ${shortage[1]}세대`:raw;
 };
+// 당첨가점은 0 초과 84점 이하 숫자만 공개 값으로 본다(0·빈 값은 미공개). MobileCompetitionCards.jsx도 쓴다.
 export const validScore=value=>value!=null && /^\d+(?:\.\d+)?$/.test(String(value).trim()) && Number(value)>0 && Number(value)<=84;
 const score=value=>validScore(value)?`${Number(value)}점`:'미공개';
 
+/** 공고 상세 표: 기본 정보·청약 일정·주택형별 공급금액. 행이 없는 표는 뺀다. */
 export function detailImageSections(detail) {
   const summary=summaryOf(detail);
   return [
@@ -24,6 +30,7 @@ export function detailImageSections(detail) {
     {title:'주택형·공급금액',note:'각 주택형의 최고 공급금액입니다. 층·타입별 가격과 옵션은 모집공고를 확인하세요.',columns:['전용면적·주택형','일반공급','특별공급','최고 공급금액'],weights:[2,1,1,2],rows:(detail.unitPrices || []).map(unit=>[unit.label,`${count(unit.general)}세대`,`${count(unit.special)}세대`,formatManwon(unit.amountManwon)])}
   ].filter(section=>section.rows.length);
 }
+/** 경쟁률 표. 유형(apt·취소후재공급·그 밖)마다 서버 응답 필드가 달라 열을 따로 정한다. APT면 가점·특별공급 표를 더한다. */
 export function competitionImageSections(type, rates=[], scores=[], special=[]) {
   let columns, rows;
   if(type==='apt') {

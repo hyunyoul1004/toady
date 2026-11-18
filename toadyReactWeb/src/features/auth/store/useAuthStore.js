@@ -3,6 +3,13 @@
  * @description Zustand 기반의 사용자 인증 전역 상태 스토어
  * - JWT Access Token 및 사용자 프로필 관리
  * - 로그인/로그아웃 상태 영속화 (localStorage 동기화)
+ *
+ * zustand의 create((set, get) => ({ 상태와 함수 }))로 전역 스토어를 만든다. 반환값 useAuthStore는 훅이면서 스토어 객체다.
+ * - 컴포넌트 안: useAuthStore(state => state.user)처럼 selector로 필요한 값만 꺼내면 그 값이 바뀔 때만 다시 그린다.
+ * - 컴포넌트 밖(이벤트·API 클라이언트 등): useAuthStore.getState().logout()처럼 바로 읽고 부른다.
+ * - set(부분 객체)은 기존 상태에 합쳐진다. get()은 지금 상태를 읽는다.
+ * zustand의 persist 미들웨어는 쓰지 않고, 'user' 키에 { accessToken }만 직접 저장한다. 프로필은 토큰(JWT)을 풀어서 얻는다.
+ * api/client.js는 getState().accessToken으로 토큰을 꺼내 요청에 싣는다. 로그인 계정이 바뀌면 bindAuthQueryCache가 React Query 캐시를 정리한다.
  */
 import { create } from 'zustand';
 import { jwtDecode } from 'jwt-decode';
@@ -91,10 +98,13 @@ export const useAuthStore = create((set, get) => ({
   },
 
   /**
-   * 로그아웃 시 인증 정보를 제거합니다.
+   * 토큰 연장 응답으로 받은 새 토큰을 반영한다(api/client.js가 부른다).
+   * @param {string} requestToken 연장을 요청할 때 쓰던 토큰
+   * @param {string} accessToken 서버가 새로 준 토큰
+   * 같은 계정이고 만료 시각이 더 늦을 때만 바꾼다.
    */
   renewToken: (requestToken, accessToken) => {
-    // Ignore late responses after logout, another login or a newer renewal.
+    // 로그아웃·다른 계정 로그인·더 최근 연장 뒤에 늦게 도착한 응답은 버린다.
     useAuthStore.getState().syncFromStorage();
     if (useAuthStore.getState().accessToken !== requestToken) return;
     let user;
@@ -110,6 +120,9 @@ export const useAuthStore = create((set, get) => ({
     set({ accessToken, user, isAuthenticated: true });
   },
 
+  /**
+   * 로그아웃 시 인증 정보를 제거합니다.
+   */
   logout: () => {
     localStorage.removeItem('user');
     set({
@@ -120,7 +133,9 @@ export const useAuthStore = create((set, get) => ({
   }
 }));
 
-// 401 이벤트 리스너 등록
+// 전역 이벤트 리스너(모듈을 처음 불러올 때 한 번 등록).
+// - storage: 다른 탭에서 로그인·로그아웃하면 브라우저가 이 탭에 알려 준다. 같은 계정 상태로 맞춘다.
+// - auth-logout: API가 401(로그인 만료)을 돌려주면 api/client.js가 보내는 이벤트. 로그아웃 처리한다.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (event.key === 'user' || event.key === null) useAuthStore.getState().syncFromStorage();

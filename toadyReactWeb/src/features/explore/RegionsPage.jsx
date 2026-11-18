@@ -22,13 +22,16 @@ const searchLink = (cityName, districtName, month) => `/?search=${encodeURICompo
  * 검색용 서버 페이지는 /areas 그대로다.
  */
 export default function RegionsPage() {
+  // 두 API 모두 공개 자료라 10분 캐시. active-announcements는 접수 중·예정 공고 목록, area-summaries는 생활권별 건수.
   const active = useQuery({ queryKey: ['activeAnnouncements'], queryFn: () => apiClient.get('/api/v1/public/active-announcements'), staleTime: 600000, retry: 1 });
   const areas = useQuery({ queryKey: ['areaSummaries'], queryFn: () => apiClient.get('/api/v1/public/area-summaries'), staleTime: 600000, retry: 1 });
+  // 화면 제목·설명(SEO)을 바꾸고, 떠날 때(cleanup) 기본값으로 되돌린다. 의존성이 []라 처음 한 번만 실행된다.
   useEffect(() => {
     updatePageSeo({ title: '지역별 청약 · 접수 중·예정 공고가 있는 지역 · TOADY',
       description: '지금 접수 중이거나 곧 접수하는 청약 공고가 있는 시·도와 시·군·구, 운정·동탄 같은 신도시 생활권을 한눈에 보고 지역별 공고를 찾아보세요.', path: '/regions' });
     return () => resetDefaultSeo();
   }, []);
+  // useMemo로 감싸 데이터가 그대로면 지역 묶기 계산을 다시 하지 않는다.
   const items = useMemo(() => (Array.isArray(active.data) ? active.data : []), [active.data]);
   const { cities, other } = useMemo(() => groupByRegion(items, koreaToday()), [items]);
   const livingAreas = Array.isArray(areas.data) ? areas.data : [];
@@ -40,6 +43,7 @@ export default function RegionsPage() {
       <p>지금 접수 중이거나 곧 접수하는 공고가 있는 지역이에요(앞으로 60일). 지역을 누르면 청약 캘린더에서 그 지역 공고가 있는 가장 가까운 달부터 보여 드려요.</p>
     </header>
 
+    {/* 시·도별 카드: 누르면 캘린더에서 그 지역으로 검색한다. */}
     <section className="explore-section" aria-labelledby="region-cities">
       <h2 id="region-cities">공고가 있는 지역 {active.data && <span>{cities.length}곳</span>}</h2>
       {active.isLoading ? <div className="explore-area-grid">{[0, 1, 2, 3].map(key => <Skeleton key={key} variant="rounded" height={128} />)}</div>
@@ -61,6 +65,7 @@ export default function RegionsPage() {
       {other > 0 && <p className="explore-note">주소로 지역을 확인하지 못한 공고 {other}건은 <Link to="/">청약 캘린더</Link>에서 볼 수 있어요.</p>}
     </section>
 
+    {/* 신도시 생활권: 누르면 캘린더를 ?area=slug 로 연다. */}
     <section className="explore-section" aria-labelledby="region-living">
       <h2 id="region-living">신도시 생활권</h2>
       <p className="explore-section-lead">행정구역이 아니라 사람들이 부르는 이름으로 찾는 생활권이에요.</p>

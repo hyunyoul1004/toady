@@ -1,3 +1,6 @@
+# TOADY 웹 API 기본 설정. ${이름:기본값}은 환경변수(또는 .env) 값을 쓰고, 없으면 콜론 뒤 기본값을 쓴다는 뜻이다.
+# 콜론 뒤가 비어 있으면 빈 문자열, 콜론이 없으면(${DB_URL}) 값이 꼭 있어야 하며 없으면 앱이 뜨지 않는다.
+# 로컬 전용 값은 application-local.yml에서 덮어쓴다.
 spring:
   # 시세 미리 계산·저녁 알림·정리 작업이 서로 기다리지 않도록 예약 작업 스레드를 둘 이상 둔다.
   task:
@@ -5,7 +8,9 @@ spring:
       pool:
         size: 3
   config:
+    # 실행 폴더의 .env 파일을 properties 형식으로 읽어 환경변수처럼 쓴다. optional이라 파일이 없어도 된다
     import: optional:file:.env[.properties]
+  # MariaDB 연결. 커넥션 풀은 HikariCP(스프링 부트 기본)
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -16,15 +21,19 @@ spring:
       connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:10000}
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
+    # 요청이 끝날 때까지 DB 연결을 붙잡지 않는다. 지연 로딩은 서비스(@Transactional) 안에서만 된다
     open-in-view: false
     properties:
       hibernate:
         # 운영 로그를 한 줄로 유지한다(로컬은 application-local.yml에서 보기 좋게 줄바꿈).
         format_sql: false
     hibernate:
+      # 엔티티로 테이블을 만들거나 바꾸지 않는다. 스키마 변경은 저장소 루트 database.sql로 직접 적용한다
       ddl-auto: none
       naming:
+        # 필드 이름(userEmail)을 컬럼 이름(USER_EMAIL)으로 바꾸는 규칙
         physical-strategy: com.toady.web.config.PhysicalNamingStrategyImpl
+  # 메일 발송(JavaMailSender) SMTP 설정. 운영은 Gmail 계정 하나를 쓴다
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:587}
@@ -43,6 +52,7 @@ spring:
             required: true
 
 server:
+  # 운영 8080. 로컬은 application-local.yml이 8081로 바꾼다(화면 개발 서버가 /api를 8081로 넘긴다)
   port: ${SERVER_PORT:8080}
   # 지도용 단지 시세처럼 큰 JSON 응답을 압축한다(앞단 프록시 설정과 무관하게 전송량을 줄인다).
   compression:
@@ -50,6 +60,7 @@ server:
     mime-types: application/json
     min-response-size: 2048
 
+# 여기부터는 이 프로젝트 전용 설정. 코드에서 @Value("${toady....}")로 읽는다.
 toady:
   # 요청 제한·로그인 실패 기록·외부 API 결과 캐시를 재시작 뒤에도 유지하고 API 여러 대가 함께 쓰게 하는 Redis.
   # 호스트가 비어 있으면(로컬·테스트) 연결하지 않고 메모리로 동작한다. 운영은 compose가 REDIS_HOST=redis를 넣는다.
@@ -100,14 +111,19 @@ toady:
     daily-new-threads: ${DM_DAILY_NEW_THREADS:5}
     daily-messages: ${DM_DAILY_MESSAGES:50}
   analytics:
+    # false면 페이지 조회·행동 이벤트를 받기만 하고 저장하지 않는다
     enabled: ${ANALYTICS_ENABLED:true}
   security:
+    # JWT 서명 키(Base64, 64바이트 이상). 기본값이 없어 반드시 넣어야 한다. 값을 로그나 저장소에 남기지 않는다
     secret-key: ${JWT_SECRET}
     authorities-key: auth
     token-created-at-key: tca
+    # 토큰 하나의 유효 시간(기본 90분). 만료 30분 전부터 응답 헤더로 새 토큰을 준다
     token-expire-ms: ${JWT_TOKEN_EXPIRE_MS:5400000}
   web:
+    # 메일 링크·알림에 넣는 서비스 주소
     domain: ${TOADY_WEB_DOMAIN:https://www.toady.co.kr}
+    # CORS 허용 Origin(쉼표 구분). SecurityConfig가 읽는다
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
   admin:
     # 관리자 사이트가 부르는 내부 API(/internal/admin) 토큰. 관리자의 ADMIN_API_TOKEN과 같아야 하며 32자 이상. 비우면 기능을 끈다.
@@ -116,6 +132,7 @@ toady:
     # 사이트맵에 넣을 공고: 접수 마감(없으면 모집공고일)이 이 일수 이내이거나 앞으로인 공고. 지난 공고 페이지는 그대로 열려 있다.
     recent-days: ${SITEMAP_RECENT_DAYS:365}
 
+# 로그 파일 위치와 레벨. logback 설정 파일이 이 값을 읽는다
 config:
   logging:
     path: ${LOG_PATH:./logs}

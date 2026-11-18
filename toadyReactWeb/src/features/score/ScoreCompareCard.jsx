@@ -6,7 +6,10 @@ import { useMyScore } from './myScore';
 import ScoreRangeBar from './ScoreRangeBar';
 import './score.css';
 
-/** 경쟁률 탭 상단: 이 공고의 공개 당첨가점 범위와 내 가점(이 브라우저 저장값)을 한 줄로 비교한다. */
+/**
+ * 경쟁률 탭 상단: 이 공고의 공개 당첨가점 범위와 내 가점(이 브라우저 저장값)을 한 줄로 비교한다.
+ * rows는 상세 화면이 받아 온 청약홈 당첨가점 행, loading은 그 조회 중 여부. 점수가 없으면 계산기로 안내한다.
+ */
 export default function ScoreCompareCard({ rows, loading }) {
   const { score } = useMyScore();
   if (loading) return null;

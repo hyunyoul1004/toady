@@ -16,7 +16,12 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 
-/** 검색·공유 봇에 URL별 HTML과 PNG를 제공한다. 회원 정보와 브라우저 실행에 의존하지 않는다. */
+/**
+ * 공고 상세 공개 페이지(서버 HTML)와 공유 이미지(PNG). 검색·공유 봇에 URL별 HTML과 PNG를 제공한다.
+ * 사람은 /announcements/{type}/{house}/{notice}에서 React 앱을 보고, 봇만 웹 컨테이너 nginx를 거쳐 이 HTML을 받는다.
+ * 회원 정보와 브라우저 실행에 의존하지 않는다. 요약은 PlannerSummary, 결과는 AnnouncementResults, 시세 비교는 PriceGapStore에서 읽는다.
+ */
+// @RestController: 완성된 HTML·PNG를 응답 본문으로 돌려준다.
 @RestController
 public class PublicAnnouncementPage {
     private final PlannerSummary summaries;
@@ -24,6 +29,7 @@ public class PublicAnnouncementPage {
     private final String domain;
     private final AnnouncementResults results;
     private final PriceGapStore gaps;
+    // @Autowired(required=false): 숨김 기능 빈이 있을 때만 넣는다(없으면 null, 숨김 확인을 건너뜀).
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     com.toady.web.app.operation.AnnouncementOverrides overrides;
     /** 지역 판정·같은 지역 다른 공고(사이트맵과 같은 목록). */
@@ -70,6 +76,8 @@ public class PublicAnnouncementPage {
     static String section(String value) {return Set.of("detail","rate","map","comment").contains(value)?value:"detail";}
     static String label(String value) {return switch(value){case "rate" -> "청약 경쟁률";case "map" -> "위치·입지";case "comment" -> "청약 이야기";default -> "청약 일정·분양 정보";};}
     private static boolean valid(String type,String house,String notice) {return type.matches("apt|urban|remaining|public-rental|optional") && house.matches("[a-zA-Z0-9_-]{1,40}") && notice.matches("[a-zA-Z0-9_-]{1,40}");}
+    // @GetMapping: 공고 상세 HTML. @PathVariable로 공고 키를, @RequestParam(defaultValue="detail")로 탭(detail·rate·map·comment)을 받는다.
+    // 제목·설명·og:image(카카오톡 미리보기)·구조화 데이터를 탭과 결과 공개 여부에 맞게 만든다. 숨긴 공고는 410(사라짐).
     @GetMapping(value="/api/v1/public/announcements/{type}/{house}/{notice}",produces="text/html;charset=UTF-8")
     public ResponseEntity<String> page(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) {
         if(!valid(type,house,notice)) return ResponseEntity.notFound().build();
@@ -163,6 +171,7 @@ public class PublicAnnouncementPage {
         for(var entry:picked) out.append(PublicRegionPages.item(domain,entry,today));
         return out.append("<a class='cta secondary' href='").append(esc(domain+region.path())).append("'>").append(esc(region.label())).append(" 청약 전체 보기</a></section>").toString();
     }
+    // @GetMapping: 공유 카드 PNG. produces로 image/png를 알리고, 그린 결과는 메모리(최대 64MB)에 10분 둔다.
     @GetMapping(value="/api/v1/public/announcement-images/{type}/{house}/{notice}.png",produces=MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> image(@PathVariable String type,@PathVariable String house,@PathVariable String notice,@RequestParam(defaultValue="detail") String tabType) throws IOException {
         if(!valid(type,house,notice))return ResponseEntity.notFound().build();

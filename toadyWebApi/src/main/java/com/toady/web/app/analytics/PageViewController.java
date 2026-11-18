@@ -21,19 +21,30 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
 
-/** 익명 페이지 조회만 수집한다. 쿼리 문자열·IP·회원 정보·요청 헤더는 저장하지 않는다. */
+/**
+ * 익명 페이지 조회만 수집한다. 쿼리 문자열·IP·회원 정보·요청 헤더는 저장하지 않는다.
+ * 화면이 페이지를 열 때 POST로 보내고, 서버는 TB_PAGE_VIEW에 한 줄 INSERT한다(관리자 사이트 방문 지표의 원본).
+ * 서비스·리포지토리 없이 컨트롤러가 JdbcTemplate으로 바로 저장하는 단순한 구조다.
+ */
+// @RestController: JSON 응답 컨트롤러
 @RestController
+// @RequestMapping: 클래스 공통 주소
 @RequestMapping("/api/v1/analytics/page-views")
 public class PageViewController {
     private static final Logger log = LoggerFactory.getLogger(PageViewController.class);
     private final JdbcTemplate jdbc;
     private final boolean enabled;
 
+    // @Value: toady.analytics.enabled가 false면 받기만 하고 저장하지 않는다(기본 true)
     public PageViewController(JdbcTemplate jdbc, @Value("${toady.analytics.enabled:true}") boolean enabled) {
         this.jdbc = jdbc;
         this.enabled = enabled;
     }
 
+    /**
+     * 요청 본문. eventId는 중복 저장 방지용, visitorId·sessionId는 브라우저가 만든 무작위 번호다.
+     * @NotNull: 값이 꼭 있어야 한다. @Pattern: 정해진 경로만 받아 임의 값이 지표에 섞이지 않게 한다.
+     */
     public record PageView(@NotNull UUID eventId, @NotNull UUID visitorId, @NotNull UUID sessionId,
             @NotNull @Pattern(regexp = "^(/|/my|/score|/match|/match/zupzup|/faq|/this-week|/regions|/announcements|/login|/certify|/showSubscriptDetail)$") String path,
             // 세션 첫 조회의 외부 유입 도메인만 받는다. 전체 URL·검색어는 받지 않는다.
@@ -42,6 +53,8 @@ public class PageViewController {
     /** 운영 DB에 유입 컬럼을 추가하기 전에 배포돼도 조회 기록이 끊기지 않게 한다. 컬럼이 생기면 재시작 없이 다시 시도한다. */
     private volatile long legacyUntil = 0;
 
+    /** 조회 한 번을 저장한다. 성공·중복·로봇 모두 204(본문 없음), DB 장애면 503. */
+    // @PostMapping: POST /api/v1/analytics/page-views. @Valid @RequestBody: JSON 본문을 PageView로 바꾸고 검증한다
     @PostMapping
     public ResponseEntity<Void> record(@Valid @RequestBody PageView event, HttpServletRequest request) {
         if (!enabled || BotFilter.isBot(request)) return ResponseEntity.noContent().build();

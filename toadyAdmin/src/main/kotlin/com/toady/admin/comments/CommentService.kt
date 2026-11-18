@@ -17,9 +17,13 @@ import java.time.LocalDateTime
 /**
  * 공고 댓글 모니터링과 숨김/복구. 서비스와 같은 규칙으로 원댓글을 숨기면 답글도 함께 숨긴다(DELETE_YN).
  * 숨긴 댓글은 지우지 않으므로 복구할 수 있다.
+ * 서비스 화면에서는 '이야기'라고 부른다. 테이블: TB_LTTOT_PBLANC_COMMENT(댓글), TB_COMMENT_ADMIN_HIDE(관리자 숨김 기록),
+ * TB_COMMENT_OFFICIAL(운영팀 글 표시·고정). 호출: AdminController(이야기 목록·회원·공고 상세), ReportService(신고 처리).
  */
+// @Service: 업무 로직 빈.
 @Service
 class CommentService(private val jdbc: JdbcTemplate, private val announcements: AnnouncementService) {
+	/** 목록 한 줄. deleted는 DELETE_YN='Y'(숨김 또는 작성자 삭제)이고, adminHidden이 둘을 구분한다. */
 	data class Comment(val seq: Long, val announcementId: String, val parentSeq: Long?, val content: String, val deleted: Boolean,
 	                   val authorSeq: Long, val author: String?, val createdAt: LocalDateTime?, val updatedAt: LocalDateTime?, val houseNm: String? = null,
 	                   val adminHidden: Boolean = false) {
@@ -78,6 +82,8 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 	 * 숨긴다. 원댓글이면 답글도 함께 숨긴다. 바뀐 댓글 수를 돌려준다.
 	 * 관리자가 숨긴 댓글만 기록해 두어, 작성자가 직접 지운 댓글(같은 DELETE_YN='Y')을 되살리지 않게 한다.
 	 */
+	// @Transactional: 댓글 숨김과 숨김 기록을 한 트랜잭션으로 묶는다. 다른 빈에서 부를 때만 적용된다
+	// (같은 클래스 안의 hideAllBy가 부르면 스프링 프록시를 거치지 않아 트랜잭션이 걸리지 않는다).
 	@Transactional
 	fun hide(seq: Long, admin: String): Int {
 		val now = Timestamp.valueOf(Kst.now())
@@ -107,6 +113,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 	 * 운영팀 계정으로 이야기를 쓴다(database.sql 27번 TB_COMMENT_OFFICIAL에 운영팀 글로 표시). parentSeq가 있으면 그 원글의 답글.
 	 * pinned면 공고 이야기 맨 위에 고정한다(원글만). 새 이야기 번호를 돌려준다.
 	 */
+	// 댓글 INSERT와 운영팀 표시 INSERT를 한 트랜잭션으로 묶는다. 표시 저장이 실패하면 댓글도 되돌린다.
 	@org.springframework.transaction.annotation.Transactional
 	fun writeOfficial(announcementId: String, officialUserSeq: Long, content: String, parentSeq: Long?, pinned: Boolean, admin: String): Long {
 		val (type, house, notice) = announcementId.split('/').also { require(it.size == 3) }
@@ -117,6 +124,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 			require(ok > 0) { "답글을 달 원글을 찾을 수 없습니다." }
 		}
 		val now = Timestamp.valueOf(Kst.now())
+		// GeneratedKeyHolder: INSERT 후 DB가 매긴 COMMENT_SEQ(AUTO_INCREMENT)를 받아 오는 그릇.
 		val key = org.springframework.jdbc.support.GeneratedKeyHolder()
 		jdbc.update({ c ->
 			c.prepareStatement("INSERT INTO TB_LTTOT_PBLANC_COMMENT (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO, PARENT_COMMENT_SEQ, CONTENT, RECOMMEND, OPPOSE, DELETE_YN, CREATE_USER_SEQ, REG_DT) VALUES (?,?,?,?,?,0,0,'N',?,?)",
@@ -148,6 +156,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		} catch (missing: DataAccessException) { emptyMap() }
 	}
 
+	/** 운영팀 글 테이블(database.sql 27번)이 있는지. 없으면 운영팀 글쓰기 칸을 숨긴다. */
 	fun officialReady(): Boolean = try { jdbc.queryForObject("SELECT COUNT(*) FROM TB_COMMENT_OFFICIAL WHERE 1=0", Long::class.java); true } catch (missing: DataAccessException) { false }
 
 	/** 관리자가 숨긴 댓글을 되살린다. 작성자가 지운 댓글과 원댓글이 숨겨진 답글은 되살리지 않는다. */
@@ -178,6 +187,7 @@ class CommentService(private val jdbc: JdbcTemplate, private val announcements: 
 		if (changed == 1) log.info("관리자 댓글 복구: commentSeq={}, admin={}", seq, admin)
 		return if (changed == 1) RestoreResult.RESTORED else RestoreResult.NOT_FOUND
 	}
+	/** 되살리기 결과. 컨트롤러가 결과마다 다른 안내 문구를 보여 준다. */
 	enum class RestoreResult { RESTORED, PARENT_HIDDEN, NOT_ADMIN_HIDDEN, NOT_FOUND }
 
 	companion object {

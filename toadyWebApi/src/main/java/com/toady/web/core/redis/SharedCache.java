@@ -21,8 +21,11 @@ import java.util.zip.GZIPOutputStream;
  * 각 서비스의 메모리 캐시가 먼저이고, 메모리에 없을 때 여기서 찾는다. 배포·재시작 뒤에도 남아 같은 조회로
  * 외부 호출 한도를 다시 쓰지 않게 한다. Redis가 없거나 실패하면 null(없음)로 처리해 원래대로 외부를 부른다.
  * 값은 JSON을 gzip으로 줄여 저장한다(한 달 실거래가 수백 KB까지 나온다).
+ * 키는 "toady:cache:" 뒤에 호출하는 쪽이 정한 이름을 붙이고, 만료(TTL)도 호출하는 쪽이 정한다.
  */
+// @Slf4j: log 필드 생성
 @Slf4j
+// @Component: 빈으로 등록되어 실거래·주변 시설 서비스에 주입된다
 @Component
 public class SharedCache {
     /**
@@ -33,6 +36,7 @@ public class SharedCache {
     private static final ObjectMapper JSON = JsonMapper.builder().addModule(new JavaTimeModule()).build();
     private final RedisStore redis;
 
+    // @Autowired: 이 생성자로 RedisStore를 주입받는다
     @Autowired
     public SharedCache(RedisStore redis) { this.redis = redis; }
 
@@ -56,6 +60,7 @@ public class SharedCache {
         }
     }
 
+    /** JSON → gzip → Base64 문자열로 바꿔 ttl 동안 저장한다. Redis가 쉬는 중이거나 값이 너무 크면 조용히 건너뛴다. */
     public void put(String key, Object value, Duration ttl) {
         if (value == null || !redis.available() || ttl.isNegative() || ttl.isZero()) return;
         try {

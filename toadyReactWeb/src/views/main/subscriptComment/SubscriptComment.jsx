@@ -1,6 +1,14 @@
 /**
  * @file SubscriptComment.jsx
- * @description 청약 공고 상세 댓글 및 답글(대댓글) 컴포넌트
+ * @description 공고 상세의 '이 단지 이야기' 탭. 단지별 커뮤니티 글(원글)과 답글(한 단계)을 보여 주고 쓰기·수정·삭제·신고를 한다.
+ *
+ * - 사용처: views/main/Main.jsx 상세 영역에서 lazy로 불러온다(탭을 열 때 이 파일을 내려받음).
+ * - 데이터: features/announcement/hooks/useAnnouncements.js 의 React Query 훅
+ *   (useCommentsQuery로 목록 조회, add/update/delete 뮤테이션 성공 시 목록 캐시를 invalidate해 다시 불러온다).
+ * - 상태: 로그인 정보는 zustand 스토어 useAuthStore, 차단 목록은 useBlockedSet.
+ * - 팝업: 로그인 창·삭제 확인·프로필 카드·신고 창은 useHistoryOverlay로 연다.
+ *   팝업 하나가 브라우저 히스토리 한 단계라서 뒤로가기를 누르면 페이지가 아니라 팝업이 닫힌다.
+ *   열린 팝업 값은 location.state.overlayLayers에 저장된다.
  */
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -52,6 +60,7 @@ import { formatServerMessage } from '@/utils/text.util';
 
 /**
  * 닉네임 문자열에 따라 일관된 파스텔톤 배경색과 텍스트색을 반환
+ * 프로필 캐릭터가 없는 회원의 글자 아바타에 쓴다. 같은 닉네임은 항상 같은 색이 나오도록 간단한 문자열 해시를 쓴다.
  */
 const getAvatarColor = (name = '') => {
   const colors = [
@@ -70,20 +79,31 @@ const getAvatarColor = (name = '') => {
   return colors[index];
 };
 
+/**
+ * 실제 이야기 화면 본체. 바깥의 SubscriptComment가 공고·계정별 key를 붙여 렌더링한다.
+ * @param subscriptDetail 공고 상세 데이터(type·houseManageNo·pblancNo와 일정 정보)
+ * @param subscriptSeq 공고 식별 값. 없으면 subscriptDetail.subscriptSeq를 쓴다.
+ */
 const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
+  // zustand 스토어는 selector로 필요한 값만 꺼낸다. 이 값이 바뀔 때만 다시 그려진다.
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const myProfileIcon = useMyProfileIcon();
   const currentSubscriptSeq = subscriptSeq || subscriptDetail?.subscriptSeq;
 
   // 댓글 목록 조회 (TanStack Query)
+  // 두 번째 인자는 enabled 조건이다. 공고 번호가 없으면 요청을 보내지 않는다.
+  // 같은 queryKey(공고별)를 쓰는 곳끼리 캐시를 나눠 쓰고, 글을 쓰면 뮤테이션 쪽에서 이 캐시를 무효화해 새로 받는다.
   const { data: commentsRes, isLoading, isError, error, refetch } = useCommentsQuery(currentSubscriptSeq, Boolean(currentSubscriptSeq));
 
   // '내 정보 > 내가 쓴 이야기'에서 눌러 들어오면(?comment=번호) 그 이야기로 스크롤하고 잠깐 강조한다.
   const [searchParams] = useSearchParams();
   const focusComment = Number(searchParams.get('comment')) || null;
   const [highlighted, setHighlighted] = useState(null);
+  // useRef는 값이 바뀌어도 다시 그리지 않는 보관함이다. '이미 스크롤했는지'와 타이머 id처럼 화면과 무관한 값을 둔다.
   const focusedOnce = useRef(null), highlightTimer = useRef(null);
+  // 목록(commentsRes)이 도착한 뒤에야 해당 글 요소가 DOM에 생기므로, 목록이 바뀔 때마다 다시 시도한다.
+  // focusedOnce로 같은 글에 대해서는 한 번만 스크롤한다(목록이 다시 불려도 화면이 튀지 않게).
   useEffect(() => {
     if (!focusComment || focusedOnce.current === focusComment || !commentsRes) return;
     const element = document.getElementById(`story-${focusComment}`);
@@ -94,9 +114,12 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
     clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlighted(null), 2800);
   }, [focusComment, commentsRes]);
+  // 빈 의존성 배열 + 함수 반환 = 화면에서 사라질 때(언마운트) 한 번 실행되는 정리(cleanup). 남은 타이머를 멈춘다.
   useEffect(() => () => clearTimeout(highlightTimer.current), []);
 
   // Mutations
+  // 서버에 쓰기 요청을 보내는 훅. mutateAsync는 Promise를 돌려줘서 try/catch로 성공·실패를 나눌 수 있다.
+  // isPending은 요청 중 여부라 버튼 비활성화·로딩 표시에 쓴다.
   const addMutation = useAddCommentMutation();
   const updateMutation = useUpdateCommentMutation();
   const deleteMutation = useDeleteCommentMutation();
@@ -104,15 +127,19 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   // 입력 상태 관리
   const [rootContent, setRootContent] = useState('');
   const inputRef = useRef(null);
+  // 'layout' 층은 MainLayout이 그리는 공통 로그인·회원가입 창이다. setLayoutOverlay('login')이면 로그인 창이 열린다.
   const [, setLayoutOverlay] = useHistoryOverlay('layout');
+  // 공고 일정과 오늘(한국 시간) 날짜로 지금이 접수 전·발표 후 같은 어느 단계인지 구해 그에 맞는 질문 칩을 보여 준다.
   const stage = storyStage(summaryOf(subscriptDetail || {}), koreaToday());
   const activeTag = splitTag(rootContent).tag;
   // 질문 칩: 로그인했으면 말머리를 붙여 글쓰기를 시작하고, 아니면 로그인 창을 연다(히스토리와 연결된 공통 로그인 창).
   const pickPrompt = prompt => {
     if (!isAuthenticated) { setLayoutOverlay('login'); return; }
     setRootContent(previous => withTag(previous, prompt?.tag || null));
+    // 상태가 반영되어 다시 그려진 다음 프레임에 입력칸으로 커서를 옮긴다.
     requestAnimationFrame(() => inputRef.current?.focus());
   };
+  // 답글창과 수정창은 한 번에 하나만 열리므로, 어떤 글에 열렸는지(번호)와 입력 내용을 객체 하나로 묶어 관리한다.
   const [replyState, setReplyState] = useState({ parentCommentSeq: null, content: '', show: false });
   const [modifyState, setModifyState] = useState({ commentSeq: null, content: '', show: false });
   const [feedback, setFeedback] = useState(null);
@@ -125,17 +152,22 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   // 삭제 확인 창은 히스토리 한 단계로 연다(뒤로가기로 닫힘). 값은 지울 댓글 번호다.
   const [deleteTarget, setDeleteTarget] = useHistoryOverlay('comment:delete');
   const [deleting, setDeleting] = useState(false);
+  // 뒤로가기·앞으로가기로 히스토리에 남은 값이 되살아날 수 있으니, 그 번호가 지금 목록에 있는 '내 글'일 때만 창을 연다.
   const deleteOpen = Boolean(deleteTarget) && (commentsRes?.data?.subscriptCommentList || [])
     .some(comment => comment.subscriptCommentSeq === deleteTarget && comment.createUserSeq === user?.userSeq);
   // 작성자 이름·캐릭터를 누르면 프로필 카드(쪽지·차단·신고), 다른 회원 글의 깃발은 신고 창. 둘 다 히스토리 층이라 뒤로가기로 닫힌다.
   const [, setMemberCard] = useHistoryOverlay('member-card');
   const [, setReport] = useHistoryOverlay('report');
   const blocked = useBlockedSet();
+  // 차단 글 중 '보기'를 눌러 펼친 글 번호 모음. useState에 함수를 넘기면 첫 렌더에서만 초기값을 만든다.
   const [revealed, setRevealed] = useState(() => new Set());
   const openCard = row => setMemberCard(cardValue(row.createUserSeq, currentSubscriptSeq));
   const reportStory = row => { if (!isAuthenticated) { setLayoutOverlay('login'); return; } setReport(reportValue('COMMENT', row.subscriptCommentSeq, row.createUserSeq)); };
 
   // 계층형 댓글 트리 생성
+  // 서버는 원글·답글을 평평한 목록으로 준다. 부모 번호로 답글을 원글의 items에 넣어 트리로 바꾼다.
+  // useMemo로 감싸 commentsRes가 바뀔 때만 다시 계산한다(입력할 때마다 다시 만들지 않게).
+  // 부모가 목록에 없는 답글(부모가 다른 페이지에 있음)은 원글 자리에 그대로 둔다.
   const treeCommentList = useMemo(() => {
     const rawList = commentsRes?.data?.subscriptCommentList || [];
     if (!rawList.length) return [];
@@ -267,6 +299,8 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   };
 
   // 인라인 수정 폼 컴포넌트
+  // 별도 컴포넌트가 아니라 JSX를 돌려주는 함수다. 컴포넌트로 만들면 렌더마다 새 타입이 되어 입력 포커스가 풀릴 수 있다.
+  // InputBase는 value + onChange로 상태와 묶인 controlled input이다.
   const renderInlineEditForm = () => (
     <Box
       sx={{
@@ -606,6 +640,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   };
 
   // 원글에 달린 답글 묶음(원글이 접혀 있어도 따로 그린다).
+  // function 선언은 호이스팅되어 위의 renderCommentCard에서 먼저 불러도 동작한다.
   function renderReplies(row) {
     if (!(row.items?.length > 0)) return null;
     return (
@@ -667,6 +702,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         )}
       </Collapse>
 
+      {/* 단계별 질문 칩. 고르면 입력칸 앞에 말머리가 붙는다 */}
       <StoryPrompts stage={stage} activeTag={activeTag} onPick={pickPrompt} />
 
       {/* 댓글 작성 폼 */}
@@ -861,6 +897,7 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
         </Box>
       )}
 
+      {/* 삭제 확인 창. 닫기·취소는 setDeleteTarget(null)로 히스토리 한 단계를 되돌린다. 삭제 중에는 닫지 않는다 */}
       <Dialog open={deleteOpen} onClose={() => { if (!deleting) setDeleteTarget(null); }} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>이 이야기를 삭제할까요?</DialogTitle>
         <DialogContent sx={{ color: '#475569', fontSize: '0.9rem' }}>삭제한 글은 되돌릴 수 없어요.</DialogContent>
@@ -873,7 +910,12 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
   );
 };
 
-// 공고 또는 계정이 바뀌면 이전 작성 중 내용·답글·수정 상태를 함께 비운다.
+/**
+ * 외부에 내보내는 이야기 탭 컴포넌트(Main.jsx에서 사용).
+ * 공고 또는 계정이 바뀌면 이전 작성 중 내용·답글·수정 상태를 함께 비운다.
+ * React는 key가 바뀌면 그 컴포넌트를 새로 만들어서 안의 useState가 전부 초기값으로 돌아간다.
+ * 로그아웃 상태는 'guest'로 묶는다.
+ */
 export const SubscriptComment = (props) => {
   const userSeq = useAuthStore(state => state.user?.userSeq ?? 'guest');
   const announcement = props.subscriptSeq || props.subscriptDetail?.subscriptSeq || '';

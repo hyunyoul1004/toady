@@ -18,7 +18,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
-/** 일 단위 갱신 문서에 맞춘 수집. 시각은 API 공개 보장 시간이 아닌 운영 정책이다. */
+/**
+ * 일 단위 갱신 문서에 맞춘 수집. 시각은 API 공개 보장 시간이 아닌 운영 정책이다.
+ * 관리 기능을 끈 기본 모드에서만 쓰는 고정 일정이다. 매일 공고·주택형(3:15)과 경쟁률·가점(4:15, 20:15)을
+ * 오늘 기준 lookback-days(기본 90일) 전까지 다시 조회한다. 실제 수집은 ApplyhomeSyncService·ApplyhomeCompetitionSyncService가 한다.
+ */
+// @Component: 일반 빈으로 등록한다. 빈이어야 @Scheduled 메서드가 타이머에 걸린다.
 @Component
 // 관리자 기능을 켜면 DB 기반 타이머가 수집을 맡으므로 기존 정적 스케줄은 등록하지 않는다.
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "false", matchIfMissing = true)
@@ -30,9 +35,11 @@ public class ApplyhomeSyncScheduler {
     private final int lookbackDays;
     private final Clock clock;
     /** 관리자 기능을 끈 정적 모드에서 잠금에 걸린 경쟁률 수집을 한 번 더 돌리는 데 쓴다(없으면 재시도하지 않는다). */
+    // @Autowired(required = false): TaskScheduler 빈이 있으면 필드에 넣고, 없으면 null로 둔다.
     @Autowired(required = false) private TaskScheduler retryScheduler;
     static final Duration BUSY_RETRY = Duration.ofMinutes(10);
 
+    // 생성자가 두 개라 스프링이 쓸 생성자를 @Autowired로 지정한다. 아래 Clock 생성자는 테스트에서 시간을 고정할 때 쓴다.
     @Autowired
     public ApplyhomeSyncScheduler(ApplyhomeSyncService syncService,
             ApplyhomeCompetitionSyncService competitionSyncService,
@@ -49,6 +56,8 @@ public class ApplyhomeSyncScheduler {
         this.clock = clock.withZone(SEOUL);
     }
 
+    /** 공고·주택형 수집. 서버 시간대와 무관하게 한국시간 cron으로 돈다. */
+    // @Scheduled(cron): 설정값(없으면 매일 3시 15분)에 맞춰 호출된다. cron 6자리는 초 분 시 일 월 요일 순서다.
     @Scheduled(cron = "${applyhome.scheduler.cron:0 15 3 * * *}", zone = "Asia/Seoul")
     public void synchronizeDaily() {
         LocalDate today = LocalDate.now(clock);
@@ -57,9 +66,11 @@ public class ApplyhomeSyncScheduler {
         log.info("Completed announcement sync at {}", Instant.now(clock));
     }
 
+    /** 경쟁률·가점·특별공급 수집(기본 매일 4시 15분, 20시 15분). */
     @Scheduled(cron = "${applyhome.competition.scheduler.cron:0 15 4,20 * * *}", zone = "Asia/Seoul")
     public void synchronizeCompetition() { runCompetition(true); }
 
+    /** retryWhenBusy가 true면 잠금에 걸렸을 때 10분 뒤 한 번만 다시 시도한다(재시도 회차는 false). */
     void runCompetition(boolean retryWhenBusy) {
         LocalDate today = LocalDate.now(clock);
         log.info("Starting competition sync from {} through {} at {}", today.minusDays(lookbackDays), today, Instant.now(clock));

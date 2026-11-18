@@ -3,7 +3,15 @@
  * @description 좌측 사이드바 내비게이션 및 반응형 드로어 컴포넌트
  * - 데스크톱: 좌측 고정 사이드바 (폭 240px)
  * - 모바일/태블릿: 햄버거 메뉴 버튼 클릭 시 좌측에서 슬라이드되는 임시 Drawer
- * - 상단 로고, 주요 메뉴 리스트, 하단 로그인/회원가입/로그아웃 인증 영역 포함
+ * - 상단 로고, 주요 메뉴 리스트, 더보기 메뉴('홈 화면에 추가' 포함), 하단 로그인/회원가입/로그아웃 인증 영역 포함
+ *
+ * MainLayout이 그린다. 메뉴 이름·경로는 navItems.js를 모바일 하단 탭과 함께 쓴다.
+ * 상태·API: useAuthStore(로그인 정보·로그아웃), 새 답글·안 읽은 쪽지 수(React Query 훅), 알림 점(usePushAttention),
+ * 설치 방식(installStore), 측정(trackAction).
+ *
+ * 모바일 메뉴는 MainLayout의 'layout' 히스토리 레이어(값 'menu')로 열려 있다. 그래서 메뉴 안에서 다른 화면으로 갈 때는
+ * 메뉴 칸을 replace로 바꾸거나 먼저 navigate(-1)로 메뉴를 닫는다. 그러지 않으면 뒤로가기 때 메뉴가 다시 열린다.
+ * 메뉴 항목은 NavLink 대신 ListItemButton + navigate를 쓴다. '같은 탭 다시 누르기' 규칙(retapAction)을 적용하기 위해서다.
  */
 import React, { useRef } from 'react';
 import { usePushAttention } from '@/features/push/usePushAttention';
@@ -60,6 +68,8 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   // 값: 안내 종류('guide' 또는 설치를 마친 뒤 'done'). 히스토리 한 단계로 열어 뒤로가기 한 번에 닫힌다.
   const [installGuide, setInstallGuide] = useHistoryOverlay('install-guide');
   // 모바일 메뉴(히스토리 한 단계)를 먼저 닫고 안내를 연다. 메뉴 위에 겹치지 않고, 뒤로가기 한 번에 안내만 닫힌다.
+  // popstate: 뒤로가기(navigate(-1))가 실제로 끝났을 때 브라우저가 보내는 이벤트. once: 한 번만 듣고 저절로 떨어진다.
+  // setTimeout 0으로 한 박자 늦춰 React Router가 바뀐 location을 먼저 반영하게 한다.
   const openInstallGuide = (kind) => {
     if (!mobileOpen) { setInstallGuide(kind); return; }
     window.addEventListener('popstate', () => setTimeout(() => setInstallGuide(kind), 0), { once: true });
@@ -76,6 +86,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
     openInstallGuide('guide');
   };
 
+  // zustand selector: 필요한 값만 하나씩 꺼낸다. 그 값이 바뀔 때만 사이드바가 다시 그려진다.
   const user = useAuthStore(state => state.user);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const logout = useAuthStore(state => state.logout);
@@ -89,7 +100,9 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
   /**
    * 하단 탭과 같은 '다시 누르기' 규칙. 모바일 메뉴(드로어)는 히스토리 한 단계(layout 레이어)로 열려 있으므로
    * 판정에서는 그 레이어를 빼고, 같은 화면이면 먼저 메뉴를 닫은 뒤(뒤로 한 단계) 상세 닫기·처음 화면·맨 위로를 적용한다.
+   * 다른 화면이면 메뉴가 열린 칸을 replace로 바꿔 새 화면으로 간다(메뉴 칸이 히스토리에 남지 않게).
    */
+  // going: 메뉴를 닫는 중인지. 화면에 보일 값이 아니라서 state 대신 useRef로 둔다(바꿔도 다시 그리지 않는다).
   const going = useRef(false);
   function go(path, state = null) {
     // 메뉴가 닫히는 동안 다시 눌러 두 단계 뒤로 가지 않게 한 번만 처리한다.
@@ -106,6 +119,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
     window.addEventListener('popstate', () => setTimeout(() => { going.current = false; apply(); }, 0), { once: true });
     navigate(-1);
   }
+  /** 더보기 항목. overlay가 있는 항목(알림 설정)은 그 화면으로 간 뒤 팝업 레이어를 열린 채로 쌓는다. */
   function openMore(item) {
     if (item.overlay) {
       // 나의 청약을 한 단계 쌓은 뒤 알림 설정 창을 연다(닫으면 나의 청약에 머문다).
@@ -325,6 +339,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
         variant="temporary"
         open={mobileOpen}
         onClose={onMobileClose}
+        // keepMounted: 닫혀 있어도 내용을 DOM에 남겨 둔다(모바일에서 열 때 더 빨리 뜬다. MUI 권장 설정).
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', md: 'none' },
@@ -355,6 +370,7 @@ export function Sidebar({ mobileOpen, onMobileClose, onOpenLogin, onOpenSignUp }
       >
         {drawerContent}
       </Drawer>
+      {/* 홈 화면 추가 안내 창. 사이드바가 두 벌(모바일·PC)이라 창은 Drawer 밖에 한 번만 둔다. */}
       <InstallGuideDialog open={Boolean(installGuide)} onClose={() => setInstallGuide(false)} mode={installGuide === 'done' ? 'done' : installMode} />
     </Box>
   );

@@ -23,8 +23,12 @@ import java.util.concurrent.ScheduledFuture;
  * DB에 저장된 자동 스케줄을 런타임 타이머에 반영한다.
  * 관리자 기능 활성화 시 기존 정적 @Scheduled 수집기를 대신하므로 같은 작업이 두 경로로 등록되지 않는다.
  * 타이머는 실행 요청만 접수하고 실제 수집은 AdminJobService의 작업 스레드가 담당한다.
+ * 테이블: TB_SCHEDULER_ADMIN_SCHEDULE(종류별 사용 여부·cron·조회 일수). 호출: AdminInternalApi(조회·저장).
+ * cron은 '|'로 여러 개를 이을 수 있어, 하나의 일정에 '매시 정각 + 저녁 10분마다' 같은 조합을 담는다.
  */
+// @Service: 업무 로직 빈으로 등록한다.
 @Service
+// 관리 기능(applyhome.admin.enabled=true)을 켰을 때만 만든다. 꺼져 있으면 ApplyhomeSyncScheduler의 고정 일정이 돈다.
 @ConditionalOnProperty(name = "applyhome.admin.enabled", havingValue = "true")
 public class AdminScheduleManager {
     private static final Logger log = LoggerFactory.getLogger(AdminScheduleManager.class);
@@ -50,6 +54,10 @@ public class AdminScheduleManager {
     // 시작 후 이전 프로세스 작업을 다시 정리하는 시점. 정리 기준(생존 신호 주기의 2.5배)보다 조금 뒤로 둔다.
     static final Duration LEFTOVER_RECHECK_DELAY = AdminJobService.LEFTOVER_STALE_AFTER.plusSeconds(10);
 
+    /**
+     * @Value로 읽은 cron·조회 일수는 DB에 일정이 아직 없을 때 처음 넣는 기본값으로만 쓴다.
+     * 타이머(ThreadPoolTaskScheduler)는 스프링 공용 스케줄러와 따로 스레드 하나로 만든다.
+     */
     public AdminScheduleManager(JdbcTemplate jdbc, AdminJobService jobs,
             @Value("${applyhome.scheduler.cron:0 15 3 * * *}") String daily,
             @Value("${applyhome.competition.scheduler.cron:0 15 4,20 * * *}") String competition,
@@ -64,6 +72,7 @@ public class AdminScheduleManager {
     }
 
     /** 테이블 준비를 확인하고, 아직 저장되지 않은 종류의 기본 스케줄만 최초 등록한다. */
+    // @EventListener(ApplicationReadyEvent): 앱이 완전히 뜬 뒤 한 번 호출된다. synchronized로 refresh와 동시에 돌지 않게 한다.
     @EventListener(ApplicationReadyEvent.class)
     public synchronized void initialize() {
         // 관리자 기능을 명시적으로 켰는데 테이블이 없으면, 자동 수집이 조용히 빠지지 않도록 시작을 실패시킨다.
@@ -80,6 +89,7 @@ public class AdminScheduleManager {
         ready = true;
         refresh();
     }
+    /** 재시작 직후 예약해 둔 두 번째 정리. 실패해도 앱을 멈추지 않고 로그만 남긴다. */
     private void interruptLeftoversAfterRestart() {
         try {
             jobs.interruptLeftovers();
@@ -92,6 +102,7 @@ public class AdminScheduleManager {
      * 대상 공고가 없으면 외부 호출 없이 끝난다. 재시도 일수(7일) 동안 결과가 비어 있는 공고를 계속 다시 확인한다.
      */
     static final String SCHEDULED_RESULTS_CRON = "0 0 * * * * | 0 */10 18-21 * * * | 0 */10 7-11 * * *";
+    /** 일정 맞춤 수집의 기본 조회 일수(오늘 기준 며칠 전까지의 일정을 볼지). */
     static final int SCHEDULED_RESULTS_LOOKBACK = 7;
 
     /** 환경변수는 최초 등록의 기본값으로만 사용하며, 관리자가 저장한 기존 설정은 덮어쓰지 않는다. */
@@ -159,6 +170,7 @@ public class AdminScheduleManager {
         }
         return earliest;
     }
+    /** 문자열 cron('|' 포함)을 바로 받아 다음 실행 시각을 구한다. */
     static LocalDateTime next(String cron, LocalDateTime after) { return next(parse(cron), after); }
     /**
      * 여러 cron을 합친 타이머. 직전 예정 시각 이후로 다음 시각을 구해, 실행이 예정보다 조금 일찍 깨어나도 같은 시각을 두 번 돌지 않는다.
@@ -193,6 +205,7 @@ public class AdminScheduleManager {
         }
     }
     /** 설정 변경 반영과 작업 생존 확인을 생존 신호 주기(30초)마다 수행한다. 초기 테이블 준비 전에는 실행하지 않는다. */
+    // @Scheduled(fixedDelay): 이전 실행이 끝난 뒤 30초를 쉬고 다시 호출한다(cron이 아니라 간격 기준).
     @Scheduled(fixedDelay = AdminJobService.HEARTBEAT_INTERVAL_MILLIS)
     public synchronized void refresh() {
         if (!ready) return;
@@ -269,6 +282,8 @@ public class AdminScheduleManager {
         LocalDate start = today.minusDays(days);
         return start.isBefore(AdminJobService.earliestDate()) ? AdminJobService.earliestDate() : start;
     }
+    /** 종료 시 예약된 타이머를 모두 취소하고 타이머 스레드를 닫는다. */
+    // @PreDestroy: 앱 종료로 빈이 없어지기 직전에 호출된다.
     @PreDestroy public synchronized void close() {
         futures.values().forEach(future -> future.cancel(false)); timer.shutdown();
     }

@@ -12,11 +12,13 @@ import java.util.function.Supplier;
  * 이 요청들은 트랜잭션 연결 하나를 잡은 채 발송 한도 확인(MailBudget, REQUIRES_NEW)에 연결을 하나 더 쓰고 SMTP 전송까지 기다린다.
  * 제한이 없으면 요청이 몰릴 때 모든 연결이 두 번째 연결을 서로 기다려 다른 API까지 멈추므로, 연결을 잡기 전에 순서를 기다리게 한다.
  */
+// @Component: 빈으로 등록된다. 앱 전체가 Semaphore 하나를 함께 쓴다(싱글턴)
 @Component
 public class MailGate {
     private final Semaphore permits;
     private final long waitMillis;
 
+    /** 동시 처리 수(기본 4)와 최대 대기 시간(기본 8초)을 설정에서 받는다. Semaphore의 true는 먼저 온 순서대로 허가를 준다는 뜻이다. */
     public MailGate(@Value("${toady.security.mail-concurrency:4}") int concurrency,
                     @Value("${toady.security.mail-gate-wait-ms:8000}") long waitMillis) {
         if (concurrency < 1) throw new IllegalArgumentException("메일 동시 처리 수는 1 이상이어야 합니다.");

@@ -10,6 +10,8 @@ import NextEvent from './NextEvent';
 import InterestAreaPicker from './InterestAreaPicker';
 import { nextPlannerEvent } from './nextEventRules';
 
+/** 상세를 본 공고를 '최근 본 공고'(localStorage 'toady.recent', 8개까지)에 넣는다. Main이 상세를 열 때 부른다.
+ * 같은 탭의 다른 화면에는 'toady-recent' 이벤트로 알린다(storage 이벤트는 다른 탭에만 오기 때문). */
 export function rememberViewed(detail) {
   if (!ID_PATTERN.test(detail?.subscriptSeq || '') || !detail?.houseNm) return;
   try {
@@ -19,12 +21,16 @@ export function rememberViewed(detail) {
   } catch { /* 최근 본 공고는 기기에 저장할 수 있는 경우에만 제공한다. */ }
 }
 /**
+ * 메인 청약 캘린더 위쪽 요약 영역(Main.jsx에서 씀). 내 다음 일정 또는 관심 지역 고르기, 오늘의 요약,
+ * 조회 건수, 달력/목록 전환, 최근 본 공고, 목록 보기일 때의 공고 목록을 그린다.
  * searchTargets·onApplyAreas는 Main의 검색 조건(paramInfo.citys)과 그 변경 함수다.
  * 넘겨주지 않으면 관심 지역 고르기 줄은 나오지 않는다.
  */
 export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month, onMonthChange, isLoading,isError,onResetFilters,searchTargets,onApplyAreas }) {
   const planner=usePlanner();
+  // useState에 함수를 넘기면 처음 한 번만 실행된다(렌더마다 localStorage를 읽지 않는다).
   const [recent,setRecent]=useState(() => safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));
+  // 최근 본 공고가 바뀌면 'toady-recent' 이벤트로 다시 읽는다. 의존성이 []라 처음 한 번만 등록하고, return 함수가 화면을 떠날 때 해제한다.
   useEffect(() => { const refresh=()=>setRecent(safeRead({getItem:k=>localStorage.getItem(k)},'toady.recent',[]));window.addEventListener('toady-recent',refresh);return()=>window.removeEventListener('toady-recent',refresh); },[]);
   // 조회 범위는 달력 앞뒤 칸 때문에 이전·다음 달 일부를 포함한다. 건수와 목록은 고른 달의 일정만 센다(달마다 같은 공고가 겹치지 않게).
   const unique=uniqueInMonth(items,month);
@@ -34,6 +40,7 @@ export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month
   return <>
   {nextEvent ? <NextEvent event={nextEvent} variant="line" onOpen={onOpen} />
     : !planner.isLoading && <InterestAreaPicker savedCount={planner.items.length} searchTargets={searchTargets} onApply={onApplyAreas} />}
+  {/* 전국 기준 오늘의 요약 숫자 */}
   <TodaySummary savedCount={planner.items.length} />
   <Paper variant="outlined" sx={{p:1.5,mt:1.5,borderRadius:2}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
@@ -42,7 +49,9 @@ export default function TodayOverview({ items,onOpen,viewMode,setViewMode, month
       </Stack>
       <ToggleButtonGroup size="small" exclusive value={viewMode} onChange={(_,v)=>{if(v)setViewMode(v);}} aria-label="청약 보기 방식"><ToggleButton value="calendar">달력</ToggleButton><ToggleButton value="list">목록</ToggleButton></ToggleButtonGroup>
     </Stack>
+    {/* 최근 본 공고: details로 접어 둔다. */}
     {Array.isArray(recent) && recent.length>0 && <Box component="details" sx={{mt:1,'& summary':{cursor:'pointer',fontSize:12,color:'text.secondary',py:.5},'&[open] summary':{mb:.5}}}><Box component="summary">최근 본 공고 {recent.filter(x=>ID_PATTERN.test(x?.id || '')).length}개</Box><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="caption" color="text.secondary">최근 본 공고</Typography><Button size="small" color="inherit" onClick={()=>{try{localStorage.removeItem('toady.recent');}catch{}setRecent([]);}}>기록 지우기</Button></Stack><Stack direction="row" gap={1} sx={{overflowX:'auto',pb:.5}}>{recent.filter(x=>ID_PATTERN.test(x?.id || '')).map(x=><Button size="small" key={x.id} sx={{flexShrink:0,maxWidth:240,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} onClick={()=>onOpen(x.id)}>{x.houseNm}</Button>)}</Stack></Box>}
+    {/* 목록 보기일 때만 달 이동과 공고 목록을 보여 준다. */}
     {viewMode==='list' && <Stack direction="row" alignItems="center" justifyContent="center" gap={1} sx={{mt:2,mb:2}}>
       <IconButton aria-label="목록 이전달" onClick={()=>onMonthChange(shiftMonth(month,-1))}><ChevronLeftRounded /></IconButton>
       <TextField type="month" size="small" value={month} inputProps={{'aria-label':'목록 조회 월',min:'1900-01',max:'2200-12'}} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))onMonthChange(e.target.value);}} />

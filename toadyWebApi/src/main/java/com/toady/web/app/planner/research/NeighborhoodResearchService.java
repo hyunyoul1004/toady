@@ -22,7 +22,18 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-/** 같은 법정동의 신고 거래를 제공한다. 호가나 시세 추정으로 표현하지 않는다. */
+/**
+ * 국토부 아파트 매매 실거래 API(apis.data.go.kr RTMSDataSvcAptTrade)를 불러 동네 실거래·면적별 시세 요약을 만든다.
+ * 같은 법정동의 신고 거래를 제공한다. 호가나 시세 추정으로 표현하지 않는다.
+ * 국토부 API는 하루 호출 한도와 초당 제한이 있어 아래 장치를 겹겹이 둔다.
+ * - 캐시 2단: 메모리(Guava, 시·군·구+월 단위 6시간) → Redis(SharedCache, 재시작 뒤에도 남음) → 둘 다 없으면 호출.
+ * - 속도 조절: 동시에 3개, 호출 간격 120ms 이상(molitGet).
+ * - 하루 몫: MolitDailyBudget(사용자 80%, 나머지는 저녁 미리 계산).
+ * - 차단기: 429·인증 오류·일일 한도 초과면 모든 호출을 잠시 멈춘다(pauseMolit).
+ * - 실패한 달은 30초 쉬고(failedMonths), 응답 시간 한도를 넘기면 받은 달까지만 partial로 돌려준다.
+ * ResearchController, ComplexPriceService, PriceGapSnapshots가 쓴다.
+ */
+// @Slf4j(Lombok): log 필드를 자동으로 만든다. @Service: 스프링 빈으로 등록한다.
 @Slf4j
 @Service
 public class NeighborhoodResearchService {
@@ -32,6 +43,7 @@ public class NeighborhoodResearchService {
             this(apartment,dong,dongCode,area,floor,buildYear,date,amountManwon,"");
         }
     }
+    /** 동네 실거래 응답. status: READY·EMPTY·NOT_CONFIGURED·UNAVAILABLE. items는 최근순 최대 20건. */
     public record TradeResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,int total,List<Trade> items) { }
     record TradeMonth(List<Trade> trades,Instant fetchedAt) { }
     record Page(int total,int rawCount,List<Trade> trades) { }
@@ -44,6 +56,7 @@ public class NeighborhoodResearchService {
      * 기본(테스트)은 메모리만 쓴다.
      */
     private SharedCache shared=SharedCache.none();
+    // @Autowired(required=false) 메서드 주입: SharedCache 빈(Redis)이 있으면 넣고, 없으면 메모리 캐시만 쓴다.
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void useSharedCache(SharedCache shared) { this.shared=shared; }
     static final Duration TRADE_TTL=Duration.ofHours(6);
@@ -59,9 +72,12 @@ public class NeighborhoodResearchService {
     private final MolitDailyBudget dailyBudget;
     /** 미리 계산 작업이 부르는 중인지(이 스레드). 남겨 둔 하루 몫을 쓸 수 있다. */
     private static final ThreadLocal<Boolean> BACKGROUND=ThreadLocal.withInitial(()->false);
+    /** 테스트용: 하루 한도를 세지 않는다. */
     public NeighborhoodResearchService(ResearchTransport transport,String molitKey) {
         this(transport,molitKey,MolitDailyBudget.unlimited());
     }
+    // @Autowired: 생성자가 여럿이라 스프링이 쓸 생성자를 지정한다.
+    // @Value: 국토부 서비스 키(MOLIT_TRADE_SERVICE_KEY)와 하루 호출 한도(기본 9000)를 설정에서 읽는다.
     @org.springframework.beans.factory.annotation.Autowired
     public NeighborhoodResearchService(ResearchTransport transport,
             @Value("${toady.research.molit-service-key:}") String molitKey,
@@ -85,6 +101,7 @@ public class NeighborhoodResearchService {
     static final int FAILED_MONTH_SECONDS=30;
     public boolean tradesEnabled() {return !molitKey.isBlank();}
     public TradeResult trades(String bcode,String dong) {return trades(bcode,dong,null);}
+    /** 같은 법정동의 최근 3개월 매매(면적을 주면 ±5㎡). 한 달이라도 실패하면 UNAVAILABLE로 답한다. */
     public TradeResult trades(String bcode,String dong,BigDecimal area) {
         YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(2);
         if(!tradesEnabled()) return new TradeResult("NOT_CONFIGURED",bcode,dong,start.toString(),end.toString(),null,0,List.of());
@@ -96,7 +113,7 @@ public class NeighborhoodResearchService {
             for(int month=0;month<3;month++) {
                 String ymd=end.minusMonths(month).format(DateTimeFormatter.ofPattern("yyyyMM"));
                 String key=bcode.substring(0,5)+"/"+ymd;
-                // 최근 실패한 시군구·월은 몇 분간 다시 부르지 않는다(잘못된 코드 반복으로 공공데이터 일일 쿼터를 쓰지 않게).
+                // 최근 실패한 시군구·월은 30초 동안 다시 부르지 않는다(잘못된 코드 반복으로 공공데이터 일일 쿼터를 쓰지 않게).
                 if(failedMonths.getIfPresent(key)!=null) throw new IllegalStateException("Recently failed");
                 TradeMonth data;
                 try { data=tradeCache.get(key,()->sharedMonth(key,()->loadMonth(bcode.substring(0,5),ymd,deadline))); }
@@ -110,8 +127,10 @@ public class NeighborhoodResearchService {
             return new TradeResult(matched.isEmpty()?"EMPTY":"READY",bcode,dong,start.toString(),end.toString(),updated.stream().min(Comparator.naturalOrder()).orElse(null),matched.size(),matched.stream().limit(20).toList());
         } catch(Exception failure) {return new TradeResult("UNAVAILABLE",bcode,dong,start.toString(),end.toString(),null,0,List.of());}
     }
-    /** 주택형 면적 하나의 실거래 요약. scope: DONG(같은 법정동) · DISTRICT(같은 시·군·구, 같은 동 거래가 적을 때). */
-    /** q1·q3: 1·3사분위(가운데 절반 범위). new*: 준공 10년 이내 거래만의 값(거래가 없으면 0). */
+    /**
+     * 주택형 면적 하나의 실거래 요약. scope: DONG(같은 법정동) · DISTRICT(같은 시·군·구, 같은 동 거래가 적을 때).
+     * q1·q3: 1·3사분위(가운데 절반 범위). new*: 준공 10년 이내 거래만의 값(거래가 없으면 0).
+     */
     public record AreaStat(BigDecimal area,String scope,int count,long median,long min,long max,long q1,long q3,long newMedian,int newCount,long newQ1,long newQ3) { }
     /** months: 실제로 반영한 개월 수. partial: 응답 시간 한도로 6개월을 다 받지 못했음(화면은 짧게 캐시한다). */
     public record GapResult(String status,String bcode,String dong,String fromMonth,String toMonth,Instant checkedAt,List<AreaStat> areas,int months,boolean partial) {
@@ -177,6 +196,7 @@ public class NeighborhoodResearchService {
     }
     /** 시·군·구 전체의 최근 거래. months: 받은 개월 수, partial: 응답 시간 한도로 일부 달만 받음(받은 달은 캐시되어 다음 요청이 이어 받는다). */
     public record DistrictTrades(String status,String fromMonth,String toMonth,Instant checkedAt,List<Trade> trades,int months,boolean partial) { }
+    /** 시·군·구 전체의 최근 months개월 거래(지도용). deadline까지 받은 달만 돌려주고, 나머지는 다음 요청이 캐시를 이어 채운다. */
     public DistrictTrades districtTrades(String bcode,int months,long deadline) {
         YearMonth end=YearMonth.now(ZoneId.of("Asia/Seoul")),start=end.minusMonths(months-1);
         if(!tradesEnabled()) return new DistrictTrades("NOT_CONFIGURED",start.toString(),end.toString(),null,List.of(),0,false);
@@ -331,6 +351,7 @@ public class NeighborhoodResearchService {
     /** 오늘 국토부를 부른 횟수(운영 확인용). */
     public long molitCallsToday() { return dailyBudget.used(); }
     /** 관리자 설정 한도와 DB 계수기를 연결한다(재시작해도 하루 사용량을 이어서 센다). 테스트에서 직접 만들면 연결하지 않는다. */
+    // @Autowired(required=false) 메서드 주입: 두 빈이 모두 있을 때만 스프링이 이 메서드를 불러 연결한다.
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     void connectSharedBudget(com.toady.web.app.operation.AppSettings settings, com.toady.web.app.operation.DailyCounter counter) { dailyBudget.connect(settings, counter); }
     /** 차단기가 열려 있는지(화면 안내·테스트용). */
@@ -341,6 +362,7 @@ public class NeighborhoodResearchService {
         ProviderRejected(String code) { super("Provider rejected request: "+code); this.code=code; }
     }
     static final int RETRY_NEEDS_SECONDS=4;
+    /** 시·군·구 한 달 거래를 쪽(1000건)마다 받아 합친다. 총 건수가 맞지 않거나 다른 달 거래가 섞이면 실패로 본다. */
     private TradeMonth loadMonth(String district,String ymd,long deadline) throws Exception {
         List<Trade> result=new ArrayList<>();int expected=-1,read=0;
         for(int number=1;number<=5;number++) {

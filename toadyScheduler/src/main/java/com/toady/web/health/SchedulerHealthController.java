@@ -9,14 +9,20 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
-/** Spring 초기화와 관리자 스케줄 등록이 끝나고 DB도 연결된 경우에만 준비 완료를 반환한다. */
+/**
+ * Spring 초기화와 관리자 스케줄 등록이 끝나고 DB도 연결된 경우에만 준비 완료를 반환한다.
+ * docker-compose의 헬스체크가 /internal/health를 불러 스케줄러가 떴는지 확인한다.
+ */
+// @RestController: 메서드 반환값을 화면(HTML)이 아니라 JSON 응답 본문으로 보내는 컨트롤러로 등록한다.
 @RestController
 public class SchedulerHealthController {
     private final ApplicationAvailability availability;
     private final JdbcTemplate jdbc;
+    // ApplicationAvailability: 스프링이 관리하는 '트래픽을 받을 준비가 됐는지' 상태. JdbcTemplate은 DB 연결 확인용.
     public SchedulerHealthController(ApplicationAvailability availability, JdbcTemplate jdbc) {
         this.availability = availability; this.jdbc = jdbc;
     }
+    // @GetMapping: GET /internal/health 요청을 이 메서드로 연결한다.
     @GetMapping("/internal/health")
     public ResponseEntity<Map<String, String>> health() {
         if (availability.getReadinessState() != ReadinessState.ACCEPTING_TRAFFIC) return down();

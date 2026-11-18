@@ -10,11 +10,21 @@ import './mobileTabBar.css';
 
 const ICONS = { calendar: <CalendarMonthOutlined />, match: <FactCheckOutlined />, score: <CalculateOutlined />, my: <BookmarkBorderRounded /> };
 
-/** 모바일(사이드바가 숨는 폭) 하단 탭. 재방문 기능(맞춤 청약·가점·나의 청약)이 햄버거 메뉴 속에 묻히지 않게 한다. */
+/**
+ * 모바일(사이드바가 숨는 폭) 하단 탭. 재방문 기능(맞춤 청약·가점·나의 청약)이 햄버거 메뉴 속에 묻히지 않게 한다.
+ * MainLayout이 그린다. 메뉴 목록은 navItems.js를 사이드바와 함께 쓴다. PC 폭에서는 CSS로 숨긴다.
+ * onOpenMenu: '더보기'를 누르면 MainLayout이 모바일 메뉴(사이드바 드로어)를 연다.
+ * menuOpen: 메뉴가 열려 있으면 '더보기'를 켜진 상태로 보여 준다.
+ * pushDot: 알림을 아직 안 켰으면 '더보기'에 빨간 점(usePushAttention).
+ */
 export default function MobileTabBar({ onOpenMenu, menuOpen = false }) {
   const location = useLocation(), navigate = useNavigate();
   const more = isMoreActive(location.pathname);
   const pushDot = usePushAttention();
+  /**
+   * 탭을 눌렀을 때. navigate(경로, { state })는 히스토리를 한 칸 쌓고, { replace: true }는 지금 칸을 바꿔 쌓지 않는다.
+   * state는 주소에 보이지 않는 값으로 history에 함께 저장된다(location.state로 읽음). 뒤로가기하면 그 칸의 state도 돌아온다.
+   */
   function open(path) {
     const action = retapAction(path, location);
     const state = path === '/' ? { browseView: 'calendar' } : null;

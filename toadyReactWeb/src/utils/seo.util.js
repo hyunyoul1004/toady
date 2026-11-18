@@ -2,6 +2,9 @@ import { announcementShareUrl, announcementShareImage, shareLabel } from '@/feat
 /**
  * @file seo.util.js
  * @description 구글 및 네이버 검색 로봇(SEO) 및 SNS 공유(OG/Twitter)를 위한 동적 메타 태그 & 구조화 데이터 제어 유틸리티
+ * index.html에 미리 있는 <meta>·<link> 태그의 값만 바꾼다(새 태그를 만들지 않는다).
+ * 화면을 연 브라우저의 탭 제목과 공유 미리보기를 맞추는 용도다. 봇에게 주는 HTML은 nginx가 서버에서 따로 만든다.
+ * (맨 위 import가 이 머리 주석보다 앞에 있지만 동작에는 상관없다.)
  */
 
 const DEFAULT_SEO = {
@@ -12,6 +15,7 @@ const DEFAULT_SEO = {
   image: 'https://www.toady.co.kr/og/toady-og-2026.png'
 };
 
+// 찾은 태그가 없거나 값이 비면 아무것도 하지 않는다.
 function setMetaContent(selector, content) {
   if (!content) return;
   const el = document.querySelector(selector);
@@ -31,6 +35,9 @@ function setLinkHref(selector, href) {
 /**
  * 특정 공고 상세 열람 시 검색엔진 메타 태그 & Schema.org 구조화 데이터 동적 갱신
  * @param {object} detailData subscriptDetail 객체
+ * @param {string} [tab] 지금 보는 상세 탭. 공유 주소·대표 이미지·제목이 탭마다 달라진다.
+ * @param {string} [scoreText] 경쟁률 탭에서 설명 앞에 붙일 가점 요약 문구
+ * 대표 주소(canonical)는 탭과 상관없이 공고 하나로 모은다. 검색엔진이 같은 공고를 여러 주소로 나눠 보지 않게 하려는 것이다.
  */
 export function updateAnnouncementSeo(detailData,tab='detail',scoreText='') {
   if (!detailData || !detailData.houseNm) return;
