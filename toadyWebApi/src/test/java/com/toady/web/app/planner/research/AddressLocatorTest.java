@@ -34,6 +34,23 @@ class AddressLocatorTest {
         assertTrue(locator("경기도 구리시 갈매동 400-7", new ArrayList<>()).locate(address).isEmpty(), "시·군이 다르면 확정하지 않는다");
         assertTrue(new AddressLocator((uri, h) -> { throw new AssertionError("키가 없으면 호출하지 않는다"); }, "").locate(address).isEmpty());
     }
+    @Test void renamedDistrictsMatchTheCurrentNamesKakaoReturns() throws Exception {
+        // 2026년 인천 개편·군위 편입 전 주소의 공고도 카카오가 돌려주는 지금 이름과 같은 곳으로 본다(tests/location.test.mjs와 같은 사례).
+        assertTrue(AddressLocator.sameRegion("인천광역시 중구 사동 23-4번지 일원", "인천 제물포구 사동 23-4"));
+        assertTrue(AddressLocator.sameRegion("인천광역시 중구 운서동 2850", "인천 영종구 운서동 2850"));
+        assertTrue(AddressLocator.sameRegion("인천광역시 동구 송림동 1", "인천 제물포구 송림동 1"));
+        assertTrue(AddressLocator.sameRegion("인천광역시 서구 청라동 1-1", "인천 서해구 청라동 1-1"));
+        assertTrue(AddressLocator.sameRegion("인천광역시 서구 당하동 1093", "인천 검단구 당하동 1093"));
+        assertTrue(AddressLocator.sameRegion("경상북도 군위군 군위읍 동부리 1", "대구 군위군 군위읍 동부리 1"));
+        // 이름이 바뀌지 않은 곳·다른 시·도의 같은 이름은 그대로 다른 지역이다.
+        assertFalse(AddressLocator.sameRegion("인천광역시 중구 사동 23-4", "인천 서해구 사동 23-4"));
+        assertFalse(AddressLocator.sameRegion("서울특별시 중구 중림동 1", "인천 제물포구 중림동 1"));
+        assertFalse(AddressLocator.sameRegion("대구광역시 서구 내당동 1", "인천 서해구 내당동 1"));
+        assertFalse(AddressLocator.sameRegion("인천광역시 제물포구 도화동 1", "인천 중구 도화동 1"), "지금 이름 주소는 예전 이름 결과로 확정하지 않는다");
+        // 실제 확정: 공급 주소는 예전 이름, 카카오 결과는 지금 이름
+        var found = locator("인천 제물포구 사동 23-4", new ArrayList<>()).locate("인천광역시 중구 사동 23-4번지 일원");
+        assertTrue(found.isPresent(), "개편 전 주소도 정확한 지번이면 확정한다");
+    }
     @Test void newTownNamesAreNotTreatedAsMunicipalities() {
         // '검단신도시'·'혁신도시'는 시·군·구가 아니므로 괄호 안 지번이 있으면 정확한 위치를 확인할 수 있어야 한다.
         String address = "인천광역시 서구 검단신도시 AA21블록 (불로동 123)";

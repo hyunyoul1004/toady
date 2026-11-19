@@ -12,6 +12,7 @@
  * 사용처: useAnnouncementLocation, components/kakao/Kakaomap.jsx
  */
 import { addressCandidates } from '../../planner/researchUtils.js';
+import { districtSuccessors } from '../../explore/districts.js';
 
 // 비교 전에 글자 모양(전각·반각 등)과 공백을 하나로 맞춘다.
 const normalize=value=>String(value || '').normalize('NFKC').replace(/\s+/g,' ').trim();
@@ -31,8 +32,25 @@ export function municipality(address) {
   // '검단신도시'·'혁신도시'·'○○지구'처럼 시·군·구로 끝나 보여도 행정구역이 아닌 이름은 뺀다(서버 AddressLocator와 같은 규칙).
   return tokens.filter(x=>/^[가-힣]+[시군구]$/.test(x) && !/(지구|특구|도시)$/.test(x)).slice(0,2);
 }
-/** 찾은 주소(found)가 공고 주소와 같은 시·도·시·군·구인지. 다른 지역의 같은 지번이 잡히는 것을 막는다. */
+/**
+ * 찾은 주소(found)가 공고 주소와 같은 시·도·시·군·구인지. 다른 지역의 같은 지번이 잡히는 것을 막는다.
+ * 개편 전 이름의 공고 주소('인천광역시 중구 …')는 지금 이름('인천 제물포구 …')으로 돌아온 결과도 같은 곳으로 본다(서버 AddressLocator.sameRegion과 같다).
+ */
 export function sameRegion(address,found) {
+  return regionVariants(address).some(variant=>sameRegionAsWritten(variant,found));
+}
+/** 주소 그대로와, 첫 시·군·구를 개편 뒤 이름(시·도 포함)으로 바꾼 주소들(districts.js RENAMED_DISTRICTS). */
+export function regionVariants(address) {
+  const text=normalize(address),sido=province(text),cities=municipality(text);
+  if(!sido || !cities.length) return [text];
+  const tokens=text.split(' '),at=tokens.indexOf(cities[0]);
+  return [text,...districtSuccessors(sido,cities[0]).map(next=>{
+    const [nextSido,nextDistrict]=next.split(' '),copy=[...tokens];
+    copy[0]=nextSido;copy[at]=nextDistrict;
+    return copy.join(' ');
+  })];
+}
+function sameRegionAsWritten(address,found) {
   const expected=province(address),cities=municipality(address);
   return Boolean(expected || cities.length) && (!expected || expected===province(found)) && cities.every(part=>normalize(found).split(' ').includes(part));
 }

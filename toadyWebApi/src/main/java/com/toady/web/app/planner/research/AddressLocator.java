@@ -72,7 +72,7 @@ public class AddressLocator {
         return Optional.empty();
     }
 
-    static String normalize(String value) { return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).replaceAll("\\s+", " ").trim(); }
+    public static String normalize(String value) { return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).replaceAll("\\s+", " ").trim(); }
     private static final String[][] PROVINCES = {{"서울","서울"},{"부산","부산"},{"대구","대구"},{"인천","인천"},{"광주","광주"},{"대전","대전"},{"울산","울산"},{"세종","세종"},{"경기","경기"},{"강원","강원"},
         {"충청북","충북"},{"충북","충북"},{"충청남","충남"},{"충남","충남"},{"전북","전북"},{"전라북","전북"},{"전라남","전남"},{"전남","전남"},{"경상북","경북"},{"경북","경북"},{"경상남","경남"},{"경남","경남"},{"제주","제주"}};
     /** 주소 첫 단어의 시·도를 짧은 이름으로('경기도' → '경기', '전남광주통합특별시 북구' → '광주'). 하나로 정하지 못하면 null. */
@@ -109,8 +109,31 @@ public class AddressLocator {
         if (!provinces(address).isEmpty() && !tokens.isEmpty()) tokens.remove(0);
         return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구|도시)$")).limit(2).toList();
     }
-    /** 카카오가 찾은 주소가 공고 주소와 같은 시·도·시·군·구인지. 이름이 같은 다른 지역 동을 확정하지 않게 한다. */
+    /**
+     * 카카오가 찾은 주소가 공고 주소와 같은 시·도·시·군·구인지. 이름이 같은 다른 지역 동을 확정하지 않게 한다.
+     * 개편 전 이름의 공고 주소('인천광역시 중구 …')는 지금 이름('인천 제물포구 …')으로 돌아온 결과도 같은 곳으로 본다(Regions.RENAMED).
+     */
     static boolean sameRegion(String address, String found) {
+        return regionVariants(address).stream().anyMatch(variant -> sameRegionAsWritten(variant, found));
+    }
+    /** 주소 그대로와, 첫 시·군·구를 개편 뒤 이름(시·도 포함)으로 바꾼 주소들. 바뀐 이름이 없으면 주소 하나. */
+    static List<String> regionVariants(String address) {
+        String text = normalize(address), sido = province(text);
+        List<String> variants = new ArrayList<>(List.of(text));
+        List<String> cities = municipality(text);
+        if (sido == null || cities.isEmpty()) return variants;
+        List<String> tokens = Arrays.asList(text.split(" "));
+        int at = tokens.indexOf(cities.get(0));
+        for (String next : Regions.successors(sido, cities.get(0))) {
+            String[] parts = next.split(" ");
+            List<String> copy = new ArrayList<>(tokens);
+            copy.set(0, parts[0]);
+            copy.set(at, parts[1]);
+            variants.add(String.join(" ", copy));
+        }
+        return variants;
+    }
+    private static boolean sameRegionAsWritten(String address, String found) {
         boolean knownProvince = !provinces(address).isEmpty(); List<String> cities = municipality(address);
         if (!knownProvince && cities.isEmpty()) return false;
         if (knownProvince && !sameProvince(address, found)) return false;

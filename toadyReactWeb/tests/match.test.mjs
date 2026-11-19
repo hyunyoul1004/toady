@@ -401,6 +401,11 @@ test('지역 주소의 시·군·구 목록은 서버(Regions.java)와 같고, �
   assert.deepEqual(SIDOS.map(sido => [sido.name, sido.shortName]), Object.entries(shortOf));
   const serverAliases = Object.fromEntries([...java.matchAll(/Map\.entry\("([^"]+)", "([^"]+)"\)/g)].map(m => [m[1], m[2]]));
   assert.deepEqual(SIDO_ALIASES, serverAliases);
+  // 개편된 시·군·구 대응표도 서버(Regions.RENAMED)와 같다.
+  const { RENAMED_DISTRICTS } = await import('../src/features/explore/districts.js');
+  const renamedBlock = java.match(/RENAMED = Map\.of\(([\s\S]*?)\);/)[1];
+  const serverRenamed = Object.fromEntries([...renamedBlock.matchAll(/"([^"]+)", List\.of\(([^)]*)\)/g)].map(m => [m[1], [...m[2].matchAll(/"([^"]+)"/g)].map(x => x[1])]));
+  assert.deepEqual(RENAMED_DISTRICTS, serverRenamed);
   // 검색 목록에는 Citys에 없던 실제 시·군·구도 지역 검색 항목으로 있다(지역별 청약 칩 링크가 글자 검색이 되지 않게).
   const { FLAT_CITY_OPTIONS } = await import('../src/views/main/announcementFilters.js');
   for (const [city, names] of Object.entries(DISTRICTS)) for (const name of names) {

@@ -31,6 +31,18 @@ const SPACED = {
   '제주특별자치도': '제주시 서귀포시',
 };
 export const DISTRICTS = Object.fromEntries(Object.entries(SPACED).map(([city, names]) => [city, names ? names.split(' ') : []]));
+/**
+ * 행정구역 개편으로 이름이 바뀐 시·군·구: '시·도 예전 이름' → 지금 이름들(서버 Regions.RENAMED와 같은 목록, tests/match.test.mjs가 대조).
+ * 카카오 주소 검색은 예전 주소를 넣어도 지금 이름으로 돌려준다(예: '인천 중구 사동 23-4' → '인천 제물포구 사동 23-4').
+ */
+export const RENAMED_DISTRICTS = {
+  '인천 중구': ['인천 제물포구', '인천 영종구'],
+  '인천 동구': ['인천 제물포구'],
+  '인천 서구': ['인천 서해구', '인천 검단구'],
+  '경북 군위군': ['대구 군위군'],
+};
+/** 예전 시·군·구의 지금 이름들('인천','중구' → ['인천 제물포구','인천 영종구']). 바뀌지 않았으면 빈 배열. */
+export const districtSuccessors = (sidoShort, district) => RENAMED_DISTRICTS[`${sidoShort} ${district}`] || [];
 /** '수원특례시' → '수원시'(서버 Regions.canonical과 같은 규칙). 특례시는 행정구역상 시라서 '시'로 맞춘다. */
 export function canonicalDistrict(token) {
   const text = String(token ?? '').trim();

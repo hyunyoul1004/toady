@@ -72,6 +72,26 @@ public final class Regions {
         Map.entry("제주", names("제주시 서귀포시")));
     private static Set<String> names(String spaced) { return Set.of(spaced.split(" ")); }
 
+    /**
+     * 행정구역 개편으로 이름이 바뀐 시·군·구: '시·도 예전 이름' → 지금 이름들('시·도 이름'). 웹 districts.js의 RENAMED_DISTRICTS와 같은 목록이다.
+     * 카카오 주소 검색은 예전 주소를 넣어도 지금 이름으로 돌려준다(예: '인천 중구 사동 23-4' → '인천 제물포구 사동 23-4').
+     * 지난 공고의 주소(예전 이름)와 카카오 결과·지도 지역(지금 이름)을 같은 곳으로 보려고 쓴다. 나뉜 구는 이름을 모두 둔다.
+     */
+    static final Map<String, List<String>> RENAMED = Map.of(
+        "인천 중구", List.of("인천 제물포구", "인천 영종구"),
+        "인천 동구", List.of("인천 제물포구"),
+        "인천 서구", List.of("인천 서해구", "인천 검단구"),
+        "경북 군위군", List.of("대구 군위군"));
+    /** 예전 시·군·구의 지금 이름들('인천','중구' → ['인천 제물포구','인천 영종구']). 바뀌지 않았으면 빈 목록. */
+    public static List<String> successors(String sidoShort, String district) {
+        return RENAMED.getOrDefault(sidoShort + " " + district, List.of());
+    }
+    /** 지금 시·군·구가 이어받은 예전 이름들('인천','제물포구' → ['인천 중구','인천 동구']). */
+    public static List<String> predecessors(String sidoShort, String district) {
+        String now = sidoShort + " " + district;
+        return RENAMED.entrySet().stream().filter(entry -> entry.getValue().contains(now)).map(Map.Entry::getKey).sorted().toList();
+    }
+
     /** '수원특례시' → '수원시'. 특례시는 행정구역상 시라서 시·군·구 이름은 '시'로 맞춘다. 다른 낱말은 그대로. */
     static String canonical(String token) {
         String text = token == null ? "" : token.trim();

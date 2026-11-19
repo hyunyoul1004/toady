@@ -109,3 +109,20 @@ test('operator-confirmed address is used only when it passes the same parcel and
  const otherCity={hssplyAdres:'경기도 구리시 갈매역세권 B-1블록',houseNm:'블록 단지',operatorNotice:{locationAddress:'경기도 파주시 동패동 400-7'}};
  assert.equal((await resolveLocation(maps([row]),otherCity)).status,'UNRESOLVED','공급 주소와 다른 시·군의 확인 주소는 쓰지 않는다');
 });
+
+test('행정구역 개편 전 주소는 카카오가 돌려주는 지금 이름과 같은 곳(서버 AddressLocatorTest와 같은 사례)',async()=>{
+ assert.equal(sameRegion('인천광역시 중구 사동 23-4번지 일원','인천 제물포구 사동 23-4'),true);
+ assert.equal(sameRegion('인천광역시 중구 운서동 2850','인천 영종구 운서동 2850'),true);
+ assert.equal(sameRegion('인천광역시 동구 송림동 1','인천 제물포구 송림동 1'),true);
+ assert.equal(sameRegion('인천광역시 서구 청라동 1-1','인천 서해구 청라동 1-1'),true);
+ assert.equal(sameRegion('인천광역시 서구 당하동 1093','인천 검단구 당하동 1093'),true);
+ assert.equal(sameRegion('경상북도 군위군 군위읍 동부리 1','대구 군위군 군위읍 동부리 1'),true);
+ assert.equal(sameRegion('인천광역시 중구 사동 23-4','인천 서해구 사동 23-4'),false);
+ assert.equal(sameRegion('서울특별시 중구 중림동 1','인천 제물포구 중림동 1'),false);
+ assert.equal(sameRegion('대구광역시 서구 내당동 1','인천 서해구 내당동 1'),false);
+ assert.equal(sameRegion('인천광역시 제물포구 도화동 1','인천 중구 도화동 1'),false,'지금 이름 주소는 예전 이름 결과로 확정하지 않는다');
+ // e편한세상 동인천 베이프런트 오피스텔(urban/2024950083): 예전 주소인데 정확한 지번이라 확정한다.
+ const found={...row,address_name:'인천 제물포구 사동 23-4',address:{address_name:'인천 제물포구 사동 23-4',b_code:'2811010100',region_3depth_name:'사동'}};
+ const result=await resolveLocation(maps([found]),{hssplyAdres:'인천광역시 중구 사동 23-4번지 일원',houseNm:'e편한세상 동인천 베이프런트 오피스텔'});
+ assert.equal(result.status,'ADDRESS');
+});

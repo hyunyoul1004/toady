@@ -146,8 +146,13 @@ public class SaleMapService {
         query.setStartDate(today.minusYears(PAST_YEARS));
         query.setEndDate(today);
         query.setSize(MAX_PAST);
-        var page = search.searchAll(query, List.of("apt"));
-        List<AnnouncementListItem> finished = pastCandidates(page.getContent(), names, province, today);
+        List<AnnouncementListItem> sources = new ArrayList<>(search.searchAll(query, List.of("apt")).getContent());
+        // 개편 뒤 지역이면 예전 이름으로 적힌 공고도 찾는다(같은 공고가 두 번 들어와도 pastCandidates가 하나로 남긴다).
+        for (String old : previousNames(names, province)) {
+            query.setKeyword(old.split(" ")[1]);
+            sources.addAll(search.searchAll(query, List.of("apt")).getContent());
+        }
+        List<AnnouncementListItem> finished = pastCandidates(sources, names, province, today);
         List<EligibilityFeed.Item> built = feed.items(finished, finished.stream().collect(Collectors.toMap(
                 source -> source.type() + "/" + source.houseManageNo() + "/" + source.pblancNo(), source -> DONE, (a, b) -> a)))
             .stream().filter(item -> beforeMoveIn(item.moveIn(), YearMonth.from(today))).toList();
@@ -181,6 +186,20 @@ public class SaleMapService {
      * '전남광주통합특별시 북구'는 광주로 보아 '광주 북구'와 같은 지역, '전남 …'과는 다른 지역이다(Regions와 같은 판정).
      */
     static boolean inRegion(String address, List<String> names, String province) {
+        if (inRegionAsWritten(address, names, province)) return true;
+        // 지도 지역이 개편 뒤 이름('인천 제물포구')이면 예전 이름('인천 중구')으로 적힌 지난 공고도 후보로 둔다. 최종 판정은 법정동 코드가 한다.
+        // 예전 이름은 낱말 단위로 맞춘다('남동구'가 '동구'로 걸리지 않게).
+        if (address == null) return false;
+        List<String> words = List.of(AddressLocator.normalize(address).split(" "));
+        return previousNames(names, province).stream().anyMatch(old -> words.contains(old.split(" ")[1])
+            && inRegionAsWritten(address, List.of(old.split(" ")[1]), old.split(" ")[0]));
+    }
+    /** 지도 지역(시·도 + 첫 시·군·구)이 이어받은 예전 시·군·구('인천 중구' 등). 없으면 빈 목록. */
+    static List<String> previousNames(List<String> names, String province) {
+        String sido = province == null ? null : AddressLocator.province(province);
+        return sido == null || names.isEmpty() ? List.of() : Regions.predecessors(sido, names.get(0));
+    }
+    private static boolean inRegionAsWritten(String address, List<String> names, String province) {
         if (address == null || !(names.isEmpty() || names.stream().allMatch(address::contains))) return false;
         if (province == null || AddressLocator.provinces(province).isEmpty() || AddressLocator.provinces(address).isEmpty()) return true;
         return AddressLocator.sameProvince(province, address);

@@ -41,6 +41,15 @@ class SaleMapServiceTest {
         assertFalse(SaleMapService.inRegion("경기도 수원시 권선구 1", List.of("수원시", "영통구"), "경기"), "시·군·구 이름이 모두 있어야 한다");
         assertFalse(SaleMapService.inRegion("부산광역시 중구 중앙동 1", List.of("중구"), "서울"), "같은 이름의 구라도 시·도가 다르면 다른 지역");
         assertTrue(SaleMapService.inRegion("서울특별시 중구 중림동 157-2", List.of("중구"), "서울"));
+        // 지도 지역이 개편 뒤 이름이면 예전 이름으로 적힌 지난 공고도 후보다(최종 판정은 법정동 코드).
+        assertTrue(SaleMapService.inRegion("인천광역시 중구 사동 23-4", List.of("제물포구"), "인천 제물포구"));
+        assertTrue(SaleMapService.inRegion("인천광역시 동구 송림동 1", List.of("제물포구"), "인천 제물포구"));
+        assertTrue(SaleMapService.inRegion("인천광역시 서구 당하동 1", List.of("검단구"), "인천 검단구"));
+        assertTrue(SaleMapService.inRegion("경상북도 군위군 군위읍 1", List.of("군위군"), "대구 군위군"));
+        assertFalse(SaleMapService.inRegion("서울특별시 중구 중림동 1", List.of("제물포구"), "인천 제물포구"), "다른 시·도의 예전 이름은 아니다");
+        assertFalse(SaleMapService.inRegion("인천광역시 남동구 구월동 1", List.of("제물포구"), "인천 제물포구"));
+        assertEquals(List.of("인천 동구", "인천 중구"), SaleMapService.previousNames(List.of("제물포구"), "인천 제물포구"));
+        assertEquals(List.of(), SaleMapService.previousNames(List.of("파주시"), "경기 파주시"));
         // 통합특별시 주소는 Regions와 같게 옛 시·도로 판정한다(광주 북구 ↔ 전남광주통합특별시 북구).
         assertTrue(SaleMapService.inRegion("전남광주통합특별시 북구 운암동 1", List.of("북구"), "광주 북구"));
         assertTrue(SaleMapService.inRegion("광주광역시 북구 운암동 1", List.of("북구"), "전남광주통합특별시 북구"));
