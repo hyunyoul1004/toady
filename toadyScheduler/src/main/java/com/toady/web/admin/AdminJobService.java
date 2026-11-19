@@ -71,11 +71,11 @@ public class AdminJobService {
     /** 일정 맞춤 수집 한 번의 최대 기간(일). */
     static final int SCHEDULED_RESULTS_MAX_DAYS = 31;
     /**
-     * 수집 한 번의 최대 기간(일). 시작일과 종료일 사이 일수(ChronoUnit.DAYS.between)의 상한이며, 자동 일정의 조회 일수(오늘 - N일 ~ 오늘)와
-     * 같은 기준이다. 자동 일정 검증과 수동 실행(자동 작업의 '다시 실행' 포함)이 이 값 하나를 써서 저장된 일정이 다시 실행에서 거절되지 않게 한다.
-     * 외부 API 일일 한도를 보호한다.
+     * 자동 일정의 최대 조회 일수(오늘 - N일 ~ 오늘). 자동 실행은 매일 돌기 때문에 기간이 길면 외부 API 일일 한도를 매일 크게 쓴다.
+     * 수동 실행은 기간 제한이 없다. 긴 기간도 월 단위 구간으로 나눠 최근 달부터 차례로 수집하고, 일일 한도에 걸려 멈추면
+     * 끝낸 구간은 남기고 '다시 실행'으로 남은 기간만 이어 받는다.
      */
-    static final int MANUAL_MAX_DAYS = 366;
+    static final int SCHEDULE_MAX_DAYS = 366;
     // 관리자에서 허용하는 조회 하한이며, 이 날짜 이후의 모든 원본 데이터 제공을 보장하는 값은 아니다.
     static LocalDate earliestDate() { return LocalDate.of(2017, 1, 1); }
     // 서버 OS의 시간대와 무관하게 화면·이력·자동 스케줄의 날짜 기준을 한국시간으로 맞춘다.
@@ -96,10 +96,7 @@ public class AdminJobService {
                 || start.isBefore(earliestDate()) || end.isAfter(latestDate())) {
             throw new IllegalArgumentException("2017년 1월 1일부터 오늘 이후 " + FUTURE_DAYS + "일까지의 올바른 모집공고일 범위를 선택하세요.");
         }
-        // 수동 실행은 공고마다 외부 API를 여러 번 부른다. 너무 긴 기간은 공공데이터 일일 한도를 다 써 정규 수집까지 막으므로 나눠 실행하게 한다.
-        if ("MANUAL".equals(source) && ChronoUnit.DAYS.between(start, end) > MANUAL_MAX_DAYS) {
-            throw new IllegalArgumentException("한 번에 " + MANUAL_MAX_DAYS + "일(약 1년)까지만 수집할 수 있어요. 기간을 나눠 실행해 주세요.");
-        }
+        // 수동 실행은 기간을 제한하지 않는다. 1년이 넘는 기간도 아래 chunks()가 월 단위로 나눠 한 작업 안에서 차례로 처리한다.
         // 일정 맞춤 수집은 구간 하나로 돌아 중간에 멈출 수 없으므로 긴 기간을 받지 않는다.
         if (kind == JobKind.SCHEDULED_RESULTS && ChronoUnit.DAYS.between(start, end) > SCHEDULED_RESULTS_MAX_DAYS) {
             throw new IllegalArgumentException("일정 맞춤 수집은 " + SCHEDULED_RESULTS_MAX_DAYS + "일 이내 기간만 실행할 수 있어요.");

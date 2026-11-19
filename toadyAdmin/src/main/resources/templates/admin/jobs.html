@@ -17,7 +17,7 @@
                 <label>수집할 데이터<select name="kind" required><option th:each="kind : ${kinds}" th:value="${kind}" th:text="${kind.label}" th:selected="${kind.name() == 'SCORES'}"></option></select></label>
                 <p class="hint">가점만 복원하려면 ‘APT 당첨 가점’을 선택하세요. 전체 수집은 공고·주택형과 모든 결과 데이터를 순서대로 갱신합니다.</p>
                 <div class="date-grid"><label>모집공고일 시작<input type="date" name="startDate" min="2017-01-01" th:max="${todayDate}" th:value="${defaultStart}" required></label><label>모집공고일 종료<input type="date" name="endDate" min="2017-01-01" th:max="${latestDate}" th:value="${todayDate}" required></label></div>
-                <div class="callout"><strong>조회 기간은 모집공고일 기준입니다.</strong><p>주택형·접수일처럼 미래 일정은 공고와 함께 받아집니다. 청약홈이 공고를 미리 등록해 두는 경우를 위해 종료일은 오늘 이후 7일까지 고를 수 있습니다. 한 번에 366일까지 수집할 수 있고, 더 긴 기간은 나눠 실행하세요(공공데이터 일일 호출 한도 보호).</p></div>
+                <div class="callout"><strong>조회 기간은 모집공고일 기준입니다.</strong><p>주택형·접수일처럼 미래 일정은 공고와 함께 받아집니다. 청약홈이 공고를 미리 등록해 두는 경우를 위해 종료일은 오늘 이후 7일까지 고를 수 있습니다. 1년이 넘는 기간도 한 번에 고를 수 있습니다. 월 단위로 나눠 최근 달부터 차례로 수집하고, 공공데이터 일일 호출 한도에 걸려 멈추면 끝낸 달은 남긴 채 '다시 실행'으로 남은 기간만 이어 받습니다.</p></div>
                 <button id="run-button" class="primary full" type="submit" th:disabled="${active != null}"><span th:text="${active != null ? '진행 중인 수집이 있습니다' : '선택한 기간 수집 시작'}"></span><span aria-hidden="true">→</span></button>
             </form>
         </section>

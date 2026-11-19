@@ -87,20 +87,31 @@ class AdminConsoleTest {
         verify(competition, never()).synchronizeScores(any(), any());
     }
 
-    @Test void manualRunsAreLimitedToAboutOneYear() {
-        // 시작·종료 사이 일수가 MANUAL_MAX_DAYS(366)를 넘으면 거절한다.
-        var refused = assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 2), "operator", "MANUAL"));
-        assertTrue(refused.getMessage().contains("나눠 실행"), refused.getMessage());
-        assertTrue(repository.active().isEmpty(), "거절된 실행은 이력을 남기지 않는다");
+    @Test void manualRunsLongerThanAYearAreSplitIntoMonthlyChunks() {
+        // 수동 실행은 1년이 넘어도 받는다. 2020-02-07 ~ 2025-07-21이면 월 단위 66개 구간으로 나눠 최근 달부터 모두 수집한다.
+        LocalDate start = LocalDate.of(2020, 2, 7), end = LocalDate.of(2025, 7, 21);
+        var chunks = AdminJobService.chunks(JobKind.ANNOUNCEMENTS, start, end);
+        assertEquals(66, chunks.size());
+        assertEquals(new AdminJobService.DateRange(start, LocalDate.of(2020, 2, 29)), chunks.get(0));
+        assertEquals(new AdminJobService.DateRange(LocalDate.of(2025, 7, 1), end), chunks.get(65));
+        String id = jobs.submit(JobKind.ANNOUNCEMENTS, start, end, "operator", "MANUAL");
+        await().atMost(Duration.ofSeconds(10)).until(() -> !repository.find(id).orElseThrow().isActive());
+        AdminJob job = repository.find(id).orElseThrow();
+        assertEquals("SUCCEEDED", job.status());
+        assertEquals(66, job.completedChunks());
+        verify(announcements, times(66)).synchronize(any(), any());
+        // 2017-01-01 이전과 오늘 + 7일 이후는 여전히 거절한다.
+        assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, LocalDate.of(2016, 12, 31), end, "operator", "MANUAL"));
+        assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, start, AdminJobService.latestDate().plusDays(1), "operator", "MANUAL"));
     }
 
     @Test void theLongestSavedScheduleCanBeRerunManually() {
         // 자동 일정이 저장할 수 있는 가장 긴 조회 일수의 기간(오늘 - N일 ~ 오늘)을 '다시 실행'(수동)해도 거절하지 않는다.
-        AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.MANUAL_MAX_DAYS);
+        AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.SCHEDULE_MAX_DAYS);
         assertThrows(IllegalArgumentException.class,
-                () -> AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.MANUAL_MAX_DAYS + 1));
+                () -> AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.SCHEDULE_MAX_DAYS + 1));
         LocalDate today = AdminJobService.today();
-        LocalDate start = AdminScheduleManager.scheduleStart(today, AdminJobService.MANUAL_MAX_DAYS);
+        LocalDate start = AdminScheduleManager.scheduleStart(today, AdminJobService.SCHEDULE_MAX_DAYS);
         String id = jobs.submit(JobKind.ANNOUNCEMENTS, start, today, "operator", "MANUAL");
         await().atMost(Duration.ofSeconds(5)).until(() -> !repository.find(id).orElseThrow().isActive());
         assertEquals("SUCCEEDED", repository.find(id).orElseThrow().status());

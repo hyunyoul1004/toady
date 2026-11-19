@@ -189,15 +189,15 @@ public class AdminScheduleManager {
     static void validate(String cron, int lookback) { validate(null, cron, lookback); }
     /**
      * cron 문법·조회 범위를 검증하고, 앞으로 7일(최대 2,000회) 실행 사이에 10분 미만의 간격이 있는지 확인한다.
-     * 조회 일수 상한은 실행 시 AdminJobService.submit이 거절하는 기준과 같게 종류별로 둔다(저장은 됐는데 자동 실행이 매번 거절되는 일 방지).
+     * 일정 맞춤 수집의 31일 상한은 실행 시 AdminJobService.submit이 거절하는 기준과 같게 둔다(저장은 됐는데 자동 실행이 매번 거절되는 일 방지).
      */
     static void validate(JobKind kind, String cron, int lookback) {
         if (cron == null || cron.isBlank() || cron.length() > 100) {
             throw new IllegalArgumentException("올바른 Spring cron 표현식 6개 필드를 입력하세요. 여러 개는 '|'로 구분합니다(100자 이내).");
         }
         var expressions = parse(cron);
-        // 자동 실행도 수동 실행과 같은 최대 기간을 둔다(외부 API 일일 한도 보호, '다시 실행'도 같은 제한 안에서 동작).
-        if (lookback < 1 || lookback > AdminJobService.MANUAL_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.MANUAL_MAX_DAYS + "일 사이여야 합니다.");
+        // 자동 실행은 매일 돌기 때문에 조회 일수를 1년 안으로 둔다(외부 API 일일 한도 보호). 수동 실행은 제한이 없다.
+        if (lookback < 1 || lookback > AdminJobService.SCHEDULE_MAX_DAYS) throw new IllegalArgumentException("조회 일수는 1~" + AdminJobService.SCHEDULE_MAX_DAYS + "일 사이여야 합니다.");
         // 일정 맞춤 수집은 구간을 나누지 않고 한 번에 돌아 31일을 넘는 기간은 실행 단계에서 거절된다.
         if (kind == JobKind.SCHEDULED_RESULTS && lookback > AdminJobService.SCHEDULED_RESULTS_MAX_DAYS) {
             throw new IllegalArgumentException("일정 맞춤 경쟁률·가점의 재조회 일수는 1~" + AdminJobService.SCHEDULED_RESULTS_MAX_DAYS + "일 사이여야 합니다.");
