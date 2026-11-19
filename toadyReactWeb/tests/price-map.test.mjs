@@ -268,6 +268,10 @@ test('이 공고도 다른 분양 말풍선과 같은 규칙으로 접수 상태
   assert.equal(saleStatusOf('2026-11-13', '', '2026-11-14'), 'DONE');
   assert.equal(saleStatusOf(null, null, '2026-11-14'), null, '날짜를 모르면 상태를 붙이지 않는다');
   assert.equal(saleStatusLabel(saleStatusOf('2026-11-02', '2026-11-04', '2026-11-14')), saleStatusLabel('DONE'));
+  // 상세 상태 칩(receiptState)과 같은 규칙: 마감일이 시작일보다 앞서면 시작일 하루, 상시 접수도 시작 후 400일 상한.
+  assert.equal(saleStatusOf('2026-11-19', '2026-11-18', '2026-11-19'), 'OPEN', '마감일이 시작일보다 앞서면 시작일 하루');
+  assert.equal(saleStatusOf('2026-03-02', '9999-12-31', '2026-11-19'), 'OPEN', '상시 접수');
+  assert.equal(saleStatusOf('2025-01-01', '9999-12-31', '2026-11-19'), 'DONE', '시작 후 400일이 지난 상시 공고는 목록·상세처럼 접수 종료');
 });
 
 test('분양 주택형은 실제 공급면적으로 평형을 쓰고, 같은 84㎡도 전용 소수로 구분한다', () => {

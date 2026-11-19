@@ -271,12 +271,17 @@ class ContentController(
 		if (!path.matches(Regex("/[A-Za-z0-9/_?=&%.\\-]*"))) { redirect.addFlashAttribute("error", "이동할 주소는 /로 시작하는 사이트 안 경로만 쓸 수 있습니다."); return "redirect:/admin/push" }
 		if (title.trim().length !in 2..40 || body.trim().length !in 2..120) { redirect.addFlashAttribute("error", "제목은 2~40자, 내용은 2~120자로 써 주세요."); return "redirect:/admin/push" }
 		if (testUserSeq == null && confirm.trim() != "전체 발송") { redirect.addFlashAttribute("error", "전체 발송은 확인 칸에 '전체 발송'을 그대로 입력해야 보냅니다."); return "redirect:/admin/push" }
+		// 전체 발송은 구독자가 많으면 응답이 60초(관리자 nginx·API 클라이언트 제한)를 넘길 수 있다. 응답이 끊겨도 API는 끝까지 보내므로
+		// 요청한 사실을 먼저 이력에 남겨, 실패로 보여도 발송 여부를 이력으로 확인하고 두 번 보내지 않게 한다.
+		if (testUserSeq == null) audit.record(user.name, "PUSH_BROADCAST_REQUEST", "PUSH", "all", after = title.trim())
 		val reply = api.push(title.trim(), body.trim(), path, testUserSeq)
 		if (reply.ok) {
 			val summary = "대상 ${reply.body["targets"]} · 전달 ${reply.body["sent"]} · 만료 정리 ${reply.body["removed"]} · 실패 ${reply.body["failed"]}"
 			audit.record(user.name, if (testUserSeq == null) "PUSH_BROADCAST" else "PUSH_TEST", "PUSH", testUserSeq ?: "all", after = "${title.trim()} · $summary")
 			redirect.addFlashAttribute("notice", (if (testUserSeq == null) "전체 발송했습니다. " else "시험 발송했습니다. ") + summary)
-		} else redirect.addFlashAttribute("error", reply.message)
+		} else redirect.addFlashAttribute("error", if (testUserSeq == null)
+			"${reply.message} 응답만 끊기고 발송은 이미 진행됐을 수 있습니다. 다시 보내기 전에 기기에서 받았는지 먼저 확인하세요(하루 발송 횟수도 이미 차감됐을 수 있음)."
+			else reply.message)
 		return "redirect:/admin/push"
 	}
 

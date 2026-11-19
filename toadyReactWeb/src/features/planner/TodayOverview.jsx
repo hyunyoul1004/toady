@@ -20,6 +20,16 @@ export function rememberViewed(detail) {
     window.dispatchEvent(new Event('toady-recent'));
   } catch { /* 최근 본 공고는 기기에 저장할 수 있는 경우에만 제공한다. */ }
 }
+/** '최근 본 공고'에서 한 공고를 뺀다. 관리자가 숨긴 공고·찾을 수 없는(404) 공고를 상세로 열었을 때 Main이 부른다. */
+export function forgetViewed(id) {
+  if (!id) return;
+  try {
+    const current = safeRead(localStorage, 'toady.recent', []);
+    if (!Array.isArray(current) || !current.some(x => x?.id === id)) return;
+    localStorage.setItem('toady.recent', JSON.stringify(current.filter(x => x?.id !== id)));
+    window.dispatchEvent(new Event('toady-recent'));
+  } catch { /* 최근 본 공고는 기기에 저장할 수 있는 경우에만 제공한다. */ }
+}
 /**
  * 메인 청약 캘린더 위쪽 요약 영역(Main.jsx에서 씀). 내 다음 일정 또는 관심 지역 고르기, 오늘의 요약,
  * 조회 건수, 달력/목록 전환, 최근 본 공고, 목록 보기일 때의 공고 목록을 그린다.

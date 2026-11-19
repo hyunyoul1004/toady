@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaQuery,parcelCandidates,resolveLocation,searchArea,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
+import {areaQuery,municipality,parcelCandidates,resolveLocation,searchArea,siteCandidate,sameRegion} from '../src/features/announcement/location/resolveLocation.js';
+import {addressCandidates} from '../src/features/planner/researchUtils.js';
 function maps(addressRows=[],placeRows=[]) {
  const calls=[];
  return {calls,services:{Status:{OK:'OK'},Geocoder:class{addressSearch(q,cb){calls.push(['address',q]);cb(addressRows,'OK');}},Places:class{keywordSearch(q,cb){calls.push(['place',q]);cb(placeRows,'OK');}}}};
@@ -22,6 +23,24 @@ test('new-town names are not municipalities, so a bracketed parcel still resolve
  assert.ok(parcelCandidates(address).includes('인천광역시 서구 불로동 123'));
  assert.equal(sameRegion(address,'인천 서구 불로동 123'),true);
  assert.deepEqual(parcelCandidates('경기도 파주시 운정신도시 A1블록'),[],'지번이 없으면 확정하지 않는다');
+});
+// 일반구가 있는 시: 괄호 속 지번 앞에 시·도 + 시·군·구 전부를 붙여야 같은 시·군·구 비교를 통과한다(서버 AddressLocatorTest와 같은 사례).
+test('bracketed parcels in cities with districts keep every municipality token',()=>{
+ assert.deepEqual(parcelCandidates('경기도 수원시 영통구 이의동 일원 (이의동 1234)'),['경기도 수원시 영통구 이의동 1234']);
+ assert.deepEqual(parcelCandidates('경기도 고양시 일산동구 식사지구 A1블록 (식사동 123)'),['경기도 고양시 일산동구 식사동 123']);
+ assert.deepEqual(parcelCandidates('경상북도 포항시 북구 신도시 (양덕동 12)'),['경상북도 포항시 북구 양덕동 12']);
+ assert.deepEqual(addressCandidates('경기도 수원시 영통구 이의동 일원 (이의동 1234)'),['이의동 1234','경기도 수원시 영통구 이의동 1234','경기도 수원시 영통구 이의동']);
+ // 용인시 수지구는 '지구'로 끝나도 일반구다. 택지 지구 이름(두 글자 이상 + 지구)·신도시는 여전히 뺀다.
+ assert.deepEqual(municipality('경기도 용인시 수지구 풍덕천로 1 (풍덕천동 12-3)'),['용인시','수지구']);
+ assert.deepEqual(municipality('경기도 하남시 감일지구 B4블록 (감일동 100)'),['하남시']);
+ assert.deepEqual(municipality('경기도 고양시 일산동구 식사지구 A1블록'),['고양시','일산동구']);
+ assert.deepEqual(municipality('인천광역시 서구 검단신도시 AA13블록'),['서구']);
+ assert.equal(sameRegion('경기도 용인시 수지구 풍덕천로 1 (풍덕천동 12-3)','경기 용인시 수지구 풍덕천동 12-3'),true);
+ assert.equal(sameRegion('경기도 용인시 수지구 풍덕천로 1','경기 용인시 기흥구 풍덕천동 12-3'),false,'같은 시의 다른 구는 다른 지역이다');
+ assert.ok(parcelCandidates('경기도 하남시 감일지구 B4블록 (감일동 100)').includes('경기도 하남시 감일동 100'));
+ // 개편 전 이름(인천 중구)도 그대로 지금 이름 결과와 같은 곳으로 본다.
+ assert.deepEqual(parcelCandidates('인천광역시 중구 사동 23-4'),['인천광역시 중구 사동 23-4']);
+ assert.equal(sameRegion('인천광역시 중구 영종대로 123 (운서동 12-3)','인천 영종구 운서동 12-3'),true);
 });
 test('precise parcel, parentheses and municipality are validated together',async()=>{
  const detail={hssplyAdres:'경기도 파주시 운정3지구 (동패동 400-7번지 일원)',houseNm:'운정 단지'};

@@ -105,6 +105,27 @@ class AdminConsoleTest {
         assertThrows(IllegalArgumentException.class, () -> jobs.submit(JobKind.ALL, start, AdminJobService.latestDate().plusDays(1), "operator", "MANUAL"));
     }
 
+    @Test void retryCoversChunksWithPartialFailures() {
+        LocalDate start = LocalDate.of(2020, 1, 1), end = LocalDate.of(2025, 7, 31);
+        java.util.function.BiFunction<Integer, String, AdminJob> job = (completed, message) -> new AdminJob("j", JobKind.ALL, "MANUAL", start, end,
+                "FAILED", 67, completed, false, "operator", message, null, null, null);
+        // 모두 끝냈고 2025-07 구간 공고만 일부 실패: 그 구간만 다시 받는다(5년 전체를 다시 돌지 않는다).
+        assertEquals(new AdminJobService.DateRange(LocalDate.of(2025, 7, 1), end),
+                AdminJobService.retryRange(job.apply(67, "일부 공고만 실패했습니다(나머지는 저장됨). 2025-07-01~2025-07-31: 공고 3건 실패")));
+        // 실패 구간이 여러 개면 가장 이른 시작 ~ 가장 늦은 끝.
+        assertEquals(new AdminJobService.DateRange(LocalDate.of(2023, 3, 1), end),
+                AdminJobService.retryRange(job.apply(67, "일부 공고만 실패했습니다(나머지는 저장됨). 2025-07-01~2025-07-31: a / 2023-03-01~2023-03-31: b")));
+        // 2023-04에서 한도로 멈춤(최근 28구간 완료) + 앞서 2025-07 일부 실패: 남은 앞쪽 기간과 실패 구간을 함께 다시 받는다.
+        assertEquals(new AdminJobService.DateRange(start, end), AdminJobService.retryRange(job.apply(28,
+                "청약홈 API가 요청을 거절해 중단했습니다(HTTP 429). 남은 기간: 2020-01-01 ~ 2023-03-31(39개 구간). 일부 실패: 2025-07-01~2025-07-31: 공고 1건")));
+        // 일부 실패 없이 멈췄으면 예전처럼 남은 기간만.
+        assertEquals(new AdminJobService.DateRange(start, LocalDate.of(2023, 3, 31)), AdminJobService.retryRange(job.apply(28,
+                "청약홈 API가 요청을 거절해 중단했습니다(HTTP 429). 남은 기간: 2020-01-01 ~ 2023-03-31(39개 구간).")));
+        // 문구가 잘렸으면 더 이른 실패 구간이 있을 수 있어 작업 시작일부터.
+        assertEquals(new AdminJobService.DateRange(start, end),
+                AdminJobService.retryRange(job.apply(67, "일부 공고만 실패했습니다(나머지는 저장됨). 2025-07-01~2025-07-31: a / 2025-06-01~…")));
+    }
+
     @Test void theLongestSavedScheduleCanBeRerunManually() {
         // 자동 일정이 저장할 수 있는 가장 긴 조회 일수의 기간(오늘 - N일 ~ 오늘)을 '다시 실행'(수동)해도 거절하지 않는다.
         AdminScheduleManager.validate(JobKind.COMPETITION, "0 15 4 * * *", AdminJobService.SCHEDULE_MAX_DAYS);

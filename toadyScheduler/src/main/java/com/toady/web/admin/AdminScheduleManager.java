@@ -265,14 +265,17 @@ public class AdminScheduleManager {
         }
         LocalDate today = AdminJobService.today();
         LocalDate start = scheduleStart(today, schedule.lookbackDays());
+        // 공고 수집은 청약홈이 모집공고일보다 먼저 올려 둔 공고도 받도록 끝을 오늘 이후 FUTURE_DAYS일까지 둔다(수동 실행과 같은 상한).
+        LocalDate end = schedule.kind() == JobKind.ANNOUNCEMENTS || schedule.kind() == JobKind.ALL
+                ? today.plusDays(AdminJobService.FUTURE_DAYS) : today;
         try {
-            jobs.submit(schedule.kind(), start, today, "자동 스케줄", "SCHEDULE");
+            jobs.submit(schedule.kind(), start, end, "자동 스케줄", "SCHEDULE");
         } catch (IllegalArgumentException invalid) {
             // 설정값이 실행 기준에 맞지 않아 거절된 경우(예: 이전 버전에서 저장한 긴 재조회 일수). 로그만 남기면 수집이 조용히 멈추므로
             // 실행 내역에 실패로 남겨 관리자 화면에서 바로 보이게 한다. 같은 설정이면 다음 실행도 실패로 쌓인다.
             log.warn("Scheduled submission rejected for {}: {}", schedule.kind(), invalid.getMessage());
             try {
-                jobs.recordRejected(schedule.kind(), start, today, "자동 스케줄", "SCHEDULE",
+                jobs.recordRejected(schedule.kind(), start, end, "자동 스케줄", "SCHEDULE",
                         "자동 실행을 시작하지 못했습니다: " + invalid.getMessage() + " 자동 스케줄 설정을 확인하세요.");
             } catch (RuntimeException recordFailure) {
                 log.warn("Rejected scheduled run could not be recorded for {}: {}", schedule.kind(), recordFailure.getMessage());

@@ -6,6 +6,7 @@
  * 사용처: usePriceMap.js, PriceMapParts.jsx, MapTools.jsx, components/kakao/Kakaomap.jsx
  */
 import { formatManwon } from '../../../utils/money.util.js';
+import { receiptState } from '../receiptState.js';
 // 1평 = 3.305785㎡.
 const PYEONG = 3.305785;
 /**
@@ -312,12 +313,13 @@ export function isAddressLike(text) {
  */
 const SALE_STATUS = { OPEN: '접수 중', UPCOMING: '접수 예정', DONE: '접수 종료' };
 export const saleStatusLabel = status => SALE_STATUS[status] || '분양 공고';
-const isoDay = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : ''; };
-/** 접수 시작·마감일과 오늘('YYYY-MM-DD')로 상태를 정한다(서버 분류와 같은 규칙: 마감일이 없으면 시작일 하루). 날짜를 모르면 null. */
+const RECEIPT_TO_SALE = { upcoming: 'UPCOMING', open: 'OPEN', closed: 'DONE' };
+/**
+ * 접수 시작·마감일과 오늘('YYYY-MM-DD')로 상태를 정한다. 상세 상태 칩·관심 공고 카드와 같은 receiptState를 쓴다
+ * (마감일이 없거나 시작일보다 앞서면 시작일 하루, 시작 후 400일 상한, 상시 접수). 날짜를 모르면 null.
+ */
 export function saleStatusOf(start, end, today) {
-  const from = isoDay(start), to = isoDay(end) || from;
-  if (!from || !today) return null;
-  return today < from ? 'UPCOMING' : today <= to ? 'OPEN' : 'DONE';
+  return RECEIPT_TO_SALE[receiptState(start, end, today).state] || null;
 }
 /** '2029-03' → '29.3 입주 예정', 없으면 ''. */
 export function moveInText(moveIn) {

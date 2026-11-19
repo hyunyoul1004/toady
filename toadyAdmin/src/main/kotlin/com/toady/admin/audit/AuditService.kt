@@ -87,7 +87,7 @@ class AuditService(private val jdbc: JdbcTemplate) {
 			"SETTING_SAVE" to "서비스 설정 변경", "NOTICE_ADD" to "공지 추가", "NOTICE_TOGGLE" to "공지 노출 변경", "NOTICE_DELETE" to "공지 삭제",
 			"FAQ_ADD" to "질문 추가", "FAQ_UPDATE" to "질문 수정", "FAQ_DELETE" to "질문 삭제", "AREA_ADD" to "생활권 추가", "AREA_UPDATE" to "생활권 수정",
 			"LOCATION_SAVE" to "위치 주소 확인", "RECOLLECT" to "공고 다시 수집", "OFFICIAL_WRITE" to "운영팀 이야기", "OFFICIAL_PIN" to "운영팀 글 고정 변경",
-			"COMMENT_HIDE_ALL" to "회원 이야기 모두 숨김", "PUSH_TEST" to "푸시 시험 발송", "PUSH_BROADCAST" to "푸시 전체 발송",
+			"COMMENT_HIDE_ALL" to "회원 이야기 모두 숨김", "PUSH_TEST" to "푸시 시험 발송", "PUSH_BROADCAST" to "푸시 전체 발송", "PUSH_BROADCAST_REQUEST" to "푸시 전체 발송 요청",
 			"MEMBER_MEMO" to "회원 메모", "MEMBER_RESEND" to "인증 메일 다시 보내기", "MEMBER_WITHDRAW" to "탈퇴 처리 대행")
 		val TARGETS = linkedMapOf("MEMBER" to "회원", "COMMENT" to "이야기", "REPORT" to "신고", "RULE" to "금칙어", "ANNOUNCEMENT" to "공고",
 			"VISITOR" to "지표 제외", "JOB" to "수집 작업", "SCHEDULE" to "수집 일정", "SETTING" to "서비스 설정", "NOTICE" to "사이트 공지",

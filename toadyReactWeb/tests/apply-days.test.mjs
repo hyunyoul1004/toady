@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyDays, applySchedules, canApplyOn, scheduleRows, appliesToday, periodDays } from '../src/features/announcement/applyDays.js';
-import { groupCalendarSchedules, groupsByDate, describeGroup, hasOngoing } from '../src/views/main/calendar/calendarGroup.js';
+import { groupCalendarSchedules, groupsByDate, describeGroup, describeStages, hasOngoing } from '../src/views/main/calendar/calendarGroup.js';
+import { openReceiptText, receiptState } from '../src/features/announcement/receiptState.js';
 import { summaryNumbers } from '../src/features/planner/todaySummaryRules.js';
 import { weeklyStatus, byStatus } from '../src/features/explore/exploreRules.js';
 
@@ -95,3 +96,19 @@ test('여러 날 특별공급의 접수 중 줄은 특별공급 마감일을 보
   assert.equal(describeGroup(day18), 'SP · 특별공급 접수 기간 중(~11.18 마감)');
 });
 
+
+test('상시 접수(마감일 9999-12-31) 공고는 펼치는 상한일을 마감일로 적지 않고 상세와 같이 상시 접수로 적는다', () => {
+  const item = { type: 'public-rental', rceptBgnde: '2026-03-02', rceptEndde: '9999-12-31' };
+  const rows = scheduleRows(item, '04').map((row) => ({ ...row, subscriptSeq: 'public-rental/1/1', houseNm: '상시 단지', rceptEndde: item.rceptEndde }));
+  assert.ok(rows.every((row) => row.periodEnd === null && row.alwaysOpen));
+  const [group] = groupCalendarSchedules(rows.filter((row) => row.inDate === TODAY));
+  assert.equal(group.ongoing, true);
+  assert.equal(group.endDate, null);
+  assert.equal(describeStages(group), '민간임대 상시 접수');
+  assert.ok(!/마감/.test(describeGroup(group)));
+  assert.equal(openReceiptText(receiptState(item.rceptBgnde, item.rceptEndde, TODAY)), '상시 접수');
+  // 보통 기간 공고는 그대로 마감일을 적는다.
+  const normal = scheduleRows({ type: 'public-rental', rceptBgnde: '2026-11-17', rceptEndde: '2026-11-23' }, '04')
+    .map((row) => ({ ...row, subscriptSeq: 'public-rental/2/2', houseNm: '기간 단지' }));
+  assert.equal(describeStages(groupCalendarSchedules(normal.filter((row) => row.inDate === TODAY))[0]), '민간임대 접수 기간 중(~11.23 마감)');
+});

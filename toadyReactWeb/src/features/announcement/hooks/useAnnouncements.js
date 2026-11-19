@@ -51,6 +51,11 @@ export function useAnnouncementsQuery(params, enabled = true) {
   });
 }
 
+/** 상세를 조회할 수 있는 공고 id인지('type/houseManageNo/pblancNo' 형식). 형식이 틀리면 상세 조회를 하지 않는다. */
+export function isValidSubscriptId(subscriptId) {
+  return Boolean(parseSubscriptId(subscriptId).houseManageNo);
+}
+
 /**
  * 공고 상세 정보 조회 훅
  * @param {string|object} subscriptId 식별자 ('type/houseManageNo/pblancNo')
@@ -58,8 +63,9 @@ export function useAnnouncementsQuery(params, enabled = true) {
  */
 export function useAnnouncementDetailQuery(subscriptId, enabled = true) {
   // 형식이 틀린 id는 parseSubscriptId가 houseManageNo를 비워 돌려주므로 아래 isValid가 false가 되어 요청하지 않는다.
+  // 이때 조회 결과는 로딩도 오류도 아니므로, 화면은 isValidSubscriptId로 따로 '찾을 수 없는 공고'(404와 같은 안내)를 보여 준다.
   const { type, houseManageNo, pblancNo } = parseSubscriptId(subscriptId);
-  const isValid = Boolean(houseManageNo);
+  const isValid = isValidSubscriptId(subscriptId);
 
   return useQuery({
     queryKey: announcementKeys.detail(`${type}/${houseManageNo}/${pblancNo}`),

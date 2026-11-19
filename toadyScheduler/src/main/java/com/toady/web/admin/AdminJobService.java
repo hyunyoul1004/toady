@@ -297,9 +297,43 @@ public class AdminJobService {
         return new DateRange(chronological.get(0).start(), chronological.get(total - completed - 1).end());
     }
 
-    /** 작업 이력으로 '다시 실행'할 기간을 정한다. 중간에 멈춘 작업은 끝내지 못한 이전 기간만 다시 수집한다. */
+    /**
+     * 작업 이력으로 '다시 실행'할 기간을 정한다. 중간에 멈춘 작업은 끝내지 못한 이전 기간만 다시 수집하고,
+     * 끝낸 구간 중 일부 공고가 실패한 구간도 함께 넣는다(실패 문구의 'YYYY-MM-DD~YYYY-MM-DD:' 구간, partialRanges).
+     * 모든 구간을 끝냈는데 일부 실패만 있으면 실패 구간들만(가장 이른 시작 ~ 가장 늦은 끝) 다시 돈다. 긴 기간 전체를 다시 돌아 호출 한도를 쓰지 않게 한다.
+     */
     static DateRange retryRange(AdminJob job) {
-        return remainingRange(chunks(job.kind(), job.startDate(), job.endDate()), job.completedChunks());
+        List<DateRange> chronological = chunks(job.kind(), job.startDate(), job.endDate());
+        int total = chronological.size(), completed = job.completedChunks();
+        List<DateRange> failed = partialRanges(job.message());
+        // 실패 문구가 잘렸으면(… 로 끝남) 앞부분(최근 구간)만 남아 있으므로 더 이른 실패 구간을 놓치지 않게 시작을 작업 시작일로 둔다.
+        boolean truncated = job.message() != null && job.message().endsWith("…");
+        if (failed.isEmpty()) return remainingRange(chronological, completed);
+        LocalDate start = truncated ? job.startDate() : failed.stream().map(DateRange::start).min(LocalDate::compareTo).orElseThrow();
+        LocalDate end = failed.stream().map(DateRange::end).max(LocalDate::compareTo).orElseThrow();
+        if (completed < total) {
+            // 끝내지 못한 앞쪽 기간도 함께(완료 0이면 전체).
+            DateRange left = remainingRange(chronological, completed);
+            if (left.start().isBefore(start)) start = left.start();
+            if (left.end().isAfter(end)) end = left.end();
+        }
+        if (start.isBefore(job.startDate())) start = job.startDate();
+        if (end.isAfter(job.endDate())) end = job.endDate();
+        return new DateRange(start, end);
+    }
+
+    // 일부 실패 기록 한 건의 앞부분(run()이 '구간시작~구간끝: 사유'로 남긴다). 남은 기간 안내(' ~ ', 공백 있음)와는 겹치지 않는다.
+    private static final java.util.regex.Pattern PARTIAL = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})~(\\d{4}-\\d{2}-\\d{2}):");
+    /** 작업 결과 문구에 남은 일부 실패 구간들. 없거나 읽을 수 없으면 빈 목록. */
+    static List<DateRange> partialRanges(String message) {
+        List<DateRange> ranges = new ArrayList<>();
+        if (message == null) return ranges;
+        var matcher = PARTIAL.matcher(message);
+        while (matcher.find()) {
+            try { ranges.add(new DateRange(LocalDate.parse(matcher.group(1)), LocalDate.parse(matcher.group(2)))); }
+            catch (java.time.format.DateTimeParseException ignored) { /* 형식이 맞지 않는 글자는 건너뛴다 */ }
+        }
+        return ranges;
     }
 
     /** 중단·실패 문구에 붙일 남은 기간 안내. 끝낸 구간이 없으면(전체가 남음) 다시 실행하면 전체를 돈다고만 적는다. */

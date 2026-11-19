@@ -103,11 +103,31 @@ public class AddressLocator {
         Set<String> left = provinces(address), right = provinces(other);
         return !left.isEmpty() && !right.isEmpty() && !Collections.disjoint(left, right);
     }
-    /** 주소에서 시·군·구 낱말을 최대 2개('수원시 영통구'). '검단신도시'처럼 지구·도시로 끝나는 이름은 뺀다. */
+    /**
+     * 주소에서 시·군·구 낱말을 최대 2개('수원시 영통구'). '검단신도시'처럼 지구·도시로 끝나는 이름은 뺀다.
+     * 다만 시 바로 뒤의 세 글자 '○지구'는 일반구다(용인시 수지구). 택지 지구 이름은 두 글자 이상 지명에 '지구'를 붙이므로
+     * ('하남시 감일지구', '고양시 식사지구') 그대로 뺀다. 화면 researchUtils.municipality와 같은 규칙이다.
+     */
     static List<String> municipality(String address) {
         List<String> tokens = new ArrayList<>(Arrays.asList(normalize(address).split(" ")));
         if (!provinces(address).isEmpty() && !tokens.isEmpty()) tokens.remove(0);
-        return tokens.stream().filter(token -> token.matches("^[가-힣]+[시군구]$") && !token.matches(".*(지구|특구|도시)$")).limit(2).toList();
+        List<String> found = new ArrayList<>();
+        for (int i = 0; i < tokens.size() && found.size() < 2; i++) {
+            String token = tokens.get(i);
+            if (!token.matches("^[가-힣]+[시군구]$")) continue;
+            boolean districtOfCity = token.length() == 3 && token.endsWith("지구") && i > 0 && tokens.get(i - 1).endsWith("시");
+            if (token.matches(".*(지구|특구|도시)$") && !districtOfCity) continue;
+            found.add(token);
+        }
+        return List.copyOf(found);
+    }
+    /** 괄호 속 지번 앞에 붙일 지역: 시·도 낱말 + 시·군·구 전부('경기도 수원시 영통구'). 일반구가 있는 시도 시·군·구 비교를 통과하게 한다. */
+    static String regionPrefix(String address) {
+        String text = normalize(address);
+        List<String> parts = new ArrayList<>();
+        if (!provinces(text).isEmpty()) parts.add(text.split(" ")[0]);
+        parts.addAll(municipality(text));
+        return String.join(" ", parts);
     }
     /**
      * 카카오가 찾은 주소가 공고 주소와 같은 시·도·시·군·구인지. 이름이 같은 다른 지역 동을 확정하지 않게 한다.
@@ -140,11 +160,10 @@ public class AddressLocator {
         List<String> foundTokens = Arrays.asList(normalize(found).split(" "));
         return foundTokens.containsAll(cities);
     }
-    /** researchUtils.addressCandidates와 같다: 괄호 안 지번 우선, 번지·일원·외 N필지 제거, 최대 3개. */
+    /** researchUtils.addressCandidates와 같다: 괄호 안 지번 우선(앞에 시·도·시·군·구를 붙인 것도), 번지·일원·외 N필지 제거, 최대 3개. */
     static List<String> addressCandidates(String address) {
         String raw = address.replace('　', ' ').trim();
-        Matcher prefixMatch = Pattern.compile("^([가-힣]+(?:시|도)\\s+[가-힣]+(?:시|군|구))").matcher(raw);
-        String prefix = prefixMatch.find() ? prefixMatch.group(1) : "";
+        String prefix = regionPrefix(raw);
         Matcher insideMatch = Pattern.compile("\\(([^)]+)\\)").matcher(raw);
         String inside = insideMatch.find() ? insideMatch.group(1) : null;
         UnaryOperator<String> clean = value -> value.replace("번지", "").replaceAll("\\s*(일원|일대|외\\s*\\d+필지).*$", "").trim();
@@ -158,9 +177,9 @@ public class AddressLocator {
     }
     /** resolveLocation.parcelCandidates와 같다. */
     static List<String> parcelCandidates(String address) {
+        // 괄호 앞 지역은 시·도 + 시·군·구 전부. 첫 시·군·구만 붙이면 일반구가 있는 시에서 sameRegion이 후보를 버린다.
         String raw = normalize(address);
-        Matcher prefixMatch = Pattern.compile("^(.+?[시군구])\\s").matcher(raw);
-        String prefix = prefixMatch.find() ? prefixMatch.group(1) : "";
+        String prefix = regionPrefix(raw);
         Matcher insideMatch = Pattern.compile("\\(([^)]+)\\)").matcher(raw);
         String inside = insideMatch.find() ? insideMatch.group(1) : null;
         List<String> values = new ArrayList<>(addressCandidates(raw));

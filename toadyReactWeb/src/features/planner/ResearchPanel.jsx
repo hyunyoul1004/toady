@@ -21,7 +21,7 @@ import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import { summaryOf, downloadCalendar, koreaToday } from './plannerUtils';
 import { receiptState } from '@/features/announcement/receiptState';
-import { detailSupplyScale } from '@/features/announcement/supplyScale';
+import { detailSupplyScale, supplyMetric } from '@/features/announcement/supplyScale';
 import { formatManwon, tradeComparison } from './researchUtils';
 import { usePlanner } from './usePlanner';
 import { normalizeStage } from './stageRules';
@@ -122,10 +122,9 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
   const summary=summaryOf(detail),today=koreaToday();
   const research=useNeighborhoodResearch(detail,tab,area);
   const units=detail.unitPrices || [];
-  const supply=Number(summary.supply);
-  const hasSupply=Number.isFinite(supply) && supply>0;
-  // 전체 세대와 이번 모집 세대(주택형 합)가 다르면 이번 모집 세대를 크게, 전체 세대를 아래에 적는다(상세 기본 정보·이미지 저장과 같은 계산).
-  const scale=detailSupplyScale(detail);
+  // 전체 세대와 이번 모집 세대(주택형 합)가 다르면 이번 모집 세대를 크게, 전체 세대를 아래에 적는다.
+  // 숫자는 detailSupplyScale 하나로만 정한다(공고 기본 정보·이미지 저장과 같은 계산, '1,234' 같은 쉼표 값도 같게 읽는다).
+  const supplyCell=supplyMetric(detailSupplyScale(detail),summary.housingType || '모집공고 기준');
   const amounts=units.map(unit=>unit.amountManwon).filter(amount=>Number.isFinite(amount) && amount>0);
   const min=amounts.length?Math.min(...amounts):null,max=amounts.length?Math.max(...amounts):null;
   // 실거래 면적 필터 버튼용: 주택형 면적을 반올림해 중복을 빼고 6개까지.
@@ -143,7 +142,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
     <div className="research-metrics">
       <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
       <div className="research-metric"><span><EventAvailableOutlined />당첨자 발표</span><strong>{shortDate(summary.winnerDate)}</strong><small>{summary.winnerDate?`${summary.winnerDate.slice(0,4)}년`:'일정 미제공'} · 공식 발표 기준</small></div>
-      <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{scale.split?scale.value.toLocaleString('ko-KR'):hasSupply?supply.toLocaleString('ko-KR'):'미제공'}{(scale.split||hasSupply) && <em>세대</em>}</strong><small>{scale.split?scale.short:(summary.housingType || '모집공고 기준')}</small></div>
+      <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{supplyCell.number}{supplyCell.unit && <em>{supplyCell.unit}</em>}</strong><small>{supplyCell.caption}</small></div>
     </div>
     {showTabs && <ResearchTabs value={tab} onChange={setTab}/>}
     <div className="research-tab-content" role="tabpanel" aria-label={tab==='info'?'청약 정보':'같은 법정동의 실제 매매 거래'}>

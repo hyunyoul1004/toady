@@ -10,6 +10,7 @@
  * 쓰는 곳: announcementApi.getAnnouncements(달력 일정 행), todaySummaryRules(오늘 접수), ThisWeekPage(오늘 신청 표시).
  */
 import { normalizeScheduleDate } from '../../views/main/calendar/calendarGroup.js';
+import { isAlwaysOpenEnd } from './receiptState.js';
 
 /**
  * 한 접수 기간을 최대 며칠까지 신청일로 펼칠지. 서버 ApplyDays.MAX_PERIOD_DAYS와 같은 값이어야 한다
@@ -69,11 +70,16 @@ function rankDays(item, rank) {
   });
 }
 
-/** 기간을 일정 행으로: 첫날은 시작 줄, 이튿날부터는 '접수 기간 중' 줄(ongoing). periodEnd는 그 기간(예: 특별공급)의 마지막 날. */
+/**
+ * 기간을 일정 행으로: 첫날은 시작 줄, 이튿날부터는 '접수 기간 중' 줄(ongoing). periodEnd는 그 기간(예: 특별공급)의 마지막 날.
+ * 마감일이 '상시 접수' 표기(receiptState.isAlwaysOpenEnd, 예: 9999-12-31)면 펼치는 상한(MAX_PERIOD_DAYS)일은 실제 마감이 아니므로
+ * periodEnd를 비우고 alwaysOpen을 붙인다(달력이 '~4.06 마감' 대신 '상시 접수'로 적는다. 상세 상태 칩과 같은 기준).
+ */
 function periodRows(stage, startValue, endValue) {
   const days = periodDays(startValue, endValue);
-  const periodEnd = days.at(-1) || null;
-  return days.map((inDate, index) => ({ stage, inDate, areaLabel: '', ongoing: index > 0, periodEnd }));
+  const alwaysOpen = isAlwaysOpenEnd(endValue);
+  const periodEnd = alwaysOpen ? null : days.at(-1) || null;
+  return days.map((inDate, index) => ({ stage, inDate, areaLabel: '', ongoing: index > 0, periodEnd, alwaysOpen }));
 }
 
 /**
@@ -81,6 +87,7 @@ function periodRows(stage, startValue, endValue) {
  * stage: APT는 '01'(특별공급)·'02'(1순위)·'03'(2순위), 그 밖의 유형은 null(호출하는 쪽이 공급유형 코드를 붙인다).
  * ongoing: 여러 날 이어지는 접수 기간(특별공급·순위·유형별 접수)의 이튿날부터. 달력은 이 줄을 연한 '접수 중' 줄로 그린다.
  * periodEnd: 그 행이 속한 기간의 마지막 날(하루 순위 접수일 행은 그날). '접수 중' 줄의 마감 안내에 쓴다.
+ * alwaysOpen: 상시 접수 기간의 행(periodEnd 없음). 순위 접수일 행에는 붙지 않는다.
  */
 export function applySchedules(item = {}) {
   if ((item.type || 'apt') !== 'apt') return periodRows(null, item.rceptBgnde, item.rceptEndde);
@@ -103,7 +110,7 @@ export function applySchedules(item = {}) {
  * announcementApi.getAnnouncements가 공고 정보(base)와 합쳐 달력(calendarGroup)에 넘긴다.
  */
 export function scheduleRows(item = {}, typeCode = '01') {
-  return applySchedules(item).map((row) => ({ rceptSe: row.stage || typeCode, inDate: row.inDate, areaLabel: row.areaLabel, ongoing: row.ongoing, periodEnd: row.periodEnd }));
+  return applySchedules(item).map((row) => ({ rceptSe: row.stage || typeCode, inDate: row.inDate, areaLabel: row.areaLabel, ongoing: row.ongoing, periodEnd: row.periodEnd, alwaysOpen: Boolean(row.alwaysOpen) }));
 }
 
 /** 신청 가능한 날짜(오름차순, 중복 없음). */

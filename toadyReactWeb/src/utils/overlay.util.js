@@ -65,7 +65,24 @@ export function liftedOverlayStates(state, id, value, liftIds) {
  * 상세를 '닫기'로 한 번에 닫을 때 돌아갈 히스토리 칸 수. 상세 위에 쌓인 레이어(예: 위치 탭 지도에서 고른 단지)는
  * 화면을 덮지 않아 닫기 단추가 계속 보이므로, 한 칸만 돌아가면 그 레이어만 닫히고 상세는 남는다.
  * 상세를 열 때 overlayLayers를 비워 두어야(이전 화면의 레이어를 물려받지 않아야) 칸 수가 맞는다.
+ * 상세 위에 다른 공고 상세를 쌓았으면(stackedDetailState) 그 아래 상세들을 닫는 칸 수(detailStackSteps)도 더해 한 번에 닫는다.
  */
 export function detailCloseSteps(state) {
-  return 1 + (Array.isArray(state?.overlayLayers) ? state.overlayLayers.length : 0);
+  const below = Number.isInteger(state?.detailStackSteps) && state.detailStackSteps > 0 ? state.detailStackSteps : 0;
+  return 1 + (Array.isArray(state?.overlayLayers) ? state.overlayLayers.length : 0) + below;
+}
+
+/**
+ * 상세 위에서 다른 공고 상세를 열 때(위치 탭 지도의 다른 분양 공고) 새 칸의 state.
+ * 이전 공고의 레이어(고른 단지·전체 화면 등)는 새 공고로 따라가지 않게 dropIds로 빼고,
+ * detailStackSteps에 '이전 상세를 닫는 데 필요한 칸 수'를 적어 둔다. 그래서 새 공고의 '닫기'는 이전 상세까지 한 번에 닫고
+ * (detailCloseSteps가 더한다), 브라우저 뒤로가기는 한 칸씩 이전 공고로 돌아간다. 쌓인 공고가 여럿이어도 칸 수가 이어서 더해진다.
+ */
+export function stackedDetailState(state, dropIds = []) {
+  if (!state) return state;
+  return {
+    ...state,
+    overlayLayers: (state.overlayLayers || []).filter(layer => !dropIds.includes(layer.id)),
+    detailStackSteps: detailCloseSteps(state)
+  };
 }

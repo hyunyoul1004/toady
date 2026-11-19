@@ -231,6 +231,10 @@ public class ApplyhomeCompetitionSyncService {
 	List<ScheduledTarget> scheduledTargets(ResultPhase phase, LocalDate startDate, LocalDate endDate) {
 		String start = startDate.format(COMPACT_DATE);
 		String end = endDate.format(COMPACT_DATE);
+		// hot 판정 기준일은 실제 오늘을 넘지 않는다. 수동 실행이 오늘 이후까지 범위를 잡아도
+		// 어제 접수가 끝난 공고를 cold로 잘못 보거나 오늘 발표를 놓치지 않게 한다(자동 실행은 끝이 오늘이라 같다).
+		LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+		LocalDate hotDay = endDate.isAfter(today) ? today : endDate;
 		String missing = "NOT EXISTS (SELECT 1 FROM " + phase.table().table()
 				+ " r WHERE r.HOUSE_MANAGE_NO = d.HOUSE_MANAGE_NO AND r.PBLANC_NO = d.PBLANC_NO)";
 		StringBuilder sql = new StringBuilder("SELECT DISTINCT d.HOUSE_MANAGE_NO, d.PBLANC_NO FROM " + phase.detailTable() + " d WHERE ");
@@ -242,7 +246,7 @@ public class ApplyhomeCompetitionSyncService {
 		if (phase.score()) {
 			// 발표 당일은 hot(10분마다), 지난 발표일은 비어 있을 때만 간격을 두고 다시 확인한다.
 			sql.insert(sql.indexOf(" FROM "), ", CASE WHEN REPLACE(d.PRZWNER_PRESNATN_DE, '-', '') = ? THEN 1 ELSE 0 END");
-			args.add(0, end);
+			args.add(0, hotDay.format(COMPACT_DATE));
 			sql.append("REPLACE(d.PRZWNER_PRESNATN_DE, '-', '') BETWEEN ? AND ? AND ").append(missing);
 			args.add(start);
 			args.add(end);
@@ -252,12 +256,12 @@ public class ApplyhomeCompetitionSyncService {
 			String finish = "REPLACE(" + phase.endColumn() + ", '-', '')";
 			// 접수 중이거나 접수 다음 날이면 hot.
 			sql.insert(sql.indexOf(" FROM "), ", CASE WHEN " + finish + " >= ? THEN 1 ELSE 0 END");
-			args.add(0, endDate.minusDays(1).format(COMPACT_DATE));
+			args.add(0, hotDay.minusDays(1).format(COMPACT_DATE));
 			sql.append(begin).append(" <= ? AND ").append(finish).append(" >= ? AND (")
 					.append(finish).append(" >= ? OR ").append(missing).append(")");
 			args.add(end);
 			args.add(start);
-			args.add(endDate.minusDays(1).format(COMPACT_DATE));
+			args.add(hotDay.minusDays(1).format(COMPACT_DATE));
 		}
 		sql.append(" ORDER BY d.HOUSE_MANAGE_NO, d.PBLANC_NO");
 		return jdbc.query(sql.toString(), (rs, n) -> new ScheduledTarget(new AnnouncementKey(rs.getString(1), rs.getString(2)), rs.getInt(3) == 1), args.toArray());

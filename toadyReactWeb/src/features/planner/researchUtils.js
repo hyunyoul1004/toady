@@ -32,10 +32,33 @@ export function modelPrices(models=[],type='apt') {
     amountManwon:parseManwon(model.lttotTopAmount),general:Number(model.suplyHshldco)||0,special:Number(model.spsplyHshldco)||0
   }));
 }
-/** 위치 찾기용 주소 후보(최대 3개): 괄호 속 지번, 시·군을 앞에 붙인 지번, 괄호를 뺀 주소 순. '일원·외 N필지' 같은 꼬리는 뗀다. */
+// 비교 전에 글자 모양(전각·반각 등)과 공백을 하나로 맞춘다.
+const normalizeAddress=value=>String(value || '').normalize('NFKC').replace(/\s+/g,' ').trim();
+// 시·도 이름 앞부분 → 짧은 이름. '경기도'·'경기'처럼 다르게 써도 같은 시·도로 본다.
+const PROVINCES=[['서울','서울'],['부산','부산'],['대구','대구'],['인천','인천'],['광주','광주'],['대전','대전'],['울산','울산'],['세종','세종'],['경기','경기'],['강원','강원'],['충청북','충북'],['충북','충북'],['충청남','충남'],['충남','충남'],['전북','전북'],['전라북','전북'],['전라남','전남'],['전남','전남'],['경상북','경북'],['경북','경북'],['경상남','경남'],['경남','경남'],['제주','제주']];
+/** 주소 첫 낱말의 시·도 짧은 이름('경기도' → '경기'). 모르면 undefined. */
+export function addressProvince(address) {const first=normalizeAddress(address).split(' ')[0];return PROVINCES.find(([prefix])=>first.startsWith(prefix))?.[1];}
+/**
+ * 주소에서 시·군·구 이름(최대 2개, 예: ['안산시','단원구'])을 뽑는다(서버 AddressLocator.municipality와 같은 규칙).
+ * '검단신도시'·'혁신도시'·'○○지구'처럼 시·군·구로 끝나 보여도 행정구역이 아닌 이름은 뺀다.
+ * 다만 시 바로 뒤의 세 글자 '○지구'는 일반구다(용인시 수지구). 택지 지구 이름은 두 글자 이상 지명에 '지구'를 붙이므로
+ * ('하남시 감일지구', '고양시 식사지구') 그대로 뺀다.
+ */
+export function municipality(address) {
+  const tokens=normalizeAddress(address).split(' ');
+  if(addressProvince(address))tokens.shift();
+  return tokens.filter((token,index)=>/^[가-힣]+[시군구]$/.test(token)
+    && (!/(지구|특구|도시)$/.test(token) || (token.length===3 && token.endsWith('지구') && /시$/.test(tokens[index-1] || '')))).slice(0,2);
+}
+/** 괄호 속 지번 앞에 붙일 지역: 시·도 낱말 + 시·군·구 전부('경기도 수원시 영통구'). 일반구가 있는 시도 시·군·구 비교를 통과하게 한다. */
+export function regionPrefix(address) {
+  const text=normalizeAddress(address);
+  return [...(addressProvince(text)?[text.split(' ')[0]]:[]),...municipality(text)].join(' ');
+}
+/** 위치 찾기용 주소 후보(최대 3개): 괄호 속 지번, 시·도·시·군·구를 앞에 붙인 지번, 괄호를 뺀 주소 순. '일원·외 N필지' 같은 꼬리는 뗀다. */
 export function addressCandidates(address) {
   const raw=String(address || '').replaceAll('　',' ').trim();
-  const prefix=raw.match(/^([가-힣]+(?:시|도)\s+[가-힣]+(?:시|군|구))/)?.[1] || '';
+  const prefix=regionPrefix(raw);
   const inside=raw.match(/\(([^)]+)\)/)?.[1];
   const clean=value=>value.replace(/번지/g,'').replace(/\s*(일원|일대|외\s*\d+필지).*$/,'').trim();
   const values=[];

@@ -11,7 +11,7 @@
  * 그 밖에 지도 검색창의 '지도만 옮기기'(searchArea)와 자동완성(suggestAddresses)도 여기 있다.
  * 사용처: useAnnouncementLocation, components/kakao/Kakaomap.jsx
  */
-import { addressCandidates } from '../../planner/researchUtils.js';
+import { addressCandidates, addressProvince, municipality, regionPrefix } from '../../planner/researchUtils.js';
 import { districtSuccessors } from '../../explore/districts.js';
 
 // 비교 전에 글자 모양(전각·반각 등)과 공백을 하나로 맞춘다.
@@ -22,16 +22,9 @@ const compact=value=>normalize(value).replace(/[^가-힣a-zA-Z0-9]/g,'').toLower
 const coordinates=row=>Number.isFinite(Number(row.x)) && Number.isFinite(Number(row.y)) && Number(row.x)>=124 && Number(row.x)<=132 && Number(row.y)>=32 && Number(row.y)<=40;
 // 견본주택·홍보관은 실제 부지가 아니므로 장소 검색 후보에서 뺀다.
 const salesOffice=/견본|모델하우스|홍보관|분양사무|분양홍보|주택전시/;
-// 시·도 이름 앞부분 → 짧은 이름. '경기도'·'경기'처럼 다르게 써도 같은 시·도로 본다.
-const provinces=[['서울','서울'],['부산','부산'],['대구','대구'],['인천','인천'],['광주','광주'],['대전','대전'],['울산','울산'],['세종','세종'],['경기','경기'],['강원','강원'],['충청북','충북'],['충북','충북'],['충청남','충남'],['충남','충남'],['전북','전북'],['전라북','전북'],['전라남','전남'],['전남','전남'],['경상북','경북'],['경북','경북'],['경상남','경남'],['경남','경남'],['제주','제주']];
-function province(address) {const first=normalize(address).split(' ')[0];return provinces.find(([prefix])=>first.startsWith(prefix))?.[1];}
-/** 주소에서 시·군·구 이름(최대 2개, 예: ['안산시','단원구'])을 뽑는다. */
-export function municipality(address) {
-  const tokens=normalize(address).split(' ');
-  if(province(address))tokens.shift();
-  // '검단신도시'·'혁신도시'·'○○지구'처럼 시·군·구로 끝나 보여도 행정구역이 아닌 이름은 뺀다(서버 AddressLocator와 같은 규칙).
-  return tokens.filter(x=>/^[가-힣]+[시군구]$/.test(x) && !/(지구|특구|도시)$/.test(x)).slice(0,2);
-}
+// 시·도 판정·시·군·구 추출은 주소 후보(researchUtils.addressCandidates)와 같은 함수를 쓴다(서버 AddressLocator와 같은 규칙).
+const province=addressProvince;
+export { municipality };
 /**
  * 찾은 주소(found)가 공고 주소와 같은 시·도·시·군·구인지. 다른 지역의 같은 지번이 잡히는 것을 막는다.
  * 개편 전 이름의 공고 주소('인천광역시 중구 …')는 지금 이름('인천 제물포구 …')으로 돌아온 결과도 같은 곳으로 본다(서버 AddressLocator.sameRegion과 같다).
@@ -55,11 +48,12 @@ function sameRegionAsWritten(address,found) {
   return Boolean(expected || cities.length) && (!expected || expected===province(found)) && cities.every(part=>normalize(found).split(' ').includes(part));
 }
 /**
- * 주소 검색에 넣을 지번 후보들. 괄호 안 지번('(동패동 1234)')도 시·군·구를 붙여 후보로 넣는다.
+ * 주소 검색에 넣을 지번 후보들. 괄호 안 지번('(동패동 1234)')도 시·도·시·군·구를 붙여 후보로 넣는다.
  * 번지까지 있는 값만 남긴다. 번지가 없으면 후보가 비어 ADDRESS로 확정되지 않는다.
  */
 export function parcelCandidates(address) {
-  const raw=normalize(address),prefix=raw.match(/^(.+?[시군구])\s/)?.[1] || '';
+  // 괄호 앞 지역은 시·도 + 시·군·구 전부('경기도 수원시 영통구'). 첫 시·군·구만 붙이면 일반구가 있는 시에서 sameRegion이 후보를 버린다.
+  const raw=normalize(address),prefix=regionPrefix(raw);
   const inside=raw.match(/\(([^)]+)\)/)?.[1];
   const values=addressCandidates(raw);
   if(inside && prefix) values.unshift(`${prefix} ${inside}`.replace(/번지|\s*일원.*$/g,''));

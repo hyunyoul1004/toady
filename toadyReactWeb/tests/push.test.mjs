@@ -151,6 +151,23 @@ test('closing a detail goes back past the inline layers stacked on it', async ()
   assert.equal(detailCloseSteps(null), 1);
 });
 
+test('지도에서 연 다른 공고 상세의 닫기는 쌓인 상세를 모두 닫는다(뒤로가기는 한 칸씩)', async () => {
+  const { detailCloseSteps, stackedDetailState, resolveOverlayUpdate } = await import('../src/utils/overlay.util.js');
+  // 목록 → 상세 A(위치 탭, 고른 단지·전체 화면) → 지도에서 공고 B를 연다.
+  const a = { detailOverlay: true, overlayLayers: [{ id: 'map-fullscreen', value: true }, { id: 'price-map-complex', value: 'sale|b' }] };
+  const b = stackedDetailState(a, ['price-map-complex', 'map-fullscreen']);
+  assert.deepEqual(b.overlayLayers, [], '이전 공고의 지도 레이어는 따라가지 않는다');
+  assert.equal(b.detailOverlay, true);
+  assert.equal(detailCloseSteps(b), 1 + detailCloseSteps(a), 'B 칸 + A를 닫는 칸 수 = 4');
+  // B 위에 팝업을 열어도(같은 state를 이어 씀) 그 칸까지 더해 한 번에 닫는다.
+  const withMenu = resolveOverlayUpdate(b, 'share-menu', true).state;
+  assert.equal(detailCloseSteps(withMenu), detailCloseSteps(b) + 1);
+  // B에서 다시 공고 C를 열면 이어서 더한다.
+  const c = stackedDetailState(b, ['price-map-complex', 'map-fullscreen']);
+  assert.equal(detailCloseSteps(c), 1 + detailCloseSteps(b));
+  assert.equal(stackedDetailState(null), null, '표식 없는 칸은 그대로 둔다');
+});
+
 test('공고 주소 위에 로그인 창을 열면 목록·상세·로그인 순으로 쌓는다', async () => {
   const { detailMarker, detailListBase, openLoginOver } = await import('../src/features/push/pushSupport.js');
   assert.deepEqual(detailMarker('/announcements/apt/1/1?tabType=comment'), { detailOverlay: true });

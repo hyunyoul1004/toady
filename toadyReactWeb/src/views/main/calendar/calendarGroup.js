@@ -55,6 +55,7 @@ const ONGOING_ORDER = 100;
  * - receiptChannel: 접수처. LH청약플러스 접수면 'LH'(행의 receiptChannel, receiptChannel.js), 청약홈이면 null
  * - ongoing: 그날 행이 모두 '접수 기간 중'(시작일 다음 날부터) 행이면 true
  * - endDate: '접수 중' 줄이 속한 기간의 마지막 날(행의 periodEnd, 없으면 접수 종료일). 마감 안내에 쓴다.
+ * - alwaysOpen: '접수 중' 줄이 상시 접수 기간이면 true(endDate를 두지 않고 '상시 접수'로 적는다).
  *   예: 특별공급 11.17~18, 1순위 19일이면 11.18 칸의 특별공급 '접수 중' 줄은 '~11.18 마감'.
  * - stages: 그 날짜의 단계들 [{ rceptSe, areaLabels }] (단계 순)
  * - allStages: 같은 목록 안 공고 전체 단계 [{ rceptSe, dates }] (단계 순) — 오늘 칸이 몇 번째 단계인지 표시용
@@ -88,6 +89,7 @@ export function groupCalendarSchedules(rows) {
         commentCount: 0,
         ongoing: true,
         endDate: null,
+        alwaysOpen: false,
         receiptChannel: null,
         stageMap: new Map()
       });
@@ -95,7 +97,9 @@ export function groupCalendarSchedules(rows) {
     const group = groups.get(key);
     if (!row.ongoing) group.ongoing = false;
     // 같은 날 특별공급·순위 접수 기간이 함께 이어지면 가장 늦은 마감일을 쓴다(먼저 끝나는 기간의 마감일을 전체 마감처럼 보이지 않게).
-    if (row.ongoing) {
+    // 상시 접수 기간(행의 alwaysOpen)은 펼치는 상한일을 마감일로 쓰지 않는다(접수 종료일 9999-12-31로도 대신하지 않음).
+    if (row.ongoing && row.alwaysOpen) group.alwaysOpen = true;
+    else if (row.ongoing) {
       const end = normalizeScheduleDate(row.periodEnd || row.rceptEndde);
       if (end && (!group.endDate || end > group.endDate)) group.endDate = end;
     }
@@ -153,13 +157,15 @@ export function hasOngoing(groups) {
 /** '2026-11-23' → '11.23' */
 const shortDate = (iso) => (iso ? `${Number(iso.slice(5, 7))}.${iso.slice(8, 10)}` : '');
 
-/** 그날 단계 설명: "1순위(해당지역) · 2순위", '접수 중' 줄이면 "무순위 접수 기간 중(~11.23 마감)" */
+/** 그날 단계 설명: "1순위(해당지역) · 2순위", '접수 중' 줄이면 "무순위 접수 기간 중(~11.23 마감)", 상시 접수면 "민간임대 상시 접수" */
 export function describeStages(group) {
   const stages = group.stages.map((stage) => {
     const label = rceptSeMeta(stage.rceptSe).label;
     return stage.areaLabels.length ? `${label}(${stage.areaLabels.join('/')})` : label;
   });
   if (!group.ongoing) return stages.join(' · ');
+  // 상시 접수 줄은 마감 안내 대신 '상시 접수'(상세 상태 칩 openReceiptText와 같은 말). 같은 날 마감이 있는 기간이 함께면 그 마감을 적는다.
+  if (group.alwaysOpen && !group.endDate) return `${stages.join(' · ')} 상시 접수`;
   return `${stages.join(' · ')} 접수 기간 중${group.endDate ? `(~${shortDate(group.endDate)} 마감)` : ''}`;
 }
 

@@ -76,7 +76,8 @@ public class AdminInternalApi {
 
     /**
      * 기존 이력은 보존하고 같은 종류의 새 작업을 만든다. 최근 구간부터 돌다 멈춘 작업은 끝내지 못한 이전 기간만 다시 수집하고,
-     * 끝낸 구간이 없거나 모두 끝낸 작업(일부 공고 실패 등)은 전체 기간을 다시 돈다.
+     * 일부 공고가 실패한 구간도 함께 다시 수집한다. 모두 끝낸 작업이 일부 실패로 끝났으면 실패 구간만 다시 돌고,
+     * 끝낸 구간이 없거나 실패 없이 모두 끝낸 작업은 전체 기간을 다시 돈다(AdminJobService.retryRange).
      */
     @PostMapping("/jobs/{id}/retry")
     public ResponseEntity<?> retry(@PathVariable String id, @RequestBody(required = false) RetryRequest body, HttpServletRequest request) {

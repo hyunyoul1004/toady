@@ -16,7 +16,7 @@ import TuneRounded from '@mui/icons-material/TuneRounded';
 import FormatListBulletedRounded from '@mui/icons-material/FormatListBulletedRounded';
 import MyLocationRounded from '@mui/icons-material/MyLocationRounded';
 import {useHistoryOverlay} from '@/hooks/useHistoryOverlay';
-import {closeStackSteps,liftedOverlayStates} from '@/utils/overlay.util';
+import {closeStackSteps,liftedOverlayStates,stackedDetailState} from '@/utils/overlay.util';
 import {trackAction} from '@/features/analytics/trackAction';
 import {ensureKakaoLoaded} from '@/config/ensureKakaoLoaded';
 import {koreaToday} from '@/features/planner/plannerUtils';
@@ -71,8 +71,9 @@ export default function Kakaomap({subscriptDetail:detail={}}) {
   // 화면별 상세 표시(state)는 그대로 넘겨 useDirectDetailHistory가 목록 단계를 다시 끼우지 않게 한다.
   // 지도에서 고른 단지·공고(price-map-complex)와 전체 화면(map-fullscreen) 레이어는 새 공고로 따라가지 않게 빼고 넘긴다
   // (남기면 새 공고에서 '닫기'·전체 화면 닫기가 이전 공고로 뒤로가기 됐다).
+  // stackedDetailState가 이전 상세를 닫는 칸 수를 적어 두어, 새 공고의 '닫기'(X)는 쌓인 상세를 모두 닫고 목록으로 돌아간다(detailCloseSteps).
   const openSale=id=>{const next=new URLSearchParams(routeLocation.search);next.set('subscriptSeq',id);next.set('tabType','map');
-    const state=routeLocation.state?{...routeLocation.state,overlayLayers:(routeLocation.state.overlayLayers || []).filter(layer=>layer.id!=='price-map-complex' && layer.id!=='map-fullscreen')}:routeLocation.state;
+    const state=stackedDetailState(routeLocation.state,['price-map-complex','map-fullscreen']);
     // 공고 주소(/announcements/종류/번호/번호)로 연 상세는 주소 경로가 공고를 정하므로 경로째 바꾼다(쿼리만 바꾸면 같은 공고에 머문다).
     if(routeLocation.pathname.startsWith('/announcements/')){next.delete('subscriptSeq');navigate({pathname:`/announcements/${id}`,search:`?${next}`},{state});return;}
     navigate({pathname:routeLocation.pathname,search:`?${next}`},{state});};

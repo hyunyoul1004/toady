@@ -59,6 +59,24 @@ class AddressLocatorTest {
         assertTrue(AddressLocator.sameRegion(address, "인천 서구 불로동 123"));
         assertTrue(AddressLocator.parcelCandidates("경기도 파주시 운정신도시 A1블록").isEmpty(), "지번이 없으면 여전히 확정하지 않는다");
     }
+    /** 일반구가 있는 시: 괄호 속 지번 앞에 시·도 + 시·군·구 전부를 붙여야 같은 시·군·구 비교를 통과한다(tests/location.test.mjs와 같은 사례). */
+    @Test void parenthesizedParcelsKeepTheDistrictOfCity() {
+        assertEquals(List.of("경기도 수원시 영통구 이의동 1234"), AddressLocator.parcelCandidates("경기도 수원시 영통구 이의동 일원 (이의동 1234)"));
+        assertEquals(List.of("경기도 고양시 일산동구 식사동 123"), AddressLocator.parcelCandidates("경기도 고양시 일산동구 식사지구 A1블록 (식사동 123)"));
+        assertEquals(List.of("경상북도 포항시 북구 양덕동 12"), AddressLocator.parcelCandidates("경상북도 포항시 북구 신도시 (양덕동 12)"));
+        assertEquals(List.of("이의동 1234", "경기도 수원시 영통구 이의동 1234", "경기도 수원시 영통구 이의동"), AddressLocator.addressCandidates("경기도 수원시 영통구 이의동 일원 (이의동 1234)"));
+        // 용인시 수지구는 '지구'로 끝나도 일반구다. 택지 지구 이름(두 글자 이상 + 지구)·신도시는 여전히 뺀다.
+        assertEquals(List.of("용인시", "수지구"), AddressLocator.municipality("경기도 용인시 수지구 풍덕천로 1 (풍덕천동 12-3)"));
+        assertEquals(List.of("하남시"), AddressLocator.municipality("경기도 하남시 감일지구 B4블록 (감일동 100)"));
+        assertEquals(List.of("고양시", "일산동구"), AddressLocator.municipality("경기도 고양시 일산동구 식사지구 A1블록"));
+        assertEquals(List.of("서구"), AddressLocator.municipality("인천광역시 서구 검단신도시 AA13블록"));
+        assertTrue(AddressLocator.sameRegion("경기도 용인시 수지구 풍덕천로 1 (풍덕천동 12-3)", "경기 용인시 수지구 풍덕천동 12-3"));
+        assertFalse(AddressLocator.sameRegion("경기도 용인시 수지구 풍덕천로 1", "경기 용인시 기흥구 풍덕천동 12-3"), "같은 시의 다른 구는 다른 지역이다");
+        assertTrue(AddressLocator.parcelCandidates("경기도 하남시 감일지구 B4블록 (감일동 100)").contains("경기도 하남시 감일동 100"));
+        // 개편 전 이름(인천 중구)도 그대로 지금 이름 결과와 같은 곳으로 본다.
+        assertEquals(List.of("인천광역시 중구 사동 23-4"), AddressLocator.parcelCandidates("인천광역시 중구 사동 23-4"));
+        assertTrue(AddressLocator.sameRegion("인천광역시 중구 영종대로 123 (운서동 12-3)", "인천 영종구 운서동 12-3"));
+    }
     @Test void provinceAliasesMatchAndSameNamedCountiesDoNot() {
         assertTrue(AddressLocator.sameRegion("경기도 구리시 갈매동 100", "경기 구리시 갈매동 100"));
         assertFalse(AddressLocator.sameRegion("강원특별자치도 고성군 간성읍 100", "경남 고성군 고성읍 100"));

@@ -23,7 +23,7 @@ import apiClient from '@/api/client';
 
 import { trackAction } from '@/features/analytics/trackAction';
 import ResearchPanel, { ResearchTabs, AnnouncementActions } from '@/features/planner/ResearchPanel';
-import TodayOverview, { rememberViewed } from '@/features/planner/TodayOverview';
+import TodayOverview, { forgetViewed, rememberViewed } from '@/features/planner/TodayOverview';
 import { browseFiltered } from '@/features/planner/todaySummaryRules';
 import AreaSubscribe from '@/features/planner/AreaSubscribe';
 import ServiceIntro from '@/features/intro/ServiceIntro';
@@ -41,7 +41,7 @@ import { useAnnouncementSearch } from './hooks/useAnnouncementSearch';
 
 import { updateAnnouncementSeo, resetDefaultSeo, updatePageSeo } from '@/utils/seo.util';
 import { regionPath, regionTargetOf } from '@/features/explore/regionRules';
-import { useAnnouncementsQuery, useAnnouncementDetailQuery, useAptScoresQuery } from '@/features/announcement/hooks/useAnnouncements';
+import { useAnnouncementsQuery, useAnnouncementDetailQuery, useAptScoresQuery, isValidSubscriptId } from '@/features/announcement/hooks/useAnnouncements';
 
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
@@ -317,6 +317,9 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     error: detailError,
     refetch: refetchDetail
   } = useAnnouncementDetailQuery(selectedSubscriptSeq, modalOpen);
+  // 찾을 수 없는 공고: 서버 404, 또는 주소의 공고 id 형식이 틀려 조회조차 하지 않은 경우(빈 상세 대신 같은 안내를 보여 준다).
+  const detailNotFound = modalOpen && Boolean(selectedSubscriptSeq)
+    && (!isValidSubscriptId(selectedSubscriptSeq) || (isDetailError && detailError?.status === 404));
 
   const mainDetail = useMemo(() => {
     return detailRes?.data || {};
@@ -355,15 +358,18 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
 
   // 상세가 실제로 다 불러와졌을 때 한 번만 '최근 본 공고'에 저장하고 열람 통계를 보낸다.
   // 응답의 subscriptSeq가 지금 고른 공고와 같은지 확인해, 이전 공고 데이터가 남아 있는 순간에는 기록하지 않는다.
+  // 관리자가 숨긴 공고(operatorNotice.hidden)는 저장하지 않고, 찾을 수 없는 공고와 함께 이미 저장돼 있던 것도 뺀다.
   useEffect(() => {
     if (!modalOpen) { lastViewed.current = null; return; }
+    if (detailNotFound) { forgetViewed(selectedSubscriptSeq); return; }
     if (!isDetailLoading && !isDetailError && mainDetail.subscriptDetail?.houseNm
         && mainDetail.subscriptDetail.subscriptSeq === selectedSubscriptSeq && lastViewed.current !== selectedSubscriptSeq) {
       lastViewed.current = selectedSubscriptSeq;
-      rememberViewed(mainDetail.subscriptDetail);
+      if (mainDetail.subscriptDetail.operatorNotice?.hidden) forgetViewed(selectedSubscriptSeq);
+      else rememberViewed(mainDetail.subscriptDetail);
       trackAction('detail_view',selectedSubscriptSeq);
     }
-  }, [modalOpen, isDetailLoading, isDetailError, mainDetail.subscriptDetail, selectedSubscriptSeq]);
+  }, [modalOpen, detailNotFound, isDetailLoading, isDetailError, mainDetail.subscriptDetail, selectedSubscriptSeq]);
 
   // 주소가 상세 상태의 기준이다. /announcements/:type/:house/:notice 또는 ?subscriptSeq=...(다른 메뉴 위 상세)가 있으면 상세를 열고,
   // 없으면 닫는다. 그래서 뒤로가기·앞으로가기로 주소만 바뀌어도 상세가 따라 열리고 닫힌다. ?tabType=은 보던 탭이다.
@@ -471,14 +477,19 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
     // SDK가 준비돼 있으면 누른 순간 바로 보낸다(기다리면 브라우저가 공유 창을 팝업으로 막는다). 준비 전이면 링크 공유로 넘긴다.
     const result = shareToKakao({ title: `${houseNm} ${scoreText ? '청약 결과' : shareLabel(tab)}`, description, imageUrl: announcementShareImage(seq, tab, window.location.origin), url });
     if (result === 'shared') trackAction('share', seq);
-    else void handleShare();
+    // 메뉴는 위에서 이미 닫았다. handleShare를 부르면 같은 클로저의 shareOpen(true)으로 한 번 더 뒤로가기해 상세까지 닫힌다.
+    else void shareByLink();
   };
 
   // 공고 공유하기 (휴대폰 공유 창, 없거나 실패하면 '문구\n링크' 복사). 사용자가 공유 창을 닫으면 그냥 끝낸다.
   // 문구는 한 줄('단지명 탭이름 · TOADY', 경쟁률 탭이면 가점 요약을 덧붙임)만 보낸다. 위치·일정은 링크 미리보기 카드가 보여 주므로
   // 문구에도 넣으면 카카오톡·문자에서 같은 내용이 두 번 보인다. title은 앱마다 붙거나 버려져 문구와 겹치므로 넘기지 않는다.
-  const handleShare = async () => {
+  const handleShare = () => {
     closeShareMenu();
+    return shareByLink();
+  };
+  // 메뉴 닫기 없이 링크 공유만 한다(메뉴 닫기는 부르는 쪽이 한 번만 한다).
+  const shareByLink = async () => {
     const seq = selectedSubscriptSeq || currentSubscriptDetail?.subscriptSeq || '';
     const tab=['detail','rate','map','comment'][detailTabValue];
     const result = await shareLink({
@@ -842,24 +853,23 @@ export const Main = ({detailOnly=false,onDetailClose}) => {
         >
           {isDetailLoading ? (
             <DetailBodySkeleton />
+          ) : detailNotFound ? (
+            // 서버 404와 형식이 틀린 공고 주소(조회하지 않음)는 같은 안내를 쓴다.
+            <Box role="alert" sx={{ textAlign: 'center', py: 6, px: 2 }}>
+              <Typography component="p" sx={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem', mb: 0.75 }}>
+                마감됐거나 찾을 수 없는 공고예요
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#64748b', mb: 2.5, wordBreak: 'keep-all' }}>
+                공고가 정정·취소됐거나 주소가 바뀌었을 수 있어요. 청약 일정에서 다른 공고를 찾아보세요.
+              </Typography>
+              <Button variant="contained" disableElevation onClick={handleCloseDetail}>공고 목록으로</Button>
+            </Box>
           ) : isDetailError ? (
-            detailError?.status === 404 ? (
-              <Box role="alert" sx={{ textAlign: 'center', py: 6, px: 2 }}>
-                <Typography component="p" sx={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem', mb: 0.75 }}>
-                  마감됐거나 찾을 수 없는 공고예요
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#64748b', mb: 2.5, wordBreak: 'keep-all' }}>
-                  공고가 정정·취소됐거나 주소가 바뀌었을 수 있어요. 청약 일정에서 다른 공고를 찾아보세요.
-                </Typography>
-                <Button variant="contained" disableElevation onClick={handleCloseDetail}>공고 목록으로</Button>
-              </Box>
-            ) : (
-              <Alert severity="error" action={<Button color="inherit" onClick={() => refetchDetail()}>다시 시도</Button>}>
-                {detailError?.status >= 500 || !detailError?.status
-                  ? '공고 상세를 잠시 불러오지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.'
-                  : '공고 상세를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'}
-              </Alert>
-            )
+            <Alert severity="error" action={<Button color="inherit" onClick={() => refetchDetail()}>다시 시도</Button>}>
+              {detailError?.status >= 500 || !detailError?.status
+                ? '공고 상세를 잠시 불러오지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.'
+                : '공고 상세를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'}
+            </Alert>
           ) : (
             <>
               {/* 지금 고른 탭 하나만 그린다. 경쟁률·위치·이야기는 lazy라 처음 고를 때 파일을 받는다. */}

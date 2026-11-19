@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { applyDays, applySchedules, scheduleRows } from '../src/features/announcement/applyDays.js';
 import { groupCalendarSchedules, groupsByDate, describeGroup, receiptTag } from '../src/views/main/calendar/calendarGroup.js';
 import { receiptChannel, receiptChannelOf } from '../src/features/announcement/receiptChannel.js';
-import { recruitHouseholds, supplyScale, detailSupplyScale } from '../src/features/announcement/supplyScale.js';
+import { recruitHouseholds, supplyScale, detailSupplyScale, supplyMetric } from '../src/features/announcement/supplyScale.js';
 import { openTodayText, browseFiltered, summaryDay, todayLabel } from '../src/features/planner/todaySummaryRules.js';
 import { isWeekendDay } from '../src/features/planner/plannerUtils.js';
 import { detailImageSections } from '../src/features/announcement/export/exportData.js';
@@ -120,4 +120,16 @@ test('오늘의 요약 기준일: weekly-summary의 today가 있으면 그 날�
   assert.equal(summaryDay(undefined, '2026-11-21'), '2026-11-21');
   assert.equal(summaryDay({ current: [] }, '2026-11-21'), '2026-11-21');
   assert.equal(summaryDay({ today: '20261120' }, '2026-11-21'), '2026-11-21');
+});
+
+test('상세 요약 칸의 공급 규모도 detailSupplyScale 숫자만 쓴다(공고 기본 정보·이미지 저장과 같은 숫자)', () => {
+  const split = detailSupplyScale({ totSuplyHshldco: '300', recruitHouseholds: 105 });
+  assert.deepEqual(supplyMetric(split, '아파트'), { number: '105', unit: '세대', caption: '전체 300세대 중 이번 모집' });
+  // 쉼표가 든 전체 세대도 요약 칸과 기본 정보가 같은 숫자다(예전 요약 칸은 Number('1,234')로 '미제공'이 됐다).
+  const comma = detailSupplyScale({ totSuplyHshldco: '1,234' });
+  assert.equal(comma.text, '1,234세대');
+  assert.deepEqual(supplyMetric(comma, '아파트'), { number: '1,234', unit: '세대', caption: '아파트' });
+  // 전체 세대가 없고 주택형 합만 있으면 그 숫자(기본 정보와 같다).
+  assert.equal(supplyMetric(detailSupplyScale({ recruitHouseholds: 80 })).number, '80');
+  assert.deepEqual(supplyMetric(detailSupplyScale({}), '모집공고 기준'), { number: '미제공', unit: '', caption: '모집공고 기준' });
 });

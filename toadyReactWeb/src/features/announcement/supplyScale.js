@@ -46,3 +46,11 @@ export function supplyScale({ total, recruit } = {}) {
 export function detailSupplyScale(detail = {}) {
   return supplyScale({ total: detail.totSuplyHshldco ?? detail.totalSupplyHouseholds, recruit: detail.recruitHouseholds });
 }
+
+/**
+ * 상세 요약 칸(ResearchPanel '공급 규모')용: 큰 숫자·단위·작은 글. 숫자는 supplyScale의 value(text와 같은 숫자)만 쓴다.
+ * caption: 나눠 보일 때는 '전체 N세대 중 이번 모집', 아니면 fallback(주택 구분 등).
+ */
+export function supplyMetric(scale, fallback = '') {
+  return { number: scale?.value ? fmt(scale.value) : '미제공', unit: scale?.value ? '세대' : '', caption: scale?.split ? scale.short : fallback };
+}

@@ -47,6 +47,7 @@ public class SaleMapService {
     private static final Set<String> PROVINCE_PREFIXES = Set.of("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충청", "충북", "충남", "전라", "전북", "전남", "경상", "경북", "경남", "제주");
     /** 분양 완료 공고는 접수 시작일 기준 최근 3년, 시·군·구당 최대 300건까지 본다. */
     static final int PAST_YEARS = 3, MAX_PAST = 300;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SaleMapService.class);
     static final String DONE = "DONE";
 
     private final EligibilityFeed feed;
@@ -88,6 +89,8 @@ public class SaleMapService {
         if (!locator.enabled()) return new Result(0, List.of(), List.of());
         String lawd5 = bcode.substring(0, 5);
         List<String> names = municipalityNames(region);
+        // 지역 글자가 없으면 시·군·구로 좁힐 수 없어 전국 공고를 카카오로 확인하게 된다. 새 조회 없이 빈 결과를 준다.
+        if (names.isEmpty()) return new Result(0, List.of(), List.of());
         // '서울 중구'와 '부산 중구'처럼 같은 이름의 구·군이 섞이지 않도록 시·도도 맞춘다.
         // 시·도 비교는 AddressLocator.provinces(통합특별시는 옛 시·도로 푼다)로 하므로 region 글자를 그대로 넘긴다.
         String province = region == null ? "" : region.trim();
@@ -97,7 +100,7 @@ public class SaleMapService {
         // 주소에 시·군·구 이름이 들어 있는 공고만 위치를 확인한다(전국 공고를 모두 조회하지 않게).
         List<EligibilityFeed.Item> nearby = new ArrayList<>(items.stream().filter(item -> inRegion(item.address(), names, province)).toList());
         Set<String> current = nearby.stream().map(EligibilityFeed.Item::id).collect(Collectors.toSet());
-        if (!names.isEmpty()) nearby.addAll(pastItems(names, province, today).stream().filter(item -> !current.contains(item.id())).toList());
+        nearby.addAll(pastItems(names, province, today).stream().filter(item -> !current.contains(item.id())).toList());
 
         List<Future<?>> waiting = new ArrayList<>();
         for (EligibilityFeed.Item item : nearby) {
@@ -137,7 +140,9 @@ public class SaleMapService {
 
     /** 최근 3년 안에 접수를 마친 같은 시·군·구의 APT 분양 공고 중 아직 입주 전인 것(상태 DONE). */
     private List<EligibilityFeed.Item> pastItems(List<String> names, String province, LocalDate today) {
-        String cacheKey = province + " " + String.join(" ", names) + "/" + today;
+        // '인천광역시 제물포구'와 '인천 제물포구'처럼 표기만 다른 지역이 같은 캐시를 쓰도록 시·도를 짧은 이름으로 맞춘다.
+        String sido = AddressLocator.province(province);
+        String cacheKey = (sido == null ? province : sido) + " " + String.join(" ", names) + "/" + today;
         List<EligibilityFeed.Item> cached = past.getIfPresent(cacheKey);
         if (cached != null) return cached;
         AnnouncementSearch query = new AnnouncementSearch();
@@ -146,11 +151,11 @@ public class SaleMapService {
         query.setStartDate(today.minusYears(PAST_YEARS));
         query.setEndDate(today);
         query.setSize(MAX_PAST);
-        List<AnnouncementListItem> sources = new ArrayList<>(search.searchAll(query, List.of("apt")).getContent());
+        List<AnnouncementListItem> sources = new ArrayList<>(pastPage(query));
         // 개편 뒤 지역이면 예전 이름으로 적힌 공고도 찾는다(같은 공고가 두 번 들어와도 pastCandidates가 하나로 남긴다).
         for (String old : previousNames(names, province)) {
             query.setKeyword(old.split(" ")[1]);
-            sources.addAll(search.searchAll(query, List.of("apt")).getContent());
+            sources.addAll(pastPage(query));
         }
         List<AnnouncementListItem> finished = pastCandidates(sources, names, province, today);
         List<EligibilityFeed.Item> built = feed.items(finished, finished.stream().collect(Collectors.toMap(
@@ -158,6 +163,13 @@ public class SaleMapService {
             .stream().filter(item -> beforeMoveIn(item.moveIn(), YearMonth.from(today))).toList();
         past.put(cacheKey, built);
         return built;
+    }
+
+    /** 지난 공고 한 번 검색. 이름 일부만 맞춰 찾으므로(예: '동구'에 남동구) 상한을 넘으면 빠지는 공고가 있을 수 있어 로그를 남긴다. */
+    private List<AnnouncementListItem> pastPage(AnnouncementSearch query) {
+        var page = search.searchAll(query, List.of("apt"));
+        if (page.getTotalElements() > MAX_PAST) log.warn("Sale map past search truncated: keyword={}, total={}, limit={}", query.keyword(), page.getTotalElements(), MAX_PAST);
+        return page.getContent();
     }
 
     /** 주소가 시·군·구 이름을 모두 담고, 접수(마지막 날)가 오늘 이전에 끝난 공고. 같은 주택관리번호는 최신 공고 하나만 남긴다. */
