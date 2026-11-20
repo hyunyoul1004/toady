@@ -13,10 +13,10 @@
         <div class="kpi"><span>알림 구독</span><strong th:text="${t.pushSubscriptions != null ? #numbers.formatInteger(t.pushSubscriptions,1,'COMMA') : '—'}">0</strong><small th:text="${'오늘 댓글 ' + (t.comments != null ? t.comments : '—') + '개'}"></small></div>
     </section>
 
-    <section class="panel"><div class="panel-head"><h2>최근 14일 방문자</h2><span class="panel-note">막대 = 방문자 · 숫자 아래 = 페이지뷰</span></div>
+    <section class="panel"><div class="panel-head"><h2>최근 14일 방문자</h2><span class="panel-note">막대·숫자 = 방문자<span class="wide-only"> · 날짜 아래 = 페이지뷰</span></span></div>
         <div class="empty" th:if="${#lists.isEmpty(daily)}"><h3>방문 기록을 읽지 못했습니다</h3></div>
         <div class="daily" th:unless="${#lists.isEmpty(daily)}"><div th:each="d, s : ${daily}" th:classappend="${(s.last ? 'today ' : '') + (d.weekend ? 'weekend' : '')}" th:title="${d.label + ' 방문자 ' + d.visitors + ' · 페이지뷰 ' + d.pageViews}">
-            <b th:text="${d.visitors}">0</b><i th:style="${'height:' + (d.percent < 2 ? 2 : d.percent) + '%'}"></i><small th:text="${d.label}"></small></div></div>
+            <b th:text="${d.visitors}">0</b><i th:style="${'height:' + (d.percent < 2 ? 2 : d.percent) + '%'}"></i><small th:text="${d.label}"></small><small class="muted" th:text="${'PV ' + d.pageViews}"></small></div></div>
     </section>
 
     <div class="grid-2">
@@ -34,6 +34,12 @@
             <div class="empty" th:if="${#lists.isEmpty(mapTools)}"><p>최근 7일 지도 기능 사용이 없습니다.</p></div>
             <ul class="rank" th:unless="${#lists.isEmpty(mapTools)}"><li th:each="t : ${mapTools}">
                 <span class="name" th:text="${t.label}" th:title="${t.key}"></span><span class="bar"><i th:style="${'width:' + t.percent + '%'}"></i></span><em th:text="${t.count + '회 · ' + t.visitors + '명'}"></em></li></ul>
+        </section>
+        <section class="panel" th:with="sp=${signupPrompts}"><div class="panel-head"><h2>가입 권유 · 28일</h2><span class="panel-note">목표: 주 5명 가입 · 클릭률 5% · 노출·클릭은 탭당 1회, 캘린더는 로그인 완료 기준</span></div>
+            <ul class="rank"><li th:each="p : ${sp.prompts}">
+                <span class="name" th:text="${p.label}" th:title="${p.key}"></span><span class="bar"><i th:style="${'width:' + (p.rate != null ? (p.rate > 100 ? 100 : p.rate) : 0) + '%'}"></i></span>
+                <em th:text="${'노출 ' + p.views + ' · 클릭 ' + p.clicks + (p.rate != null ? ' · ' + p.rate + '%' : '')}"></em></li></ul>
+            <p class="muted spaced-top" th:text="${'주간 가입(최근 4주, 이번 주가 마지막): ' + #strings.listJoin(sp.weeklySignups, ' · ') + '명 · 기기 관심 공고 이어받기 ' + sp.imports + '회'}"></p>
         </section>
         <section class="panel"><div class="panel-head"><h2>최근 가입</h2><a th:href="@{/admin/members}">회원 전체 →</a></div>
             <ul class="mini"><li th:each="m : ${signups}"><a th:href="@{/admin/members/{seq}(seq=${m.seq})}" th:text="${m.nickname + ' · ' + m.email}"></a>

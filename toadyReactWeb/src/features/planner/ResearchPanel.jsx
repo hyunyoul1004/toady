@@ -20,10 +20,11 @@ import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
 import { summaryOf, downloadCalendar, koreaToday } from './plannerUtils';
-import { receiptState } from '@/features/announcement/receiptState';
 import { detailSupplyScale, supplyMetric } from '@/features/announcement/supplyScale';
 import { formatManwon, tradeComparison } from './researchUtils';
 import { usePlanner } from './usePlanner';
+import { ResultSoonNotice } from '@/features/account/SignupPrompts';
+import { isAlwaysOpenEnd, receiptState } from '@/features/announcement/receiptState';
 import { normalizeStage } from './stageRules';
 import { useNeighborhoodResearch } from './useNeighborhoodResearch';
 import PushPrompt from '@/features/push/PushPrompt';
@@ -89,12 +90,13 @@ export function AnnouncementActions({detail}) {
   }
   async function undoRemove(){
     if(!removed)return;setBusy(true);setMessage(null);
-    try{await planner.save({...removed,summary:removed.summary||summary});setRemoved(null);}catch(e){setMessage(e.message);}finally{setBusy(false);}
+    try{await planner.save({...removed,summary:removed.summary||summary},{quiet:true});setRemoved(null);}catch(e){setMessage(e.message);}finally{setBusy(false);}
   }
   return <>
     {/* 저장 버튼은 저장/해제 토글이다. 일정 추가는 이 공고 일정만 .ics 파일로 받는다. */}
     <div className="announcement-header-actions" aria-label="공고 저장과 일정 관리">    <div className="research-primary-actions"><Button size="small" className="announcement-save-action" variant={saved?'outlined':'contained'} disableElevation startIcon={saved?<BookmarkRounded />:<BookmarkBorderRounded />} disabled={busy || planner.isLoading || Boolean(planner.error)} aria-label={saved?'관심 공고 저장됨, 누르면 저장 해제':undefined} title={saved?'다시 누르면 관심 공고에서 빠져요':undefined} onClick={()=>save()}>{pending==='remove'?'해제 중…':pending==='save'?'저장 중…':saved?'관심 공고 저장됨':'관심 공고 저장'}</Button><Button size="small" variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>downloadCalendar([summary])} disabled={!summary.events.length}>일정 추가</Button><Button size="small" className="announcement-my-action" component={Link} to="/my" variant="outlined" startIcon={<FolderOpenOutlined />}>나의 청약</Button></div>
     {!planner.loggedIn && <p className="research-storage-note">로그인 없이 저장하고, 이 브라우저에서 이어볼 수 있어요.</p>}
+    {!planner.loggedIn && saved && <ResultSoonNotice items={planner.items.filter(x=>x.id===summary.id)} />}
     </div>    {justSaved && <PushPrompt compact overlayId="push-settings-detail" announcementId={summary.id} loggedIn={planner.loggedIn} onCalendar={summary.events.length ? () => downloadCalendar([summary]) : undefined} />}
     {/* 해제 확인 → 해제 뒤 되돌리기 → 오류 순서로 안내 */}
     {confirmRemove && saved && <Alert severity="warning" sx={{my:1}} action={<><Button color="inherit" size="small" onClick={()=>setConfirmRemove(false)}>취소</Button><Button color="inherit" size="small" sx={{fontWeight:800}} disabled={busy} onClick={()=>save(true)}>해제</Button></>}>메모·준비 체크·진행 단계가 있는 공고예요. 해제하면 함께 지워져요.</Alert>}
@@ -140,7 +142,7 @@ export default function ResearchPanel({detail,children,after,tab:controlledTab,o
     {/* 접수·발표·공급 규모 세 칸 요약 */}
     <header className="research-heading"><span className="research-eyebrow">모집공고 핵심 요약</span><Chip size="small" label={status} variant="outlined" /></header>
     <div className="research-metrics">
-      <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
+      <div className="research-metric"><span><CalendarMonthOutlined />청약 접수</span><strong>{shortDate(summary.startDate)}<i>—</i>{isAlwaysOpenEnd(summary.endDate)?'상시 접수':shortDate(summary.endDate)}</strong><small>{summary.startDate?`${summary.startDate.slice(0,4)}년`:'일정 미제공'} · 공급 유형별 접수일 확인</small></div>
       <div className="research-metric"><span><EventAvailableOutlined />당첨자 발표</span><strong>{shortDate(summary.winnerDate)}</strong><small>{summary.winnerDate?`${summary.winnerDate.slice(0,4)}년`:'일정 미제공'} · 공식 발표 기준</small></div>
       <div className="research-metric"><span><ApartmentRounded />공급 규모</span><strong>{supplyCell.number}{supplyCell.unit && <em>{supplyCell.unit}</em>}</strong><small>{supplyCell.caption}</small></div>
     </div>

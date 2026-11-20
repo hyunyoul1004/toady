@@ -114,3 +114,11 @@ test('날짜 숫자 입력은 점을 자동으로 넣고 실제 있는 날짜만
   assert.equal(toIsoDate('1989.02.30'), '', '없는 날짜');
   assert.equal(toIsoDate('1989.03'), '');
 });
+
+test('이야기 단계는 상세 접수 상태(receiptState)와 같은 규칙: 상시 접수 400일 상한·마감일이 시작일보다 앞선 공고', () => {
+  assert.equal(storyStage({ startDate: '2025-01-02', endDate: '9999-12-31' }, '2026-11-20'), 'after', '400일 상한이 지나 접수 끝, 발표일 없음');
+  assert.equal(storyStage({ startDate: '2026-11-01', endDate: '9999-12-31' }, '2026-11-20'), 'open', '상시 접수 기간 안');
+  assert.equal(storyStage({ startDate: '2026-11-20', endDate: '2026-11-18' }, '2026-11-20'), 'open', '마감일이 앞서면 시작일 하루 접수');
+  assert.equal(storyStage({ startDate: '2026-11-20', endDate: '2026-11-18', winnerDate: '2026-11-27' }, '2026-11-21'), 'waiting');
+  assert.equal(storyStage({}, '2026-11-20'), 'before', '날짜가 없으면 접수 전 질문');
+});

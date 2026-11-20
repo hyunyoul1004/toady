@@ -61,4 +61,13 @@ class ReceiptWindowRulesTest {
         assertTrue(entry(TODAY.minusDays(20), TODAY.minusDays(18)).listed(TODAY));
         assertTrue(entry(TODAY.plusDays(100), TODAY.plusDays(101)).listed(TODAY));
     }
+
+    @org.junit.jupiter.api.Test
+    void alwaysOpenEndIsNotARealDeadline() {
+        // 웹 receiptState.js ALWAYS_OPEN_FROM(2100-01-01)과 같은 기준. PlannerSummary는 이 마감일을 '접수 마감' 일정으로 넣지 않는다.
+        assertTrue(ReceiptWindow.alwaysOpen(LocalDate.of(9999, 12, 31)));
+        assertTrue(ReceiptWindow.alwaysOpen(LocalDate.of(2100, 1, 1)));
+        assertFalse(ReceiptWindow.alwaysOpen(LocalDate.of(2099, 12, 31)));
+        assertFalse(ReceiptWindow.alwaysOpen(null));
+    }
 }

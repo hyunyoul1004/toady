@@ -51,7 +51,9 @@ class PlannerIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE VARCHAR(20) NOT NULL, HOUSE_MANAGE_NO VARCHAR(40) NOT NULL, PBLANC_NO VARCHAR(40) NOT NULL,"
                 + " HIDDEN_YN VARCHAR(1) DEFAULT 'N' NOT NULL, NOTICE VARCHAR(500), ADMIN_NAME VARCHAR(100) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL, PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO))");
         jdbc.update("DELETE FROM TB_ANNOUNCEMENT_OVERRIDE"); reloadOverrides();
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동','2026-11-12','2026-11-13','2026-11-20')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,PRZWNER_PRESNATN_DE) VALUES ('P1','N1','<운정 테스트>','경기도 파주시 동패동',?,?,?)",
+                // 날짜는 오늘 기준(접수 8~7일 전, 발표 오늘). 고정 날짜는 공개 목록의 최근 365일에서 빠지는 날 테스트가 깨진다.
+                java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(8).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(7).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString());
         org.mockito.Mockito.reset(mail);
         com.toady.web.app.planner.PublicPagesCache.clear();
         // 앱 화면용 JSON 캐시(weekly-summary 등, 10분)도 테스트마다 비운다(앞 테스트의 공고가 남지 않게).
@@ -305,8 +307,9 @@ class PlannerIntegrationTest {
         assertTrue(many.contains("<strong>"+activeCount+"</strong><span>접수 중·예정</span>") && many.contains("이번 주 일정 "+ids.size()+"건 · 접수 중 "+counts.path("open").asInt()),many);
         // '오늘 접수'는 접수 기간이 아니라 그날 신청할 수 있는지(applyToday)로 센다. 무순위는 기간 내내, APT는 순위 접수일에만.
         summary.path("current").forEach(item->{ if(item.path("id").asText().equals("remaining/R1/N1")){ assertTrue(item.path("applyToday").asBoolean()); assertEquals(today.toString(),item.path("nextApplyDay").asText()); } });
-        assertEquals("apt/W1/N1",summary.path("winners").get(0).path("id").asText());
-        assertEquals(today.toString(),summary.path("winners").get(0).path("date").asText());
+        // 같은 날 발표하는 다른 공고(P1, 발표 오늘)가 있어 순서가 아니라 W1을 찾아 본다.
+        var winnerW1=java.util.stream.StreamSupport.stream(summary.path("winners").spliterator(),false).filter(w->w.path("id").asText().equals("apt/W1/N1")).findFirst().orElseThrow();
+        assertEquals(today.toString(),winnerW1.path("date").asText());
         // 앱 '지역별 청약'은 전국 접수 중·예정 공고를 받아 화면에서 지역으로 묶는다(마감 공고는 넣지 않는다).
         var active=json.readTree(html(mvc.perform(get("/api/v1/public/active-announcements")).andExpect(status().isOk())));
         var activeIds=new java.util.ArrayList<String>(); active.forEach(item->activeIds.add(item.path("id").asText()));
@@ -494,7 +497,7 @@ class PlannerIntegrationTest {
                 .andExpect(status().isOk()).andExpect(header().doesNotExist("WWW-Authenticate"));
     }
     @Test void livingAreaSearchFindsAddressWithoutDistrictWideFalseMatchAndHtmlIsEscaped() throws Exception {
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE) VALUES ('P2','N2','파주 다른 공고','경기도 파주시 문산읍','2026-11-12')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE) VALUES ('P2','N2','파주 다른 공고','경기도 파주시 문산읍',?)",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(8).toString());
         mvc.perform(get("/api/v1/announcements/suggestions").param("keyword","운정역")).andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1));
         mvc.perform(get("/api/v1/announcements").param("keyword","운정")).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
         String html=mvc.perform(get("/api/v1/public/announcements/apt/P1/N1")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
@@ -585,7 +588,7 @@ class PlannerIntegrationTest {
     }
     /** 관심 공고 요약(회원 목록·비회원 요약)에 목록과 같은 접수처 판정(receiptChannel)을 넣는다. */
     @Test void favoriteSummariesCarryReceiptChannel() throws Exception {
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,BSNS_MBY_NM,HMPG_ADRES) VALUES ('LH1','N1','LH 접수 단지','경기도 파주시 야당동 1','2026-11-12','2026-11-13','한국토지주택공사','https://apply.lh.or.kr')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE,BSNS_MBY_NM,HMPG_ADRES) VALUES ('LH1','N1','LH 접수 단지','경기도 파주시 야당동 1',?,?,'한국토지주택공사','https://apply.lh.or.kr')",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(8).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(7).toString());
         var both=json.readTree(mvc.perform(post("/api/v1/planner/summaries").contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"apt/LH1/N1\",\"apt/P1/N1\"]}"))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertEquals("LH",both.path(0).path("receiptChannel").asText());

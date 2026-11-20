@@ -5,7 +5,7 @@
  */
 import config from 'config';
 // 보낼 수 있는 행동 이름. 여기에 없는 이름은 보내지 않는다.
-const ACTIONS = new Set(['detail_view','favorite_add','alert_enable','official_click','research_click','compare','share','score_save','poll_vote','push_enable','match_save','map_tool','push_open','push_denied','push_disable','app_install']);
+const ACTIONS = new Set(['detail_view','favorite_add','alert_enable','official_click','research_click','compare','share','score_save','poll_vote','push_enable','match_save','map_tool','push_open','push_denied','push_disable','app_install','signup_prompt_view','signup_prompt_click','guest_import']);
 /** action: ACTIONS 중 하나, subject: '종류/번호/번호'(공고) 또는 'tool/이름'(기능). */
 export function trackAction(action, subject) {
   if (!ACTIONS.has(action) || !/^((apt|urban|remaining|public-rental|optional)\/[a-zA-Z0-9_-]{1,40}\/[a-zA-Z0-9_-]{1,40}|tool\/[a-z0-9-]{1,40})$/.test(subject || '')) return;

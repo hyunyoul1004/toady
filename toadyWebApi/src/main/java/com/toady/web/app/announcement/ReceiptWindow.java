@@ -11,6 +11,10 @@ import java.time.LocalDate;
  * - 접수 예정: 오늘 < 접수 시작일 ≤ 오늘 + UPCOMING_DAYS.
  */
 public final class ReceiptWindow {
+    /** 이 날 이후 마감일은 실제 마감이 아니라 '상시 접수' 표기다(예: 9999-12-31). 웹 receiptState.js ALWAYS_OPEN_FROM과 같다. */
+    public static final LocalDate ALWAYS_OPEN_FROM = LocalDate.of(2100, 1, 1);
+    /** 마감일이 '상시 접수' 표기인지. 관심 공고 일정·캘린더에 '접수 마감'으로 넣지 않는 데 쓴다. */
+    public static boolean alwaysOpen(LocalDate end) { return end != null && !end.isBefore(ALWAYS_OPEN_FROM); }
     /**
      * 접수 예정으로 보여 줄 최대 일수. 청약 공고는 보통 접수 2주 전쯤 올라오지만 공공지원 민간임대 등은 몇 달 앞서 올라오기도 한다.
      * 데이터에는 이미 공고된 것만 있으므로 넉넉히 잡아도 잡음이 늘지 않아, 기존에 가장 넓던 생활권·줍줍 페이지 값(180일)으로 맞췄다

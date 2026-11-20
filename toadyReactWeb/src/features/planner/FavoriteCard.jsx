@@ -12,7 +12,7 @@ import CalendarMonthOutlined from '@mui/icons-material/CalendarMonthOutlined';
 import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { CHECKS, downloadCalendar, koreaToday } from './plannerUtils';
-import { receiptState } from '@/features/announcement/receiptState';
+import { receiptState, isAlwaysOpenEnd } from '@/features/announcement/receiptState';
 import { STAGES, nextStep, normalizeStage, resultFacts } from './stageRules';
 import { gapBadge } from '@/features/match/priceGapRules';
 
@@ -73,7 +73,7 @@ export default function FavoriteCard({ item, planner, selected, onSelect, report
     <div className="planner-favorite-top"><div className="planner-card-tags"><Chip size="small" label={status} color={receiving?'primary':'default'} variant="outlined" />{s.housingType && <span>{s.housingType}</span>}{item.emailEnabled && planner.remindersEnabled && <span className="planner-mail-indicator"><NotificationsNoneRounded fontSize="inherit" /> 알림 켜짐</span>}</div><IconButton ref={menuButtonRef} aria-label={`${s.houseNm} 더 보기`} onClick={e=>setMenu(e.currentTarget)} size="small"><MoreHorizRounded /></IconButton></div>
     <h3>{s.unavailable?s.houseNm:<Link to={`/my?subscriptSeq=${encodeURIComponent(item.id)}`} state={{plannerDetail:true}}>{s.houseNm}</Link>}</h3>
     <div className="planner-address"><LocationOnOutlined fontSize="inherit" /><span>{s.address || '주소 미제공'}</span></div>
-    <div className="planner-card-dates"><div><span>청약 접수</span><strong>{s.startDate?.slice(5).replace('-','.') || '미제공'}<em>—</em>{s.endDate?.slice(5).replace('-','.') || '미제공'}</strong></div><div><span>당첨자 발표</span><strong>{s.winnerDate || '미제공'}</strong></div></div>
+    <div className="planner-card-dates"><div><span>청약 접수</span><strong>{s.startDate?.slice(5).replace('-','.') || '미제공'}<em>—</em>{isAlwaysOpenEnd(s.endDate) ? '상시 접수' : (s.endDate?.slice(5).replace('-','.') || '미제공')}</strong></div><div><span>당첨자 발표</span><strong>{s.winnerDate || '미제공'}</strong></div></div>
     {s.unavailable && <Alert severity="warning" sx={{mb:2}}>원본을 찾을 수 없습니다. 준비 노트는 유지됩니다.</Alert>}
     {/* 진행 단계 버튼(관심 단계는 버튼 없음)과 다음 할 일 */}
     {!s.unavailable && <div className="planner-stage">

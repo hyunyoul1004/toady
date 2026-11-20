@@ -285,4 +285,49 @@ class PublicPagesUnitTest {
         assertEquals(1, PublicRegionPages.page(null)); assertEquals(3, PublicRegionPages.page("3"));
         assertEquals(0, PublicRegionPages.page("0")); assertEquals(0, PublicRegionPages.page("abc")); assertEquals(0, PublicRegionPages.page("10000"));
     }
+    @Test void alwaysOpenEndIsShownAsAlwaysOpenInsteadOfAFakeDate() {
+        var today = LocalDate.of(2026, 11, 20);
+        LocalDate start = LocalDate.of(2026, 11, 12), never = LocalDate.of(9999, 12, 31);
+        // 공통 문구: 상시 접수 표기 마감일은 '상시 접수', 보통 마감일은 그대로, collapse면 같은 날·없는 마감일은 시작일만.
+        assertEquals("11.12~상시 접수", PublicHtml.receiptPeriod(start, never, "~", false, day -> PublicHtml.shortDate(day, today)));
+        assertEquals("11.12~11.14", PublicHtml.receiptPeriod(start, LocalDate.of(2026, 11, 14), "~", false, day -> PublicHtml.shortDate(day, today)));
+        assertEquals("2026-11-12", PublicHtml.receiptPeriod(start, start, " ~ ", true, PublicHtml::date));
+        assertEquals("2026-11-12", PublicHtml.receiptPeriod(start, null, " ~ ", true, PublicHtml::date));
+        assertEquals("2026-11-12 ~ 미제공", PublicHtml.receiptPeriod(start, null, " ~ ", false, PublicHtml::date));
+        assertEquals("2026-11-12 ~ 상시 접수", PublicHtml.receiptPeriod(start, LocalDate.of(2100, 1, 1), " ~ ", true, PublicHtml::date));
+
+        // 공고 페이지 설명과 같은 RSS 설명, 공유 이미지 문구
+        var summary = new PlannerSummary.Summary("public-rental/H1/N1", "상시 임대 단지", "경기도 파주시 동패동 1", "100", "임대", start, never, null, "",
+            List.of(), false, null, null);
+        String feed = AnnouncementFeed.description(summary);
+        assertTrue(feed.contains("~상시 접수") && !feed.contains("9999"), feed);
+        assertEquals("2026-11-12 ~ 상시 접수", AnnouncementShareCard.receipt(summary));
+
+        // 지역별 청약 목록 한 줄
+        var entry = new PublicAnnouncementIndex.Entry("public-rental", "H1", "N1", "상시 임대 단지", "임대", "경기도 파주시 동패동 1", start, never, null, null, null, null);
+        String region = PublicRegionPages.item("https://www.toady.co.kr", entry, today);
+        assertTrue(region.contains("접수 11.12 ~ 상시 접수") && !region.contains("9999"), region);
+
+        // 생활권·줍줍·이번 주 청약 페이지가 함께 쓰는 공고 목록 카드
+        var source = new com.toady.web.app.announcement.dto.AnnouncementListItem("public-rental", "H1", "N1", "상시 임대 단지", "01", "임대", "410", "경기",
+            "경기도 파주시 동패동 1", "", start.toString(), never.toString(), null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null, "100", 0);
+        String area = new PublicAreaPage(null, "https://www.toady.co.kr", null)
+            .section("접수 중", List.of(new PublicAreaPage.Item(source, start, never, PublicAreaPage.Status.OPEN)), "");
+        assertTrue(area.contains("접수 2026-11-12 ~ 상시 접수") && !area.contains("9999"), area);
+    }
+    @Test void areaCalendarDropsAlwaysOpenAnnouncementsAfterTheirReceiptCap() {
+        var today = LocalDate.of(2026, 11, 20);
+        LocalDate never = LocalDate.of(9999, 12, 31);
+        // 시작 후 400일이 지나 끝난 상시 접수 공고: 원래 마감일(9999)로는 '최근 마감'이지만 인정 마지막 날(시작+400일)이 2주보다 오래전이라 뺀다.
+        LocalDate oldStart = today.minusDays(com.toady.web.app.announcement.ReceiptWindow.MAX_OPEN_DAYS + 30);
+        assertFalse(AreaCalendar.recent(new PublicAreaPage.Item(null, oldStart, never, PublicAreaPage.Status.CLOSED), today));
+        // 400일 상한이 끝난 지 2주 안이면 다른 마감 공고처럼 남긴다.
+        LocalDate recentStart = today.minusDays(com.toady.web.app.announcement.ReceiptWindow.MAX_OPEN_DAYS + 10);
+        assertTrue(AreaCalendar.recent(new PublicAreaPage.Item(null, recentStart, never, PublicAreaPage.Status.CLOSED), today));
+        // 보통 마감 공고는 마감 2주 이내만, 접수 중·예정은 항상 넣는다.
+        assertTrue(AreaCalendar.recent(new PublicAreaPage.Item(null, today.minusDays(20), today.minusDays(14), PublicAreaPage.Status.CLOSED), today));
+        assertFalse(AreaCalendar.recent(new PublicAreaPage.Item(null, today.minusDays(20), today.minusDays(15), PublicAreaPage.Status.CLOSED), today));
+        assertTrue(AreaCalendar.recent(new PublicAreaPage.Item(null, today.minusDays(3), never, PublicAreaPage.Status.OPEN), today));
+    }
 }

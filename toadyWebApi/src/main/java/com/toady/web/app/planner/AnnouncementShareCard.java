@@ -43,7 +43,7 @@ final class AnnouncementShareCard {
             g.setColor(new Color(173,196,217));font(g,23,false);
             g.drawString(scores.available()?"공개 최저 당첨가점":"청약 접수",88,386);g.drawString(scores.available()?"공개 최고 당첨가점":"당첨자 발표",670,386);
             g.setColor(Color.WHITE);font(g,31,true);
-            g.drawString(scores.available()?(scores.minimum().isEmpty()?"미공개":scores.minimum()+"점"):date(summary.startDate())+" ~ "+date(summary.endDate()),88,446);
+            g.drawString(scores.available()?(scores.minimum().isEmpty()?"미공개":scores.minimum()+"점"):receipt(summary),88,446);
             g.drawString(scores.available()?(scores.maximum().isEmpty()?"미공개":scores.maximum()+"점"):date(summary.winnerDate()),670,446);
             g.setColor(new Color(50,213,174));font(g,27,true);
             g.drawString(scores.available()?"공개 주택형·지역 전체 범위 · 주택형별 가점은 상세에서":switch(section){case "rate" -> "주택형별 경쟁률을 한눈에 확인하세요";case "map" -> "공고 위치와 동네 실거래를 확인하세요";case "comment" -> "이 공고에 대한 이야기를 나눠보세요";default -> "청약 일정부터 분양가·입지까지 한곳에서";},60,558);
@@ -53,6 +53,8 @@ final class AnnouncementShareCard {
     }
     private static void font(Graphics2D g,int size,boolean bold) {g.setFont(new Font(FONT_FAMILY,bold?Font.BOLD:Font.PLAIN,size));}
     private static String date(Object date) {return date==null?"미제공":date.toString();}
+    /** 이미지의 접수 기간(예: 2026-11-12 ~ 2026-11-14). 상시 접수 공고는 마감일 대신 '상시 접수'(공개 페이지와 같은 PublicHtml.receiptPeriod). */
+    static String receipt(PlannerSummary.Summary summary) {return PublicHtml.receiptPeriod(summary.startDate(),summary.endDate()," ~ ",false,AnnouncementShareCard::date);}
     // width 안에 들어가는 글자 수(코드포인트 단위로 세어 이모지·한글이 깨지지 않게).
     private static int fit(Graphics2D g,String text,int width) {int i=0;while(i<text.length()){int n=i+Character.charCount(text.codePointAt(i));if(g.getFontMetrics().stringWidth(text.substring(0,n))>width)break;i=n;}return i;}
     private static String ellipsis(Graphics2D g,String text,int width) {return g.getFontMetrics().stringWidth(text)<=width?text:text.substring(0,fit(g,text,width-g.getFontMetrics().stringWidth("…")))+"…";}

@@ -242,6 +242,13 @@ export const SignUp = (props) => {
         </Typography>
       </Box>
 
+      {/* 가입하면 달라지는 점(기획: 회원 가입 유도 1단계). 비회원도 쓰는 기능은 적지 않는다. */}
+      <Box component="ul" aria-label="가입하면 할 수 있는 것" sx={{ listStyle: 'none', m: 0, mb: 2.5, p: '12px 14px', borderRadius: 2, bgcolor: '#f0f7ff', display: 'grid', gap: 0.75 }}>
+        {['관심 공고·진행 단계·메모를 휴대폰과 PC에서 이어 보기', '관심 공고 일정을 휴대폰 캘린더에 자동으로', '단지 이야기에 글과 답글 남기기'].map(text => (
+          <Typography key={text} component="li" sx={{ fontSize: '0.8rem', color: '#1e3a5f', lineHeight: 1.5, '&::before': { content: '"✓"', color: '#2563eb', fontWeight: 800, mr: 1 } }}>{text}</Typography>
+        ))}
+      </Box>
+
       {/* 에러 메시지 알림 */}
       {errorMessage && (
         <Alert

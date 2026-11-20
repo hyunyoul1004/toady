@@ -191,7 +191,7 @@ public class PublicRegionPages {
     static String item(String domain, PublicAnnouncementIndex.Entry entry, LocalDate today) {
         String badge = switch (entry.status(today)) { case OPEN -> "<span class='badge open'>접수 중</span>"; case UPCOMING -> "<span class='badge'>예정</span>"; default -> "<span class='badge'>마감</span>"; };
         String period = entry.start() == null ? "모집공고 " + PublicHtml.shortDate(entry.announced(), today)
-            : "접수 " + PublicHtml.shortDate(entry.start(), today) + (entry.end() == null || entry.end().equals(entry.start()) ? "" : " ~ " + PublicHtml.shortDate(entry.end(), today));
+            : "접수 " + PublicHtml.receiptPeriod(entry.start(), entry.end(), " ~ ", true, day -> PublicHtml.shortDate(day, today));
         String kind = entry.houseKind().isBlank() ? entry.typeLabel() : entry.typeLabel() + " · " + entry.houseKind();
         return "<a href='" + esc(domain + entry.path()) + "'><strong>" + badge + esc(entry.houseNm()) + "</strong><span class='muted'>" + esc(kind + " · " + period)
             + "</span><br><span class='muted'>" + esc(entry.address()) + "</span></a>";

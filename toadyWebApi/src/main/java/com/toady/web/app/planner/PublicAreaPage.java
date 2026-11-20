@@ -286,7 +286,7 @@ public class PublicAreaPage {
         for (Item item : items) {
             var source = item.source();
             String badge = switch (item.status()) { case OPEN -> "<span class='badge open'>접수 중</span>"; case UPCOMING -> "<span class='badge'>예정</span>"; default -> "<span class='badge'>마감</span>"; };
-            String period = PublicHtml.date(item.start()) + (item.end() == null || item.end().equals(item.start()) ? "" : " ~ " + PublicHtml.date(item.end()));
+            String period = PublicHtml.receiptPeriod(item.start(), item.end(), " ~ ", true, PublicHtml::date);
             list.append("<a href='").append(esc(domain + "/announcements/" + item.id())).append("'><strong>").append(badge).append(esc(source.houseNm()))
                 .append("</strong><span class='muted'>").append(esc(source.houseSecdNm() == null ? "" : source.houseSecdNm() + " · ")).append("접수 ").append(esc(period))
                 .append("</span><br><span class='muted'>").append(esc(source.hssplyAdres())).append("</span></a>");

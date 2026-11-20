@@ -33,6 +33,7 @@ import SiteNotices from '@/features/account/SiteNotices';
 import Dialog from '@mui/material/Dialog';
 import CloseIcon from '@mui/icons-material/Close';
 import Snackbar from '@mui/material/Snackbar';
+import { GuestImportPrompt, SignupPromptHost } from '@/features/account/SignupPrompts';
 import Button from '@mui/material/Button';
 
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
@@ -327,6 +328,9 @@ export function MainLayout() {
           />
         </AccountDialogBody>
       </Dialog>
+      {/* 가입 권유: 관심 공고 3개째 저장 카드(비회원), 로그인 뒤 기기 관심 공고 옮기기 확인(회원). features/account/SignupPrompts.jsx */}
+      <SignupPromptHost openSignup={() => setSignUpModalOpen(true)} />
+      <GuestImportPrompt />
       {/* 로그인 만료 안내. 바깥을 눌러 닫히지 않게(clickaway 무시) 하고, 모바일은 하단 탭 위로 띄운다. */}
       <Snackbar open={sessionExpired} autoHideDuration={8000} onClose={(_, reason) => { if (reason !== 'clickaway') setSessionExpired(false); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} sx={{ bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', md: 24 } }}

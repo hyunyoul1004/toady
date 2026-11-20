@@ -17,7 +17,11 @@ import org.springframework.web.client.RestClientException
 @Component
 class ApiClient(@Value("\${toady.api.base-url:http://toadyWebApi:8080}") baseUrl: String, @Value("\${toady.api.token:}") private val token: String) {
 	/** API 응답 요약. ok가 false면 message를 화면에 그대로 보여 준다. */
-	data class Reply(val ok: Boolean, val message: String, val body: Map<*, *> = emptyMap<String, Any>())
+	/** transportError: 응답을 받지 못했다(연결 실패·시간 초과). API가 거절한 경우(4xx·5xx 응답)와 구분한다 — 응답이 끊겼으면 작업은 이미 진행됐을 수 있다. */
+	data class Reply(val ok: Boolean, val message: String, val body: Map<*, *> = emptyMap<String, Any>(), val transportError: Boolean = false, val status: Int? = null) {
+		/** 요청이 이미 처리되기 시작했을 수 있는 실패: 응답을 못 받았거나(연결·시간 초과) API 안에서 오류가 났다(5xx). 4xx 거절은 처리 전에 막힌 것이다. */
+		val maybeApplied: Boolean get() = transportError || (status != null && status >= 500)
+	}
 
 	private val client = RestClient.builder().baseUrl(baseUrl.trimEnd('/'))
 		.requestFactory(SimpleClientHttpRequestFactory().apply { setConnectTimeout(3000); setReadTimeout(60000) })
@@ -46,10 +50,10 @@ class ApiClient(@Value("\${toady.api.base-url:http://toadyWebApi:8080}") baseUrl
 			when {
 				status == 404 && map.isEmpty() -> Reply(false, "API가 요청을 거절했습니다. 토큰이 API와 같은지 확인하세요.")
 				status in 200..299 -> Reply(true, map["message"]?.toString() ?: "처리했습니다.", map)
-				else -> Reply(false, map["message"]?.toString() ?: "API 오류(HTTP $status)")
+				else -> Reply(false, map["message"]?.toString() ?: "API 오류(HTTP $status)", map, status = status)
 			}
 		} catch (failure: RestClientException) {
-			Reply(false, "API에 연결하지 못했습니다: ${failure.mostSpecificCause.message ?: failure.javaClass.simpleName}")
+			Reply(false, "API에 연결하지 못했습니다: ${failure.mostSpecificCause.message ?: failure.javaClass.simpleName}", transportError = true)
 		}
 	}
 }

@@ -16,6 +16,7 @@ import { buildAnnouncementQueryParams } from '@/features/announcement/api/announ
 import { scheduleRows } from '@/features/announcement/applyDays';
 import { receiptChannel, receiptPlaceName } from '@/features/announcement/receiptChannel';
 import { recruitHouseholds, supplyScale } from '@/features/announcement/supplyScale';
+import { isAlwaysOpenEnd } from '@/features/announcement/receiptState';
 
 /** 서버 통합 검색(AnnouncementSearchService.searchAll)이 한 번에 허용하는 범위: (page+1)×size ≤ 1000. */
 const MAX_LIST_ITEMS = 1000;
@@ -265,7 +266,10 @@ export const announcementApi = {
         ? String(anno.pblancUrl).trim()
         : getFallbackPblancUrl(type, anno.houseManageNo || houseManageNo, anno.pblancNo || pblancNo),
       applicationDate: formatDate(anno.rcritPblancDe),
-      subscriptDate: formatDateRange(anno.rceptBgnde || anno.subscrptRceptBgnde, anno.rceptEndde || anno.subscrptRceptEndde),
+      // 상시 접수(마감일 9999-12-31 등)는 마감일 대신 '상시 접수'로(공유 문구·검색 설명에 가짜 마감일이 나오지 않게).
+      subscriptDate: isAlwaysOpenEnd(anno.rceptEndde || anno.subscrptRceptEndde)
+        ? ((anno.rceptBgnde || anno.subscrptRceptBgnde) ? `${formatDate(anno.rceptBgnde || anno.subscrptRceptBgnde)} ~ 상시 접수` : '상시 접수')
+        : formatDateRange(anno.rceptBgnde || anno.subscrptRceptBgnde, anno.rceptEndde || anno.subscrptRceptEndde),
       specialPriorityArea: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
       specialOtherAreas: formatDateRange(anno.spsplyRceptBgnde, anno.spsplyRceptEndde),
       specialPlaceOfReception: placeOfReception,

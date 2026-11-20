@@ -195,13 +195,16 @@ td form { margin: 0; }
 .pager .secondary { min-height: 38px; padding: 6px 14px; }
 
 /* ===== 목록·막대 ===== */
-.daily { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; height: 160px; padding-top: 6px; }
+/* 높이: 막대 + 숫자·날짜·페이지뷰 줄. 페이지뷰 줄을 넣으며 16px 늘려 큰 날의 막대가 눌리지 않게 했다. */
+.daily { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; height: 176px; padding-top: 6px; }
 .daily div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; min-width: 0; }
 .daily i { display: block; width: 70%; max-width: 28px; background: #b9dccf; border-radius: 4px 4px 0 0; min-height: 2px; }
 .daily div.today i { background: var(--green); }
 .daily b { font-size: 11px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .daily small { margin: 0; font-size: 10px; white-space: nowrap; }
 .daily div.weekend small { color: #c47a5b; }
+/* 날짜 아래 페이지뷰: 주말 색을 따라가지 않고 흐리게 */
+.daily small.muted, .daily div.weekend small.muted { color: #94a3b8; font-size: 9.5px; }
 
 .rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .rank li { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(60px, 1fr) auto; gap: 12px; align-items: center; font-size: 13px; }
@@ -402,6 +405,9 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 28px
   .daily { gap: 3px; height: 140px; }
   .daily b { font-size: 10px; }
   .daily div:nth-child(odd):not(:last-child) small { visibility: hidden; }
+  /* 좁은 화면은 막대 높이를 지키려고 페이지뷰 줄을 뺀다(하루 걸러 숨기면 읽을 수 없어서). 주간 표의 페이지뷰로 본다. */
+  .daily small.muted { display: none; }
+  .wide-only { display: none; }
   .mini li { flex-direction: column; gap: 2px; align-items: stretch; }
   .mini li small { white-space: normal; }
   .comment-meta small { margin-left: 0; flex-basis: 100%; }

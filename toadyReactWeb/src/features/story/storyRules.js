@@ -3,6 +3,8 @@
  * 선택한 질문은 글 앞에 [말머리]로 붙여 목록에서 같은 주제를 알아보게 한다.
  * 쓰는 곳: StoryPrompts.jsx, views/main/subscriptComment/SubscriptComment.jsx.
  */
+import { receiptState } from '../announcement/receiptState.js';
+
 export const STAGE_PROMPTS = {
   before: [
     { tag: '모델하우스', text: '모델하우스 다녀오셨나요? 분위기와 평면이 어땠는지 알려 주세요.' },
@@ -28,13 +30,17 @@ export const STAGE_PROMPTS = {
 };
 export const STAGE_LABEL = { before: '접수 전', open: '접수 중', waiting: '발표 기다리는 중', after: '발표 이후' };
 
-/** today·날짜는 YYYY-MM-DD. 접수 시작 전 → before, 접수 중 → open, 마감 후 발표 전 → waiting, 발표 당일부터 → after. */
+/**
+ * today·날짜는 YYYY-MM-DD. 발표 당일부터 → after, 그 밖에는 상세의 접수 상태 칩과 같은 receiptState 규칙을 쓴다:
+ * 접수 전(upcoming) → before, 접수 중(open) → open, 접수 끝(closed) → 발표일이 있으면 waiting, 없으면 after.
+ * (상시 접수·400일 상한·마감일이 시작일보다 앞선 공고도 상태 칩과 같은 단계가 된다.)
+ */
 export function storyStage({ startDate, endDate, winnerDate }, today) {
   if (winnerDate && today >= winnerDate) return 'after';
-  if (startDate && today < startDate) return 'before';
-  const end = endDate || startDate;
-  if (end && today <= end) return 'open';
-  if (end && today > end) return winnerDate ? 'waiting' : 'after';
+  const state = receiptState(startDate, endDate, today).state;
+  if (state === 'upcoming') return 'before';
+  if (state === 'open') return 'open';
+  if (state === 'closed') return winnerDate ? 'waiting' : 'after';
   return 'before';
 }
 

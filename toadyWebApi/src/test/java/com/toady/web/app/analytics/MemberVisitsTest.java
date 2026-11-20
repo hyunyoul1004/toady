@@ -53,4 +53,18 @@ class MemberVisitsTest {
         assertTrue(UsageEventController.validPair("app_install", "tool/install-guide"));
         assertFalse(UsageEventController.validPair("app_install", "tool/push"));
     }
+
+    @Test
+    void signupPromptEventsAcceptOnlyKnownMoments() {
+        // 웹 signupPrompt.js SIGNUP_MOMENTS·importBucket, 관리자 SIGNUP_MOMENT_NAMES와 같은 이름만 받는다.
+        for (String moment : java.util.List.of("tool/signup-favorite", "tool/signup-result", "tool/signup-calendar", "tool/signup-story")) {
+            assertTrue(UsageEventController.validPair("signup_prompt_view", moment), moment);
+            assertTrue(UsageEventController.validPair("signup_prompt_click", moment), moment);
+        }
+        assertFalse(UsageEventController.validPair("signup_prompt_view", "tool/signup-anything"));
+        assertFalse(UsageEventController.validPair("signup_prompt_click", "apt/1/1"));
+        assertTrue(UsageEventController.validPair("guest_import", "tool/import-1-2"));
+        assertTrue(UsageEventController.validPair("guest_import", "tool/import-6"));
+        assertFalse(UsageEventController.validPair("guest_import", "tool/import-17"), "정확한 개수는 받지 않는다");
+    }
 }

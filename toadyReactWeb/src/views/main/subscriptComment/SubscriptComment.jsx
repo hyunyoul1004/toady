@@ -57,6 +57,9 @@ import {
 } from '@/features/announcement/hooks/useAnnouncements';
 import { formatTimeAgo } from '@/utils/date.util';
 import { formatServerMessage } from '@/utils/text.util';
+import { PromptViewMark } from '@/features/account/SignupPrompts';
+import { trackPromptClick } from '@/features/account/signupPrompt';
+import { trackAction } from '@/features/analytics/trackAction';
 
 /**
  * 닉네임 문자열에 따라 일관된 파스텔톤 배경색과 텍스트색을 반환
@@ -848,13 +851,14 @@ const CommentContent = ({ subscriptDetail, subscriptSeq }) => {
           >
             <LockOutlinedIcon sx={{ fontSize: '1.2rem' }} />
           </Box>
+          <PromptViewMark moment="story" />
           <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>
             로그인하면 이 단지 이야기에 참여할 수 있어요
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.78rem' }}>
             모델하우스 후기, 가점·타입 고민, 당첨 후기를 같은 단지를 보는 사람들과 나눠 보세요.
           </Typography>
-          <Button variant="contained" disableElevation size="small" onClick={() => setLayoutOverlay('login')} sx={{ mt: 0.5, borderRadius: 2, fontWeight: 700, textTransform: 'none', bgcolor: '#2563eb' }}>
+          <Button variant="contained" disableElevation size="small" onClick={() => { trackPromptClick(trackAction, 'story'); setLayoutOverlay('login'); }} sx={{ mt: 0.5, borderRadius: 2, fontWeight: 700, textTransform: 'none', bgcolor: '#2563eb' }}>
             로그인하고 이야기 남기기
           </Button>
         </Paper>

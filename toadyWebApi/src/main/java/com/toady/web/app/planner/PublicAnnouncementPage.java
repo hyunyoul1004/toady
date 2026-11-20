@@ -110,7 +110,7 @@ public class PublicAnnouncementPage {
         StringBuilder summary=new StringBuilder();
         area.ifPresent(value -> summary.append(value.label()).append(" 생활권 · "));
         if(!price.isEmpty()) summary.append("주택형별 최고 공급금액 ").append(price).append(" · ");
-        summary.append("접수 ").append(PublicHtml.shortDate(s.startDate())).append("~").append(PublicHtml.shortDate(s.endDate()))
+        summary.append("접수 ").append(PublicHtml.receiptPeriod(s.startDate(), s.endDate(), "~", false, PublicHtml::shortDate))
             .append(" · 발표 ").append(PublicHtml.shortDate(s.winnerDate()));
         String lead=!tab.equals("rate")?resultLead(published):scores.available()?scores.text()+" · 공개 주택형·지역 전체 기준 · ":resultOut?resultLead(published):"주택형·순위별 공개 경쟁률 · ";
         String description=lead+summary+" · "+s.address();

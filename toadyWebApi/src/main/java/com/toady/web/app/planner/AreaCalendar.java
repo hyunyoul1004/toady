@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import com.toady.web.app.announcement.ReceiptWindow;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -81,11 +82,21 @@ public class AreaCalendar {
         var groups = areas.groups(area.label(), null, today, 45);
         List<PlannerSummary.Summary> list = new ArrayList<>();
         Stream.of(groups.open(), groups.upcoming(), groups.closed()).flatMap(List::stream)
-            .filter(item -> item.status() != PublicAreaPage.Status.CLOSED || (item.end() != null && !item.end().isBefore(today.minusDays(14))))
+            .filter(item -> recent(item, today))
             .limit(MAX_ANNOUNCEMENTS).forEach(item -> {
                 try { list.add(summaries.get(item.source().type(), item.source().houseManageNo(), item.source().pblancNo())); }
                 catch (EntityNotFoundException | IllegalArgumentException ignored) { }
             });
         return CalendarIcs.build(list, domain, now, "TOADY " + area.label() + " 청약", area.label() + " 생활권 청약 일정 (TOADY, 청약홈 공개 데이터)", false);
+    }
+
+    /**
+     * 캘린더에 담는지: 접수 중·예정이거나 마감 후 2주 이내. 마감일은 ReceiptWindow.lastDay(시작 후 400일 상한)로 본다.
+     * 상시 접수(9999-12-31 등) 공고가 원래 마감일로는 끝없이 '최근 마감'으로 남아 자리를 차지하지 않게, 400일이 지나면 다른 화면처럼 끝난 공고로 친다.
+     */
+    static boolean recent(PublicAreaPage.Item item, LocalDate today) {
+        if (item.status() != PublicAreaPage.Status.CLOSED) return true;
+        LocalDate last = item.start() == null ? item.end() : ReceiptWindow.lastDay(item.start(), item.end());
+        return last != null && !last.isBefore(today.minusDays(14));
     }
 }

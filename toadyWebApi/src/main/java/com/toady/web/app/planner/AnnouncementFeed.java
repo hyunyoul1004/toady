@@ -144,7 +144,7 @@ public class AnnouncementFeed {
         LivingAreas.match(s.address(), s.houseNm()).ifPresent(area -> out.append(area.label()).append(" 생활권 · "));
         String price = PublicHtml.priceRange(s.minPriceManwon(), s.maxPriceManwon());
         if (!price.isEmpty()) out.append("주택형별 최고 공급금액 ").append(price).append(" · ");
-        out.append("접수 ").append(PublicHtml.shortDate(s.startDate())).append("~").append(PublicHtml.shortDate(s.endDate()))
+        out.append("접수 ").append(PublicHtml.receiptPeriod(s.startDate(), s.endDate(), "~", false, PublicHtml::shortDate))
             .append(" · 발표 ").append(PublicHtml.shortDate(s.winnerDate()));
         if (s.address() != null && !s.address().isBlank()) out.append(" · ").append(s.address().strip());
         return out.toString();

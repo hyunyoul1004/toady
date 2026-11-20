@@ -56,7 +56,10 @@ public class PlannerSummary {
         LocalDate end = date(value(a,"rceptEndde","subscrptRceptEndde"));
         LocalDate winner = date(value(a,"przwnerPresnatnDe"));
         List<Event> events = new ArrayList<>();
-        add(events,"접수 시작",start); add(events,"접수 마감",end); add(events,"당첨자 발표",winner);
+        add(events,"접수 시작",start);
+        // 상시 접수(마감일 2100년 이후 표기)는 '접수 마감' 일정으로 넣지 않는다. 캘린더 구독·일정 메일에 9999-12-31이 나오지 않게(웹 summaryOf와 같다).
+        if (!com.toady.web.app.announcement.ReceiptWindow.alwaysOpen(end)) add(events,"접수 마감",end);
+        add(events,"당첨자 발표",winner);
         add(events,"특별공급 시작",date(value(a,"spsplyRceptBgnde")));
         add(events,"1순위 해당지역",date(value(a,"gnrlRnk1CrspareaRcptde")));
         add(events,"1순위 경기지역",date(value(a,"gnrlRnk1EtcGgRcptde")));

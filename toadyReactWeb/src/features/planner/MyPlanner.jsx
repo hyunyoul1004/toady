@@ -27,6 +27,9 @@ import UpcomingSchedule from './UpcomingSchedule';
 import NextEvent from './NextEvent';
 import WeeklyPicks from './WeeklyPicks';
 import { nextPlannerEvent } from './nextEventRules';
+import { ResultSoonNotice } from '@/features/account/SignupPrompts';
+import { isAlwaysOpenEnd } from '@/features/announcement/receiptState';
+import { trackPromptClick, trackPromptView } from '@/features/account/signupPrompt';
 import './planner.css';
 
 // 비회원이 캘린더 연결을 누르고 로그인하러 갔다는 표시(sessionStorage라 이 탭에서만 유지). 로그인 뒤 연결 창을 다시 연다.
@@ -70,6 +73,7 @@ export default function MyPlanner() {
   // 비회원이 연결을 시작하면 연결 창 자리를 로그인 창으로 바꾼다. 로그인 후에는 연결 창을 다시 열고, 로그인을 취소하면 의도를 지운다.
   const openLoginForCalendar = () => {
     try { sessionStorage.setItem(CALENDAR_INTENT,'1'); } catch { /* 저장소 차단 시 로그인 후 자동 재개만 생략 */ }
+    trackPromptView(trackAction,'calendar');
     const layers=(location.state?.overlayLayers || []).filter(layer=>layer.id!=='calendar-connect');
     navigate(location.pathname + location.search + location.hash, { replace:true, state:{ ...location.state, overlayLayers:[...layers,{ id:'layout', value:'login' }] } });
   };
@@ -80,7 +84,8 @@ export default function MyPlanner() {
     try { intent=sessionStorage.getItem(CALENDAR_INTENT)==='1'; } catch { return; }
     if(!intent || overlayCount>0) return;
     try { sessionStorage.removeItem(CALENDAR_INTENT); } catch { /* 무시 */ }
-    if(planner.loggedIn) setCalendarOpen(true);
+    // 캘린더 연동 가입 권유는 로그인 창이 '노출', 로그인을 마치고 돌아온 것이 '클릭'이다(관리자 대시보드 '가입 권유').
+    if(planner.loggedIn) { trackPromptClick(trackAction,'calendar'); setCalendarOpen(true); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[planner.loggedIn,overlayCount]);
   const report = (text,error) => setMessage({text,error});
@@ -127,6 +132,7 @@ export default function MyPlanner() {
     {/* 상단: 제목과 캘린더 연결·설정 메뉴 버튼 */}
     <header className="planner-hero"><div><h1>나의 청약</h1><p>관심 있는 집을 모으고, 다음 청약을 차근차근 준비하세요.</p></div><div className="planner-hero-actions"><Button variant="outlined" startIcon={<CalendarMonthOutlined />} onClick={()=>setCalendarOpen(true)}>캘린더 연결</Button><IconButton ref={menuButtonRef} aria-label="나의 청약 설정" onClick={e=>setMenu(e.currentTarget)} disabled={busy}><MoreHorizRounded /></IconButton></div></header>
     {!planner.loggedIn && <div className="planner-storage-notice"><BookmarkBorderRounded fontSize="small" /><span>이 브라우저에 저장 중이에요. <strong>로그인하면 다른 기기에서도 이어볼 수 있어요.</strong></span></div>}
+    {!planner.loggedIn && <ResultSoonNotice items={planner.items} />}
     {planner.guestRefreshError && <Alert severity="warning" sx={{mb:2}}>최신 일정을 확인하지 못해 저장 당시 정보를 표시합니다. 원문에서 일정을 확인해 주세요.</Alert>}
     {planner.error && <Alert severity="error" action={<Button onClick={()=>planner.refetch()}>재시도</Button>}>{planner.error.message}</Alert>}
     {!planner.isLoading && planner.items.length>0 && <PushPrompt overlayId="push-prompt-settings" announcementId={planner.items[0]?.id} loggedIn={planner.loggedIn} />}
@@ -136,7 +142,7 @@ export default function MyPlanner() {
       {planner.items.length>0 && groups.length>1 && <NextEvent event={nextEvent} />}
       {planner.items.length>0 && <UpcomingSchedule key={planner.scope} groups={groups} today={today} />}
       {/* 공고 비교표: 2개 이상 고르면 나온다. 좁은 화면에서는 표를 좌우로 민다. */}
-      {compared.length>=2 && <section ref={comparisonRef} className="planner-section planner-comparison" aria-labelledby="compare-heading"><div className="planner-section-heading"><div><h2 id="compare-heading"><CompareArrowsRounded />공고 비교</h2><p>공개된 공고 정보 기준입니다. 상세 조건은 원문을 확인하세요.</p></div><Button size="small" onClick={()=>setSelected([])} endIcon={<CloseRounded />}>비교 닫기</Button></div><p className="planner-table-hint">표를 좌우로 밀어 선택한 공고의 조건을 비교하세요.</p><TableContainer role="region" aria-label="관심 공고 비교 표 · 좌우로 스크롤" tabIndex={0}><Table size="small" aria-label="관심 공고 비교"><TableHead><TableRow><TableCell>비교 항목</TableCell>{compared.map(x=><TableCell key={x.id}>{x.summary.houseNm}</TableCell>)}</TableRow></TableHead><TableBody>{[['주소','address'],['APT 공급금액 · 주택형별 최고가','priceSummary'],['주택 유형','housingType'],['공급 세대수','supply'],['접수 시작','startDate'],['접수 마감','endDate'],['당첨자 발표','winnerDate']].map(([label,key])=><TableRow key={key}><TableCell>{label}</TableCell>{compared.map(x=><TableCell key={x.id}>{key==='priceSummary'?formatSupplySummary(x.summary[key]):x.summary[key] || '미제공'}</TableCell>)}</TableRow>)}
+      {compared.length>=2 && <section ref={comparisonRef} className="planner-section planner-comparison" aria-labelledby="compare-heading"><div className="planner-section-heading"><div><h2 id="compare-heading"><CompareArrowsRounded />공고 비교</h2><p>공개된 공고 정보 기준입니다. 상세 조건은 원문을 확인하세요.</p></div><Button size="small" onClick={()=>setSelected([])} endIcon={<CloseRounded />}>비교 닫기</Button></div><p className="planner-table-hint">표를 좌우로 밀어 선택한 공고의 조건을 비교하세요.</p><TableContainer role="region" aria-label="관심 공고 비교 표 · 좌우로 스크롤" tabIndex={0}><Table size="small" aria-label="관심 공고 비교"><TableHead><TableRow><TableCell>비교 항목</TableCell>{compared.map(x=><TableCell key={x.id}>{x.summary.houseNm}</TableCell>)}</TableRow></TableHead><TableBody>{[['주소','address'],['APT 공급금액 · 주택형별 최고가','priceSummary'],['주택 유형','housingType'],['공급 세대수','supply'],['접수 시작','startDate'],['접수 마감','endDate'],['당첨자 발표','winnerDate']].map(([label,key])=><TableRow key={key}><TableCell>{label}</TableCell>{compared.map(x=><TableCell key={x.id}>{key==='priceSummary'?formatSupplySummary(x.summary[key]):key==='endDate'&&isAlwaysOpenEnd(x.summary.endDate)?'상시 접수':x.summary[key] || '미제공'}</TableCell>)}</TableRow>)}
         <TableRow><TableCell>주변 시세 대비</TableCell>{compared.map(x=>{const badge=gapBadge(gaps.get(x.id));return <TableCell key={x.id}>{badge?<>{badge.text}<br/><small>전용 {gaps.get(x.id).area}㎡ · 참고 비교</small></>:'비교 자료 없음'}</TableCell>;})}</TableRow></TableBody></Table></TableContainer></section>}
       {/* 저장한 공고 카드 목록. key에 scope를 넣어 계정이 바뀌면 카드 상태를 새로 만든다. */}
       {planner.items.length>0 && <section className="planner-section" aria-labelledby="favorites-heading"><div className="planner-section-heading"><div><h2 id="favorites-heading">저장한 공고 <span className="planner-count">{planner.items.length}{planner.items.length>=40?' / 50':''}</span></h2><p>준비 노트에서 체크리스트와 메모, 알림을 관리하세요.</p></div>{selected.length>0 ? <span className="planner-selection-count">비교 {selected.length}/3</span> : completed>0 && <span className="planner-favorites-meta">준비 항목 {completed}/{planner.items.length*CHECKS.length} 확인</span>}</div>

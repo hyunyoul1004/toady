@@ -74,6 +74,7 @@ class AdminController(
 		model.addAttribute("funnel", metrics.funnel())
 		model.addAttribute("retention", metrics.retention())
 		model.addAttribute("signups", metrics.recentSignups())
+		model.addAttribute("signupPrompts", metrics.signupPrompts())
 		model.addAttribute("recentComments", comments.search(null, "visible", 0, 6).items)
 		model.addAttribute("exclusions", exclusions.list())
 		model.addAttribute("exclusionReady", exclusions.available())

@@ -233,6 +233,12 @@ class AdminSiteTest {
 		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('u1','v1','detail_view','apt/H1/P1',?,CURRENT_TIMESTAMP)", today)
 		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk).andExpect(content().string(org.hamcrest.Matchers.containsString("검색 · 구글")))
 			.andExpect(content().string(org.hamcrest.Matchers.containsString("역삼 새 단지")))  // 많이 본 공고
+		// 가입 권유: 순간별 노출·클릭·클릭률과 이어받기 횟수(웹 signupPrompt.js와 같은 측정 이름).
+		jdbc.update("INSERT INTO TB_USAGE_EVENT VALUES ('s1','v1','signup_prompt_view','tool/signup-favorite',?,CURRENT_TIMESTAMP),('s2','v2','signup_prompt_view','tool/signup-favorite',?,CURRENT_TIMESTAMP),('s3','v2','signup_prompt_click','tool/signup-favorite',?,CURRENT_TIMESTAMP),('s4','v2','guest_import','tool/import-1-2',?,CURRENT_TIMESTAMP)", today, today, today, today)
+		mvc.perform(get("/admin/").with(admin)).andExpect(status().isOk)
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("가입 권유 · 28일")))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("노출 2 · 클릭 1 · 50%")))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("이어받기 1회")))
 		// 수집이 멈췄는지는 작업 이력(마지막 성공)으로 판단한다: 어제 성공 → 정상, 사흘 전 성공뿐 → 확인 필요.
 		jdbc.update("DELETE FROM TB_SCHEDULER_ADMIN_JOB")
 		jdbc.update("INSERT INTO TB_SCHEDULER_ADMIN_JOB (JOB_ID,JOB_KIND,JOB_SOURCE,START_DATE,END_DATE,STATUS,TOTAL_CHUNKS,REQUESTED_BY,MESSAGE,CREATED_AT,FINISHED_AT,HEARTBEAT_AT) VALUES ('j1','ANNOUNCEMENTS','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?),('j2','COMPETITION','SCHEDULE',?,?,'SUCCEEDED',1,'scheduler','ok',?,?,?)",

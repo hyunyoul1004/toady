@@ -279,7 +279,8 @@ class ContentController(
 			val summary = "대상 ${reply.body["targets"]} · 전달 ${reply.body["sent"]} · 만료 정리 ${reply.body["removed"]} · 실패 ${reply.body["failed"]}"
 			audit.record(user.name, if (testUserSeq == null) "PUSH_BROADCAST" else "PUSH_TEST", "PUSH", testUserSeq ?: "all", after = "${title.trim()} · $summary")
 			redirect.addFlashAttribute("notice", (if (testUserSeq == null) "전체 발송했습니다. " else "시험 발송했습니다. ") + summary)
-		} else redirect.addFlashAttribute("error", if (testUserSeq == null)
+		// 응답이 끊겼거나 API 안에서 오류(5xx)가 난 경우만 이미 발송됐을 수 있다고 안내한다. 거절(하루 한도 429·VAPID 키 없음 409)은 발송·차감 전에 막혔다.
+		} else redirect.addFlashAttribute("error", if (testUserSeq == null && reply.maybeApplied)
 			"${reply.message} 응답만 끊기고 발송은 이미 진행됐을 수 있습니다. 다시 보내기 전에 기기에서 받았는지 먼저 확인하세요(하루 발송 횟수도 이미 차감됐을 수 있음)."
 			else reply.message)
 		return "redirect:/admin/push"

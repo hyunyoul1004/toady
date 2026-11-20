@@ -236,6 +236,34 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		rows.map { (path, views, people) -> Ranked(path, PAGE_NAMES[path] ?: path, views, people, views * 100 / max) }
 	} catch (missing: DataAccessException) { emptyList() }
 
+	/** 가입 권유 한 순간의 노출·클릭(최근 days일, 사람 수 기준이 아니라 횟수). */
+	data class Prompt(val key: String, val label: String, val views: Long, val clicks: Long) {
+		val rate: Long? get() = if (views == 0L) null else clicks * 100 / views
+	}
+	/** 가입 권유 요약: 순간별 노출·클릭, 최근 4주 주간 가입 수(오래된 주부터), 기기 관심 공고 이어받기 횟수. */
+	data class SignupPrompts(val days: Int, val prompts: List<Prompt>, val weeklySignups: List<Long>, val imports: Long)
+
+	/**
+	 * 가입 권유 효과(기획: 회원 가입 유도 1단계). 익명 기록과 회원을 잇지 않으므로 사람별 전환이 아니라
+	 * 순간별 클릭률(클릭 ÷ 노출)과 주간 가입 수를 따로 보여 준다. 측정 이름은 웹 trackAction('signup_prompt_*', 'tool/signup-…')과 같다.
+	 */
+	fun signupPrompts(days: Int = 28, today: LocalDate = Kst.today()): SignupPrompts {
+		val since = today.minusDays((days - 1).toLong())
+		val counts = HashMap<Pair<String, String>, Long>(); var imports = 0L
+		try {
+			jdbc.query("""SELECT ACTION_NAME, SUBJECT_ID, COUNT(*) FROM TB_USAGE_EVENT WHERE VISIT_DATE >= ?
+				AND ACTION_NAME IN ('signup_prompt_view','signup_prompt_click','guest_import')${exclusions.clause()} GROUP BY ACTION_NAME, SUBJECT_ID""".trimIndent(),
+				RowCallbackHandler { r -> if (r.getString(1) == "guest_import") imports += r.getLong(3) else counts[r.getString(1) to r.getString(2)] = r.getLong(3) }, since)
+		} catch (missing: DataAccessException) { /* 기록이 없으면 0으로 보여 준다 */ }
+		val prompts = SIGNUP_MOMENT_NAMES.map { (key, label) -> Prompt(key, label, counts["signup_prompt_view" to key] ?: 0, counts["signup_prompt_click" to key] ?: 0) }
+		val monday = today.with(DayOfWeek.MONDAY)
+		val weekly = (3 downTo 0).map { back ->
+			val start = monday.minusWeeks(back.toLong())
+			count("SELECT COUNT(*) FROM TB_USER WHERE CREATE_DT >= ? AND CREATE_DT < ?", start.atStartOfDay(), start.plusWeeks(1).atStartOfDay()) ?: 0
+		}
+		return SignupPrompts(days, prompts, weekly, imports)
+	}
+
 	/** 최근 가입 회원 몇 명. */
 	fun recentSignups(limit: Int = 6): List<Signup> = try {
 		jdbc.query("SELECT USER_SEQ, USER_NIC_NAME, USER_EMAIL, EMAIL_CERTIFY_YN, CREATE_DT FROM TB_USER ORDER BY USER_SEQ DESC LIMIT ?", { r, _ ->
@@ -331,6 +359,9 @@ class MetricsService(private val jdbc: JdbcTemplate, private val exclusions: Exc
 		/** 재방문 판정에 보는 이전 기간(주). TB_PAGE_VIEW 보관 90일 안에서 모든 주가 같은 기간을 보게 한다. */
 		const val RETURN_WEEKS = 4
 		fun weekStart(day: LocalDate): LocalDate = day.with(DayOfWeek.MONDAY)
+		/** 가입 권유 순간 이름(웹 signupPrompt.js SIGNUP_MOMENTS, API UsageEventController.SIGNUP_MOMENTS와 같은 목록). */
+		val SIGNUP_MOMENT_NAMES = linkedMapOf("tool/signup-favorite" to "관심 공고 3번째 저장", "tool/signup-result" to "당첨자 발표 임박",
+			"tool/signup-calendar" to "캘린더 연동", "tool/signup-story" to "이야기 쓰기")
 		val MAP_TOOL_NAMES = mapOf("tool/map-fullscreen" to "지도 전체 화면", "tool/map-measure" to "거리 재기", "tool/map-radius" to "반경 그리기",
 			"tool/map-search" to "지도 검색", "tool/map-suggest" to "검색 자동완성 선택")
 		val PAGE_NAMES = mapOf("/" to "청약 캘린더", "/announcements" to "공고 상세", "/match" to "맞춤 청약", "/match/zupzup" to "무순위·줍줍", "/score" to "가점 계산기",

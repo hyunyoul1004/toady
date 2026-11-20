@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import { ID_PATTERN, mergeGuestSummary, safeRead } from './plannerUtils';
+import { favoritePromptDue, SIGNUP_PROMPT_EVENT } from '@/features/account/signupPrompt';
 
 // 비회원 관심 공고 저장 키. 값은 [{ id, summary, note, checklist, stage }] 배열이다.
 const KEY = 'toady.planner.guest';
@@ -27,6 +28,8 @@ const guest = create(set => ({ items: readGuest(), replace: items => {
 } }));
 /** 로그인하지 않은 브라우저의 관심 공고 ID. 웹 푸시 구독 범위로 서버에 보낸다(메모·준비 상태는 보내지 않음). */
 export function useGuestFavoriteIds() { const items = guest(s => s.items); return items.map(item => item.id); }
+/** 로그인하지 않은 브라우저의 관심 공고(저장 당시 요약 포함). 로그인 뒤 계정으로 옮길지 물을 때 쓴다(SignupPrompts.GuestImportPrompt). */
+export function useGuestFavorites() { return guest(s => s.items); }
 // 다른 탭에서 관심 공고를 바꾸면 storage 이벤트가 온다. 다시 읽어 이 탭 화면도 맞춘다(key가 null이면 저장소 전체 삭제).
 if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) guest.setState({ items: readGuest() }); });
 
@@ -53,7 +56,8 @@ export function usePlanner() {
   const latest = new Map((Array.isArray(guestSummaries.data) ? guestSummaries.data : []).map(s=>[s.id,s]));
   const items = userSeq ? (query.data || []) : local.map(item=>({...item,summary:mergeGuestSummary(item.summary, latest.get(item.id))}));
   /** 공고 저장(새로 저장, 메모·체크리스트·단계 수정 모두). 저장 직전에 로그인 계정이 바뀌었으면(다른 탭 로그아웃 등) 멈춘다. */
-  async function save(item) {
+  // options.quiet: 가입 권유 신호를 보내지 않는다(관심 해제 되돌리기처럼 새로 고른 저장이 아닐 때).
+  async function save(item, options = {}) {
     if ((useAuthStore.getState().isAuthenticated ? useAuthStore.getState().user?.userSeq : null) !== userSeq) throw Error('계정이 변경되었습니다. 다시 시도해 주세요.');
     if (!ID_PATTERN.test(item.id)) throw Error('공고 식별자를 확인해 주세요.');
     const existing = items.find(x => x.id === item.id);
@@ -69,6 +73,11 @@ export function usePlanner() {
       const saved = current.find(x => x.id === item.id);
       const next = { ...item, emailEnabled: false, ...(item.summary?.unavailable && saved?.summary ? { summary: saved.summary } : {}) };
       guest.getState().replace(current.some(x => x.id === item.id) ? current.map(x => (x.id === item.id ? next : x)) : [next, ...current]);
+      // 관심 공고 3개째 저장이면 가입 권유를 띄우라고 알린다(SignupPromptHost가 받고, 미뤄 둔 순간이면 띄우지 않는다).
+      const isNew = !current.some(x => x.id === item.id);
+      if (!options.quiet && favoritePromptDue({ isNew, countAfter: guest.getState().items.length })) {
+        try { window.dispatchEvent(new CustomEvent(SIGNUP_PROMPT_EVENT, { detail: { moment: 'favorite', count: guest.getState().items.length } })); } catch { /* 권유는 저장과 무관 */ }
+      }
     }
     if (!existing) trackAction('favorite_add',item.id);
     if (item.emailEnabled && !existing?.emailEnabled) trackAction('alert_enable',item.id);

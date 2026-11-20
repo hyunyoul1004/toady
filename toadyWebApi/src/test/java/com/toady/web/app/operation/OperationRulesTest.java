@@ -44,8 +44,8 @@ class OperationRulesTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS TB_ANNOUNCEMENT_OVERRIDE (ANNOUNCEMENT_TYPE VARCHAR(20) NOT NULL, HOUSE_MANAGE_NO VARCHAR(40) NOT NULL, PBLANC_NO VARCHAR(40) NOT NULL,"
                 + " HIDDEN_YN VARCHAR(1) DEFAULT 'N' NOT NULL, NOTICE VARCHAR(500), ADMIN_NAME VARCHAR(100) NOT NULL, UPDATE_DT TIMESTAMP NOT NULL, PRIMARY KEY (ANNOUNCEMENT_TYPE, HOUSE_MANAGE_NO, PBLANC_NO))");
         for (String table : new String[]{"TB_USER_SANCTION", "TB_MODERATION_RULE", "TB_ANNOUNCEMENT_OVERRIDE", "TB_LTTOT_PBLANC_COMMENT", "TB_APT_LTTOT_PBLANC_DETAIL", "TB_USER"}) jdbc.update("DELETE FROM " + table);
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP1','N1','운영 시험 단지','경기도 파주시 동패동','2026-11-20','2026-11-21')");
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP2','N2','운영 다른 단지','경기도 파주시 야당동','2026-11-20','2026-11-21')");
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP1','N1','운영 시험 단지','경기도 파주시 동패동',?,?)",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(1).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP2','N2','운영 다른 단지','경기도 파주시 야당동',?,?)",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(1).toString());
         UserEntity user = users.save(UserEntity.builder().userEmail("op@example.test").userNicName("운영시험").userPassword(passwords.encode("Password123!"))
                 .emailCertifyYn("Y").lockYn("N").withdrawalYn("N").build());
         me = user.getUserSeq();
@@ -137,8 +137,9 @@ class OperationRulesTest {
 
     @Test void suggestionsFillTheLimitEvenWhenNewerAnnouncementsAreHidden() throws Exception {
         // OP1(숨김)과 OP3(숨김)이 OP2보다 접수일이 늦다. 읽은 뒤 거르면 limit=1에서 결과가 비어 버린다.
-        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE='2026-12-01' WHERE HOUSE_MANAGE_NO='OP1'");
-        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP3','N3','운영 세번째 단지','경기도 파주시 목동동','2026-12-05','2026-12-06')");
+        // 날짜는 오늘 기준(OP2는 오늘 접수). 고정 날짜면 해가 바뀐 뒤 OP2보다 앞서 순서 검사가 깨진다.
+        jdbc.update("UPDATE TB_APT_LTTOT_PBLANC_DETAIL SET RCEPT_BGNDE=? WHERE HOUSE_MANAGE_NO='OP1'",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(11).toString());
+        jdbc.update("INSERT INTO TB_APT_LTTOT_PBLANC_DETAIL (HOUSE_MANAGE_NO,PBLANC_NO,HOUSE_NM,HSSPLY_ADRES,RCEPT_BGNDE,RCEPT_ENDDE) VALUES ('OP3','N3','운영 세번째 단지','경기도 파주시 목동동',?,?)",java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(15).toString(),java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(16).toString());
         jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','OP1','N1','Y',NULL,'operator',CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO TB_ANNOUNCEMENT_OVERRIDE VALUES ('APT','OP3','N3','Y',NULL,'operator',CURRENT_TIMESTAMP)");
         overrides.refresh();

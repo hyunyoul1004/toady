@@ -13,7 +13,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import com.toady.web.app.announcement.ReceiptWindow;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.UncheckedExecutionException;
@@ -36,6 +38,17 @@ final class PublicHtml {
         if (value == null) return "미제공";
         String day = "%d.%02d".formatted(value.getMonthValue(), value.getDayOfMonth());
         return value.getYear() == today.getYear() ? day : value.getYear() + "." + "%02d.%02d".formatted(value.getMonthValue(), value.getDayOfMonth());
+    }
+    /**
+     * 접수 기간 문구 '시작 ~ 마감'. 마감일이 '상시 접수' 표기(ReceiptWindow.alwaysOpen, 예: 9999-12-31)면 가짜 날짜 대신 '상시 접수'를 쓴다(웹 isAlwaysOpenEnd와 같다).
+     * 날짜 모양(format)과 구분자(separator)는 화면마다 쓰던 그대로 넘긴다. collapse면 마감일이 없거나 시작일과 같을 때 시작일만 쓴다.
+     * 공고 페이지 설명·RSS·공유 이미지·지역별 청약·생활권 페이지가 모두 이 함수로 접수 기간을 쓴다.
+     */
+    static String receiptPeriod(LocalDate start, LocalDate end, String separator, boolean collapse, Function<LocalDate, String> format) {
+        String from = format.apply(start);
+        if (ReceiptWindow.alwaysOpen(end)) return from + separator + "상시 접수";
+        if (collapse && (end == null || end.equals(start))) return from;
+        return from + separator + format.apply(end);
     }
     static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final ObjectMapper JSON = new ObjectMapper();

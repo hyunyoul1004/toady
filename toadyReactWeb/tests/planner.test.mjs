@@ -146,3 +146,11 @@ test('guest summary keeps saved receiptChannel when an older server omits the fi
   // 저장 요약에도 접수처가 없으면 서버 요약을 그대로 쓴다.
   assert.equal(mergeGuestSummary({id:'apt/1/2'},old),old);
 });
+
+test('상시 접수(마감일 9999-12-31)는 관심 공고 일정·.ics에 접수 마감으로 넣지 않는다', async () => {
+  const { summaryOf, calendarText } = await import('../src/features/planner/plannerUtils.js');
+  const summary = summaryOf({ subscriptSeq: 'public-rental/A1/B1', houseNm: '상시 임대', rceptBgnde: '2026-11-02', rceptEndde: '9999-12-31' });
+  assert.deepEqual(summary.events.map(e => e.label), ['접수 시작']);
+  assert.ok(!calendarText([summary]).includes('9999'));
+  assert.deepEqual(summaryOf({ subscriptSeq: 'apt/A/B', rceptBgnde: '2026-11-02', rceptEndde: '2026-11-04' }).events.map(e => e.label), ['접수 시작', '접수 마감']);
+});
